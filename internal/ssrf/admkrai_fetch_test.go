@@ -2,6 +2,7 @@ package ssrf_test
 
 import (
 	"context"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -11,8 +12,8 @@ import (
 )
 
 func TestAdmkraiRSSFetch_TLSInsecure(t *testing.T) {
-	if testing.Short() {
-		t.Skip("network test")
+	if os.Getenv("RSSAM_LIVE_NET") != "1" {
+		t.Skip("live fetch of admkrai.krasnodar.ru; set RSSAM_LIVE_NET=1")
 	}
 	guard, err := ssrf.New(ssrf.Config{})
 	if err != nil {
