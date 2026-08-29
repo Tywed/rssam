@@ -1,0 +1,38 @@
+{{define "body_settings"}}
+<div class="settings-layout">
+  {{template "settings_nav" .}}
+  <div class="settings-content">
+    <h1>Настройки</h1>
+    <div class="card">
+      <h2>Профиль</h2>
+      <p>Имя: <strong>{{.Username}}</strong>{{if .IsAdmin}} (admin){{end}}</p>
+      <form method="post" action="/ui/settings/password">
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+        <div class="form-group"><label>Новый пароль</label><input name="password" type="password" required minlength="8"></div>
+        <button type="submit" class="btn btn-primary">Сменить пароль</button>
+      </form>
+    </div>
+    <div class="card">
+      <h2>API ключи</h2>
+      <form method="post" action="/ui/settings/api-keys">
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+        <div class="form-group"><label>Имя ключа</label><input name="name" required></div>
+        <button type="submit" class="btn btn-primary">Создать</button>
+      </form>
+      {{if .NewToken}}<div class="flash flash-ok">Новый токен (сохраните): <code>{{.NewToken}}</code></div>{{end}}
+      <table style="margin-top:1rem">
+        <thead><tr><th>Имя</th><th>Создан</th><th></th></tr></thead>
+        <tbody>
+        {{range .APIKeys}}
+        <tr>
+          <td>{{.Name}}</td>
+          <td class="meta">{{formatTime .CreatedAt}}</td>
+          <td><form method="post" action="/ui/settings/api-keys/{{.ID}}/delete"><input type="hidden" name="csrf_token" value="{{$.CSRFToken}}"><button class="btn btn-sm btn-danger">×</button></form></td>
+        </tr>
+        {{end}}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{{end}}

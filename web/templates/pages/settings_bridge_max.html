@@ -1,0 +1,25 @@
+{{define "body_settings_bridge_max"}}
+<div class="settings-layout">
+  {{template "settings_nav" .}}
+  <div class="settings-content">
+    <h1>Max</h1>
+    {{template "bridges_nav" .}}
+    {{if .FlashMsg}}<div class="flash flash-ok">{{.FlashMsg}}</div>{{end}}
+    <p class="meta">Каналы max.ru через локальный Max API. Если мост не был включён при старте, после первого сохранения может потребоваться перезапуск.</p>
+    <form method="post" action="/ui/settings/bridges/max" class="card">
+      <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+      <div class="form-group"><label>API base URL</label><input name="api_base_url" value="{{.BridgeSettings.Max.APIBaseURL}}" placeholder="http://max-api:8000"></div>
+      <div class="form-row">
+        <div class="form-group"><label>Default limit</label><input name="default_limit" type="number" min="1" value="{{.BridgeSettings.Max.DefaultLimit}}"></div>
+        <div class="form-group"><label>Default lookback</label><input name="default_lookback" value="{{durationValue .BridgeSettings.Max.DefaultLookback}}" placeholder="24h"></div>
+        <div class="form-group"><label>Overlap</label><input name="overlap" value="{{durationValue .BridgeSettings.Max.Overlap}}" placeholder="2m"></div>
+        <div class="form-group"><label>Rate limit (с)</label><input name="rate_limit_seconds" type="number" min="1" value="{{.BridgeSettings.Max.RateLimitSeconds}}"></div>
+      </div>
+      <div class="form-group">
+        <label><input type="checkbox" name="allow_private_api" value="1" {{if .BridgeSettings.Max.AllowPrivateAPI}}checked{{end}}> Allow private API</label>
+      </div>
+      <button type="submit" class="btn btn-primary">Сохранить</button>
+    </form>
+  </div>
+</div>
+{{end}}

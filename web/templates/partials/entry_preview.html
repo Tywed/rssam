@@ -1,0 +1,26 @@
+{{define "entry_preview"}}
+<article class="article-preview" id="entry-preview">
+  <header class="article-preview-header">
+    <h1 class="article-title">{{if .Entry.Title}}{{.Entry.Title}}{{else}}(без заголовка){{end}}</h1>
+    <div class="article-meta">
+      {{if .Entry.Author}}<span>{{.Entry.Author}}</span> · {{end}}
+      {{if .Entry.PublishedAt}}<span>{{formatTime .Entry.PublishedAt}}</span> · {{end}}
+      {{if .Entry.URL}}<a href="{{.Entry.URL}}" target="_blank" rel="noopener">Оригинал ↗</a>{{end}}
+    </div>
+    <div class="article-toolbar">
+      {{if eq .Entry.Status "unread"}}
+      <form method="post" action="/ui/entries/{{.Entry.ID}}/read">
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+        <button type="submit" class="btn btn-primary btn-sm">Прочитано</button>
+      </form>
+      {{end}}
+      <form method="post" action="/ui/entries/{{.Entry.ID}}/star">
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+        <input type="hidden" name="starred" value="{{if .Entry.Starred}}0{{else}}1{{end}}">
+        <button type="submit" class="btn btn-sm">{{if .Entry.Starred}}★ В избранном{{else}}☆ В избранное{{end}}</button>
+      </form>
+    </div>
+  </header>
+  <div class="article-body">{{.EntryContent}}</div>
+</article>
+{{end}}

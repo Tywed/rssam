@@ -1,0 +1,11 @@
+{{define "body_search"}}
+<div class="headlines-toolbar">
+  <h1 class="headlines-title">Поиск{{if .SearchQuery}}: {{.SearchQuery}}{{end}}</h1>
+</div>
+{{if not .SearchQuery}}
+<div class="search-hint">Введите запрос в поле поиска в шапке и нажмите Enter.</div>
+{{else if not .Entries}}
+<div class="search-hint">Ничего не найдено по запросу «{{.SearchQuery}}».</div>
+{{end}}
+{{template "entry_list" .}}
+{{end}}

@@ -1,0 +1,82 @@
+{{define "body_admin_feed_detail"}}
+<div class="settings-layout">
+  {{template "settings_nav" .}}
+  <div class="settings-content">
+    <div class="toolbar">
+      <div>
+        <p class="meta" style="margin:0"><a href="/ui/admin/feeds">← Состояние лент</a></p>
+        <h1 style="margin:0.25rem 0 0">{{.AdminFeedDetail.Feed.Title}}</h1>
+      </div>
+      <div class="admin-feeds-actions">
+        <form method="post" action="/ui/admin/feeds/{{.AdminFeedDetail.Feed.ID}}/refresh" class="inline-form">
+          <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+          <button type="submit" class="btn btn-primary">Обновить</button>
+        </form>
+        {{if .AdminFeedDetail.Feed.ManualPaused}}
+        <form method="post" action="/ui/admin/feeds/{{.AdminFeedDetail.Feed.ID}}/unpause" class="inline-form">
+          <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+          <button type="submit" class="btn">Снять ручную паузу</button>
+        </form>
+        {{else}}
+        <form method="post" action="/ui/admin/feeds/{{.AdminFeedDetail.Feed.ID}}/pause" class="inline-form">
+          <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+          <button type="submit" class="btn">Поставить на паузу</button>
+        </form>
+        {{end}}
+        {{if .AdminFeedDetail.Feed.PollPaused}}
+        <form method="post" action="/ui/admin/feeds/{{.AdminFeedDetail.Feed.ID}}/reset-circuit" class="inline-form">
+          <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+          <button type="submit" class="btn">Сбросить автостоп</button>
+        </form>
+        {{end}}
+        <a class="btn" href="/ui/feeds/{{.AdminFeedDetail.Feed.ID}}/edit">Редактировать</a>
+      </div>
+    </div>
+
+    <p><span class="feed-status-badge {{adminFeedStatusClass .AdminFeedDetail.Status}}">{{adminFeedStatusLabel .AdminFeedDetail.Status}}</span></p>
+
+    <div class="card">
+      <h2>Опрос</h2>
+      <table>
+        <tr><th>ID</th><td>{{.AdminFeedDetail.Feed.ID}}</td></tr>
+        <tr><th>URL</th><td>{{.AdminFeedDetail.Feed.FeedURL}}</td></tr>
+        <tr><th>Тип</th><td>{{feedTypeLabel .AdminFeedDetail.Feed.FeedType}}</td></tr>
+        {{if .AdminFeedDetail.OwnerName}}<tr><th>Владелец</th><td>{{.AdminFeedDetail.OwnerName}}</td></tr>{{end}}
+        <tr><th>Интервал</th><td>{{.AdminFeedDetail.Feed.IntervalMinutes}} мин</td></tr>
+        <tr><th>Последний опрос</th><td>{{formatTime .AdminFeedDetail.Feed.LastCheckedAt}}</td></tr>
+        <tr><th>Следующий опрос</th><td>{{formatTime .AdminFeedDetail.Feed.NextCheckAt}}</td></tr>
+        <tr><th>Ошибок подряд</th><td>{{.AdminFeedDetail.Feed.ParsingErrorCount}}</td></tr>
+        <tr><th>Автостоп (circuit)</th><td>{{if .AdminFeedDetail.Feed.PollPaused}}да{{else}}нет{{end}}</td></tr>
+        <tr><th>Ручная пауза</th><td>{{if .AdminFeedDetail.Feed.ManualPaused}}да{{else}}нет{{end}}</td></tr>
+        <tr><th>ETag</th><td class="meta">{{if .AdminFeedDetail.Feed.ETag}}{{.AdminFeedDetail.Feed.ETag}}{{else}}—{{end}}</td></tr>
+        <tr><th>Last-Modified</th><td class="meta">{{if .AdminFeedDetail.Feed.LastModified}}{{.AdminFeedDetail.Feed.LastModified}}{{else}}—{{end}}</td></tr>
+        {{if .AdminFeedDetail.Feed.LastError}}
+        <tr><th>Последняя ошибка</th><td class="admin-feeds-error">{{.AdminFeedDetail.Feed.LastError}}</td></tr>
+        {{end}}
+      </table>
+    </div>
+
+    <div class="card">
+      <h2>Хранение</h2>
+      <table>
+        <tr><th>Записей</th><td>{{.AdminFeedDetail.EntryCount}}</td></tr>
+        <tr><th>Непрочитанных</th><td>{{.AdminFeedDetail.UnreadCount}}</td></tr>
+        <tr><th>Режим хранения</th><td>{{if .AdminFeedDetail.Feed.StoreHashOnly}}только хеш до фильтра{{else}}полный{{end}}</td></tr>
+      </table>
+    </div>
+
+    {{if .AdminFeedDetail.Job}}
+    <div class="card">
+      <h2>Очередь</h2>
+      <table>
+        <tr><th>Job ID</th><td>{{.AdminFeedDetail.Job.ID}}</td></tr>
+        <tr><th>Запуск</th><td>{{formatTime .AdminFeedDetail.Job.RunAt}}</td></tr>
+        <tr><th>Попытки</th><td>{{.AdminFeedDetail.Job.Attempts}}</td></tr>
+        <tr><th>В работе</th><td>{{if .AdminFeedDetail.Job.LockedAt}}да ({{formatTime .AdminFeedDetail.Job.LockedAt}}){{else}}нет{{end}}</td></tr>
+        {{if .AdminFeedDetail.Job.LastError}}<tr><th>Ошибка job</th><td class="admin-feeds-error">{{.AdminFeedDetail.Job.LastError}}</td></tr>{{end}}
+      </table>
+    </div>
+    {{end}}
+  </div>
+</div>
+{{end}}

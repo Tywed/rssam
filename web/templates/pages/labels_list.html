@@ -1,0 +1,45 @@
+{{define "body_labels_list"}}
+<div class="settings-layout">
+  {{template "settings_nav" .}}
+  <div class="settings-content">
+    <h1>Метки</h1>
+    <form method="post" action="/ui/labels" class="card">
+      <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+      <div class="form-row">
+        <div class="form-group"><label>Новая метка</label><input name="caption" required></div>
+        <div class="form-group form-group-color"><label>Фон</label><input type="color" name="bg_color" value="#2980b9" title="Фон"></div>
+        <div class="form-group form-group-color"><label>Текст</label><input type="color" name="fg_color" value="#ffffff" title="Текст"></div>
+      </div>
+      <button type="submit" class="btn btn-primary">Создать</button>
+    </form>
+    <table>
+      <thead><tr><th>Метка</th><th>Записей</th><th></th></tr></thead>
+      <tbody>
+      {{range .Labels}}
+      <tr>
+        <td colspan="2">
+          <form method="post" action="/ui/labels/{{.ID}}" class="label-edit-form">
+            <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+            <span class="label-preview" style="background:{{labelBgColor .}};color:{{labelFgColor .}}">{{.Caption}}</span>
+            <input name="caption" value="{{.Caption}}">
+            <input type="color" name="bg_color" value="{{labelBgColor .}}" title="Фон">
+            <input type="color" name="fg_color" value="{{labelFgColor .}}" title="Текст">
+            <button class="btn btn-sm">Сохранить</button>
+          </form>
+        </td>
+        <td>
+          <a class="btn btn-sm" href="/ui/labels/{{.ID}}">Записи</a>
+          <form method="post" action="/ui/labels/{{.ID}}/delete" style="display:inline" onsubmit="return confirm('Удалить метку?')">
+            <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+            <button class="btn btn-sm btn-danger">×</button>
+          </form>
+        </td>
+      </tr>
+      {{else}}
+      <tr><td colspan="3" class="meta">Нет меток</td></tr>
+      {{end}}
+      </tbody>
+    </table>
+  </div>
+</div>
+{{end}}

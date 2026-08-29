@@ -1,0 +1,22 @@
+{{define "body_filters_matches"}}
+<div class="settings-layout">
+  {{template "settings_nav" .}}
+  <div class="settings-content">
+    <h1>Совпадения: {{.Filter.Name}}</h1>
+    <table>
+      <thead><tr><th>Запись</th><th>Дата</th></tr></thead>
+      <tbody>
+      {{range .Matches}}
+      <tr>
+        <td><a href="/ui/entries/{{.Entry.ID}}">{{if .Entry.Title}}{{.Entry.Title}}{{else}}#{{.Entry.ID}}{{end}}</a></td>
+        <td class="meta">{{formatTime .Match.MatchedAt}}</td>
+      </tr>
+      {{else}}
+      <tr><td colspan="2" class="meta">Нет совпадений</td></tr>
+      {{end}}
+      </tbody>
+    </table>
+    <a class="btn" href="/ui/filters">← Назад</a>
+  </div>
+</div>
+{{end}}

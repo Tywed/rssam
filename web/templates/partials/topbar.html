@@ -1,0 +1,8 @@
+{{define "topbar"}}
+<header class="topbar">
+  <form method="get" action="/ui/search">
+    <input type="search" name="q" value="{{.SearchQuery}}" placeholder="Поиск записей…">
+  </form>
+  <span class="meta">{{.Username}}</span>
+</header>
+{{end}}

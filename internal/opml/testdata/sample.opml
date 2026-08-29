@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<opml version="2.0">
+  <head>
+    <title>Sample subscriptions</title>
+  </head>
+  <body>
+    <outline text="Tech" title="Tech">
+      <outline text="Go" title="Go">
+        <outline type="rss" text="Go Blog" title="Go Blog" xmlUrl="https://go.dev/blog/.atom" htmlUrl="https://go.dev/blog/"/>
+      </outline>
+      <outline type="rss" text="Example" title="Example" xmlUrl="https://example.com/feed.xml" htmlUrl="https://example.com/"/>
+    </outline>
+    <outline type="rss" text="Root Feed" xmlUrl="https://news.example.com/rss"/>
+  </body>
+</opml>

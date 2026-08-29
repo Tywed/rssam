@@ -1,0 +1,141 @@
+{{define "body_admin_feeds"}}
+<div class="settings-layout">
+  {{template "settings_nav" .}}
+  <div class="settings-content">
+    <div class="toolbar">
+      <div>
+        <h1 style="margin:0">Состояние лент</h1>
+        <p class="meta" style="margin:0.35rem 0 0">Мониторинг опроса и проблем</p>
+      </div>
+    </div>
+
+    <div class="admin-feeds-meta meta">
+      {{if gt .MemAllocBytes 0}}Память процесса: {{formatBytes .MemAllocBytes}}{{end}}
+      {{if gt .DBSizeBytes 0}} · БД: {{formatBytes .DBSizeBytes}}{{end}}
+      {{if gt .AdminFeedSummary.TotalEntries 0}} · Записей: {{.AdminFeedSummary.TotalEntries}} · Непрочитанных: {{.AdminFeedSummary.TotalUnread}}{{end}}
+    </div>
+
+    {{if .WorkerAdvice.Title}}
+    <div class="capacity-banner capacity-banner-{{.WorkerAdvice.Tone}}">
+      <strong>{{.WorkerAdvice.Title}}</strong>
+      <p>{{.WorkerAdvice.Message}}</p>
+      <p class="meta">Опрос: {{.WorkerAdvice.PollWorkers}} воркеров (совет: {{.WorkerAdvice.SuggestedPollWorkers}}) · спрос {{.WorkerAdvice.OfferedPerMin}} polls/мин · средняя длительность {{.WorkerAdvice.AvgDuration}} · просрочено {{.WorkerAdvice.Overdue}} · зависло {{.WorkerAdvice.Stale}} · лаг {{.WorkerAdvice.MaxLag}} · загрузка {{.WorkerAdvice.Utilization}}</p>
+      <p class="meta">Webhook: {{.WorkerAdvice.WebhookWorkers}} воркеров · due {{.WorkerAdvice.WebhookDue}}</p>
+      {{if .WorkerAdvice.WebhookHint}}<p>{{.WorkerAdvice.WebhookHint}}</p>{{end}}
+      <p class="meta">{{.WorkerAdvice.ApplyHint}}</p>
+    </div>
+    {{end}}
+
+    <div class="admin-feeds-cards">
+      <div class="admin-feeds-card">
+        <div class="admin-feeds-card-value">{{.AdminFeedSummary.TotalFeeds}}</div>
+        <div class="admin-feeds-card-label">Всего</div>
+      </div>
+      <div class="admin-feeds-card">
+        <div class="admin-feeds-card-value">{{.AdminFeedSummary.OKCount}}</div>
+        <div class="admin-feeds-card-label">В норме</div>
+      </div>
+      <div class="admin-feeds-card">
+        <div class="admin-feeds-card-value">{{.AdminFeedSummary.ErrorCount}}</div>
+        <div class="admin-feeds-card-label">Ошибки</div>
+      </div>
+      <div class="admin-feeds-card">
+        <div class="admin-feeds-card-value">{{.AdminFeedSummary.PausedCount}}</div>
+        <div class="admin-feeds-card-label">На паузе</div>
+      </div>
+      <div class="admin-feeds-card">
+        <div class="admin-feeds-card-value">{{.AdminFeedSummary.WaitingCount}}</div>
+        <div class="admin-feeds-card-label">Ждут обновления</div>
+      </div>
+      <div class="admin-feeds-card">
+        <div class="admin-feeds-card-value">{{add .PollFeedJobCounts.Pending .PollFeedJobCounts.Running}}</div>
+        <div class="admin-feeds-card-label">В очереди</div>
+      </div>
+    </div>
+
+    <div class="feeds-filters">
+      <a href="/ui/admin/feeds?status=all&sort={{.AdminFeedsSort}}&order={{.AdminFeedsOrder}}" class="feeds-filter {{if eq .AdminFeedsFilter "all"}}active{{end}}">Все <span class="meta">({{.AdminFeedSummary.TotalFeeds}})</span></a>
+      <a href="/ui/admin/feeds?status=ok&sort={{.AdminFeedsSort}}&order={{.AdminFeedsOrder}}" class="feeds-filter {{if eq .AdminFeedsFilter "ok"}}active{{end}}">В норме <span class="meta">({{.AdminFeedSummary.OKCount}})</span></a>
+      <a href="/ui/admin/feeds?status=errors&sort={{.AdminFeedsSort}}&order={{.AdminFeedsOrder}}" class="feeds-filter {{if eq .AdminFeedsFilter "errors"}}active{{end}}">Ошибки <span class="meta">({{.AdminFeedSummary.ErrorCount}})</span></a>
+      <a href="/ui/admin/feeds?status=paused&sort={{.AdminFeedsSort}}&order={{.AdminFeedsOrder}}" class="feeds-filter {{if eq .AdminFeedsFilter "paused"}}active{{end}}">На паузе <span class="meta">({{.AdminFeedSummary.PausedCount}})</span></a>
+      <a href="/ui/admin/feeds?status=waiting&sort={{.AdminFeedsSort}}&order={{.AdminFeedsOrder}}" class="feeds-filter {{if eq .AdminFeedsFilter "waiting"}}active{{end}}">Ждут обновления <span class="meta">({{.AdminFeedSummary.WaitingCount}})</span></a>
+    </div>
+
+    <div class="card admin-feeds-table-wrap">
+      <table class="admin-feeds-table">
+        <thead>
+          <tr>
+            <th><a href="{{adminFeedsSortLink .AdminFeedsFilter .AdminFeedsSort .AdminFeedsOrder "id"}}">ID{{adminFeedsSortIndicator .AdminFeedsSort .AdminFeedsOrder "id"}}</a></th>
+            <th><a href="{{adminFeedsSortLink .AdminFeedsFilter .AdminFeedsSort .AdminFeedsOrder "name"}}">Название{{adminFeedsSortIndicator .AdminFeedsSort .AdminFeedsOrder "name"}}</a></th>
+            <th>Тип</th>
+            <th><a href="{{adminFeedsSortLink .AdminFeedsFilter .AdminFeedsSort .AdminFeedsOrder "status"}}">Статус{{adminFeedsSortIndicator .AdminFeedsSort .AdminFeedsOrder "status"}}</a></th>
+            <th><a href="{{adminFeedsSortLink .AdminFeedsFilter .AdminFeedsSort .AdminFeedsOrder "last_checked"}}">Последний опрос{{adminFeedsSortIndicator .AdminFeedsSort .AdminFeedsOrder "last_checked"}}</a></th>
+            <th><a href="{{adminFeedsSortLink .AdminFeedsFilter .AdminFeedsSort .AdminFeedsOrder "next_check"}}">Следующий опрос{{adminFeedsSortIndicator .AdminFeedsSort .AdminFeedsOrder "next_check"}}</a></th>
+            <th><a href="{{adminFeedsSortLink .AdminFeedsFilter .AdminFeedsSort .AdminFeedsOrder "errors"}}">Ошибок подряд{{adminFeedsSortIndicator .AdminFeedsSort .AdminFeedsOrder "errors"}}</a></th>
+            <th>Последняя ошибка</th>
+            <th><a href="{{adminFeedsSortLink .AdminFeedsFilter .AdminFeedsSort .AdminFeedsOrder "entries"}}">Записей{{adminFeedsSortIndicator .AdminFeedsSort .AdminFeedsOrder "entries"}}</a></th>
+            <th><a href="{{adminFeedsSortLink .AdminFeedsFilter .AdminFeedsSort .AdminFeedsOrder "unread"}}">Непрочит.{{adminFeedsSortIndicator .AdminFeedsSort .AdminFeedsOrder "unread"}}</a></th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {{range .AdminFeedRows}}
+          <tr>
+            <td class="meta">{{.ID}}</td>
+            <td><a href="/ui/admin/feeds/{{.ID}}">{{.Title}}</a></td>
+            <td class="meta">{{feedTypeLabel .FeedType}}</td>
+            <td><span class="feed-status-badge {{adminFeedStatusClass .Status}}">{{adminFeedStatusLabel .Status}}</span></td>
+            <td class="meta">{{formatTime .LastCheckedAt}}</td>
+            <td class="meta">{{formatTime .NextCheckAt}}</td>
+            <td>{{if gt .ParsingErrorCount 0}}{{.ParsingErrorCount}}{{else}}—{{end}}</td>
+            <td class="meta admin-feeds-error" title="{{.LastError}}">{{if .LastError}}{{truncateStr .LastError 80}}{{else}}—{{end}}</td>
+            <td>{{.EntryCount}}</td>
+            <td>{{.UnreadCount}}</td>
+            <td class="admin-feeds-actions">
+              <form method="post" action="/ui/admin/feeds/{{.ID}}/refresh" class="inline-form">
+                <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                <button type="submit" class="btn btn-sm" title="Обновить (сброс автостопа)">↻</button>
+              </form>
+              {{if .ManualPaused}}
+              <form method="post" action="/ui/admin/feeds/{{.ID}}/unpause" class="inline-form">
+                <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                <button type="submit" class="btn btn-sm" title="Снять ручную паузу">▶</button>
+              </form>
+              {{else}}
+              <form method="post" action="/ui/admin/feeds/{{.ID}}/pause" class="inline-form">
+                <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                <button type="submit" class="btn btn-sm" title="Поставить на паузу вручную">⏸</button>
+              </form>
+              {{end}}
+              {{if .PollPaused}}
+              <form method="post" action="/ui/admin/feeds/{{.ID}}/reset-circuit" class="inline-form">
+                <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                <button type="submit" class="btn btn-sm" title="Сбросить автостоп без опроса">⚡</button>
+              </form>
+              {{end}}
+              <a class="btn btn-sm" href="/ui/feeds/{{.ID}}/edit" title="Редактировать">✎</a>
+            </td>
+          </tr>
+          {{else}}
+          <tr><td colspan="11" class="meta">Нет лент по выбранному фильтру</td></tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+
+    {{if gt .AdminFeedsPageCount 1}}
+    <nav class="admin-feeds-pagination meta" aria-label="Навигация по страницам">
+      {{if gt .AdminFeedsPage 1}}
+      <a href="{{adminFeedsPageLink .AdminFeedsFilter .AdminFeedsSort .AdminFeedsOrder (sub .AdminFeedsPage 1)}}" class="btn btn-sm">← Назад</a>
+      {{end}}
+      <span class="admin-feeds-page-info">Страница {{.AdminFeedsPage}} из {{.AdminFeedsPageCount}}</span>
+      {{if lt .AdminFeedsPage .AdminFeedsPageCount}}
+      <a href="{{adminFeedsPageLink .AdminFeedsFilter .AdminFeedsSort .AdminFeedsOrder (add .AdminFeedsPage 1)}}" class="btn btn-sm">Вперёд →</a>
+      {{end}}
+    </nav>
+    {{else if gt .AdminFeedsTotal 0}}
+    <p class="meta admin-feeds-page-info">Страница 1 из 1</p>
+    {{end}}
+  </div>
+</div>
+{{end}}

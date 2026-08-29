@@ -1,0 +1,105 @@
+{{define "body_webhooks_list"}}
+<div class="settings-layout">
+  {{template "settings_nav" .}}
+  <div class="settings-content">
+    <div class="toolbar">
+      <div>
+        <h1 style="margin:0">Вебхуки</h1>
+        <p class="meta" style="margin:0.35rem 0 0">Мониторинг доставки и настройка целей</p>
+      </div>
+      <a class="btn btn-primary" href="/ui/webhooks/new">Создать</a>
+    </div>
+
+    {{if gt .AdminWebhookSummary.TotalWebhooks 0}}
+    <div class="admin-feeds-meta meta">
+      Отправлено за 24 ч: {{.AdminWebhookSummary.Sent24h}}
+      {{if gt .AdminWebhookSummary.QueueDueTotal 0}} · В очереди сейчас: {{.AdminWebhookSummary.QueueDueTotal}}{{end}}
+      {{if gt .AdminWebhookSummary.DeadTotal 0}} · Мёртвых доставок: {{.AdminWebhookSummary.DeadTotal}}{{end}}
+    </div>
+
+    <div class="admin-feeds-cards">
+      <div class="admin-feeds-card">
+        <div class="admin-feeds-card-value">{{.AdminWebhookSummary.TotalWebhooks}}</div>
+        <div class="admin-feeds-card-label">Всего</div>
+      </div>
+      <div class="admin-feeds-card">
+        <div class="admin-feeds-card-value">{{.AdminWebhookStatusCounts.OK}}</div>
+        <div class="admin-feeds-card-label">В норме</div>
+      </div>
+      <div class="admin-feeds-card">
+        <div class="admin-feeds-card-value">{{.AdminWebhookStatusCounts.Queue}}</div>
+        <div class="admin-feeds-card-label">В очереди</div>
+      </div>
+      <div class="admin-feeds-card">
+        <div class="admin-feeds-card-value">{{.AdminWebhookStatusCounts.Retrying}}</div>
+        <div class="admin-feeds-card-label">Повторы</div>
+      </div>
+      <div class="admin-feeds-card">
+        <div class="admin-feeds-card-value">{{.AdminWebhookStatusCounts.Dead}}</div>
+        <div class="admin-feeds-card-label">Мёртвые</div>
+      </div>
+      <div class="admin-feeds-card">
+        <div class="admin-feeds-card-value">{{.AdminWebhookSummary.Sent24h}}</div>
+        <div class="admin-feeds-card-label">Отправлено 24 ч</div>
+      </div>
+    </div>
+
+    <div class="feeds-filters">
+      <a href="{{webhooksFilterLink "all"}}" class="feeds-filter {{if eq .AdminWebhooksFilter "all"}}active{{end}}">Все <span class="meta">({{.AdminWebhookSummary.TotalWebhooks}})</span></a>
+      <a href="{{webhooksFilterLink "ok"}}" class="feeds-filter {{if eq .AdminWebhooksFilter "ok"}}active{{end}}">В норме <span class="meta">({{.AdminWebhookStatusCounts.OK}})</span></a>
+      <a href="{{webhooksFilterLink "queue"}}" class="feeds-filter {{if eq .AdminWebhooksFilter "queue"}}active{{end}}">В очереди <span class="meta">({{.AdminWebhookStatusCounts.Queue}})</span></a>
+      <a href="{{webhooksFilterLink "retrying"}}" class="feeds-filter {{if eq .AdminWebhooksFilter "retrying"}}active{{end}}">Повторы <span class="meta">({{.AdminWebhookStatusCounts.Retrying}})</span></a>
+      <a href="{{webhooksFilterLink "dead"}}" class="feeds-filter {{if eq .AdminWebhooksFilter "dead"}}active{{end}}">Мёртвые <span class="meta">({{.AdminWebhookStatusCounts.Dead}})</span></a>
+      <a href="{{webhooksFilterLink "disabled"}}" class="feeds-filter {{if eq .AdminWebhooksFilter "disabled"}}active{{end}}">Выключены <span class="meta">({{.AdminWebhookStatusCounts.Disabled}})</span></a>
+      <a href="{{webhooksFilterLink "idle"}}" class="feeds-filter {{if eq .AdminWebhooksFilter "idle"}}active{{end}}">Без отправок <span class="meta">({{.AdminWebhookStatusCounts.Idle}})</span></a>
+    </div>
+    {{end}}
+
+    <div class="card admin-feeds-table-wrap">
+      <table class="admin-feeds-table">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Название</th>
+            <th>Тип</th>
+            <th>Статус</th>
+            <th>Вкл.</th>
+            <th>Отправлено</th>
+            <th>24 ч</th>
+            <th>Очередь</th>
+            <th>Мёртвые</th>
+            <th>Последняя отправка</th>
+            <th>Последняя ошибка</th>
+            <th>Привязки</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {{range .AdminWebhookRows}}
+          <tr>
+            <td class="meta">{{.ID}}</td>
+            <td><a href="/ui/webhooks/{{.ID}}">{{webhookLabel .Name .URL .ID}}</a></td>
+            <td class="meta">{{webhookKindLabel .Kind}}</td>
+            <td><span class="feed-status-badge {{adminWebhookStatusClass .Status}}">{{adminWebhookStatusLabel .Status}}</span></td>
+            <td>{{if .Enabled}}да{{else}}нет{{end}}</td>
+            <td>{{.SentCount}}</td>
+            <td>{{.Sent24h}}</td>
+            <td>{{if gt .QueueDueCount 0}}{{.QueueDueCount}}{{else}}—{{end}}</td>
+            <td>{{if gt .DeadCount 0}}{{.DeadCount}}{{else}}—{{end}}</td>
+            <td class="meta">{{formatTime .LastSentAt}}</td>
+            <td class="meta admin-feeds-error" title="{{.LastError}}">{{if .LastError}}{{truncateStr .LastError 50}}{{else}}—{{end}}</td>
+            <td class="meta">{{.FeedBindingCount}} лент · {{.FilterBindingCount}} фильтр.</td>
+            <td class="admin-feeds-actions">
+              <a class="btn btn-sm" href="/ui/webhooks/{{.ID}}/logs" title="Логи">📋</a>
+              <a class="btn btn-sm" href="/ui/webhooks/{{.ID}}" title="Настройки">✎</a>
+            </td>
+          </tr>
+          {{else}}
+          <tr><td colspan="13" class="meta">Нет webhooks{{if ne .AdminWebhooksFilter "all"}} по выбранному фильтру{{end}}</td></tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{{end}}

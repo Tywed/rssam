@@ -1,0 +1,31 @@
+{{define "body_filters_list"}}
+<div class="settings-layout">
+  {{template "settings_nav" .}}
+  <div class="settings-content">
+    <div class="toolbar">
+      <h1 style="margin:0;flex:1">Фильтры</h1>
+      <a class="btn btn-primary" href="/ui/filters/new">Создать</a>
+    </div>
+    <table>
+      <thead><tr><th>#</th><th>Имя</th><th>Включён</th><th>Область</th><th>Совпадений</th><th></th></tr></thead>
+      <tbody>
+      {{range .Filters}}
+      <tr>
+        <td>{{.OrderID}}</td>
+        <td><a href="/ui/filters/{{.ID}}">{{.Name}}</a></td>
+        <td>{{if .Enabled}}да{{else}}нет{{end}}</td>
+        <td>{{if eq .FeedScope "include"}}только выбранные{{else if eq .FeedScope "exclude"}}кроме выбранных{{else}}все{{end}}</td>
+        <td>{{.MatchCount}}</td>
+        <td>
+          <a class="btn btn-sm" href="/ui/filters/{{.ID}}/test">Тест</a>
+          <a class="btn btn-sm" href="/ui/filters/{{.ID}}/matches">История</a>
+        </td>
+      </tr>
+      {{else}}
+      <tr><td colspan="6" class="meta">Нет фильтров</td></tr>
+      {{end}}
+      </tbody>
+    </table>
+  </div>
+</div>
+{{end}}

@@ -1,0 +1,7 @@
+{{define "category_feeds_load_more"}}
+{{if lt (add .Offset (len .Feeds)) .Total}}
+<div class="tree-feeds-load-more-wrap">
+  <button type="button" class="btn btn-sm tree-feeds-load-more" data-offset="{{add .Offset .Limit}}">Показать ещё</button>
+</div>
+{{end}}
+{{end}}

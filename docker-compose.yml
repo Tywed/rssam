@@ -1,0 +1,27 @@
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: rssam
+      POSTGRES_PASSWORD: rssam
+      POSTGRES_DB: rssam
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rssam -d rssam"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  app:
+    build: .
+    env_file:
+      - .env
+    environment:
+      # Hostname postgres inside compose network ( .env uses localhost for host runs )
+      DATABASE_URL: postgres://rssam:rssam@postgres:5432/rssam?sslmode=disable
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy

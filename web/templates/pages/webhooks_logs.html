@@ -1,0 +1,96 @@
+{{define "body_webhooks_logs"}}
+<div class="settings-layout">
+  {{template "settings_nav" .}}
+  <div class="settings-content">
+    <div class="toolbar">
+      <div>
+        <p class="meta" style="margin:0"><a href="/ui/webhooks/{{.WebhookID}}">← Webhook #{{.WebhookID}}</a></p>
+        <h1 style="margin:0.25rem 0 0">Логи доставки</h1>
+      </div>
+    </div>
+
+    <div class="feeds-filters">
+      <a href="{{webhookLogsFilterLink .WebhookID "" .WebhookLogsPeriod}}" class="feeds-filter {{if eq .WebhookLogsFilter ""}}active{{end}}">Все</a>
+      <a href="{{webhookLogsFilterLink .WebhookID "pending" .WebhookLogsPeriod}}" class="feeds-filter {{if eq .WebhookLogsFilter "pending"}}active{{end}}">Ожидает</a>
+      <a href="{{webhookLogsFilterLink .WebhookID "sent" .WebhookLogsPeriod}}" class="feeds-filter {{if eq .WebhookLogsFilter "sent"}}active{{end}}">Отправлено</a>
+      <a href="{{webhookLogsFilterLink .WebhookID "failed" .WebhookLogsPeriod}}" class="feeds-filter {{if eq .WebhookLogsFilter "failed"}}active{{end}}">Ошибка</a>
+      <a href="{{webhookLogsFilterLink .WebhookID "dead" .WebhookLogsPeriod}}" class="feeds-filter {{if eq .WebhookLogsFilter "dead"}}active{{end}}">Мёртвые</a>
+      <span class="meta" style="margin-left:0.5rem">·</span>
+      <a href="{{webhookLogsFilterLink .WebhookID .WebhookLogsFilter ""}}" class="feeds-filter {{if eq .WebhookLogsPeriod ""}}active{{end}}">Всё время</a>
+      <a href="{{webhookLogsFilterLink .WebhookID .WebhookLogsFilter "24h"}}" class="feeds-filter {{if eq .WebhookLogsPeriod "24h"}}active{{end}}">24 ч</a>
+      <a href="{{webhookLogsFilterLink .WebhookID .WebhookLogsFilter "7d"}}" class="feeds-filter {{if eq .WebhookLogsPeriod "7d"}}active{{end}}">7 д</a>
+    </div>
+
+    <div class="card admin-feeds-table-wrap">
+      <table class="admin-feeds-table">
+        <thead>
+          <tr>
+            <th>Время</th>
+            <th>Запись</th>
+            <th>Лента</th>
+            <th>Триггер</th>
+            <th>Статус</th>
+            <th>HTTP</th>
+            <th>Попытка</th>
+            <th>Ошибка</th>
+            <th>След. повтор</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {{range .WebhookLogRows}}
+          <tr>
+            <td class="meta">{{formatTime .UpdatedAt}}</td>
+            <td><a href="/ui/entries/{{.EntryID}}">{{if .EntryTitle}}{{truncateStr .EntryTitle 40}}{{else}}#{{.EntryID}}{{end}}</a></td>
+            <td class="meta"><a href="/ui/admin/feeds/{{.FeedID}}">{{truncateStr .FeedTitle 30}}</a></td>
+            <td class="meta">{{webhookTriggerLabel .TriggerSource .FilterName}}</td>
+            <td><span class="feed-status-badge {{webhookLogStatusClass .Status}}">{{webhookLogStatusLabel .Status}}</span></td>
+            <td class="meta">{{if .LastStatusCode}}{{.LastStatusCode}}{{else}}—{{end}}</td>
+            <td>{{.Attempt}}{{if $.WebhookMaxAttempts}} / {{$.WebhookMaxAttempts}}{{end}}</td>
+            <td class="meta admin-feeds-error" title="{{derefString .LastError}}">
+              {{if derefString .LastError}}
+                {{if classifyWebhookError (derefString .LastError)}}<span class="meta">[{{classifyWebhookError (derefString .LastError)}}]</span> {{end}}{{truncateStr (derefString .LastError) 40}}
+              {{else}}—{{end}}
+            </td>
+            <td class="meta">{{formatTime .NextRetryAt}}</td>
+            <td>
+              {{if or (eq .Status "failed") (eq .Status "dead")}}
+              <form method="post" action="/ui/webhook-logs/{{.ID}}/retry" class="inline-form"><input type="hidden" name="csrf_token" value="{{$.CSRFToken}}"><button class="btn btn-sm">Retry</button></form>
+              {{end}}
+            </td>
+          </tr>
+          {{if derefString .ResponseSnippet}}
+          <tr>
+            <td colspan="10" class="meta">
+              <details><summary>Ответ сервера</summary><pre class="webhook-response-snippet">{{derefString .ResponseSnippet}}</pre></details>
+            </td>
+          </tr>
+          {{end}}
+          {{else}}
+          {{range .Logs}}
+          <tr>
+            <td class="meta">{{formatTime .UpdatedAt}}</td>
+            <td>#{{.EntryID}}</td>
+            <td colspan="2" class="meta">—</td>
+            <td><span class="feed-status-badge {{webhookLogStatusClass .Status}}">{{webhookLogStatusLabel .Status}}</span></td>
+            <td class="meta">{{if .LastStatusCode}}{{.LastStatusCode}}{{else}}—{{end}}</td>
+            <td>{{.Attempt}}</td>
+            <td class="meta admin-feeds-error">{{derefString .LastError}}</td>
+            <td class="meta">{{formatTime .NextRetryAt}}</td>
+            <td>
+              {{if or (eq .Status "failed") (eq .Status "dead")}}
+              <form method="post" action="/ui/webhook-logs/{{.ID}}/retry" class="inline-form"><input type="hidden" name="csrf_token" value="{{$.CSRFToken}}"><button class="btn btn-sm">Retry</button></form>
+              {{end}}
+            </td>
+          </tr>
+          {{else}}
+          <tr><td colspan="10" class="meta">Нет логов{{if or .WebhookLogsFilter .WebhookLogsPeriod}} по выбранному фильтру{{end}}</td></tr>
+          {{end}}
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+    <a class="btn" href="/ui/webhooks">← К списку</a>
+  </div>
+</div>
+{{end}}

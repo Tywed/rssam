@@ -1,0 +1,57 @@
+{
+  "title": "rssam",
+  "uid": "rssam-overview",
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "Poll attempts",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "expr": "sum(rate(rssam_poll_attempts_total[5m])) by (result)",
+          "legendFormat": "{{result}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Poll duration (p95)",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(rssam_poll_duration_seconds_bucket[5m])) by (le))",
+          "legendFormat": "p95"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Webhook deliveries (5m)",
+      "gridPos": { "h": 6, "w": 8, "x": 0, "y": 8 },
+      "targets": [
+        {
+          "expr": "sum(increase(rssam_webhook_deliveries_total[5m])) by (status)",
+          "legendFormat": "{{status}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Filter processing",
+      "gridPos": { "h": 6, "w": 16, "x": 8, "y": 8 },
+      "targets": [
+        {
+          "expr": "rate(rssam_filter_matches_total[5m])",
+          "legendFormat": "matches/s"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(rssam_filter_processing_seconds_bucket[5m])) by (le))",
+          "legendFormat": "p99 duration"
+        }
+      ]
+    }
+  ]
+}

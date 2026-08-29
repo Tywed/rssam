@@ -1,0 +1,6 @@
+{{define "body_label_entries"}}
+<div class="headlines-toolbar">
+  <h1 class="headlines-title"><span class="label-badge" style="background:{{.Label.BgColor}};color:{{.Label.FgColor}}">{{.Label.Caption}}</span></h1>
+</div>
+{{template "entry_list" .}}
+{{end}}

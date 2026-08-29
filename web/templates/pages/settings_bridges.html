@@ -1,0 +1,66 @@
+{{define "body_settings_bridges"}}
+<div class="settings-layout">
+  {{template "settings_nav" .}}
+  <div class="settings-content">
+    <h1>Мосты</h1>
+    {{template "bridges_nav" .}}
+    <p class="meta">Настройки хранятся в БД и применяются сразу после сохранения. Значения из <code>.env</code> используются как значения по умолчанию.</p>
+    <div class="bridge-cards">
+      <a class="card bridge-card" href="/ui/settings/bridges/telegram">
+        <div class="bridge-card-head">
+          <strong>Telegram</strong>
+          <span class="badge badge-ok">активен</span>
+        </div>
+        <p class="meta">Публичные каналы через proxy-service или SOCKS</p>
+        <p class="meta">Лент: {{bridgeFeedCount .BridgeFeedCounts "telegram"}} · Прокси: {{if .BridgeSettings.Telegram.ProxyConfigured}}да{{else}}нет{{end}}</p>
+      </a>
+      <a class="card bridge-card" href="/ui/settings/bridges/max">
+        <div class="bridge-card-head">
+          <strong>Max</strong>
+          {{if .BridgeSettings.Max.Enabled}}<span class="badge badge-ok">включён</span>{{else}}<span class="badge badge-muted">выключен</span>{{end}}
+        </div>
+        <p class="meta">Каналы max.ru через локальный Max API</p>
+        <p class="meta">Лент: {{bridgeFeedCount .BridgeFeedCounts "max"}}</p>
+      </a>
+      <a class="card bridge-card" href="/ui/settings/bridges/vk">
+        <div class="bridge-card-head">
+          <strong>VK Search</strong>
+          {{if .BridgeSettings.VK.Enabled}}<span class="badge badge-ok">включён</span>{{else}}<span class="badge badge-muted">выключен</span>{{end}}
+        </div>
+        <p class="meta">Поиск постов VK (newsfeed.search)</p>
+        <p class="meta">Лент: {{bridgeFeedCount .BridgeFeedCounts "vk_search"}}</p>
+      </a>
+      <a class="card bridge-card" href="/ui/settings/bridges/rutube">
+        <div class="bridge-card-head">
+          <strong>Rutube</strong>
+          {{if .BridgeSettings.Rutube.Enabled}}<span class="badge badge-ok">включён</span>{{else}}<span class="badge badge-muted">выключен</span>{{end}}
+        </div>
+        <p class="meta">Видео канала/person Rutube</p>
+        <p class="meta">Лент: {{bridgeFeedCount .BridgeFeedCounts "rutube"}}</p>
+      </a>
+      <div class="card bridge-card bridge-card-static">
+        <div class="bridge-card-head">
+          <strong>Dzen News</strong>
+          <span class="badge badge-ok">активен</span>
+        </div>
+        <p class="meta">Поиск новостей на dzen.ru/news/search</p>
+        <p class="meta">Лент: {{bridgeFeedCount .BridgeFeedCounts "dzen_news"}}</p>
+        <p class="meta">URL: <code>dzen-news://запрос</code> или ссылка поиска Dzen</p>
+      </div>
+      <div class="card bridge-card bridge-card-static">
+        <div class="bridge-card-head">
+          <strong>Smotrim</strong>
+          <span class="badge badge-ok">активен</span>
+        </div>
+        <p class="meta">Видео и сюжеты бренда на smotrim.ru</p>
+        <p class="meta">Лент: {{bridgeFeedCount .BridgeFeedCounts "smotrim"}}</p>
+        <p class="meta">URL: <code>smotrim://brandId</code> или <code>https://smotrim.ru/brand/…</code></p>
+      </div>
+    </div>
+    <div class="card" style="margin-top:1rem">
+      <h2>RSS / Atom</h2>
+      <p class="meta">Обычные RSS/Atom/JSON Feed — не мост, встроенный fetcher. Лент: {{bridgeFeedCount .BridgeFeedCounts "rss"}}.</p>
+    </div>
+  </div>
+</div>
+{{end}}

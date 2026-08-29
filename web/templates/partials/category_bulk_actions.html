@@ -1,0 +1,71 @@
+{{define "category_bulk_actions"}}
+{{if .Root.IsAdmin}}
+<details class="cat-actions">
+  <summary class="btn btn-sm cat-actions-toggle">Действия ▾</summary>
+  <div class="cat-actions-menu">
+    <form method="post" action="/ui/categories/{{.CategoryID}}/feeds/bulk-interval" class="cat-action-row">
+      <input type="hidden" name="csrf_token" value="{{.Root.CSRFToken}}">
+      <input type="hidden" name="filter" value="{{.Root.FeedsFilter}}">
+      <label class="cat-action-label">Интервал (мин)</label>
+      <input type="number" name="interval_minutes" min="1" max="10080" value="60" class="cat-action-input">
+      <button type="submit" class="btn btn-sm">Применить</button>
+    </form>
+    <form method="post" action="/ui/categories/{{.CategoryID}}/feeds/bulk-webhook" class="cat-action-row">
+      <input type="hidden" name="csrf_token" value="{{.Root.CSRFToken}}">
+      <input type="hidden" name="filter" value="{{.Root.FeedsFilter}}">
+      <label class="cat-action-label">Вебхук</label>
+      <select name="webhook_id" class="cat-action-input">
+        <option value="">— снять —</option>
+        {{range .Root.Webhooks}}<option value="{{.ID}}">{{webhookLabel .Name .URL .ID}}</option>{{end}}
+      </select>
+      <button type="submit" class="btn btn-sm">Применить</button>
+    </form>
+    <div class="cat-action-row cat-action-buttons">
+      <span class="cat-action-label">Хеш до фильтра</span>
+      <form method="post" action="/ui/categories/{{.CategoryID}}/feeds/bulk-hash-only">
+        <input type="hidden" name="csrf_token" value="{{.Root.CSRFToken}}">
+        <input type="hidden" name="filter" value="{{.Root.FeedsFilter}}">
+        <input type="hidden" name="action" value="enable">
+        <button type="submit" class="btn btn-sm">Вкл</button>
+      </form>
+      <form method="post" action="/ui/categories/{{.CategoryID}}/feeds/bulk-hash-only">
+        <input type="hidden" name="csrf_token" value="{{.Root.CSRFToken}}">
+        <input type="hidden" name="filter" value="{{.Root.FeedsFilter}}">
+        <input type="hidden" name="action" value="disable">
+        <button type="submit" class="btn btn-sm">Выкл</button>
+      </form>
+    </div>
+    <form method="post" action="/ui/categories/{{.CategoryID}}/feeds/bulk-refresh" class="cat-action-row">
+      <input type="hidden" name="csrf_token" value="{{.Root.CSRFToken}}">
+      <input type="hidden" name="filter" value="{{.Root.FeedsFilter}}">
+      <button type="submit" class="btn btn-sm">Обновить все</button>
+    </form>
+    <div class="cat-action-row cat-action-buttons">
+      <span class="cat-action-label">Ручная пауза</span>
+      <form method="post" action="/ui/categories/{{.CategoryID}}/feeds/bulk-pause">
+        <input type="hidden" name="csrf_token" value="{{.Root.CSRFToken}}">
+        <input type="hidden" name="filter" value="{{.Root.FeedsFilter}}">
+        <input type="hidden" name="action" value="pause">
+        <button type="submit" class="btn btn-sm">Пауза</button>
+      </form>
+      <form method="post" action="/ui/categories/{{.CategoryID}}/feeds/bulk-pause">
+        <input type="hidden" name="csrf_token" value="{{.Root.CSRFToken}}">
+        <input type="hidden" name="filter" value="{{.Root.FeedsFilter}}">
+        <input type="hidden" name="action" value="unpause">
+        <button type="submit" class="btn btn-sm">Снять паузу</button>
+      </form>
+    </div>
+    <form method="post" action="/ui/categories/{{.CategoryID}}/feeds/bulk-move" class="cat-action-row">
+      <input type="hidden" name="csrf_token" value="{{.Root.CSRFToken}}">
+      <input type="hidden" name="filter" value="{{.Root.FeedsFilter}}">
+      <label class="cat-action-label">Перенести в</label>
+      <select name="target_category_id" class="cat-action-input">
+        <option value="">— без категории —</option>
+        {{range .Root.Categories}}{{if ne .ID $.CategoryID}}<option value="{{.ID}}">{{.Title}}</option>{{end}}{{end}}
+      </select>
+      <button type="submit" class="btn btn-sm">Перенести</button>
+    </form>
+  </div>
+</details>
+{{end}}
+{{end}}

@@ -1,0 +1,18 @@
+CREATE TABLE IF NOT EXISTS feeds (
+  id BIGSERIAL PRIMARY KEY,
+  feed_url TEXT NOT NULL UNIQUE,
+  title TEXT NOT NULL DEFAULT '',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS entries (
+  id BIGSERIAL PRIMARY KEY,
+  feed_id BIGINT NOT NULL REFERENCES feeds(id) ON DELETE CASCADE,
+  title TEXT NOT NULL DEFAULT '',
+  url TEXT NOT NULL DEFAULT '',
+  published_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS entries_feed_id_idx ON entries(feed_id);
+

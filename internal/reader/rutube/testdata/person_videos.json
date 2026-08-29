@@ -1,0 +1,16 @@
+{
+  "results": [
+    {
+      "id": "a1b2c3d4e5f6789012345678",
+      "video_url": "https://rutube.ru/video/a1b2c3d4e5f6789012345678/",
+      "title": "Test Rutube Video",
+      "publication_ts": 1716400000,
+      "created_ts": 1716390000,
+      "description": "First line\nSecond line\nhttps://example.com/page",
+      "thumbnail_url": "https://pic.rutube.ru/thumb/test.jpg",
+      "author": {
+        "name": "Test Author"
+      }
+    }
+  ]
+}

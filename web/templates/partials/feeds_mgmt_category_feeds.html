@@ -1,0 +1,14 @@
+{{define "feeds_mgmt_category_feeds"}}
+{{range .Feeds}}
+<div class="tree-row tree-feed-row {{if feedHasError .}}feed-error{{end}}">
+  <span class="tree-icon" title="{{if feedHasError .}}{{.LastError}}{{end}}">{{if feedHasError .}}⚠{{else}}▸{{end}}</span>
+  {{if $.IsAdmin}}<a href="/ui/feeds/{{.ID}}/edit" class="tree-label">{{.Title}}</a>{{else}}<a href="/ui/feeds/{{.ID}}" class="tree-label">{{.Title}}</a>{{end}}
+  <span class="feed-meta meta">{{feedTypeLabel .FeedType}}</span>
+  <span class="feed-actions">
+    <form method="post" action="/ui/feeds/{{.ID}}/refresh"><input type="hidden" name="csrf_token" value="{{$.CSRFToken}}"><button type="submit" class="btn btn-sm" title="Обновить">↻</button></form>
+  </span>
+</div>
+{{if feedHasError .}}{{if .LastError}}<div class="feed-error-msg meta">{{.LastError}}</div>{{end}}{{end}}
+{{end}}
+{{template "category_feeds_load_more" .}}
+{{end}}

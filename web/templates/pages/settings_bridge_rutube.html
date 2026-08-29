@@ -1,0 +1,15 @@
+{{define "body_settings_bridge_rutube"}}
+<div class="settings-layout">
+  {{template "settings_nav" .}}
+  <div class="settings-content">
+    <h1>Rutube</h1>
+    {{template "bridges_nav" .}}
+    {{if .FlashMsg}}<div class="flash flash-ok">{{.FlashMsg}}</div>{{end}}
+    <form method="post" action="/ui/settings/bridges/rutube" class="card">
+      <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+      <div class="form-group"><label>API base URL</label><input name="api_base_url" value="{{.BridgeSettings.Rutube.APIBaseURL}}" placeholder="https://rutube.ru/api"></div>
+      <button type="submit" class="btn btn-primary">Сохранить</button>
+    </form>
+  </div>
+</div>
+{{end}}

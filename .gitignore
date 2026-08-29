@@ -1,0 +1,25 @@
+# Secrets — never commit
+.env
+.env.*
+!.env.example
+
+# Local scratch: plans, one-off scripts, dumps, host-specific deploy
+tmp/
+
+# Build artifacts
+bin/
+coverage.out
+*.test
+*.exe
+
+# IDE / local agent
+.cursor/
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+
+# Go
+vendor/

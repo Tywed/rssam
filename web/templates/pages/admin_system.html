@@ -1,0 +1,33 @@
+{{define "body_admin_system"}}
+<div class="settings-layout">
+  {{template "settings_nav" .}}
+  <div class="settings-content">
+    <h1>Система</h1>
+    <div class="card">
+      <table>
+        <tr><th>Версия</th><td>{{.Info.Version}}</td></tr>
+        <tr><th>Go</th><td>{{.Info.GoVersion}}</td></tr>
+        <tr><th>Сборка</th><td>{{.Info.BuildDate}}</td></tr>
+        <tr><th>OS/Arch</th><td>{{.Info.OS}} / {{.Info.Arch}}</td></tr>
+        <tr><th>Пользователей</th><td>{{.Info.UsersCount}}</td></tr>
+        {{if gt .Info.MemAllocBytes 0}}<tr><th>Память процесса</th><td>{{formatBytes .Info.MemAllocBytes}}</td></tr>{{end}}
+        {{if gt .Info.DBSizeBytes 0}}<tr><th>Размер БД</th><td>{{formatBytes .Info.DBSizeBytes}}</td></tr>{{end}}
+        {{if gt .Info.TotalEntries 0}}<tr><th>Записей</th><td>{{.Info.TotalEntries}}</td></tr>{{end}}
+        {{if ge .Info.TotalUnread 0}}<tr><th>Непрочитанных</th><td>{{.Info.TotalUnread}}</td></tr>{{end}}
+      </table>
+    </div>
+    {{if .WorkerAdvice.Title}}
+    <div class="card">
+      <h2 style="margin-top:0">Воркеры</h2>
+      <div class="capacity-banner capacity-banner-{{.WorkerAdvice.Tone}}" style="margin:0">
+        <strong>{{.WorkerAdvice.Title}}</strong>
+        <p>{{.WorkerAdvice.Message}}</p>
+        <p class="meta">Опрос: {{.WorkerAdvice.PollWorkers}} (совет: {{.WorkerAdvice.SuggestedPollWorkers}}) · Webhook: {{.WorkerAdvice.WebhookWorkers}} · due {{.WorkerAdvice.WebhookDue}}</p>
+        {{if .WorkerAdvice.WebhookHint}}<p>{{.WorkerAdvice.WebhookHint}}</p>{{end}}
+        <p class="meta">{{.WorkerAdvice.ApplyHint}}</p>
+      </div>
+    </div>
+    {{end}}
+  </div>
+</div>
+{{end}}

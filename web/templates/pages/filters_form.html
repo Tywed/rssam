@@ -1,0 +1,166 @@
+{{define "body_filters_form"}}
+<div class="settings-layout">
+  {{template "settings_nav" .}}
+  <div class="settings-content">
+    <h1>{{if .Filter.ID}}Фильтр: {{.Filter.Name}}{{else}}Новый фильтр{{end}}</h1>
+    <form method="post" action="{{if .Filter.ID}}/ui/filters/{{.Filter.ID}}{{else}}/ui/filters{{end}}" id="filter-form" class="filter-form">
+      <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+
+      <div class="filter-tabs">
+        <button type="button" class="btn btn-sm filter-tab active" data-tab="match">Условия</button>
+        <button type="button" class="btn btn-sm filter-tab" data-tab="actions">Действия</button>
+      </div>
+
+      <div class="filter-panel" data-panel="match">
+        <div class="form-group filter-name-row"><label>Имя</label><input name="name" value="{{.Filter.Name}}" required></div>
+        <div class="filter-meta-row">
+          <label class="checkbox-label"><input type="checkbox" name="enabled" value="1" {{if or (not .Filter.ID) .Filter.Enabled}}checked{{end}}> Включён</label>
+          <label class="checkbox-label"><input type="checkbox" name="match_any_rule" value="1" {{if .Filter.MatchAnyRule}}checked{{end}}> Любое правило (OR)</label>
+          <label class="checkbox-label"><input type="checkbox" name="inverse" value="1" {{if .Filter.Inverse}}checked{{end}}> Инверсия</label>
+          <div class="filter-meta-order">
+            <label for="filter-order-id">Порядок</label>
+            <input id="filter-order-id" name="order_id" type="number" value="{{if .Filter.OrderID}}{{.Filter.OrderID}}{{else}}0{{end}}" min="0">
+          </div>
+        </div>
+
+        <h2>Правила</h2>
+        <table class="filter-rules-table" id="rules-table">
+          <thead><tr><th>Поле</th><th>Regex (RE2)</th><th>НЕ</th><th></th></tr></thead>
+          <tbody>
+          {{range .Filter.Rules}}
+          <tr>
+            <td><select name="rule_field">
+              <option value="title" {{if eq .Field "title"}}selected{{end}}>Заголовок</option>
+              <option value="content" {{if eq .Field "content"}}selected{{end}}>Содержимое</option>
+              <option value="both" {{if eq .Field "both"}}selected{{end}}>Заголовок или содержимое</option>
+              <option value="author" {{if eq .Field "author"}}selected{{end}}>Автор</option>
+              <option value="url" {{if eq .Field "url"}}selected{{end}}>URL</option>
+            </select></td>
+            <td><input name="rule_pattern" value="{{.Pattern}}" required></td>
+            <td class="cell-center"><input type="checkbox" name="rule_negate" value="1" {{if .Negate}}checked{{end}}></td>
+            <td class="cell-actions"><button type="button" class="btn btn-sm btn-danger rule-remove">×</button></td>
+          </tr>
+          {{else}}
+          <tr>
+            <td><select name="rule_field"><option value="title">Заголовок</option><option value="content">Содержимое</option><option value="both">Заголовок или содержимое</option><option value="author">Автор</option><option value="url">URL</option></select></td>
+            <td><input name="rule_pattern" placeholder="regex"></td>
+            <td class="cell-center"><input type="checkbox" name="rule_negate" value="1"></td>
+            <td class="cell-actions"><button type="button" class="btn btn-sm btn-danger rule-remove">×</button></td>
+          </tr>
+          {{end}}
+          </tbody>
+        </table>
+        <button type="button" class="btn btn-sm" id="add-rule">+ Правило</button>
+
+        <h2>Область лент</h2>
+        <div class="form-group">
+          <div class="radio-group">
+            <label class="radio-inline"><input type="radio" name="feed_scope" value="all" {{if or (not .Filter.ID) (eq .Filter.FeedScope "all") (eq .Filter.FeedScope "")}}checked{{end}}> Все ленты</label>
+            <label class="radio-inline"><input type="radio" name="feed_scope" value="include" {{if eq .Filter.FeedScope "include"}}checked{{end}}> Только выбранные</label>
+            <label class="radio-inline"><input type="radio" name="feed_scope" value="exclude" {{if eq .Filter.FeedScope "exclude"}}checked{{end}}> Все, кроме выбранных</label>
+          </div>
+        </div>
+        <div id="filter-scope-pickers" class="filter-scope-pickers{{if or (not .Filter.ID) (eq .Filter.FeedScope "all") (eq .Filter.FeedScope "")}} hidden{{end}}" data-suggest="/ui/feeds/suggest">
+          <div class="form-group filter-scope-feeds">
+            <label for="filter-feed-search">Ленты</label>
+            <div class="filter-scope-search-wrap">
+              <input type="search" id="filter-feed-search" placeholder="Начните вводить название или URL" autocomplete="off" spellcheck="false">
+              <ul id="filter-feed-suggest" class="filter-suggest hidden" role="listbox"></ul>
+            </div>
+            <div class="filter-scope-chips" id="filter-scope-chips">
+              {{range .ScopeFeeds}}
+              <span class="filter-chip" data-id="{{.ID}}">
+                <span class="filter-chip-title">{{.Title}}</span>
+                {{with categoryTitleByID $.Categories .CategoryID}}<span class="filter-chip-meta">{{.}}</span>{{end}}
+                <input type="hidden" name="scope_feed_id" value="{{.ID}}">
+                <button type="button" class="filter-chip-remove" aria-label="Убрать">×</button>
+              </span>
+              {{end}}
+            </div>
+          </div>
+          <div class="form-group filter-scope-cats">
+            <label>Категории</label>
+            <p class="meta">Все ленты отмеченной категории. Можно совмещать с отдельными лентами выше.</p>
+            {{if .Categories}}
+            <ul class="filter-cat-list">
+              {{range .Categories}}
+              {{ $n := categoryFeedCount $.CategoryFeedCounts .ID }}
+              <li>
+                <label class="filter-cat-item{{if scopeCatSelected $.ScopeCategoryIDs .ID}} is-selected{{end}}">
+                  <input type="checkbox" name="scope_category_id" value="{{.ID}}" {{if scopeCatSelected $.ScopeCategoryIDs .ID}}checked{{end}}>
+                  <span class="filter-cat-title">{{.Title}}</span>
+                  <span class="filter-cat-count">{{pluralChannels $n}}</span>
+                </label>
+              </li>
+              {{end}}
+            </ul>
+            {{else}}
+            <p class="meta">Категорий нет.</p>
+            {{end}}
+          </div>
+        </div>
+      </div>
+
+      <div class="filter-panel hidden" data-panel="actions">
+        <h2>Действия при совпадении</h2>
+        {{if not .Labels}}<p class="meta">Нет меток. <a href="/ui/labels">Создайте метки</a> в настройках.</p>{{end}}
+        <table class="filter-actions-table" id="actions-table">
+          <thead><tr><th>Тип</th><th>Параметр</th><th></th></tr></thead>
+          <tbody>
+          {{range $a := .Filter.Actions}}
+          <tr>
+            <td><select name="action_type" class="action-type">
+              <option value="label" {{if eq $a.ActionType "label"}}selected{{end}}>Метка</option>
+              <option value="webhook" {{if eq $a.ActionType "webhook"}}selected{{end}}>Вебхук</option>
+              <option value="delete" {{if eq $a.ActionType "delete"}}selected{{end}}>Удалить запись</option>
+            </select></td>
+            <td class="action-param-cell">
+              <select name="action_param" class="action-param-select">
+                <option value="">—</option>
+                {{range $.Labels}}<option value="{{.ID}}" data-for="label" {{if actionParamSelected $a.ActionParam (printf "%d" .ID)}}selected{{end}}>{{.Caption}}</option>{{end}}
+                {{range $.Webhooks}}<option value="{{.ID}}" data-for="webhook" {{if actionParamSelected $a.ActionParam (printf "%d" .ID)}}selected{{end}}>{{webhookLabel .Name .URL .ID}}</option>{{end}}
+              </select>
+              <input type="hidden" class="action-param-value" value="{{$a.ActionParam}}">
+            </td>
+            <td class="cell-actions"><button type="button" class="btn btn-sm btn-danger action-remove">×</button></td>
+          </tr>
+          {{end}}
+          </tbody>
+        </table>
+        <button type="button" class="btn btn-sm" id="add-action">+ Действие</button>
+      </div>
+
+      <div class="filter-form-actions">
+        <button type="submit" class="btn btn-primary">Сохранить</button>
+        {{if .Filter.ID}}<a class="btn" href="/ui/filters/{{.Filter.ID}}/test">Тест</a>{{end}}
+        <a class="btn" href="/ui/filters">Назад</a>
+      </div>
+    </form>
+
+    <template id="filter-action-row-tpl">
+      <tr>
+        <td><select name="action_type" class="action-type">
+          <option value="label">Метка</option>
+          <option value="webhook">Вебхук</option>
+          <option value="delete">Удалить запись</option>
+        </select></td>
+        <td class="action-param-cell">
+          <select name="action_param" class="action-param-select">
+            <option value="">—</option>
+            {{range .Labels}}<option value="{{.ID}}" data-for="label">{{.Caption}}</option>{{end}}
+            {{range .Webhooks}}<option value="{{.ID}}" data-for="webhook">{{webhookLabel .Name .URL .ID}}</option>{{end}}
+          </select>
+        </td>
+        <td class="cell-actions"><button type="button" class="btn btn-sm btn-danger action-remove">×</button></td>
+      </tr>
+    </template>
+
+    {{if .Filter.ID}}
+    <form method="post" action="/ui/filters/{{.Filter.ID}}/delete" style="margin-top:1rem" onsubmit="return confirm('Удалить?')">
+      <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+      <button class="btn btn-danger">Удалить</button>
+    </form>
+    {{end}}
+  </div>
+</div>
+{{end}}

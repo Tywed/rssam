@@ -1,0 +1,21 @@
+{{define "entry_row"}}
+<li class="hl-row {{if eq .Entry.Status "read"}}read{{end}}{{if eq $.SelectedEntryID .Entry.ID}} active{{end}}" id="entry-{{.Entry.ID}}" data-entry-id="{{.Entry.ID}}">
+  <a class="hl-link" href="/ui/{{if eq $.Nav "search"}}search{{else}}unread{{end}}?entry_id={{.Entry.ID}}{{entryListQuery $.Query}}">
+    <div class="hl-title">{{if .Entry.Title}}{{.Entry.Title}}{{else}}(без заголовка){{end}}</div>
+    <div class="hl-meta">#{{.Entry.FeedID}}{{if .Entry.PublishedAt}} · {{formatTime .Entry.PublishedAt}}{{end}}</div>
+  </a>
+  <div class="hl-actions">
+    {{if eq .Entry.Status "unread"}}
+    <form method="post" action="/ui/entries/{{.Entry.ID}}/read" data-hx-post data-hx-target="#entry-{{.Entry.ID}}" data-hx-swap="outerHTML">
+      <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+      <button type="submit" class="btn btn-sm" title="Прочитано">✓</button>
+    </form>
+    {{end}}
+    <form method="post" action="/ui/entries/{{.Entry.ID}}/star">
+      <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+      <input type="hidden" name="starred" value="{{if .Entry.Starred}}0{{else}}1{{end}}">
+      <button type="submit" class="btn btn-sm" title="Избранное">{{if .Entry.Starred}}★{{else}}☆{{end}}</button>
+    </form>
+  </div>
+</li>
+{{end}}

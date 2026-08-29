@@ -1,0 +1,22 @@
+{
+  "total": 2,
+  "posts": [
+    {
+      "id": "117100828071700765",
+      "channel_id": "-70601083671892",
+      "type": "video",
+      "url": "https://max.ru/chp_krasnodar/AaAGlSweKR0",
+      "text": "Тестовая публикация MaxStat",
+      "views": 15371,
+      "likes": 58,
+      "likes_detailed": {"👍": 34},
+      "attachments": [
+        {
+          "attachment_type": "video",
+          "attachment_url": "https://example.com/preview.jpg"
+        }
+      ],
+      "published_at": "2026-08-15T18:00:34Z"
+    }
+  ]
+}

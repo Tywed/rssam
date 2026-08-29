@@ -1,0 +1,46 @@
+groups:
+  - name: rssam
+    interval: 1m
+    rules:
+      - alert: FeedPollingHighErrorRate
+        expr: |
+          (
+            sum(rate(rssam_poll_attempts_total{result="error"}[5m]))
+            /
+            sum(rate(rssam_poll_attempts_total[5m]))
+          ) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Feed polling error rate above 10%
+          description: More than 10% of feed polls failed over the last 5 minutes.
+
+      - alert: WebhookDeliveryFailures
+        expr: |
+          (
+            sum(rate(rssam_webhook_deliveries_total{status="dead"}[5m]))
+            /
+            sum(rate(rssam_webhook_deliveries_total[5m]))
+          ) > 0.05
+        for: 3m
+        labels:
+          severity: critical
+        annotations:
+          summary: Webhook delivery failure rate above 5%
+
+      - alert: NoFeedPollingActivity
+        expr: sum(rate(rssam_poll_attempts_total[15m])) == 0
+        for: 15m
+        labels:
+          severity: critical
+        annotations:
+          summary: No feed polling activity for 15 minutes
+
+      - alert: ServiceDown
+        expr: up{job="rssam"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: rssam target is down

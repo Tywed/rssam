@@ -1,0 +1,26 @@
+{{define "app_header"}}
+<header class="app-header">
+  <button type="button" class="btn-icon feeds-toggle" id="feeds-toggle" title="Показать/скрыть ленты" aria-label="Ленты">☰</button>
+  <a href="/ui/unread" class="app-logo">rssam</a>
+  <form class="header-search" method="get" action="/ui/search">
+    <input type="search" name="q" value="{{.SearchQuery}}" placeholder="Поиск записей…" aria-label="Поиск">
+  </form>
+  <div class="header-actions">
+    <div class="view-mode-group" title="Режим просмотра">
+      <button type="button" class="btn-icon view-mode-btn" data-view-mode="horizontal" title="Горизонтально: список | статья">▥</button>
+      <button type="button" class="btn-icon view-mode-btn" data-view-mode="vertical" title="Вертикально: список над статьёй">▤</button>
+    </div>
+    <div class="entry-sort-group" title="Сортировка записей">
+      <button type="button" class="btn-icon entry-sort-btn" data-entry-sort="newest" title="Сначала новые">↓</button>
+      <button type="button" class="btn-icon entry-sort-btn" data-entry-sort="oldest" title="Сначала старые">↑</button>
+    </div>
+    <button type="button" class="btn-icon theme-toggle" id="theme-toggle" title="Светлая/тёмная тема" aria-label="Тема">🌙</button>
+    <a href="/ui/settings" class="btn btn-header {{if eq .Nav "settings"}}active{{end}}">⚙ Настройки</a>
+    <span class="header-user" title="Пользователь">{{.Username}}</span>
+    <form method="post" action="/ui/logout" class="logout-form">
+      <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+      <button type="submit" class="btn btn-logout">Выйти</button>
+    </form>
+  </div>
+</header>
+{{end}}

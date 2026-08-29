@@ -1,0 +1,54 @@
+{{define "body_categories_list"}}
+<div class="settings-layout">
+  {{template "settings_nav" .}}
+  <div class="settings-content">
+    <h1>Категории</h1>
+    {{if and .IsAdmin (gt (len .Categories) 1)}}
+    <p class="meta">Перетащите строки за ручку слева, чтобы изменить порядок в боковой панели.</p>
+    {{end}}
+    {{if .IsAdmin}}
+    <form method="post" action="/ui/categories" class="card">
+      <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+      <div class="form-row">
+        <div class="form-group"><label>Новая категория</label><input name="title" required></div>
+        <div class="form-group form-group-color"><label>Цвет</label><input type="color" name="color" value="#2980b9" title="Цвет метки"></div>
+      </div>
+      <button type="submit" class="btn btn-primary">Создать</button>
+    </form>
+    {{end}}
+    <table>
+      <thead><tr>{{if .IsAdmin}}<th class="cat-drag-col"></th>{{end}}<th></th><th>Название</th><th>Цвет</th><th></th></tr></thead>
+      <tbody id="categories-sortable"{{if .IsAdmin}} data-reorder="1"{{end}}>
+      {{range .Categories}}
+      <tr data-category-id="{{.ID}}"{{if $.IsAdmin}} draggable="true"{{end}}>
+        {{if $.IsAdmin}}<td class="cat-drag-handle" title="Перетащите для сортировки" aria-label="Перетащите для сортировки">⋮⋮</td>{{end}}
+        <td><span class="cat-dot" style="background:{{catColor .}}"></span></td>
+        <td colspan="2">
+          {{if $.IsAdmin}}
+          <form method="post" action="/ui/categories/{{.ID}}" class="cat-edit-form">
+            <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+            <input name="title" value="{{.Title}}">
+            <input type="color" name="color" value="{{catColor .}}" title="Цвет">
+            <button class="btn btn-sm">Сохранить</button>
+          </form>
+          {{else}}
+          <span>{{.Title}}</span>
+          {{end}}
+        </td>
+        <td>
+          {{if $.IsAdmin}}
+          <form method="post" action="/ui/categories/{{.ID}}/delete" onsubmit="return confirm('Удалить?')">
+            <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+            <button class="btn btn-sm btn-danger">×</button>
+          </form>
+          {{end}}
+        </td>
+      </tr>
+      {{else}}
+      <tr><td colspan="{{if .IsAdmin}}5{{else}}4{{end}}" class="meta">Нет категорий</td></tr>
+      {{end}}
+      </tbody>
+    </table>
+  </div>
+</div>
+{{end}}

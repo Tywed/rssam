@@ -1,0 +1,57 @@
+package storage
+
+import (
+	"fmt"
+	"strings"
+)
+
+// DefaultFTSLanguage is the PostgreSQL text search config used when FTS_LANGUAGE is unset.
+const DefaultFTSLanguage = "simple"
+
+// NormalizeFTSLanguage maps env/user input to a PostgreSQL text search configuration name.
+// Supported: simple (default), russian (ru).
+func NormalizeFTSLanguage(lang string) string {
+	switch strings.ToLower(strings.TrimSpace(lang)) {
+	case "", "simple":
+		return "simple"
+	case "russian", "ru":
+		return "russian"
+	default:
+		return DefaultFTSLanguage
+	}
+}
+
+func isAllowedFTSLanguage(lang string) bool {
+	switch lang {
+	case "simple", "russian":
+		return true
+	default:
+		return false
+	}
+}
+
+// ftsVectorExpr returns SQL for to_tsvector(config, title || content) using table columns.
+// Use in UPDATE/SELECT only — not inside INSERT VALUES.
+// lang must be allowlisted (simple|russian).
+func ftsVectorExpr(lang string) string {
+	if !isAllowedFTSLanguage(lang) {
+		lang = DefaultFTSLanguage
+	}
+	return fmt.Sprintf("to_tsvector('%s', coalesce(title, '') || ' ' || coalesce(content, ''))", lang)
+}
+
+// ftsVectorExprPlaceholders builds to_tsvector from SQL placeholders (e.g. $3, $5) for INSERT VALUES.
+func ftsVectorExprPlaceholders(lang, titlePlaceholder, contentPlaceholder string) string {
+	if !isAllowedFTSLanguage(lang) {
+		lang = DefaultFTSLanguage
+	}
+	return fmt.Sprintf("to_tsvector('%s', coalesce(%s, '') || ' ' || coalesce(%s, ''))", lang, titlePlaceholder, contentPlaceholder)
+}
+
+// ftsWebsearchExpr returns SQL for websearch_to_tsquery(config, $arg).
+func ftsWebsearchExpr(lang string, argPlaceholder string) string {
+	if !isAllowedFTSLanguage(lang) {
+		lang = DefaultFTSLanguage
+	}
+	return fmt.Sprintf("websearch_to_tsquery('%s', %s)", lang, argPlaceholder)
+}

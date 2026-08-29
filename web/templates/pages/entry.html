@@ -1,0 +1,18 @@
+{{define "body_entry"}}
+<article class="article">
+  <h1>{{if .Entry.Title}}{{.Entry.Title}}{{else}}(без заголовка){{end}}</h1>
+  <div class="meta">
+    {{if .Entry.Author}}{{.Entry.Author}} · {{end}}
+    {{if .Entry.PublishedAt}}{{formatTime .Entry.PublishedAt}} · {{end}}
+    <a href="{{.Entry.URL}}" target="_blank" rel="noopener">Оригинал</a>
+  </div>
+  <div class="toolbar" style="margin-top:1rem">
+    {{if eq .Entry.Status "unread"}}
+    <form method="post" action="/ui/entries/{{.Entry.ID}}/read"><input type="hidden" name="csrf_token" value="{{.CSRFToken}}"><button class="btn btn-primary">Прочитано</button></form>
+    {{end}}
+    <form method="post" action="/ui/entries/{{.Entry.ID}}/star"><input type="hidden" name="csrf_token" value="{{.CSRFToken}}"><input type="hidden" name="starred" value="{{if .Entry.Starred}}0{{else}}1{{end}}"><button class="btn">{{if .Entry.Starred}}Убрать ★{{else}}★ В избранное{{end}}</button></form>
+    <a class="btn" href="/ui/unread">← Назад</a>
+  </div>
+  <div class="article-content">{{.EntryContent}}</div>
+</article>
+{{end}}

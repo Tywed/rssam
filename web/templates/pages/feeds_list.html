@@ -1,0 +1,100 @@
+{{define "body_feeds_list"}}
+<div class="settings-layout">
+  {{template "settings_nav" .}}
+  <div class="settings-content">
+    <div class="toolbar">
+      <h1 style="margin:0;flex:1">Подписки</h1>
+      {{if .IsAdmin}}
+      <a class="btn btn-primary" href="/ui/feeds/new">Добавить</a>
+      <a class="btn" href="/ui/feeds/export">Экспорт OPML</a>
+      {{end}}
+    </div>
+
+    <div class="feeds-filters">
+      <a href="/ui/feeds" class="feeds-filter {{if not .FeedsFilter}}active{{end}}">Все каналы <span class="meta">{{pluralChannels .TotalFeedCount}}</span></a>
+      <a href="/ui/feeds?filter=errors" class="feeds-filter {{if eq .FeedsFilter "errors"}}active{{end}}">Каналы с ошибками <span class="meta">({{.ErrorFeedCount}})</span></a>
+      <a href="/ui/feeds?filter=inactive" class="feeds-filter {{if eq .FeedsFilter "inactive"}}active{{end}}">Неактивные каналы <span class="meta">({{.InactiveFeedCount}})</span></a>
+    </div>
+
+    {{if .IsAdmin}}
+    <div class="card">
+      <h2>Импорт OPML</h2>
+      <form method="post" action="/ui/feeds/import" enctype="multipart/form-data">
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+        <div class="form-group"><input type="file" name="file" accept=".opml,.xml" required></div>
+        <button type="submit" class="btn btn-primary">Импорт</button>
+      </form>
+    </div>
+    {{end}}
+
+    <div class="feeds-mgmt-tree{{if .FeedsTreeLazy}} feeds-tree-lazy{{end}}"{{if .FeedsTreeLazy}} data-lazy-feeds="true" data-feeds-filter="{{.FeedsFilter}}"{{end}}>
+      {{range .Categories}}
+      {{ $cat := . }}
+      {{ $count := categoryFeedCount $.ListCategoryFeedCounts $cat.ID }}
+      {{if gt $count 0}}
+      <div class="tree-cat collapsed" data-tree-cat="mgmt-{{$cat.ID}}">
+        <div class="tree-cat-header">
+          <button type="button" class="tree-toggle" aria-expanded="false" aria-label="Развернуть категорию">+</button>
+          <span class="tree-row tree-cat-title tree-cat-label" style="border-left-color: {{catColor $cat}}">
+            <span class="cat-dot" style="background-color: {{catColor $cat}}" aria-hidden="true"></span>
+            <span class="tree-label">{{$cat.Title}}</span>
+            <span class="tree-count">{{pluralChannels $count}}</span>
+          </span>
+          {{template "category_bulk_actions" (dict "Root" $ "CategoryID" $cat.ID)}}
+        </div>
+        <div class="tree-cat-feeds"{{if $.FeedsTreeLazy}} data-lazy-url="/ui/feeds/categories/{{$cat.ID}}/tree"{{end}}>
+          {{if not $.FeedsTreeLazy}}
+          {{range $.ListFeeds}}{{if feedInCategory . $cat.ID}}
+          <div class="tree-row tree-feed-row {{if feedHasError .}}feed-error{{end}}">
+            <span class="tree-icon" title="{{if feedHasError .}}{{.LastError}}{{end}}">{{if feedHasError .}}⚠{{else}}▸{{end}}</span>
+            {{if $.IsAdmin}}<a href="/ui/feeds/{{.ID}}/edit" class="tree-label">{{.Title}}</a>{{else}}<a href="/ui/feeds/{{.ID}}" class="tree-label">{{.Title}}</a>{{end}}
+            <span class="feed-meta meta">{{feedTypeLabel .FeedType}}</span>
+            <span class="feed-actions">
+              <form method="post" action="/ui/feeds/{{.ID}}/refresh"><input type="hidden" name="csrf_token" value="{{$.CSRFToken}}"><button type="submit" class="btn btn-sm" title="Обновить">↻</button></form>
+            </span>
+          </div>
+          {{if feedHasError .}}{{if .LastError}}<div class="feed-error-msg meta">{{.LastError}}</div>{{end}}{{end}}
+          {{end}}{{end}}
+          {{end}}
+        </div>
+      </div>
+      {{end}}
+      {{end}}
+
+      {{if gt .ListUncategorizedFeedCount 0}}
+      <div class="tree-cat collapsed" data-tree-cat="mgmt-uncategorized">
+        <div class="tree-cat-header">
+          <button type="button" class="tree-toggle" aria-expanded="false" aria-label="Развернуть категорию">+</button>
+          <span class="tree-row tree-cat-title tree-cat-label">
+            <span class="tree-label">Без категории</span>
+            <span class="tree-count">{{pluralChannels .ListUncategorizedFeedCount}}</span>
+          </span>
+          {{template "category_bulk_actions" (dict "Root" $ "CategoryID" 0)}}
+        </div>
+        <div class="tree-cat-feeds"{{if .FeedsTreeLazy}} data-lazy-url="/ui/feeds/uncategorized/tree"{{end}}>
+          {{if not .FeedsTreeLazy}}
+          {{range .ListFeeds}}{{if not .CategoryID}}
+          <div class="tree-row tree-feed-row {{if feedHasError .}}feed-error{{end}}">
+            <span class="tree-icon" title="{{if feedHasError .}}{{.LastError}}{{end}}">{{if feedHasError .}}⚠{{else}}▸{{end}}</span>
+            {{if $.IsAdmin}}<a href="/ui/feeds/{{.ID}}/edit" class="tree-label">{{.Title}}</a>{{else}}<a href="/ui/feeds/{{.ID}}" class="tree-label">{{.Title}}</a>{{end}}
+            <span class="feed-meta meta">{{feedTypeLabel .FeedType}}</span>
+            <span class="feed-actions">
+              <form method="post" action="/ui/feeds/{{.ID}}/refresh"><input type="hidden" name="csrf_token" value="{{$.CSRFToken}}"><button type="submit" class="btn btn-sm" title="Обновить">↻</button></form>
+            </span>
+          </div>
+          {{if feedHasError .}}{{if .LastError}}<div class="feed-error-msg meta">{{.LastError}}</div>{{end}}{{end}}
+          {{end}}{{end}}
+          {{end}}
+        </div>
+      </div>
+      {{end}}
+
+      {{if and (not .FeedsTreeLazy) (not .ListFeeds)}}
+      <p class="meta feeds-empty">{{if .FeedsFilter}}Нет каналов по выбранному фильтру{{else}}Нет лент{{end}}</p>
+      {{else if and .FeedsTreeLazy (eq .TotalFeedCount 0)}}
+      <p class="meta feeds-empty">{{if .FeedsFilter}}Нет каналов по выбранному фильтру{{else}}Нет лент{{end}}</p>
+      {{end}}
+    </div>
+  </div>
+</div>
+{{end}}

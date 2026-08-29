@@ -1,0 +1,17 @@
+{{define "body_feeds_show"}}
+<div class="settings-layout">
+  {{template "settings_nav" .}}
+  <div class="settings-content">
+    <h1>{{.Feed.Title}}</h1>
+    <div class="card">
+      <p class="meta">{{.Feed.FeedURL}} · {{.Feed.FeedType}}{{if .Feed.TLSInsecure}} · <span title="TLS-проверка отключена для этой ленты">TLS: без проверки</span>{{end}}</p>
+      {{if .Feed.LastError}}<div class="flash flash-err">{{.Feed.LastError}}</div>{{end}}
+      <div class="toolbar">
+        <form method="post" action="/ui/feeds/{{.Feed.ID}}/refresh"><input type="hidden" name="csrf_token" value="{{.CSRFToken}}"><button class="btn btn-primary">Обновить сейчас</button></form>
+        {{if .IsAdmin}}<a class="btn" href="/ui/feeds/{{.Feed.ID}}/edit">Редактировать</a>{{end}}
+        <a class="btn" href="/ui/unread?feed_id={{.Feed.ID}}">Записи</a>
+      </div>
+    </div>
+  </div>
+</div>
+{{end}}

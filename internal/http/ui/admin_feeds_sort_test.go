@@ -1,0 +1,78 @@
+package ui
+
+import (
+	"net/http"
+	"testing"
+	"time"
+
+	"rssam/internal/storage"
+)
+
+func TestSortAdminFeedRows(t *testing.T) {
+	now := time.Now()
+	past := now.Add(-time.Hour)
+	future := now.Add(time.Hour)
+	rows := []adminFeedRowView{
+		{AdminFeedRow: storage.AdminFeedRow{Feed: storage.Feed{ID: 1, Title: "Beta"}, EntryCount: 10, UnreadCount: 2}, Status: "ok"},
+		{AdminFeedRow: storage.AdminFeedRow{Feed: storage.Feed{ID: 2, Title: "Alpha", ParsingErrorCount: 3, LastCheckedAt: &past}, EntryCount: 5, UnreadCount: 1}, Status: "errors"},
+		{AdminFeedRow: storage.AdminFeedRow{Feed: storage.Feed{ID: 3, Title: "Gamma", NextCheckAt: &future}, EntryCount: 20, UnreadCount: 4}, Status: "ok"},
+	}
+
+	sortAdminFeedRows(rows, "name", "asc")
+	if rows[0].Title != "Alpha" || rows[2].Title != "Gamma" {
+		t.Fatalf("name asc: got %q, %q, %q", rows[0].Title, rows[1].Title, rows[2].Title)
+	}
+
+	sortAdminFeedRows(rows, "entries", "desc")
+	if rows[0].EntryCount != 20 || rows[2].EntryCount != 5 {
+		t.Fatalf("entries desc: got %d, %d, %d", rows[0].EntryCount, rows[1].EntryCount, rows[2].EntryCount)
+	}
+
+	sortAdminFeedRows(rows, "errors", "desc")
+	if rows[0].ParsingErrorCount != 3 {
+		t.Fatalf("errors desc: first=%d", rows[0].ParsingErrorCount)
+	}
+
+	sortAdminFeedRows(rows, "id", "desc")
+	if rows[0].ID != 3 || rows[2].ID != 1 {
+		t.Fatalf("id desc: got %d, %d, %d", rows[0].ID, rows[1].ID, rows[2].ID)
+	}
+}
+
+func TestFilterAdminFeedRows(t *testing.T) {
+	rows := []adminFeedRowView{
+		{Status: "ok"},
+		{Status: "errors"},
+		{Status: "paused"},
+	}
+	filtered := filterAdminFeedRows(rows, "errors")
+	if len(filtered) != 1 || filtered[0].Status != "errors" {
+		t.Fatalf("filter errors: %+v", filtered)
+	}
+	if len(filterAdminFeedRows(rows, "all")) != 3 {
+		t.Fatal("filter all should keep all rows")
+	}
+}
+
+func TestParseAdminFeedsSort(t *testing.T) {
+	req := httptestNewRequest(t, "/ui/admin/feeds?sort=entries&order=desc")
+	sortKey, order := parseAdminFeedsSort(req)
+	if sortKey != "entries" || order != "desc" {
+		t.Fatalf("got sort=%q order=%q", sortKey, order)
+	}
+
+	req = httptestNewRequest(t, "/ui/admin/feeds?sort=invalid&order=up")
+	sortKey, order = parseAdminFeedsSort(req)
+	if sortKey != "name" || order != "asc" {
+		t.Fatalf("invalid sort defaults: sort=%q order=%q", sortKey, order)
+	}
+}
+
+func httptestNewRequest(t *testing.T, target string) *http.Request {
+	t.Helper()
+	req, err := http.NewRequest(http.MethodGet, target, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return req
+}

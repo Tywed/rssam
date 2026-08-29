@@ -1,0 +1,9 @@
+.git
+.cursor
+.tmp
+tmp
+bin
+.env
+.env.*
+coverage.out
+*.test

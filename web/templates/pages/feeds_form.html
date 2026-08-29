@@ -1,0 +1,135 @@
+{{define "body_feeds_form"}}
+<div class="settings-layout">
+  {{template "settings_nav" .}}
+  <div class="settings-content">
+    <h1>{{if .Feed.ID}}Редактировать ленту{{else}}Новая лента{{end}}</h1>
+    <form method="post" action="{{if .Feed.ID}}/ui/feeds/{{.Feed.ID}}{{else}}/ui/feeds{{end}}" id="feed-form">
+      <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+      <div class="form-group">
+        <label>URL</label>
+        <input name="feed_url" id="feed-url-input" value="{{.Feed.FeedURL}}" required {{if .Feed.ID}}readonly{{end}}>
+      </div>
+
+      <div id="feed-type-status" class="feed-type-status" {{if not .Feed.ID}}hidden{{end}}>
+        {{if .Feed.ID}}
+        <span class="badge" id="feed-type-badge">{{feedTypeLabel .Feed.FeedType}}</span>
+        {{else}}
+        <span class="badge" id="feed-type-badge"></span>
+        <span class="meta" id="feed-type-hint"></span>
+        <p class="flash flash-err" id="feed-type-error" hidden></p>
+        {{end}}
+      </div>
+
+      <div class="form-group"><label>Название</label><input name="title" id="feed-title-input" value="{{.Feed.Title}}"></div>
+      <div class="form-group"><label>Категория</label>
+        <select name="category_id">
+          <option value="">—</option>
+          {{range .Categories}}<option value="{{.ID}}" {{if and $.Feed.CategoryID (eq .ID (deref $.Feed.CategoryID))}}selected{{end}}>{{.Title}}</option>{{end}}
+        </select>
+      </div>
+      <div class="form-group"><label>Интервал (мин)</label><input name="interval_minutes" type="number" value="{{if .Feed.IntervalMinutes}}{{.Feed.IntervalMinutes}}{{else}}60{{end}}" min="1" max="10080">
+        <p class="meta">Минимум 1 мин, максимум 10080 мин (7 суток).</p>
+      </div>
+
+      <div class="form-group">
+        <label>Вебхук на каждую новую запись</label>
+        <select name="webhook_id">
+          <option value="">— не использовать —</option>
+          {{range .Webhooks}}<option value="{{.ID}}" {{if and $.Feed.WebhookID (eq .ID (deref $.Feed.WebhookID))}}selected{{end}}>{{webhookLabel .Name .URL .ID}}</option>{{end}}
+        </select>
+        <p class="meta">Отправляет вебхук на каждую новую запись из этой ленты, независимо от фильтров. Настройте вебхуки в разделе «Вебхуки».</p>
+      </div>
+
+      <div class="form-group" id="feed-tls-insecure-group">
+        <label><input type="checkbox" name="tls_insecure" id="feed-tls-insecure" value="1" {{if .Feed.TLSInsecure}}checked{{end}}> Не проверять сертификат (для сайтов с РФ CA)</label>
+        <p class="meta">Включайте только для доверенных источников с отечественным центром сертификации (например, admkrai.krasnodar.ru). Действует только для этой ленты.</p>
+      </div>
+
+      <div class="form-group">
+        <label>Хранить записи (дней)</label>
+        <input name="entry_retention_days" type="number" value="{{derefInt .Feed.EntryRetentionDays}}" min="1" max="3650" placeholder="не удалять">
+        <p class="meta">Автоматически удалять записи и хеши дедупликации старше указанного числа дней (по дате появления в rssam). Пусто — не удалять. Избранные записи не удаляются.</p>
+      </div>
+
+      <div class="form-group">
+        <label><input type="checkbox" name="store_hash_only" value="1" {{if .Feed.StoreHashOnly}}checked{{end}}> Только хеш до срабатывания фильтра</label>
+        <p class="meta">Новые записи сохраняются только как хеш для дедупликации; полный текст записывается при совпадении фильтра.</p>
+      </div>
+
+      <div class="card feed-type-settings" id="feed-settings-telegram" data-feed-type="telegram" {{if .Feed.ID}}{{if ne .Feed.FeedType "telegram"}}hidden{{end}}{{else}}hidden{{end}}>
+        <h2>Telegram</h2>
+        <div class="form-group">
+          <label><input type="checkbox" name="telegram_use_proxy" value="1" {{if .TgUseProxy}}checked{{end}}> Использовать прокси</label>
+          <p class="meta">Если выключено — прямой HTTP на t.me/s (может не работать без VPN).</p>
+        </div>
+        <div class="form-group">
+          <label>Proxy-service URL (override)</label>
+          <input name="telegram_proxy_service_url" value="{{.TgProxyServiceURL}}" placeholder="http://proxy-service:8787">
+        </div>
+        <div class="form-group">
+          <label>Статический SOCKS (override)</label>
+          <input name="telegram_static_proxy" value="{{.TgStaticProxy}}" placeholder="host:port или socks5://user:pass@host:port">
+          <p class="meta">Если задан — используется этот прокси вместо proxy-service.</p>
+        </div>
+      </div>
+
+      <div class="card feed-type-settings" id="feed-settings-rutube" data-feed-type="rutube" {{if .Feed.ID}}{{if ne .Feed.FeedType "rutube"}}hidden{{end}}{{else}}hidden{{end}}>
+        <h2>Rutube</h2>
+        <p class="meta">Лента видео канала Rutube. ID канала определяется из URL автоматически.</p>
+        <p class="meta" id="rutube-channel-id"></p>
+      </div>
+
+      <div class="card feed-type-settings" id="feed-settings-max" data-feed-type="max" {{if .Feed.ID}}{{if ne .Feed.FeedType "max"}}hidden{{end}}{{else}}hidden{{end}}>
+        <h2>Max</h2>
+        <p class="meta">Лента постов канала Max. URL вида <code>https://max.ru/имя-канала</code>.</p>
+      </div>
+
+      <div class="card feed-type-settings" id="feed-settings-vk_search" data-feed-type="vk_search" {{if .Feed.ID}}{{if ne .Feed.FeedType "vk_search"}}hidden{{end}}{{else}}hidden{{end}}>
+        <h2>VK Search</h2>
+        <p class="meta">Подписка на <strong>результаты поиска</strong> VK, а не на группу или страницу.</p>
+        <ul class="meta">
+          <li><code>vk-search://ваш запрос</code></li>
+          <li><code>https://vk.com/feed?section=search&amp;q=ваш+запрос</code></li>
+        </ul>
+        <p class="meta">Access token задаётся в <a href="/ui/settings/bridges/vk">настройках VK Search</a>.</p>
+        <p class="meta" id="vk-search-query"></p>
+      </div>
+
+      <div class="card feed-type-settings" id="feed-settings-dzen_news" data-feed-type="dzen_news" {{if .Feed.ID}}{{if ne .Feed.FeedType "dzen_news"}}hidden{{end}}{{else}}hidden{{end}}>
+        <h2>Dzen News</h2>
+        <p class="meta">Подписка на <strong>поиск новостей</strong> Dzen, а не на канал или статью.</p>
+        <ul class="meta">
+          <li><code>dzen-news://ваш запрос</code></li>
+          <li><code>https://dzen.ru/news/search?issue_tld=ru&amp;sortby=date&amp;text=ваш+запрос</code></li>
+        </ul>
+        <p class="meta" id="dzen-search-query"></p>
+      </div>
+
+      <div class="card feed-type-settings" id="feed-settings-smotrim" data-feed-type="smotrim" {{if .Feed.ID}}{{if ne .Feed.FeedType "smotrim"}}hidden{{end}}{{else}}hidden{{end}}>
+        <h2>Smotrim</h2>
+        <p class="meta">Видео и сюжеты <strong>бренда</strong> на smotrim.ru (ранее api.vgtrk.com).</p>
+        <ul class="meta">
+          <li><code>smotrim://67725</code> — brand ID (например, Вести. Кубань)</li>
+          <li><code>https://smotrim.ru/brand/67725</code></li>
+          <li><code>smotrim://67725?limit=50&amp;type=plot</code> — только сюжеты</li>
+        </ul>
+        <p class="meta" id="smotrim-brand-id"></p>
+      </div>
+
+      <div class="card feed-type-settings" id="feed-settings-rss" data-feed-type="rss" {{if .Feed.ID}}{{if ne .Feed.FeedType "rss"}}hidden{{end}}{{else}}hidden{{end}}>
+        <h2>RSS/Atom</h2>
+        <p class="meta">Обычная RSS или Atom лента. URL должен указывать на XML/JSON feed, а не на страницу сайта.</p>
+      </div>
+
+      <button type="submit" class="btn btn-primary" id="feed-submit-btn">Сохранить</button>
+      <a class="btn" href="/ui/feeds">Отмена</a>
+    </form>
+    {{if .Feed.ID}}
+    <form method="post" action="/ui/feeds/{{.Feed.ID}}/delete" style="margin-top:2rem" onsubmit="return confirm('Удалить ленту?')">
+      <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+      <button type="submit" class="btn btn-danger">Удалить</button>
+    </form>
+    {{end}}
+  </div>
+</div>
+{{end}}

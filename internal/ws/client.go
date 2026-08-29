@@ -1,0 +1,127 @@
+package ws
+
+import (
+	"encoding/json"
+	"sync"
+	"time"
+
+	"golang.org/x/net/websocket"
+)
+
+type subscribeRequest struct {
+	Action   string   `json:"action"`
+	Channels []string `json:"channels"`
+}
+
+type Client struct {
+	conn *websocket.Conn
+	hub  *Hub
+
+	send chan []byte
+
+	mu            sync.RWMutex
+	subscriptions map[string]struct{}
+	closed        bool
+}
+
+func NewClient(hub *Hub, conn *websocket.Conn) *Client {
+	return &Client{
+		conn:          conn,
+		hub:           hub,
+		send:          make(chan []byte, hub.ClientBuffer()),
+		subscriptions: make(map[string]struct{}),
+	}
+}
+
+func (c *Client) Run() {
+	go c.writePump()
+	c.readPump()
+}
+
+func (c *Client) Close() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.closed {
+		return
+	}
+	c.closed = true
+	_ = c.conn.Close()
+}
+
+func (c *Client) readPump() {
+	defer c.Close()
+	defer c.hub.Unregister(c)
+
+	readTimeout := c.hub.PingInterval() * 3
+	if readTimeout < 5*time.Second {
+		readTimeout = 5 * time.Second
+	}
+	_ = c.conn.SetDeadline(time.Now().Add(readTimeout))
+
+	for {
+		var data []byte
+		if err := websocket.Message.Receive(c.conn, &data); err != nil {
+			return
+		}
+		_ = c.conn.SetDeadline(time.Now().Add(readTimeout))
+		if string(data) == `{"action":"pong"}` {
+			continue
+		}
+		var req subscribeRequest
+		if err := json.Unmarshal(data, &req); err != nil {
+			continue
+		}
+		if req.Action != "subscribe" {
+			continue
+		}
+		c.setSubscriptions(NormalizeChannels(req.Channels))
+	}
+}
+
+func (c *Client) writePump() {
+	ticker := time.NewTicker(c.hub.PingInterval())
+	defer ticker.Stop()
+	defer c.Close()
+
+	for {
+		select {
+		case payload, ok := <-c.send:
+			_ = c.conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
+			if !ok {
+				return
+			}
+			if err := websocket.Message.Send(c.conn, payload); err != nil {
+				return
+			}
+		case <-ticker.C:
+			_ = c.conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
+			if err := websocket.Message.Send(c.conn, []byte(`{"event":"ping"}`)); err != nil {
+				return
+			}
+		}
+	}
+}
+
+func (c *Client) setSubscriptions(channels []string) {
+	next := make(map[string]struct{}, len(channels))
+	for _, ch := range channels {
+		next[ch] = struct{}{}
+	}
+	c.mu.Lock()
+	c.subscriptions = next
+	c.mu.Unlock()
+}
+
+func (c *Client) isSubscribed(channels map[string]struct{}) bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	if len(c.subscriptions) == 0 {
+		return false
+	}
+	for ch := range channels {
+		if _, ok := c.subscriptions[ch]; ok {
+			return true
+		}
+	}
+	return false
+}

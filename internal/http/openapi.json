@@ -1,0 +1,83 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "rssam API",
+    "version": "1.0.0",
+    "description": "RSS Aggregator Microservice REST API (subset; see spec for full surface)."
+  },
+  "servers": [{ "url": "/" }],
+  "components": {
+    "securitySchemes": {
+      "AuthToken": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-Auth-Token"
+      }
+    }
+  },
+  "security": [{ "AuthToken": [] }],
+  "paths": {
+    "/healthz": {
+      "get": {
+        "summary": "Health check",
+        "security": [],
+        "responses": { "200": { "description": "OK" } }
+      }
+    },
+    "/v1/me": {
+      "get": { "summary": "Current user", "responses": { "200": { "description": "User profile" } } }
+    },
+    "/v1/categories": {
+      "get": { "summary": "List categories", "responses": { "200": { "description": "Category list" } } },
+      "post": { "summary": "Create category", "responses": { "201": { "description": "Created" } } }
+    },
+    "/v1/feeds": {
+      "get": { "summary": "List feeds", "responses": { "200": { "description": "Feed list" } } },
+      "post": { "summary": "Create feed", "responses": { "201": { "description": "Created" } } }
+    },
+    "/v1/feeds/import": {
+      "post": {
+        "summary": "Import OPML (sync or ?async=1)",
+        "responses": {
+          "200": { "description": "Import report" },
+          "202": { "description": "Async job accepted" }
+        }
+      }
+    },
+    "/v1/feeds/import/jobs/{jobID}": {
+      "get": {
+        "summary": "OPML import job progress",
+        "parameters": [
+          { "name": "jobID", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": { "200": { "description": "Job status" } }
+      }
+    },
+    "/v1/entries": {
+      "get": { "summary": "List entries", "responses": { "200": { "description": "Entry list" } } }
+    },
+    "/v1/filters": {
+      "get": { "summary": "List filters", "responses": { "200": { "description": "Filter list" } } },
+      "post": { "summary": "Create filter", "responses": { "201": { "description": "Created" } } }
+    },
+    "/v1/filters/{id}/test": {
+      "post": { "summary": "Test filter on sample entry", "responses": { "200": { "description": "Match result" } } }
+    },
+    "/v1/webhooks": {
+      "get": { "summary": "List webhooks", "responses": { "200": { "description": "Webhook list" } } }
+    },
+    "/v1/system/info": {
+      "get": {
+        "summary": "Build and runtime info",
+        "responses": { "200": { "description": "System info" } }
+      }
+    },
+    "/ws/v1": {
+      "get": {
+        "summary": "WebSocket (token query param)",
+        "security": [],
+        "responses": { "101": { "description": "Switching Protocols" } }
+      }
+    }
+  }
+}

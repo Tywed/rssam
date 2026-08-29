@@ -1,0 +1,15 @@
+{{define "entry_list"}}
+<ul class="hl-list" id="entry-list">
+{{range .Entries}}
+{{template "entry_row" (dict "Entry" . "CSRFToken" $.CSRFToken "SelectedEntryID" $.SelectedEntryID "Query" $.Query "Nav" $.Nav)}}
+{{else}}
+<li class="hl-row hl-empty"><span class="meta">Записей нет</span></li>
+{{end}}
+</ul>
+{{if gt .Total .Offset}}
+<div class="pagination">
+  {{if gt .Offset 0}}<a class="btn btn-sm" href="?offset={{sub .Offset .Limit}}{{querySuffix $.Query}}{{if .SelectedEntryID}}&entry_id={{.SelectedEntryID}}{{end}}">← Назад</a>{{end}}
+  {{if lt (add .Offset (len .Entries)) .Total}}<a class="btn btn-sm" href="?offset={{add .Offset .Limit}}{{querySuffix $.Query}}{{if .SelectedEntryID}}&entry_id={{.SelectedEntryID}}{{end}}">Далее →</a>{{end}}
+</div>
+{{end}}
+{{end}}

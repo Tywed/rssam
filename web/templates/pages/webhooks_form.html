@@ -1,0 +1,146 @@
+{{define "body_webhooks_form"}}
+<div class="settings-layout">
+  {{template "settings_nav" .}}
+  <div class="settings-content">
+    <div class="toolbar">
+      <div>
+        {{if .Webhook.ID}}<p class="meta" style="margin:0"><a href="/ui/webhooks">← Вебхуки</a></p>{{end}}
+        <h1 style="margin:0.25rem 0 0">{{if .Webhook.ID}}{{webhookLabel .Webhook.Name .Webhook.URL .Webhook.ID}}{{else}}Новый webhook{{end}}</h1>
+      </div>
+      {{if .Webhook.ID}}
+      <div class="admin-feeds-actions">
+        <a class="btn" href="/ui/webhooks/{{.Webhook.ID}}/logs">Логи</a>
+        <form method="post" action="/ui/webhooks/{{.Webhook.ID}}/test" class="inline-form">
+          <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+          <button type="submit" class="btn">Тест</button>
+        </form>
+      </div>
+      {{end}}
+    </div>
+    {{if .Webhook.ID}}<p class="meta">Тест шлёт фиктивную запись (test feed / test entry) в цель. Очередь и журнал доставки не используются.</p>{{end}}
+
+    {{if .Webhook.ID}}
+    <p><span class="feed-status-badge {{adminWebhookStatusClass .AdminWebhookDetail.Status}}">{{adminWebhookStatusLabel .AdminWebhookDetail.Status}}</span></p>
+
+    <div class="card">
+      <h2>Доставка</h2>
+      <table>
+        <tr><th>Отправлено всего</th><td>{{.AdminWebhookDetail.SentCount}}</td></tr>
+        <tr><th>За 24 ч</th><td>{{.AdminWebhookDetail.Sent24h}}</td></tr>
+        <tr><th>Успешность</th><td>{{webhookSuccessRate7d .AdminWebhookDetail.SentCount .AdminWebhookDetail.DeadCount}}</td></tr>
+        <tr><th>В очереди</th><td>{{if gt .AdminWebhookDetail.QueueDueCount 0}}{{.AdminWebhookDetail.QueueDueCount}}{{else}}—{{end}}</td></tr>
+        <tr><th>Повторы</th><td>{{if gt .AdminWebhookDetail.RetryingCount 0}}{{.AdminWebhookDetail.RetryingCount}}{{else}}—{{end}}</td></tr>
+        <tr><th>Мёртвые</th><td>{{if gt .AdminWebhookDetail.DeadCount 0}}{{.AdminWebhookDetail.DeadCount}}{{else}}—{{end}}</td></tr>
+        <tr><th>Последняя отправка</th><td>{{formatTime .AdminWebhookDetail.LastSentAt}}</td></tr>
+        {{if .AdminWebhookDetail.LastError}}
+        <tr><th>Последняя ошибка</th><td class="admin-feeds-error">{{if classifyWebhookError .AdminWebhookDetail.LastError}}<span class="meta">[{{classifyWebhookError .AdminWebhookDetail.LastError}}]</span> {{end}}{{.AdminWebhookDetail.LastError}}</td></tr>
+        {{end}}
+        <tr><th>Макс. попыток</th><td class="meta">{{.WebhookMaxAttempts}}</td></tr>
+      </table>
+      {{if or (gt .AdminWebhookDetail.DeadCount 0) (gt .AdminWebhookDetail.RetryingCount 0)}}
+      <form method="post" action="/ui/webhooks/{{.Webhook.ID}}/retry-all" style="margin-top:0.75rem">
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+        <button type="submit" class="btn btn-sm">Повторить все failed/dead</button>
+      </form>
+      {{end}}
+    </div>
+
+    {{if or .WebhookBindingFeeds .WebhookBindingFilters .Webhook.FilterID}}
+    <div class="card">
+      <h2>Привязки</h2>
+      {{if .WebhookBindingFeeds}}
+      <p><strong>Ленты</strong> (на каждую новую запись):</p>
+      <ul>
+        {{range .WebhookBindingFeeds}}
+        <li><a href="/ui/admin/feeds/{{.ID}}">{{.Title}}</a></li>
+        {{end}}
+      </ul>
+      {{end}}
+      {{if .WebhookBindingFilters}}
+      <p><strong>Фильтры</strong> (действие «Вебхук»):</p>
+      <ul>
+        {{range .WebhookBindingFilters}}
+        <li><a href="/ui/filters/{{.ID}}">{{.Name}}</a></li>
+        {{end}}
+      </ul>
+      {{end}}
+      {{if .Webhook.FilterID}}
+      <p class="meta">Устаревшая привязка filter_id={{derefInt64 .Webhook.FilterID}} на самом webhook — предпочтительно через действие фильтра.</p>
+      {{end}}
+      {{if not (or .WebhookBindingFeeds .WebhookBindingFilters)}}
+      <p class="meta">Нет привязок — webhook не будет вызываться, пока не назначен на ленту или в фильтре.</p>
+      {{end}}
+    </div>
+    {{end}}
+    {{end}}
+
+    <div class="card">
+      <h2>{{if .Webhook.ID}}Настройки{{else}}Новый webhook{{end}}</h2>
+      <form method="post" action="{{if .Webhook.ID}}/ui/webhooks/{{.Webhook.ID}}{{else}}/ui/webhooks{{end}}" id="webhook-form">
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+        {{$kind := .Webhook.Kind}}{{if eq $kind ""}}{{$kind = "http"}}{{end}}
+        <div class="form-group"><label>Тип</label>
+          <select name="kind" id="webhook-kind">
+            <option value="http" {{if eq $kind "http"}}selected{{end}}>HTTP</option>
+            <option value="telegram" {{if eq $kind "telegram"}}selected{{end}}>Telegram</option>
+            <option value="max" {{if eq $kind "max"}}selected{{end}}>Max</option>
+          </select>
+        </div>
+        <p class="meta">Цель переиспользуется: в фильтре — действие «Вебхук», на ленте — «на каждую новую запись».</p>
+        <div class="form-group"><label>Название</label><input name="name" value="{{.Webhook.Name}}" maxlength="80" placeholder="например Telegram alerts"></div>
+
+        <div class="webhook-kind-settings" data-webhook-kind="http" {{if ne $kind "http"}}hidden{{end}}>
+          <div class="form-group"><label>URL</label><input name="url" id="webhook-url" value="{{if eq $kind "http"}}{{.Webhook.URL}}{{end}}" {{if eq $kind "http"}}required{{end}}></div>
+          <div class="form-group"><label>Метод</label><select name="method"><option value="POST" {{if eq .Webhook.Method "POST"}}selected{{end}}>POST</option><option value="GET" {{if eq .Webhook.Method "GET"}}selected{{end}}>GET</option><option value="PUT" {{if eq .Webhook.Method "PUT"}}selected{{end}}>PUT</option></select></div>
+          <div class="form-group"><label>Secret (HMAC)</label><input name="secret" value="{{if eq $kind "http"}}{{.Webhook.Secret}}{{end}}" autocomplete="off"></div>
+        </div>
+
+        <div class="webhook-kind-settings" data-webhook-kind="telegram" {{if ne $kind "telegram"}}hidden{{end}}>
+          <div class="form-group"><label>Токен бота</label>
+            <input name="telegram_bot_token" type="password" autocomplete="off" placeholder="{{if .WebhookTelegramTokenSet}}оставьте пустым, чтобы не менять{{end}}">
+          </div>
+          <div class="form-group"><label>chat_id</label><input name="telegram_chat_id" value="{{.WebhookTelegram.ChatID}}" placeholder="-100… или @channel"></div>
+          <div class="form-group"><label>Сервер Bot API</label>
+            <input name="telegram_api_base" value="{{.WebhookTelegram.APIBase}}" placeholder="пусто = https://api.telegram.org">
+            <p class="meta">Локальный Bot API — укажите его базовый URL. Пусто — официальный api.telegram.org.</p>
+          </div>
+        </div>
+
+        <div class="webhook-kind-settings" data-webhook-kind="max" {{if ne $kind "max"}}hidden{{end}}>
+          <div class="form-group"><label>URL PyMax API</label>
+            <input name="max_api_base" value="{{.WebhookMax.APIBase}}" placeholder="http://host:8000">
+            <p class="meta">Обязательно. Сервис должен быть уже залогинен (/auth).</p>
+          </div>
+          <div class="form-group"><label>Куда слать</label>
+            <select name="max_target">
+              <option value="chat_id" {{if or (eq .WebhookMax.Target "") (eq .WebhookMax.Target "chat_id")}}selected{{end}}>chat_id (число)</option>
+              <option value="channel" {{if eq .WebhookMax.Target "channel"}}selected{{end}}>Имя канала</option>
+              <option value="user" {{if eq .WebhookMax.Target "user"}}selected{{end}}>user_id (личка)</option>
+            </select>
+          </div>
+          <div class="form-group"><label>ID / имя</label><input name="max_target_id" value="{{.WebhookMax.TargetID}}"></div>
+        </div>
+
+        <div class="form-group"><label>Текст сообщения / body template</label><textarea name="body_template">{{.Webhook.BodyTemplate}}</textarea>
+          <p class="meta">HTTP: пусто — стандартный JSON. Telegram/Max: пусто — заголовок ленты, заголовок записи и ссылка. Шаблон: <code>{{"{{"}}.feed.Title{{"}}"}}</code>, <code>{{"{{"}}.entry.Title{{"}}"}}</code>, <code>{{"{{"}}.entry.URL{{"}}"}}</code>.</p>
+        </div>
+        <div class="form-group"><label>После успешной доставки</label>
+          <select name="on_success_entry">
+            <option value="none" {{if or (eq .Webhook.OnSuccessEntry "") (eq .Webhook.OnSuccessEntry "none")}}selected{{end}}>Ничего не делать с записью</option>
+            <option value="hash" {{if eq .Webhook.OnSuccessEntry "hash"}}selected{{end}}>Оставить только хеш (очистить текст)</option>
+            <option value="delete" {{if eq .Webhook.OnSuccessEntry "delete"}}selected{{end}}>Удалить запись (скрыть)</option>
+            <option value="mark_read" {{if eq .Webhook.OnSuccessEntry "mark_read"}}selected{{end}}>Пометить прочитанной</option>
+          </select>
+          <p class="meta">Применяется после успешной доставки. Если ту же запись ещё ждут другие вебхуки, «хеш» и «удалить» откладываются.</p>
+        </div>
+        <div class="form-group"><label><input type="checkbox" name="enabled" value="1" {{if or (not .Webhook.ID) .Webhook.Enabled}}checked{{end}}> Включён</label></div>
+        <button type="submit" class="btn btn-primary">Сохранить</button>
+        <a class="btn" href="/ui/webhooks">Назад</a>
+      </form>
+      {{if .Webhook.ID}}
+      <form method="post" action="/ui/webhooks/{{.Webhook.ID}}/delete" style="margin-top:1rem" onsubmit="return confirm('Удалить?')"><input type="hidden" name="csrf_token" value="{{.CSRFToken}}"><button class="btn btn-danger">Удалить</button></form>
+      {{end}}
+    </div>
+  </div>
+</div>
+{{end}}

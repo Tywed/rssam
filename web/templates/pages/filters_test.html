@@ -1,0 +1,23 @@
+{{define "body_filters_test"}}
+<div class="settings-layout">
+  {{template "settings_nav" .}}
+  <div class="settings-content">
+    <h1>Тест фильтра: {{.Filter.Name}}</h1>
+    <p class="meta">Проверка по последним {{len .Matches}} совпадениям из недавних записей.</p>
+    <table>
+      <thead><tr><th>Запись</th><th>Заголовок</th></tr></thead>
+      <tbody>
+      {{range .Matches}}
+      <tr>
+        <td><a href="/ui/entries/{{.Entry.ID}}">{{.Entry.ID}}</a></td>
+        <td>{{.Entry.Title}}</td>
+      </tr>
+      {{else}}
+      <tr><td colspan="2" class="meta">Совпадений не найдено</td></tr>
+      {{end}}
+      </tbody>
+    </table>
+    <a class="btn" href="/ui/filters/{{.Filter.ID}}">← К фильтру</a>
+  </div>
+</div>
+{{end}}

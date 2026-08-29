@@ -1,0 +1,33 @@
+{{define "body_settings_bridge_vk"}}
+<div class="settings-layout">
+  {{template "settings_nav" .}}
+  <div class="settings-content">
+    <h1>VK Search</h1>
+    {{template "bridges_nav" .}}
+    <p class="meta">Лент: {{bridgeFeedCount .BridgeFeedCounts "vk_search"}}</p>
+    {{if .FlashMsg}}<div class="flash flash-ok">{{.FlashMsg}}</div>{{end}}
+    <div class="card" style="margin-bottom:1rem">
+      <h2>Как подписаться</h2>
+      <p class="meta">VK Search — это не группа и не страница, а <strong>поиск постов</strong> через VK API <code>newsfeed.search</code>. Одна лента = один поисковый запрос.</p>
+      <p class="meta">Примеры URL при добавлении ленты:</p>
+      <ul class="meta">
+        <li><code>vk-search://golang</code></li>
+        <li><code>https://vk.com/feed?section=search&amp;q=golang</code></li>
+      </ul>
+      <p class="meta">Запрос нормализуется (lowercase, схлопнутые пробелы). Для опроса нужен access token ниже.</p>
+    </div>
+    <form method="post" action="/ui/settings/bridges/vk" class="card">
+      <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+      <div class="form-group"><label>Access token</label><input name="access_token" type="password" placeholder="{{if .BridgeSettings.VK.AccessTokenSet}}•••• (оставьте пустым, чтобы не менять){{else}}не задан{{end}}"></div>
+      <div class="form-group"><label>API version</label><input name="api_version" value="{{.BridgeSettings.VK.APIVersion}}"></div>
+      <div class="form-row">
+        <div class="form-group"><label>Default count</label><input name="default_count" type="number" min="1" value="{{.BridgeSettings.VK.DefaultCount}}"></div>
+        <div class="form-group"><label>Default lookback</label><input name="default_lookback" value="{{durationValue .BridgeSettings.VK.DefaultLookback}}" placeholder="24h"></div>
+        <div class="form-group"><label>Overlap</label><input name="overlap" value="{{durationValue .BridgeSettings.VK.Overlap}}" placeholder="2m"></div>
+        <div class="form-group"><label>Rate limit (с)</label><input name="rate_limit_seconds" type="number" min="1" value="{{.BridgeSettings.VK.RateLimitSeconds}}"></div>
+      </div>
+      <button type="submit" class="btn btn-primary">Сохранить</button>
+    </form>
+  </div>
+</div>
+{{end}}

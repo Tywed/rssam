@@ -1,0 +1,20 @@
+CREATE TABLE IF NOT EXISTS categories (
+  id BIGSERIAL PRIMARY KEY,
+  title TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+ALTER TABLE feeds
+  ADD COLUMN IF NOT EXISTS category_id BIGINT REFERENCES categories(id) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS interval_minutes INTEGER NOT NULL DEFAULT 60,
+  ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT now();
+
+DO $$
+BEGIN
+  ALTER TABLE feeds
+    ADD CONSTRAINT feeds_interval_minutes_check CHECK (interval_minutes BETWEEN 1 AND 10080);
+EXCEPTION
+  WHEN duplicate_object THEN
+    NULL;
+END $$;

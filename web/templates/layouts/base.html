@@ -1,0 +1,57 @@
+{{define "layout"}}
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{if .Title}}{{.Title}} — {{end}}rssam</title>
+  <link rel="icon" href="/ui/static/favicon.ico?v={{.AssetVersion}}" sizes="any">
+  <link rel="icon" href="/ui/static/favicon.svg?v={{.AssetVersion}}" type="image/svg+xml">
+  <link rel="icon" href="/ui/static/favicon-96x96.png?v={{.AssetVersion}}" type="image/png" sizes="96x96">
+  <link rel="apple-touch-icon" href="/ui/static/apple-touch-icon.png?v={{.AssetVersion}}">
+  <link rel="manifest" href="/ui/static/site.webmanifest?v={{.AssetVersion}}">
+  <script>(function(){try{var p=JSON.parse(localStorage.getItem('rssam.prefs')||'{}');if(p.theme==='dark')document.documentElement.setAttribute('data-theme','dark');}catch(e){}})();</script>
+  <link rel="stylesheet" href="/ui/static/app.css?v={{.AssetVersion}}">
+  <script src="/ui/static/app.js?v={{.AssetVersion}}" defer></script>
+</head>
+<body class="rssam-app">
+{{if .Layout}}
+{{template "app_header" .}}
+<div class="app-shell{{if isReaderMode .Nav}} mode-reader{{else}} mode-settings{{end}}" id="app-shell">
+  <aside class="panel panel-feeds" id="panel-feeds">
+    {{template "sidebar" .}}
+  </aside>
+  <div class="splitter splitter-v" data-panel="feeds" title="Изменить ширину панели лент"></div>
+  <div class="panel-workspace" id="panel-workspace">
+    {{if isReaderMode .Nav}}
+    <section class="panel panel-headlines" id="panel-headlines">
+      {{if .FlashMsg}}<div class="flash flash-ok">{{.FlashMsg}}</div>{{end}}
+      {{if .FlashErr}}<div class="flash flash-err">{{.FlashErr}}</div>{{end}}
+      {{.BodyHTML}}
+    </section>
+    <div class="splitter splitter-v" data-panel="headlines" title="Изменить ширину списка"></div>
+    <section class="panel panel-content" id="panel-content">
+      {{if .Entry.ID}}
+        {{template "entry_preview" .}}
+      {{else}}
+        <div class="content-placeholder">
+          <p>Выберите запись из списка слева</p>
+        </div>
+      {{end}}
+    </section>
+    {{else}}
+    <section class="panel panel-settings-full">
+      {{if .FlashMsg}}<div class="flash flash-ok">{{.FlashMsg}}</div>{{end}}
+      {{if .FlashErr}}<div class="flash flash-err">{{.FlashErr}}</div>{{end}}
+      {{.BodyHTML}}
+    </section>
+    {{end}}
+  </div>
+</div>
+<div class="feeds-backdrop" id="feeds-backdrop" hidden></div>
+{{else}}
+{{.BodyHTML}}
+{{end}}
+</body>
+</html>
+{{end}}
