@@ -1,0 +1,2 @@
+rssam ALL=(root) NOPASSWD: /usr/bin/systemctl restart rssam, /usr/bin/systemctl restart --no-block rssam, /bin/systemctl restart rssam, /bin/systemctl restart --no-block rssam
+rssam ALL=(root) NOPASSWD: /usr/local/sbin/rssam-update

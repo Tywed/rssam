@@ -1208,7 +1208,107 @@
     initFeedForm();
     initWebhookKindForm();
     initFilterForm();
+    initSidebarVersion();
+    initServiceControls();
     connectWS();
+  }
+
+  function initSidebarVersion() {
+    var el = document.getElementById('sidebar-version');
+    if (!el) return;
+    fetch('/ui/version', { credentials: 'same-origin' }).then(function (r) {
+      if (!r.ok) return null;
+      return r.json();
+    }).then(function (d) {
+      if (!d || !d.current) return;
+      el.textContent = d.current;
+      if (d.update_available) {
+        el.classList.add('is-stale');
+        el.title = 'Доступна ' + (d.latest || '');
+      } else if (d.checked) {
+        el.classList.remove('is-stale');
+        el.title = 'Актуальная';
+      }
+    }).catch(function () {});
+  }
+
+  function initServiceControls() {
+    function postForm(url, csrf, extra) {
+      var body = 'csrf_token=' + encodeURIComponent(csrf);
+      if (extra) body += extra;
+      return fetch(url, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: body
+      }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); });
+    }
+    function waitHealthz(statusEl, done) {
+      var n = 0;
+      function tick() {
+        n += 1;
+        fetch('/healthz', { cache: 'no-store' }).then(function (r) {
+          if (r.ok) { done(true); return; }
+          throw new Error('down');
+        }).catch(function () {
+          if (n > 30) { done(false); return; }
+          statusEl.textContent = 'Ожидание сервиса… (' + n + ')';
+          setTimeout(tick, 1000);
+        });
+      }
+      setTimeout(tick, 800);
+    }
+    var rst = document.getElementById('btn-restart');
+    if (rst) {
+      rst.addEventListener('click', function () {
+        var status = document.getElementById('restart-status');
+        rst.disabled = true;
+        if (status) { status.hidden = false; status.textContent = 'Перезапуск…'; }
+        postForm('/ui/admin/system/restart', rst.getAttribute('data-csrf')).then(function (res) {
+          if (!res.ok || !res.j.ok) {
+            if (status) status.textContent = (res.j && res.j.error) || 'Ошибка';
+            rst.disabled = false;
+            return;
+          }
+          waitHealthz(status, function (ok) {
+            if (status) status.textContent = ok ? 'Сервис снова отвечает' : 'Нет ответа /healthz';
+            if (ok) location.reload();
+            else rst.disabled = false;
+          });
+        }).catch(function () {
+          if (status) status.textContent = 'Сеть оборвалась — жду healthz';
+          waitHealthz(status, function (ok) {
+            if (ok) location.reload();
+            else rst.disabled = false;
+          });
+        });
+      });
+    }
+    var upd = document.getElementById('btn-update');
+    if (upd) {
+      upd.addEventListener('click', function () {
+        var status = document.getElementById('update-status');
+        upd.disabled = true;
+        if (status) { status.hidden = false; status.textContent = 'Обновление запущено…'; }
+        postForm('/ui/admin/system/update', upd.getAttribute('data-csrf')).then(function (res) {
+          if (!res.ok || !res.j.ok) {
+            if (status) status.textContent = (res.j && res.j.error) || 'Ошибка';
+            upd.disabled = false;
+            return;
+          }
+          waitHealthz(status, function (ok) {
+            if (status) status.textContent = ok ? 'Обновление завершено' : 'Сервис не поднялся, см. /opt/rssam/log/update.log';
+            if (ok) location.reload();
+            else upd.disabled = false;
+          });
+        }).catch(function () {
+          waitHealthz(status, function (ok) {
+            if (ok) location.reload();
+            else upd.disabled = false;
+          });
+        });
+      });
+    }
   }
 
   if (document.readyState === 'loading') {

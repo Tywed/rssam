@@ -84,5 +84,10 @@
     {{end}}{{end}}
     {{end}}
   </div>
+  <div class="sidebar-footer">
+    <a href="{{.DocsURL}}" target="_blank" rel="noopener" class="sidebar-foot-btn" title="Документация">Docs</a>
+    <a href="{{.GitHubURL}}" target="_blank" rel="noopener" class="sidebar-foot-btn" title="GitHub">GitHub</a>
+    <a href="{{if .IsAdmin}}/ui/admin/system{{else}}{{.GitHubURL}}/releases{{end}}" class="sidebar-foot-ver{{if .VersionUpdate}} is-stale{{end}}" id="sidebar-version" title="{{if .VersionUpdate}}Доступна {{.VersionLatest}}{{else if .VersionChecked}}Актуальная{{else}}Версия сборки{{end}}">{{.AppVersion}}</a>
+  </div>
 </nav>
 {{end}}

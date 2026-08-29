@@ -2,66 +2,98 @@
 
 Самостоятельный RSS-агрегатор на Go: веб-интерфейс, фоновый опрос лент, фильтры, вебхуки и мосты к источникам без обычного RSS.
 
-Лицензия: [MIT](LICENSE).
+Лицензия: [MIT](LICENSE). Репозиторий: [github.com/Tywed/rssam](https://github.com/Tywed/rssam).
 
 ## Возможности
 
 - Категории, ленты, непрочитанное, поиск, избранное
 - Роли: **admin** настраивает ленты, фильтры и вебхуки; обычный пользователь читает записи (в том числе по меткам фильтров)
 - Фильтры (regex RE2) с действиями: метка, вебхук, удаление
-- Вебхуки HTTP, Telegram и Max; после доставки — действие с записью (`on_success_entry`). Протокол для приёмника: [docs/WEBHOOK_RECEIVER_SPEC.md](docs/WEBHOOK_RECEIVER_SPEC.md)
-- На ленте можно хранить только хеш до срабатывания фильтра (экономия места)
-- Источники: обычный RSS/Atom, Telegram, Max, MaxStat, VK Search, Rutube, Dzen News, Smotrim
-- Per-feed: интервал опроса, TLS без проверки сертификата (сайты с корпоративным/РФ CA), retention
-- REST `/v1` (API-ключи, `X-Auth-Token`), спецификация: `GET /openapi.json` или файл [`internal/http/openapi.json`](internal/http/openapi.json)
-- Метрики Prometheus: `GET /metrics` (токен `METRICS_TOKEN`)
+- Вебхуки HTTP, Telegram и Max; после доставки — `on_success_entry`. Протокол: [docs/WEBHOOK_RECEIVER_SPEC.md](docs/WEBHOOK_RECEIVER_SPEC.md)
+- На ленте можно хранить только хеш до срабатывания фильтра
+- Источники: RSS/Atom, Telegram, Max, MaxStat, VK Search, Rutube, Dzen News, Smotrim
+- REST `/v1` (API-ключи), `GET /openapi.json`
+- Метрики Prometheus: `GET /metrics` (`METRICS_TOKEN`)
 
 ## Требования
 
-- Go 1.26+
-- PostgreSQL 16+ (в `docker compose` — PostgreSQL 17)
+- Linux (systemd), PostgreSQL 16+ (нативно 17)
+- root для установки; процесс работает от пользователя `rssam`
 
-## Запуск
+## Установка одной командой
+
+Нужен опубликованный [GitHub Release](https://github.com/Tywed/rssam/releases) (`rssam-linux-amd64.tar.gz` + sha256).
 
 ```bash
-cp .env.example .env
-# задайте ADMIN_USERNAME и ADMIN_PASSWORD
-docker compose up -d postgres
-go build -trimpath -o bin/rssam ./cmd/rssam
-./bin/rssam
+curl -fsSL https://raw.githubusercontent.com/Tywed/rssam/main/install.sh | sudo sh
 ```
 
-Миграции выполняются при старте (`RUN_MIGRATIONS=true`). Проверка: `curl -sS http://127.0.0.1:8080/healthz` — ответ `ok`.
+Затем откройте `http://<host>:8080/ui/login`. Логин/пароль admin — из `.env` (`ADMIN_USERNAME` / `ADMIN_PASSWORD`).
 
-UI: `http://127.0.0.1:8080/ui/login` (нужно `UI_ENABLED=true`).
+| | |
+| --- | --- |
+| Бинарь | `/opt/rssam/bin/rssam` |
+| Конфиг | `/opt/rssam/.env` |
+| Логи update | `/opt/rssam/log/update.log` |
+| Health | `GET /healthz` → `ok` (не `/health`) |
 
-Всё в Docker: `docker compose up --build`. Если установлен `make`: `make test`, `make build`.
+Не запускайте второй экземпляр rssam на той же `DATABASE_URL`: два poller’а делят очередь `jobs`.
 
-Не коммитьте `.env`. Не поднимайте второй экземпляр rssam на той же базе — два poller’а делят очередь `jobs`.
+Self-update и restart из веб-UI в **Docker не работают** — обновляйте образ.
 
-## Конфигурация
-
-Все переменные и комментарии — в [`.env.example`](.env.example). Кратко:
-
-| Область | Примеры |
-|---------|---------|
-| Сервер и БД | `DATABASE_URL`, `LISTEN_ADDR`, `LOG_LEVEL`, `UI_ENABLED` |
-| Admin при первом старте | `ADMIN_USERNAME`, `ADMIN_PASSWORD` |
-| Worker | `WORKER_POOL_SIZE`, `SCHEDULER_TICK`, интервалы polling, daily reset |
-| Мосты | `MAX_API_BASE_URL`, `TELEGRAM_PROXY_SERVICE_URL`, `VK_ACCESS_TOKEN`, MaxStat, Dzen, Smotrim |
-| SSRF | `FETCH_ALLOW_PRIVATE_NETWORK` (для LAN API мостов), `FETCH_ALLOWED_CIDRS` |
-| Вебхуки и cleanup | `WEBHOOK_*`, `REMOVED_RETENTION_DAYS`, `CLEANUP_INTERVAL` |
-
-Для Telegram-каналов нужен внешний SOCKS/proxy-service; для Max — HTTP API канала. Без них эти типы лент не опрашиваются.
-
-## Деплой бинарником
-
-Пример unit: [`deploy/rssam.service`](deploy/rssam.service) (`WorkingDirectory` и `EnvironmentFile` — `/opt/rssam`). Grafana/Prometheus: `deploy/grafana/`, `deploy/prometheus/`.
-
-## Разработка
+### Опции installer
 
 ```bash
+./install.sh                         # install latest release
+./install.sh v0.1.0                  # конкретная версия
+./install.sh --quiet
+./install.sh --with-postgres         # создать роль/БД rssam, если нет
+./install.sh update                  # или: install.sh --update
+./install.sh remove                  # БД и .env по умолчанию сохраняются
+```
+
+Обновление:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Tywed/rssam/main/install.sh | sudo sh -s -- --update
+```
+
+Из UI (admin → Система): перезапуск и обновление, если установлены sudoers из installer.
+
+## Сборка из исходников
+
+```bash
+cd /home/rssam/rssam
+VERSION=$(git describe --tags --always)
+COMMIT=$(git rev-parse --short HEAD)
+DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+go build -trimpath \
+  -ldflags="-s -w -X rssam/internal/version.Version=${VERSION} -X rssam/internal/version.Commit=${COMMIT} -X rssam/internal/version.Date=${DATE}" \
+  -o bin/rssam ./cmd/rssam
 go test ./...
 ```
 
-Интеграционные тесты storage: `DATABASE_URL=... go test ./internal/storage/... -tags=integration`.
+Деплой на этот хост после сборки:
+
+```bash
+sudo systemctl stop rssam
+sudo cp bin/rssam /opt/rssam/bin/rssam
+sudo systemctl start rssam
+sleep 1
+curl -sS --fail --retry 5 --retry-delay 1 --retry-connrefused http://127.0.0.1:8080/healthz
+```
+
+## Docker (разработка)
+
+```bash
+cp .env.example .env
+docker compose up --build
+```
+
+Не поднимайте compose-app на prod `DATABASE_URL` параллельно с systemd.
+
+## Конфигурация
+
+Переменные — в [`.env.example`](.env.example). Кратко: `DATABASE_URL`, `LISTEN_ADDR`, `WORKER_POOL_SIZE`, мосты, SSRF `FETCH_ALLOW_PRIVATE_NETWORK`.
+
+`GITHUB_REPO=Tywed/rssam` — сравнение версии в UI с latest release.

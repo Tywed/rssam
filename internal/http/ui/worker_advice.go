@@ -84,7 +84,7 @@ func (h *Handler) loadWorkerAdvice(ctx context.Context, summary storage.AdminFee
 		Utilization:          fmt.Sprintf("%.0f%%", advice.Utilization*100),
 		WebhookDue:           webhookDue,
 		Message:              advice.Message,
-		ApplyHint:            "Чтобы применить: задайте WORKER_POOL_SIZE (и при необходимости WEBHOOK_WORKER_POOL_SIZE) в /opt/rssam/.env и выполните systemctl restart rssam. Из UI размер пула не меняется.",
+		ApplyHint:            "Изменение размера пула пишется в .env и применяется после перезапуска сервиса.",
 	}
 
 	switch advice.Action {

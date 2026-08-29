@@ -95,6 +95,9 @@ func (s *Server) registerUI(mux *http.ServeMux) {
 	cfg.WorkerPoolSize = s.workerPoolSize
 	cfg.WebhookWorkerPoolSize = s.webhookWorkerPoolSize
 	cfg.FetchTimeoutSeconds = s.fetchTimeoutSec
+	cfg.EnvFilePath = s.envFilePath
+	cfg.DatabaseURL = s.databaseURL
+	cfg.GitHubRepo = s.gitHubRepo
 	h, err := ui.NewHandler(cfg)
 	if err != nil {
 		s.log.Error("ui handler init failed", "err", err)

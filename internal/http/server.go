@@ -83,6 +83,9 @@ type Dependencies struct {
 
 	WorkerPoolSize        int
 	WebhookWorkerPoolSize int
+	EnvFilePath           string
+	DatabaseURL           string
+	GitHubRepo            string
 
 	HandlerRegistry *reader.HandlerRegistry
 	TitleResolver   *reader.TitleResolver
@@ -136,6 +139,9 @@ type Server struct {
 	workerPoolSize        int
 	webhookWorkerPoolSize int
 	fetchTimeoutSec       int
+	envFilePath           string
+	databaseURL           string
+	gitHubRepo            string
 	handlerRegistry       *reader.HandlerRegistry
 	titleResolver         *reader.TitleResolver
 	bridgeManager         *bridgeconfig.Manager
@@ -336,6 +342,9 @@ func New(dep Dependencies) *Server {
 		workerPoolSize:        dep.WorkerPoolSize,
 		webhookWorkerPoolSize: dep.WebhookWorkerPoolSize,
 		fetchTimeoutSec:       dep.FetchTimeoutSec,
+		envFilePath:           dep.EnvFilePath,
+		databaseURL:           dep.DatabaseURL,
+		gitHubRepo:            dep.GitHubRepo,
 		handlerRegistry:       registry,
 		titleResolver:         dep.TitleResolver,
 		bridgeManager:         dep.BridgeManager,

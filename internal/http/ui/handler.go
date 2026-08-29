@@ -13,6 +13,7 @@ import (
 
 	"rssam/internal/bridgeconfig"
 	"rssam/internal/filter"
+	"rssam/internal/githubrel"
 	"rssam/internal/reader"
 	"rssam/internal/service"
 	"rssam/internal/ssrf"
@@ -56,6 +57,9 @@ type Config struct {
 	WorkerPoolSize        int
 	WebhookWorkerPoolSize int
 	FetchTimeoutSeconds   int
+	EnvFilePath           string
+	DatabaseURL           string
+	GitHubRepo            string
 }
 
 type WebhookTestResult struct {
@@ -75,6 +79,7 @@ type Handler struct {
 	log         *slog.Logger
 	templates   *template.Template
 	unreadCache *unreadCountsCache
+	releases    *githubrel.Client
 }
 
 func NewHandler(cfg Config) (*Handler, error) {
@@ -86,7 +91,15 @@ func NewHandler(cfg Config) (*Handler, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Handler{cfg: cfg, log: log, templates: tmpl, unreadCache: newUnreadCountsCache()}, nil
+	h := &Handler{
+		cfg:         cfg,
+		log:         log,
+		templates:   tmpl,
+		unreadCache: newUnreadCountsCache(),
+		releases:    githubrel.New(cfg.GitHubRepo),
+	}
+	go func() { _, _ = h.releases.Latest() }()
+	return h, nil
 }
 
 func parseTemplates() (*template.Template, error) {
@@ -411,7 +424,12 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.Handle("POST /ui/admin/feeds/{id}/pause", auth(h.requireAdmin(http.HandlerFunc(h.handleAdminFeedPause))))
 	mux.Handle("POST /ui/admin/feeds/{id}/unpause", auth(h.requireAdmin(http.HandlerFunc(h.handleAdminFeedUnpause))))
 	mux.Handle("POST /ui/admin/feeds/{id}/reset-circuit", auth(h.requireAdmin(http.HandlerFunc(h.handleAdminFeedResetCircuit))))
+	mux.Handle("GET /ui/version", auth(http.HandlerFunc(h.handleVersionJSON)))
 	mux.Handle("GET /ui/admin/system", auth(h.requireAdmin(http.HandlerFunc(h.handleAdminSystem))))
+	mux.Handle("POST /ui/admin/system/workers", auth(h.requireAdmin(http.HandlerFunc(h.handleAdminWorkersSave))))
+	mux.Handle("POST /ui/admin/system/restart", auth(h.requireAdmin(http.HandlerFunc(h.handleAdminRestart))))
+	mux.Handle("POST /ui/admin/system/update", auth(h.requireAdmin(http.HandlerFunc(h.handleAdminUpdate))))
+	mux.Handle("GET /ui/admin/system/backup.txt", auth(h.requireAdmin(http.HandlerFunc(h.handleAdminBackupHint))))
 }
 
 func (h *Handler) staticHandler() http.Handler {

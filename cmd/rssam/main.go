@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -310,6 +311,9 @@ func main() {
 		CircuitBreakerThreshold: cfg.FeedCircuitBreakerThreshold,
 		WorkerPoolSize:          cfg.WorkerPoolSize,
 		WebhookWorkerPoolSize:   cfg.WebhookWorkerPoolSize,
+		EnvFilePath:             os.Getenv("RSSAM_ENV_FILE"),
+		DatabaseURL:             cfg.DatabaseURL,
+		GitHubRepo:              strings.TrimSpace(os.Getenv("GITHUB_REPO")),
 	})
 
 	if err := srv.Run(ctx, cfg.ListenAddr, cfg.ShutdownTimeout); err != nil {

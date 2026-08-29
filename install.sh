@@ -1,0 +1,238 @@
+#!/bin/sh
+set -eu
+
+REPO="${GITHUB_REPO:-Tywed/rssam}"
+PREFIX="${RSSAM_PREFIX:-/opt/rssam}"
+BIN_DIR="$PREFIX/bin"
+ENV_FILE="$PREFIX/.env"
+UNIT_SRC=""
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+QUIET=0
+ACTION=install
+TARGET_VER=""
+WITH_PG=0
+REMOVE_ENV=0
+
+usage() {
+  cat <<EOF
+Usage: install.sh [install|update|remove] [VERSION] [--quiet] [--with-postgres] [--remove-env]
+  install           install binary, unit, sudoers (default)
+  update [vX.Y.Z]   replace binary from GitHub Release
+  remove            stop unit, remove binary (keep .env and DB)
+  --quiet           non-interactive
+  --with-postgres   create role/db rssam if missing (needs peer/sudo postgres)
+  --help
+EOF
+}
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --quiet|-q) QUIET=1 ;;
+    --with-postgres) WITH_PG=1 ;;
+    --remove-env) REMOVE_ENV=1 ;;
+    --help|-h) usage; exit 0 ;;
+    --update) ACTION=update ;;
+    --remove) ACTION=remove ;;
+    install|update|remove) ACTION=$1 ;;
+    v*.*.*|[0-9]*.[0-9]*) TARGET_VER=$1 ;;
+    *) echo "unknown arg: $1" >&2; usage; exit 1 ;;
+  esac
+  shift
+done
+
+log() { printf '%s\n' "$*"; }
+die() { printf 'error: %s\n' "$*" >&2; exit 1; }
+
+need_root() {
+  [ "$(id -u)" -eq 0 ] || die "run as root"
+}
+
+latest_tag() {
+  curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -1
+}
+
+fetch() {
+  curl -fsSL -o "$2" "$1"
+}
+
+ensure_user() {
+  if ! id rssam >/dev/null 2>&1; then
+    useradd --system --home "$PREFIX" --shell /usr/sbin/nologin rssam
+  fi
+}
+
+install_sudoers() {
+  cat >/etc/sudoers.d/rssam <<'EOF'
+rssam ALL=(root) NOPASSWD: /usr/bin/systemctl restart rssam, /usr/bin/systemctl restart --no-block rssam, /bin/systemctl restart rssam, /bin/systemctl restart --no-block rssam
+rssam ALL=(root) NOPASSWD: /usr/local/sbin/rssam-update
+EOF
+  chmod 440 /etc/sudoers.d/rssam
+}
+
+install_unit() {
+  mkdir -p /etc/systemd/system
+  if [ -f "$SCRIPT_DIR/deploy/rssam.service" ]; then
+    cp "$SCRIPT_DIR/deploy/rssam.service" /etc/systemd/system/rssam.service
+  elif [ -f "$PREFIX/deploy/rssam.service" ]; then
+    cp "$PREFIX/deploy/rssam.service" /etc/systemd/system/rssam.service
+  else
+    cat >/etc/systemd/system/rssam.service <<'EOF'
+[Unit]
+Description=rssam RSS aggregator
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=rssam
+Group=rssam
+WorkingDirectory=/opt/rssam
+EnvironmentFile=/opt/rssam/.env
+ExecStart=/opt/rssam/bin/rssam
+Restart=on-failure
+RestartSec=5
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target
+EOF
+  fi
+  systemctl daemon-reload
+}
+
+maybe_postgres() {
+  [ "$WITH_PG" -eq 1 ] || return 0
+  command -v psql >/dev/null || die "psql not found"
+  su -s /bin/sh postgres -c "psql -tc \"SELECT 1 FROM pg_roles WHERE rolname='rssam'\"" | grep -q 1 || \
+    su -s /bin/sh postgres -c "createuser -P rssam" || true
+  su -s /bin/sh postgres -c "psql -tc \"SELECT 1 FROM pg_database WHERE datname='rssam'\"" | grep -q 1 || \
+    su -s /bin/sh postgres -c "createdb -O rssam rssam"
+}
+
+write_env() {
+  [ -f "$ENV_FILE" ] && return 0
+  mkdir -p "$PREFIX"
+  if [ -f "$SCRIPT_DIR/.env.example" ]; then
+    cp "$SCRIPT_DIR/.env.example" "$ENV_FILE"
+  else
+    cat >"$ENV_FILE" <<EOF
+DATABASE_URL=postgres://rssam:rssam@127.0.0.1:5432/rssam?sslmode=disable
+LISTEN_ADDR=:8080
+RUN_MIGRATIONS=true
+UI_ENABLED=true
+ADMIN_USERNAME=admin
+ADMIN_PASSWORD=changeme
+WORKER_POOL_SIZE=10
+WEBHOOK_WORKER_POOL_SIZE=10
+GITHUB_REPO=${REPO}
+EOF
+  fi
+  chmod 600 "$ENV_FILE"
+  chown rssam:rssam "$ENV_FILE"
+}
+
+install_helper() {
+  mkdir -p /usr/local/sbin
+  if [ -f "$SCRIPT_DIR/install.sh" ]; then
+    cp "$SCRIPT_DIR/install.sh" /usr/local/sbin/rssam-update
+  else
+    cp "$0" /usr/local/sbin/rssam-update
+  fi
+  chmod 755 /usr/local/sbin/rssam-update
+}
+
+download_release() {
+  ver=$1
+  tmp=$(mktemp -d)
+  url="https://github.com/${REPO}/releases/download/${ver}/rssam-linux-amd64.tar.gz"
+  fetch "$url" "$tmp/rssam-linux-amd64.tar.gz"
+  fetch "$url.sha256" "$tmp/rssam-linux-amd64.tar.gz.sha256" || true
+  if [ -s "$tmp/rssam-linux-amd64.tar.gz.sha256" ]; then
+    expect=$(tr -d ' \n\t' <"$tmp/rssam-linux-amd64.tar.gz.sha256" | awk '{print $1}')
+    got=$(sha256sum "$tmp/rssam-linux-amd64.tar.gz" | awk '{print $1}')
+    case "$expect" in
+      [a-fA-F0-9][a-fA-F0-9]*)
+        if [ ${#expect} -eq 64 ] && [ "$expect" != "$got" ]; then
+          rm -rf "$tmp"
+          die "sha256 mismatch"
+        fi
+        ;;
+    esac
+  fi
+  tar -xzf "$tmp/rssam-linux-amd64.tar.gz" -C "$tmp"
+  [ -f "$tmp/rssam" ] || { rm -rf "$tmp"; die "binary missing in archive"; }
+  mkdir -p "$BIN_DIR"
+  if [ -f "$BIN_DIR/rssam" ]; then
+    ts=$(date +%Y%m%d_%H%M%S)
+    cp "$BIN_DIR/rssam" "$BIN_DIR/rssam.backup.$ts"
+  fi
+  install -m 755 "$tmp/rssam" "$BIN_DIR/rssam"
+  chown rssam:rssam "$BIN_DIR/rssam" 2>/dev/null || true
+  rm -rf "$tmp"
+  "$BIN_DIR/rssam" --version >/dev/null || die "new binary failed --version"
+}
+
+do_install() {
+  need_root
+  ensure_user
+  mkdir -p "$BIN_DIR" "$PREFIX/log"
+  chown -R rssam:rssam "$PREFIX"
+  maybe_postgres
+  write_env
+  ver=$TARGET_VER
+  [ -n "$ver" ] || ver=$(latest_tag)
+  [ -n "$ver" ] || die "no GitHub release; pass a version or publish a tag"
+  download_release "$ver"
+  install_unit
+  install_sudoers
+  install_helper
+  systemctl enable rssam
+  systemctl restart rssam
+  sleep 1
+  curl -sS --fail --retry 5 --retry-delay 1 --retry-connrefused http://127.0.0.1:8080/healthz >/dev/null
+  log "installed $ver  UI http://<host>:8080/ui/login"
+}
+
+do_update() {
+  need_root
+  mkdir -p "$PREFIX/log"
+  exec >>"$PREFIX/log/update.log" 2>&1
+  log "=== update $(date -u) ==="
+  ver=$TARGET_VER
+  [ -n "$ver" ] || ver=$(latest_tag)
+  [ -n "$ver" ] || die "no release"
+  systemctl stop rssam || true
+  download_release "$ver"
+  systemctl start rssam
+  n=0
+  while [ "$n" -lt 15 ]; do
+    if curl -sf http://127.0.0.1:8080/healthz >/dev/null 2>&1; then
+      log "ok $ver"
+      exit 0
+    fi
+    n=$((n + 1))
+    sleep 1
+  done
+  die "service did not become healthy"
+}
+
+do_remove() {
+  need_root
+  systemctl stop rssam 2>/dev/null || true
+  systemctl disable rssam 2>/dev/null || true
+  rm -f /etc/systemd/system/rssam.service
+  systemctl daemon-reload
+  rm -f "$BIN_DIR/rssam" /usr/local/sbin/rssam-update /etc/sudoers.d/rssam
+  if [ "$REMOVE_ENV" -eq 1 ]; then
+    rm -f "$ENV_FILE"
+  elif [ "$QUIET" -eq 0 ]; then
+    log "kept $ENV_FILE and PostgreSQL database"
+  fi
+}
+
+case "$ACTION" in
+  install) do_install ;;
+  update) do_update ;;
+  remove) do_remove ;;
+  *) usage; exit 1 ;;
+esac

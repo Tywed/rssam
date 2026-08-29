@@ -14,6 +14,11 @@ import (
 	"rssam/internal/version"
 )
 
+const (
+	docsURL   = "https://github.com/Tywed/rssam/blob/main/README.md"
+	githubURL = "https://github.com/Tywed/rssam"
+)
+
 type pageData struct {
 	Title                      string
 	Layout                     bool
@@ -113,19 +118,12 @@ type pageData struct {
 	WorkerAdvice               workerAdviceView
 	DBSizeBytes                int64
 	MemAllocBytes              int64
-}
-
-type adminSystemInfo struct {
-	Version       string
-	GoVersion     string
-	BuildDate     string
-	Arch          string
-	OS            string
-	UsersCount    int
-	MemAllocBytes int64
-	DBSizeBytes   int64
-	TotalEntries  int
-	TotalUnread   int
+	AppVersion                 string
+	GitHubURL                  string
+	DocsURL                    string
+	VersionLatest              string
+	VersionUpdate              bool
+	VersionChecked             bool
 }
 
 type ctxKey int
@@ -295,7 +293,6 @@ func assetVersion() string {
 	if v == "" {
 		v = "dev"
 	}
-	// URL-safe cache buster (build timestamps contain ':').
 	return strings.NewReplacer(":", "", "T", "-").Replace(v)
 }
 
@@ -308,6 +305,15 @@ func (h *Handler) baseData(r *http.Request, nav string) pageData {
 		IsAdmin:      p.IsAdmin,
 		EntrySort:    parseEntrySort(r),
 		AssetVersion: assetVersion(),
+		AppVersion:   version.Version,
+		GitHubURL:    githubURL,
+		DocsURL:      docsURL,
+	}
+	if h.releases != nil {
+		st := h.releases.Status()
+		data.VersionLatest = st.Latest
+		data.VersionUpdate = st.UpdateAvail
+		data.VersionChecked = st.CheckedOK
 	}
 	if h.cfg.Users != nil && p.UserID > 0 {
 		if u, err := h.cfg.Users.GetUser(r.Context(), p.UserID); err == nil {
