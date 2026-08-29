@@ -157,18 +157,17 @@ func BinaryPath() string {
 }
 
 func DualProcessWarning() string {
-	out, err := exec.Command("pgrep", "-af", "rssam").Output()
+	out, err := exec.Command("pgrep", "-a", "-x", "rssam").Output()
 	if err != nil {
 		return ""
 	}
 	n := 0
 	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
-		if strings.Contains(line, "pgrep") {
+		line = strings.TrimSpace(line)
+		if line == "" {
 			continue
 		}
-		if strings.Contains(line, "/opt/rssam/bin/rssam") || strings.Contains(line, "go run") || strings.Contains(line, "./bin/rssam") {
-			n++
-		}
+		n++
 	}
 	if n > 1 {
 		return "Несколько процессов rssam. Два poller’а на одной БД делят очередь jobs."
