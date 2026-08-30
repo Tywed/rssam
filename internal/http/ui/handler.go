@@ -165,15 +165,15 @@ func parseTemplates() (*template.Template, error) {
 			}
 			return template.CSS(l.FgColor)
 		},
-		"querySuffix":             querySuffix,
-		"formatDuration":          formatDuration,
-		"feedTypeLabel":           reader.FeedTypeLabel,
-		"bridgeFeedCount":         bridgeFeedCount,
-		"feedHasError":            feedHasError,
-		"pluralChannels":          pluralChannels,
-		"categoryFeedCount":       categoryFeedCount,
-		"scopeFeedSelected":       func(m map[int64]bool, id int64) bool { return m[id] },
-		"scopeCatSelected":        func(m map[int64]bool, id int64) bool { return m[id] },
+		"querySuffix":       querySuffix,
+		"formatDuration":    formatDuration,
+		"feedTypeLabel":     reader.FeedTypeLabel,
+		"bridgeFeedCount":   bridgeFeedCount,
+		"feedHasError":      feedHasError,
+		"pluralChannels":    pluralChannels,
+		"categoryFeedCount": categoryFeedCount,
+		"scopeFeedSelected": func(m map[int64]bool, id int64) bool { return m[id] },
+		"scopeCatSelected":  func(m map[int64]bool, id int64) bool { return m[id] },
 		"categoryTitleByID": func(cats []storage.Category, id *int64) string {
 			if id == nil {
 				return ""
@@ -189,26 +189,26 @@ func parseTemplates() (*template.Template, error) {
 			return strings.TrimSpace(actionType) == strings.TrimSpace(optionKind) &&
 				strings.TrimSpace(savedParam) == strings.TrimSpace(optionID)
 		},
-		"filterActionOptionValue":       filterActionOptionValue,
+		"filterActionOptionValue":      filterActionOptionValue,
 		"filterActionSavedOptionValue": filterActionSavedOptionValue,
-		"adminFeedStatusLabel":    adminFeedStatusLabel,
-		"adminFeedStatusClass":    adminFeedStatusClass,
-		"adminFeedsSortLink":      adminFeedsSortLink,
-		"adminFeedsPageLink":      adminFeedsPageLink,
-		"adminFeedsSortIndicator": adminFeedsSortIndicator,
-		"truncateStr":             truncateStr,
-		"formatBytes":             formatBytes,
-		"webhookKindLabel":        webhookKindLabel,
-		"webhookLabel":            webhookLabel,
-		"adminWebhookStatusLabel": adminWebhookStatusLabel,
-		"adminWebhookStatusClass": adminWebhookStatusClass,
-		"webhookLogStatusLabel":   webhookLogStatusLabel,
-		"webhookLogStatusClass":   webhookLogStatusClass,
-		"webhookTriggerLabel":     webhookTriggerLabel,
-		"classifyWebhookError":    classifyWebhookError,
-		"webhooksFilterLink":      webhooksFilterLink,
-		"webhookLogsFilterLink":   webhookLogsFilterLink,
-		"webhookSuccessRate7d":    webhookSuccessRate7d,
+		"adminFeedStatusLabel":         adminFeedStatusLabel,
+		"adminFeedStatusClass":         adminFeedStatusClass,
+		"adminFeedsSortLink":           adminFeedsSortLink,
+		"adminFeedsPageLink":           adminFeedsPageLink,
+		"adminFeedsSortIndicator":      adminFeedsSortIndicator,
+		"truncateStr":                  truncateStr,
+		"formatBytes":                  formatBytes,
+		"webhookKindLabel":             webhookKindLabel,
+		"webhookLabel":                 webhookLabel,
+		"adminWebhookStatusLabel":      adminWebhookStatusLabel,
+		"adminWebhookStatusClass":      adminWebhookStatusClass,
+		"webhookLogStatusLabel":        webhookLogStatusLabel,
+		"webhookLogStatusClass":        webhookLogStatusClass,
+		"webhookTriggerLabel":          webhookTriggerLabel,
+		"classifyWebhookError":         classifyWebhookError,
+		"webhooksFilterLink":           webhooksFilterLink,
+		"webhookLogsFilterLink":        webhookLogsFilterLink,
+		"webhookSuccessRate7d":         webhookSuccessRate7d,
 		"derefString": func(p *string) string {
 			if p == nil {
 				return ""
@@ -440,6 +440,7 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.Handle("POST /ui/admin/system/workers/resume", auth(h.requireAdmin(http.HandlerFunc(h.handleAdminWorkersResume))))
 	mux.Handle("POST /ui/admin/system/restart", auth(h.requireAdmin(http.HandlerFunc(h.handleAdminRestart))))
 	mux.Handle("POST /ui/admin/system/update", auth(h.requireAdmin(http.HandlerFunc(h.handleAdminUpdate))))
+	mux.Handle("GET /ui/admin/system/update/status", auth(h.requireAdmin(http.HandlerFunc(h.handleAdminUpdateStatus))))
 	mux.Handle("GET /ui/admin/system/backup.txt", auth(h.requireAdmin(http.HandlerFunc(h.handleAdminBackupHint))))
 }
 

@@ -56,10 +56,13 @@
       <p class="meta">{{.Info.RestartHint}}</p>
       {{end}}
       {{if .Info.CanUpdate}}
+      {{if .Info.UpdateAvail}}
       <p style="margin-top:1rem">
-        <button type="button" class="btn" id="btn-update" data-csrf="{{.CSRFToken}}" {{if not .Info.UpdateAvail}}disabled{{end}}>Обновить до {{if .Info.Latest}}{{.Info.Latest}}{{else}}latest{{end}}</button>
+        <button type="button" class="btn btn-primary" id="btn-update" data-csrf="{{.CSRFToken}}" data-version="{{.Info.Latest}}">Обновить до {{.Info.Latest}}</button>
       </p>
-      <p class="meta" id="update-status" hidden></p>
+      {{else if .Info.Latest}}
+      <p class="meta" style="margin-top:1rem">Установлена актуальная версия ({{.Info.Latest}}).</p>
+      {{end}}
       {{else}}
       <p class="meta">{{.Info.UpdateHint}}</p>
       {{end}}
@@ -77,6 +80,16 @@
       <pre class="release-notes">pg_dump --no-owner --no-acl "$DATABASE_URL" &gt; rssam.sql</pre>
       <p><a href="/ui/admin/system/backup.txt">Скачать шпаргалку</a></p>
     </div>
+  </div>
+</div>
+<div id="update-modal" class="modal" hidden>
+  <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="update-modal-title">
+    <h2 id="update-modal-title">Обновление</h2>
+    <p class="meta" id="update-modal-step">Запуск…</p>
+    <pre class="modal-log" id="update-modal-log"></pre>
+    <p id="update-modal-actions" hidden>
+      <button type="button" class="btn" id="update-modal-close">Закрыть</button>
+    </p>
   </div>
 </div>
 {{end}}

@@ -11,3 +11,18 @@ func TestRedactDatabaseURL(t *testing.T) {
 		t.Fatalf("got %q", got)
 	}
 }
+
+func TestParseUpdateLog(t *testing.T) {
+	done, ok, errMsg := ParseUpdateLog("", true)
+	if done || ok || errMsg != "" {
+		t.Fatal("running")
+	}
+	done, ok, errMsg = ParseUpdateLog("=== update ===\nok v0.1.1\n", false)
+	if !done || !ok || errMsg != "" {
+		t.Fatalf("ok: done=%v ok=%v err=%q", done, ok, errMsg)
+	}
+	done, ok, errMsg = ParseUpdateLog("curl: 403\nerror: no release\n", false)
+	if !done || ok || errMsg != "no release" {
+		t.Fatalf("fail: done=%v ok=%v err=%q", done, ok, errMsg)
+	}
+}

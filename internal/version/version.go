@@ -23,6 +23,7 @@ func Normalize(v string) string {
 }
 
 // CompareSemver returns -1 if a<b, 0 if equal, 1 if a>b. Non-semver (dev) compares as less than a tagged release.
+// git describe (0.1.0-1-gabcdef) is newer than tag 0.1.0 and older than 0.1.1.
 func CompareSemver(a, b string) int {
 	a, b = Normalize(a), Normalize(b)
 	if a == b {
@@ -47,7 +48,78 @@ func CompareSemver(a, b string) int {
 			return 1
 		}
 	}
-	return 0
+	return compareSemverSuffix(a, b)
+}
+
+func compareSemverSuffix(a, b string) int {
+	aRest := semverSuffix(a)
+	bRest := semverSuffix(b)
+	if aRest == bRest {
+		return 0
+	}
+	aN, aGit := gitDescribeAhead(aRest)
+	bN, bGit := gitDescribeAhead(bRest)
+	switch {
+	case aGit && bGit:
+		if aN < bN {
+			return -1
+		}
+		if aN > bN {
+			return 1
+		}
+		return 0
+	case aGit && bRest == "":
+		return 1
+	case bGit && aRest == "":
+		return -1
+	case aRest == "":
+		return 1
+	case bRest == "":
+		return -1
+	case aGit:
+		return 1
+	case bGit:
+		return -1
+	default:
+		return strings.Compare(aRest, bRest)
+	}
+}
+
+func semverSuffix(s string) string {
+	s = strings.SplitN(s, "+", 2)[0]
+	if i := strings.IndexByte(s, '-'); i >= 0 {
+		return s[i+1:]
+	}
+	return ""
+}
+
+func gitDescribeAhead(rest string) (int, bool) {
+	if rest == "" {
+		return 0, false
+	}
+	n, i := 0, 0
+	for i < len(rest) && rest[i] >= '0' && rest[i] <= '9' {
+		n = n*10 + int(rest[i]-'0')
+		i++
+	}
+	if i == 0 || i >= len(rest) || rest[i] != '-' {
+		return 0, false
+	}
+	rest = rest[i+1:]
+	if !strings.HasPrefix(rest, "g") {
+		return 0, false
+	}
+	hex := strings.TrimPrefix(rest, "g")
+	hex = strings.TrimSuffix(hex, "-dirty")
+	if hex == "" {
+		return 0, false
+	}
+	for _, c := range hex {
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') && (c < 'A' || c > 'F') {
+			return 0, false
+		}
+	}
+	return n, true
 }
 
 func parseSemver(s string) ([3]int, bool) {

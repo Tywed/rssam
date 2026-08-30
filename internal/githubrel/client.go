@@ -47,17 +47,25 @@ func New(repo string) *Client {
 	return &Client{
 		Repo: repo,
 		HTTP: &http.Client{Timeout: 8 * time.Second},
-		TTL:  6 * time.Hour,
+		TTL:  5 * time.Minute,
 	}
 }
 
 func (c *Client) Latest() (Release, error) {
+	return c.latest(false)
+}
+
+func (c *Client) Refresh() (Release, error) {
+	return c.latest(true)
+}
+
+func (c *Client) latest(force bool) (Release, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.TTL <= 0 {
-		c.TTL = 6 * time.Hour
+		c.TTL = 5 * time.Minute
 	}
-	if !c.at.IsZero() && time.Since(c.at) < c.TTL && c.err == nil && c.cached.Tag != "" {
+	if !force && !c.at.IsZero() && time.Since(c.at) < c.TTL && c.err == nil && c.cached.Tag != "" {
 		return c.cached, nil
 	}
 	rel, err := c.fetch()

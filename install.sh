@@ -48,11 +48,17 @@ need_root() {
 }
 
 latest_tag() {
-  curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -1
+  tag=$(curl -fsSL -A rssam "https://api.github.com/repos/${REPO}/releases/latest" | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -1) || true
+  if [ -n "$tag" ]; then
+    printf '%s\n' "$tag"
+    return 0
+  fi
+  loc=$(curl -fsSL -A rssam -o /dev/null -w '%{url_effective}' "https://github.com/${REPO}/releases/latest") || return 1
+  printf '%s\n' "$loc" | sed -n 's!.*/tag/\([^/]*\)$!\1!p'
 }
 
 fetch() {
-  curl -fsSL -o "$2" "$1"
+  curl -fsSL -A rssam -o "$2" "$1"
 }
 
 ensure_user() {
@@ -145,6 +151,7 @@ download_release() {
   ver=$1
   tmp=$(mktemp -d)
   url="https://github.com/${REPO}/releases/download/${ver}/rssam-linux-amd64.tar.gz"
+  log "fetch $url"
   fetch "$url" "$tmp/rssam-linux-amd64.tar.gz"
   fetch "$url.sha256" "$tmp/rssam-linux-amd64.tar.gz.sha256" || true
   if [ -s "$tmp/rssam-linux-amd64.tar.gz.sha256" ]; then
@@ -166,10 +173,11 @@ download_release() {
     ts=$(date +%Y%m%d_%H%M%S)
     cp "$BIN_DIR/rssam" "$BIN_DIR/rssam.backup.$ts"
   fi
-  install -m 755 "$tmp/rssam" "$BIN_DIR/rssam"
+  install -m 755 "$tmp/rssam" "$BIN_DIR/rssam.new"
+  "$BIN_DIR/rssam.new" --version >/dev/null || { rm -rf "$tmp" "$BIN_DIR/rssam.new"; die "new binary failed --version"; }
+  mv -f "$BIN_DIR/rssam.new" "$BIN_DIR/rssam"
   chown rssam:rssam "$BIN_DIR/rssam" 2>/dev/null || true
   rm -rf "$tmp"
-  "$BIN_DIR/rssam" --version >/dev/null || die "new binary failed --version"
 }
 
 do_install() {
@@ -200,13 +208,16 @@ do_update() {
   log "=== update $(date -u) ==="
   ver=$TARGET_VER
   [ -n "$ver" ] || ver=$(latest_tag)
-  [ -n "$ver" ] || die "no release"
-  systemctl stop rssam || true
+  [ -n "$ver" ] || die "no release (GitHub API/redirect failed)"
+  log "target $ver"
+  log "downloading $ver"
   download_release "$ver"
-  systemctl start rssam
+  log "installed binary $ver"
+  log "restarting rssam"
+  systemctl restart rssam
   n=0
-  while [ "$n" -lt 15 ]; do
-    if curl -sf http://127.0.0.1:8080/healthz >/dev/null 2>&1; then
+  while [ "$n" -lt 30 ]; do
+    if curl -sf --retry 0 http://127.0.0.1:8080/healthz >/dev/null 2>&1; then
       log "ok $ver"
       exit 0
     fi

@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 )
@@ -102,21 +103,87 @@ func CanUpdate() (bool, string) {
 	return true, ""
 }
 
+func UpdateLogPath() string {
+	return "/opt/rssam/log/update.log"
+}
+
+func updatePIDPath() string {
+	return "/opt/rssam/log/update.pid"
+}
+
+func UpdateRunning() bool {
+	b, err := os.ReadFile(updatePIDPath())
+	if err != nil {
+		return false
+	}
+	pid, convErr := strconv.Atoi(strings.TrimSpace(string(b)))
+	if convErr != nil || pid <= 0 {
+		return false
+	}
+	proc, err := os.FindProcess(pid)
+	if err != nil {
+		return false
+	}
+	return proc.Signal(syscall.Signal(0)) == nil
+}
+
+func ReadUpdateLog() string {
+	b, err := os.ReadFile(UpdateLogPath())
+	if err != nil {
+		return ""
+	}
+	const max = 64 << 10
+	if len(b) > max {
+		b = b[len(b)-max:]
+	}
+	return string(b)
+}
+
+func ParseUpdateLog(log string, running bool) (done, ok bool, errMsg string) {
+	log = strings.TrimSpace(log)
+	if running {
+		return false, false, ""
+	}
+	if log == "" {
+		return false, false, ""
+	}
+	lines := strings.Split(log, "\n")
+	last := ""
+	for i := len(lines) - 1; i >= 0; i-- {
+		s := strings.TrimSpace(lines[i])
+		if s != "" {
+			last = s
+			break
+		}
+	}
+	if strings.HasPrefix(last, "ok ") {
+		return true, true, ""
+	}
+	if strings.HasPrefix(last, "error:") {
+		return true, false, strings.TrimSpace(strings.TrimPrefix(last, "error:"))
+	}
+	return true, false, last
+}
+
 func StartUpdate(ver string) error {
 	ok, reason := CanUpdate()
 	if !ok {
 		return fmt.Errorf("%s", reason)
 	}
-	helper := UpdateHelperPath()
-	args := []string{"-n", helper, "--update", "--quiet"}
-	if strings.TrimSpace(ver) != "" {
-		args = append(args, strings.TrimSpace(ver))
+	if UpdateRunning() {
+		return fmt.Errorf("уже идёт обновление")
 	}
+	ver = strings.TrimSpace(ver)
+	if ver == "" {
+		return fmt.Errorf("не указана версия")
+	}
+	helper := UpdateHelperPath()
+	args := []string{"-n", helper, "--update", "--quiet", ver}
 	cmd := exec.Command("sudo", args...)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	logDir := "/opt/rssam/log"
 	_ = os.MkdirAll(logDir, 0755)
-	f, err := os.OpenFile(filepath.Join(logDir, "update.log"), os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+	f, err := os.OpenFile(UpdateLogPath(), os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
 	if err == nil {
 		cmd.Stdout = f
 		cmd.Stderr = f
@@ -127,11 +194,13 @@ func StartUpdate(ver string) error {
 		}
 		return err
 	}
+	_ = os.WriteFile(updatePIDPath(), []byte(strconv.Itoa(cmd.Process.Pid)+"\n"), 0644)
 	go func() {
 		_ = cmd.Wait()
 		if f != nil {
 			f.Close()
 		}
+		_ = os.Remove(updatePIDPath())
 	}()
 	return nil
 }
@@ -188,8 +257,4 @@ func RedactDatabaseURL(raw string) string {
 		u.User = url.User(u.User.Username())
 	}
 	return u.Redacted()
-}
-
-func UpdateLogPath() string {
-	return "/opt/rssam/log/update.log"
 }

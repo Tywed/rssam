@@ -727,3 +727,35 @@ html[data-theme="dark"] .splitter-v.dragging { background: var(--accent); }
   .app-shell.view-horizontal .panel-headlines { width: 100% !important; height: 50% !important; }
   .app-shell .splitter-v[data-panel="headlines"] { display: none; }
 }
+
+.modal {
+  position: fixed; inset: 0; z-index: 400;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(0,0,0,.45); padding: 1rem;
+}
+.modal[hidden] { display: none; }
+.modal-card {
+  width: min(640px, 100%);
+  max-height: min(80vh, 720px);
+  overflow: auto;
+  background: var(--bg-content);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1rem 1.15rem 1.1rem;
+  box-shadow: 0 12px 40px rgba(0,0,0,.2);
+}
+.modal-card h2 { margin: 0 0 0.4rem; font-size: 1.15rem; }
+.modal-log {
+  margin: 0.6rem 0 0.85rem;
+  max-height: 42vh;
+  overflow: auto;
+  padding: 0.7rem 0.8rem;
+  background: #1e1e1e;
+  color: #d4d4d4;
+  font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  border-radius: 4px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+html[data-theme="dark"] .modal { background: rgba(0,0,0,.65); }
+html[data-theme="dark"] .modal-card { background: #1c1c1c; }

@@ -1337,26 +1337,89 @@
     }
     var upd = document.getElementById('btn-update');
     if (upd) {
+      var modal = document.getElementById('update-modal');
+      var stepEl = document.getElementById('update-modal-step');
+      var logEl = document.getElementById('update-modal-log');
+      var actions = document.getElementById('update-modal-actions');
+      var closeBtn = document.getElementById('update-modal-close');
+      function setStep(s) { if (stepEl) stepEl.textContent = s; }
+      function setLog(t) {
+        if (!logEl) return;
+        logEl.textContent = t || '';
+        logEl.scrollTop = logEl.scrollHeight;
+      }
+      function stepFromLog(t) {
+        t = t || '';
+        if (t.indexOf('\nok ') >= 0 || t.indexOf('\nerror:') >= 0) return null;
+        if (t.indexOf('restarting') >= 0) return 'Перезапуск сервиса…';
+        if (t.indexOf('installed binary') >= 0) return 'Бинарник заменён';
+        if (t.indexOf('downloading') >= 0) return 'Скачивание релиза с GitHub…';
+        if (t.indexOf('target ') >= 0) return 'Подготовка обновления…';
+        return 'Обновление…';
+      }
+      function finishModal(ok, msg) {
+        setStep(msg);
+        if (actions) actions.hidden = false;
+        upd.disabled = false;
+        if (ok) {
+          setTimeout(function () { location.reload(); }, 800);
+        }
+      }
+      if (closeBtn) {
+        closeBtn.addEventListener('click', function () {
+          if (modal) modal.hidden = true;
+        });
+      }
       upd.addEventListener('click', function () {
-        var status = document.getElementById('update-status');
+        var ver = upd.getAttribute('data-version') || '';
         upd.disabled = true;
-        if (status) { status.hidden = false; status.textContent = 'Обновление запущено…'; }
-        postForm('/ui/admin/system/update', upd.getAttribute('data-csrf')).then(function (res) {
+        if (modal) modal.hidden = false;
+        if (actions) actions.hidden = true;
+        setStep('Запуск обновления ' + (ver || '') + '…');
+        setLog('');
+        postForm('/ui/admin/system/update', upd.getAttribute('data-csrf'), '&version=' + encodeURIComponent(ver)).then(function (res) {
           if (!res.ok || !res.j.ok) {
-            if (status) status.textContent = (res.j && res.j.error) || 'Ошибка';
-            upd.disabled = false;
+            finishModal(false, (res.j && res.j.error) || 'Не удалось запустить обновление');
             return;
           }
-          waitHealthz(status, function (ok) {
-            if (status) status.textContent = ok ? 'Обновление завершено' : 'Сервис не поднялся, см. /opt/rssam/log/update.log';
-            if (ok) location.reload();
-            else upd.disabled = false;
-          });
+          var n = 0;
+          function poll() {
+            n += 1;
+            fetch('/ui/admin/system/update/status', { credentials: 'same-origin', cache: 'no-store' }).then(function (r) {
+              if (!r.ok) throw new Error('down');
+              return r.json();
+            }).then(function (st) {
+              if (st.log) setLog(st.log);
+              var s = stepFromLog(st.log);
+              if (s) setStep(s);
+              if (st.done && st.success) {
+                setStep('Сервис отвечает, проверяю healthz…');
+                waitHealthz(stepEl, function (ok) {
+                  finishModal(ok, ok ? 'Обновление завершено' : 'Бинарник заменён, но /healthz не ответил');
+                });
+                return;
+              }
+              if (st.done && !st.success) {
+                finishModal(false, st.error || 'Обновление не удалось');
+                return;
+              }
+              if (n > 180) {
+                finishModal(false, 'Таймаут ожидания обновления');
+                return;
+              }
+              setTimeout(poll, 600);
+            }).catch(function () {
+              setStep('Ожидание перезапуска сервиса…');
+              if (n > 180) {
+                finishModal(false, 'Сервис не поднялся после обновления');
+                return;
+              }
+              setTimeout(poll, 1000);
+            });
+          }
+          setTimeout(poll, 400);
         }).catch(function () {
-          waitHealthz(status, function (ok) {
-            if (ok) location.reload();
-            else upd.disabled = false;
-          });
+          finishModal(false, 'Сеть оборвалась при запуске обновления');
         });
       });
     }

@@ -115,9 +115,9 @@ type adminSystemInfo struct {
 	UpdateHint    string
 	Latest        string
 	UpdateAvail   bool
-	ReleaseNotes   string
-	ReleaseURL     string
-	WorkersPaused  bool
+	ReleaseNotes  string
+	ReleaseURL    string
+	WorkersPaused bool
 }
 
 func (h *Handler) handleAdminSystem(w http.ResponseWriter, r *http.Request) {
@@ -153,6 +153,7 @@ func (h *Handler) handleAdminSystem(w http.ResponseWriter, r *http.Request) {
 		WorkersPaused: h.cfg.WorkersPaused != nil && h.cfg.WorkersPaused(),
 	}
 	if h.releases != nil {
+		_, _ = h.releases.Refresh()
 		st := h.releases.Status()
 		info.Latest = st.Latest
 		info.UpdateAvail = st.UpdateAvail
@@ -255,18 +256,41 @@ func (h *Handler) handleAdminUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ver := strings.TrimSpace(r.FormValue("version"))
-	if ver == "" && r.Header.Get("Content-Type") == "application/json" {
+	if ver == "" && strings.Contains(r.Header.Get("Content-Type"), "json") {
 		var body struct {
 			Version string `json:"version"`
 		}
 		_ = json.NewDecoder(r.Body).Decode(&body)
 		ver = strings.TrimSpace(body.Version)
 	}
+	if ver == "" && h.releases != nil {
+		if rel, err := h.releases.Refresh(); err == nil {
+			ver = strings.TrimSpace(rel.Tag)
+		}
+	}
+	if ver == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "неизвестна версия для установки"})
+		return
+	}
 	if err := ops.StartUpdate(ver); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": err.Error()})
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "message": "update started"})
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "message": "update started", "version": ver})
+}
+
+func (h *Handler) handleAdminUpdateStatus(w http.ResponseWriter, r *http.Request) {
+	running := ops.UpdateRunning()
+	logText := ops.ReadUpdateLog()
+	done, ok, errMsg := ops.ParseUpdateLog(logText, running)
+	writeJSON(w, http.StatusOK, map[string]any{
+		"ok":      true,
+		"running": running,
+		"log":     logText,
+		"done":    done,
+		"success": ok,
+		"error":   errMsg,
+	})
 }
 
 func (h *Handler) handleVersionJSON(w http.ResponseWriter, r *http.Request) {
