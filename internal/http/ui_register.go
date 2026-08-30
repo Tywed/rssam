@@ -98,6 +98,11 @@ func (s *Server) registerUI(mux *http.ServeMux) {
 	cfg.EnvFilePath = s.envFilePath
 	cfg.DatabaseURL = s.databaseURL
 	cfg.GitHubRepo = s.gitHubRepo
+	if s.workerControl != nil {
+		cfg.PauseWorkers = s.workerControl.Pause
+		cfg.ResumeWorkers = s.workerControl.Resume
+		cfg.WorkersPaused = s.workerControl.Paused
+	}
 	h, err := ui.NewHandler(cfg)
 	if err != nil {
 		s.log.Error("ui handler init failed", "err", err)

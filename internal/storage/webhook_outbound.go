@@ -77,7 +77,7 @@ func buildTelegramOutbound(w Webhook, feed WebhookFeed, entry Entry, filter *Fil
 		"chat_id":                  c.ChatID,
 		"text":                     text,
 		"parse_mode":               "HTML",
-		"disable_web_page_preview": true,
+		"disable_web_page_preview": false,
 	})
 	if err != nil {
 		return WebhookOutbound{}, err

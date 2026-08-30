@@ -88,6 +88,40 @@ func TestAdminFeedManualPauseUnpause(t *testing.T) {
 	}
 }
 
+func TestAdminFeedDelete(t *testing.T) {
+	mux, feedStore := newAdminPauseTestHandler(t)
+	sid := uiSessionCookie(t, nil, mux)
+	token := auth.CSRFToken("csrf-test", sid)
+
+	form := url.Values{"csrf_token": {token}}
+	req := httptest.NewRequest(http.MethodPost, "/ui/admin/feeds/2/delete", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Referer", "/ui/admin/feeds?status=errors")
+	req.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: sid})
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+	if rec.Code != http.StatusFound {
+		t.Fatalf("delete: status=%d", rec.Code)
+	}
+	if loc := rec.Header().Get("Location"); loc != "/ui/admin/feeds?status=errors" {
+		t.Fatalf("delete redirect: %q", loc)
+	}
+	for _, f := range feedStore.feeds {
+		if f.ID == 2 {
+			t.Fatal("feed 2 should be deleted")
+		}
+	}
+
+	req = httptest.NewRequest(http.MethodPost, "/ui/admin/feeds/99/delete", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: sid})
+	rec = httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("missing feed: status=%d", rec.Code)
+	}
+}
+
 func TestClassifyAdminFeedStatusManualPause(t *testing.T) {
 	now := time.Now()
 	if got := classifyAdminFeedStatus(storage.AdminFeedRow{Feed: storage.Feed{ManualPaused: true}}, now); got != "paused" {

@@ -98,6 +98,15 @@ type Dependencies struct {
 
 	DedupStore              storage.EntryDedupStore
 	CircuitBreakerThreshold int
+
+	WorkerControl WorkerControl
+}
+
+// WorkerControl pauses poll and webhook workers without stopping HTTP/UI.
+type WorkerControl interface {
+	Pause()
+	Resume()
+	Paused() bool
 }
 
 type Server struct {
@@ -146,6 +155,7 @@ type Server struct {
 	titleResolver         *reader.TitleResolver
 	bridgeManager         *bridgeconfig.Manager
 	refreshAll            refreshAllEnqueuer
+	workerControl         WorkerControl
 }
 
 func New(dep Dependencies) *Server {
@@ -349,6 +359,7 @@ func New(dep Dependencies) *Server {
 		titleResolver:         dep.TitleResolver,
 		bridgeManager:         dep.BridgeManager,
 		refreshAll:            jobStore,
+		workerControl:         dep.WorkerControl,
 	}
 }
 

@@ -173,10 +173,16 @@ func TestUI_AdminFeedsPage(t *testing.T) {
 		"feed-status-paused",
 		"/ui/admin/feeds?status=errors",
 		"Страница 1 из 1",
+		`/ui/admin/feeds/2/delete`,
+		`/ui/admin/feeds/3/delete`,
+		`data-confirm=`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("missing %q in admin feeds page", want)
 		}
+	}
+	if strings.Contains(body, `/ui/admin/feeds/1/delete`) {
+		t.Fatal("ok feeds should not show delete on admin feeds list")
 	}
 }
 

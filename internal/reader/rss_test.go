@@ -155,3 +155,32 @@ func TestRSSFetcher_JSONFeed(t *testing.T) {
 		t.Fatalf("title=%q", res.Entries[0].Title)
 	}
 }
+
+// Sites like fedpress.ru answer 302+Set-Cookie to the same URL; without a jar
+// the client loops until CheckRedirect stops.
+func TestRSSFetcher_FollowsSetCookieRedirect(t *testing.T) {
+	hits := 0
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits++
+		if c, err := r.Cookie("session"); err != nil || c.Value != "ok" {
+			http.SetCookie(w, &http.Cookie{Name: "session", Value: "ok", Path: "/"})
+			http.Redirect(w, r, r.URL.Path, http.StatusFound)
+			return
+		}
+		w.Header().Set("Content-Type", "application/rss+xml")
+		_, _ = w.Write([]byte(sampleRSS))
+	}))
+	t.Cleanup(ts.Close)
+
+	f := NewRSSFetcher(&http.Client{Timeout: 2 * time.Second}, "rssam-test", nil, "")
+	res, err := f.Fetch(context.Background(), ts.URL+"/feed", "", "", false, false)
+	if err != nil {
+		t.Fatalf("fetch: %v", err)
+	}
+	if hits < 2 {
+		t.Fatalf("expected redirect then body, hits=%d", hits)
+	}
+	if len(res.Entries) != 1 || res.Entries[0].Title != "Hello" {
+		t.Fatalf("entries=%+v", res.Entries)
+	}
+}

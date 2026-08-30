@@ -117,10 +117,10 @@
             <td class="action-param-cell">
               <select name="action_param" class="action-param-select">
                 <option value="">—</option>
-                {{range $.Labels}}<option value="{{.ID}}" data-for="label" {{if actionParamSelected $a.ActionParam (printf "%d" .ID)}}selected{{end}}>{{.Caption}}</option>{{end}}
-                {{range $.Webhooks}}<option value="{{.ID}}" data-for="webhook" {{if actionParamSelected $a.ActionParam (printf "%d" .ID)}}selected{{end}}>{{webhookLabel .Name .URL .ID}}</option>{{end}}
+                {{range $.Labels}}<option value="{{filterActionOptionValue "label" .ID}}" data-for="label" {{if actionParamSelected $a.ActionType "label" $a.ActionParam (printf "%d" .ID)}}selected{{end}}>{{.Caption}}</option>{{end}}
+                {{range $.Webhooks}}<option value="{{filterActionOptionValue "webhook" .ID}}" data-for="webhook" {{if actionParamSelected $a.ActionType "webhook" $a.ActionParam (printf "%d" .ID)}}selected{{end}}>{{webhookLabel .Name .URL .ID}}</option>{{end}}
               </select>
-              <input type="hidden" class="action-param-value" value="{{$a.ActionParam}}">
+              <input type="hidden" class="action-param-value" value="{{filterActionSavedOptionValue $a.ActionType $a.ActionParam}}">
             </td>
             <td class="cell-actions"><button type="button" class="btn btn-sm btn-danger action-remove">×</button></td>
           </tr>
@@ -147,8 +147,8 @@
         <td class="action-param-cell">
           <select name="action_param" class="action-param-select">
             <option value="">—</option>
-            {{range .Labels}}<option value="{{.ID}}" data-for="label">{{.Caption}}</option>{{end}}
-            {{range .Webhooks}}<option value="{{.ID}}" data-for="webhook">{{webhookLabel .Name .URL .ID}}</option>{{end}}
+            {{range .Labels}}<option value="{{filterActionOptionValue "label" .ID}}" data-for="label">{{.Caption}}</option>{{end}}
+            {{range .Webhooks}}<option value="{{filterActionOptionValue "webhook" .ID}}" data-for="webhook">{{webhookLabel .Name .URL .ID}}</option>{{end}}
           </select>
         </td>
         <td class="cell-actions"><button type="button" class="btn btn-sm btn-danger action-remove">×</button></td>

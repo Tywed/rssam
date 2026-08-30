@@ -47,6 +47,9 @@ func (r *Runner) webhookDispatchLoop(ctx context.Context, out chan<- storage.Web
 		case <-ctx.Done():
 			return
 		case <-t.C:
+			if r.Paused() {
+				continue
+			}
 			logs, err := r.Store.ClaimDueWebhookLogs(ctx, r.Cfg.WebhookPoolSize)
 			if err != nil {
 				r.Log.Error("webhook dispatcher: claim due logs failed", "err", err)

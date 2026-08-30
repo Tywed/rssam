@@ -416,6 +416,28 @@ func (h *Handler) handleAdminFeedResetCircuit(w http.ResponseWriter, r *http.Req
 	http.Redirect(w, r, adminFeedsRedirect(r), http.StatusFound)
 }
 
+func (h *Handler) handleAdminFeedDelete(w http.ResponseWriter, r *http.Request) {
+	if !h.validateCSRF(r) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	id, err := parsePathID(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	feed, err := h.cfg.Feeds.GetFeedByID(r.Context(), id)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	if err := h.cfg.Feeds.DeleteFeed(r.Context(), feed.UserID, id); err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	http.Redirect(w, r, adminFeedsRedirect(r), http.StatusFound)
+}
+
 func adminFeedsRedirect(r *http.Request) string {
 	ref := strings.TrimSpace(r.Header.Get("Referer"))
 	if ref != "" {

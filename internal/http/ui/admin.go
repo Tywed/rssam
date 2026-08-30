@@ -115,8 +115,9 @@ type adminSystemInfo struct {
 	UpdateHint    string
 	Latest        string
 	UpdateAvail   bool
-	ReleaseNotes  string
-	ReleaseURL    string
+	ReleaseNotes   string
+	ReleaseURL     string
+	WorkersPaused  bool
 }
 
 func (h *Handler) handleAdminSystem(w http.ResponseWriter, r *http.Request) {
@@ -149,6 +150,7 @@ func (h *Handler) handleAdminSystem(w http.ResponseWriter, r *http.Request) {
 		RestartHint:   rHint,
 		CanUpdate:     canU,
 		UpdateHint:    uHint,
+		WorkersPaused: h.cfg.WorkersPaused != nil && h.cfg.WorkersPaused(),
 	}
 	if h.releases != nil {
 		st := h.releases.Status()
@@ -204,6 +206,35 @@ func (h *Handler) handleAdminWorkersSave(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	http.Redirect(w, r, "/ui/admin/system?saved=1", http.StatusFound)
+}
+
+func (h *Handler) handleAdminWorkersPause(w http.ResponseWriter, r *http.Request) {
+	h.setWorkersPaused(w, r, true)
+}
+
+func (h *Handler) handleAdminWorkersResume(w http.ResponseWriter, r *http.Request) {
+	h.setWorkersPaused(w, r, false)
+}
+
+func (h *Handler) setWorkersPaused(w http.ResponseWriter, r *http.Request, paused bool) {
+	if !h.validateCSRF(r) {
+		writeJSON(w, http.StatusForbidden, map[string]any{"ok": false, "error": "forbidden"})
+		return
+	}
+	if paused {
+		if h.cfg.PauseWorkers == nil {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "управление воркерами недоступно"})
+			return
+		}
+		h.cfg.PauseWorkers()
+	} else {
+		if h.cfg.ResumeWorkers == nil {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "управление воркерами недоступно"})
+			return
+		}
+		h.cfg.ResumeWorkers()
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "paused": paused})
 }
 
 func (h *Handler) handleAdminRestart(w http.ResponseWriter, r *http.Request) {

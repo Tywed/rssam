@@ -60,6 +60,9 @@ type Config struct {
 	EnvFilePath           string
 	DatabaseURL           string
 	GitHubRepo            string
+	PauseWorkers          func()
+	ResumeWorkers         func()
+	WorkersPaused         func() bool
 }
 
 type WebhookTestResult struct {
@@ -182,7 +185,12 @@ func parseTemplates() (*template.Template, error) {
 			}
 			return ""
 		},
-		"actionParamSelected":     func(saved, id string) bool { return strings.TrimSpace(saved) == strings.TrimSpace(id) },
+		"actionParamSelected": func(actionType, optionKind, savedParam, optionID string) bool {
+			return strings.TrimSpace(actionType) == strings.TrimSpace(optionKind) &&
+				strings.TrimSpace(savedParam) == strings.TrimSpace(optionID)
+		},
+		"filterActionOptionValue":       filterActionOptionValue,
+		"filterActionSavedOptionValue": filterActionSavedOptionValue,
 		"adminFeedStatusLabel":    adminFeedStatusLabel,
 		"adminFeedStatusClass":    adminFeedStatusClass,
 		"adminFeedsSortLink":      adminFeedsSortLink,
@@ -424,9 +432,12 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.Handle("POST /ui/admin/feeds/{id}/pause", auth(h.requireAdmin(http.HandlerFunc(h.handleAdminFeedPause))))
 	mux.Handle("POST /ui/admin/feeds/{id}/unpause", auth(h.requireAdmin(http.HandlerFunc(h.handleAdminFeedUnpause))))
 	mux.Handle("POST /ui/admin/feeds/{id}/reset-circuit", auth(h.requireAdmin(http.HandlerFunc(h.handleAdminFeedResetCircuit))))
+	mux.Handle("POST /ui/admin/feeds/{id}/delete", auth(h.requireAdmin(http.HandlerFunc(h.handleAdminFeedDelete))))
 	mux.Handle("GET /ui/version", auth(http.HandlerFunc(h.handleVersionJSON)))
 	mux.Handle("GET /ui/admin/system", auth(h.requireAdmin(http.HandlerFunc(h.handleAdminSystem))))
 	mux.Handle("POST /ui/admin/system/workers", auth(h.requireAdmin(http.HandlerFunc(h.handleAdminWorkersSave))))
+	mux.Handle("POST /ui/admin/system/workers/pause", auth(h.requireAdmin(http.HandlerFunc(h.handleAdminWorkersPause))))
+	mux.Handle("POST /ui/admin/system/workers/resume", auth(h.requireAdmin(http.HandlerFunc(h.handleAdminWorkersResume))))
 	mux.Handle("POST /ui/admin/system/restart", auth(h.requireAdmin(http.HandlerFunc(h.handleAdminRestart))))
 	mux.Handle("POST /ui/admin/system/update", auth(h.requireAdmin(http.HandlerFunc(h.handleAdminUpdate))))
 	mux.Handle("GET /ui/admin/system/backup.txt", auth(h.requireAdmin(http.HandlerFunc(h.handleAdminBackupHint))))

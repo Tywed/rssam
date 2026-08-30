@@ -114,6 +114,12 @@
               </form>
               {{end}}
               <a class="btn btn-sm" href="/ui/feeds/{{.ID}}/edit" title="Редактировать">✎</a>
+              {{if or (eq .Status "errors") (eq .Status "paused")}}
+              <form method="post" action="/ui/admin/feeds/{{.ID}}/delete" class="inline-form" data-confirm="Удалить ленту «{{.Title}}»? Записи этой ленты тоже будут удалены.">
+                <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                <button type="submit" class="btn btn-sm btn-danger" title="Удалить ленту">✕</button>
+              </form>
+              {{end}}
             </td>
           </tr>
           {{else}}

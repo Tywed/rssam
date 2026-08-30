@@ -861,9 +861,17 @@
         opt.hidden = !show;
         opt.disabled = !show;
       });
-      if (type === 'delete') sel.value = '';
+      if (type === 'delete') {
+        sel.value = '';
+        return;
+      }
       var saved = row.querySelector('.action-param-value');
-      if (saved && saved.value) sel.value = saved.value;
+      if (saved && saved.value) {
+        var wantPrefix = type + ':';
+        if (saved.value.indexOf(wantPrefix) === 0) {
+          sel.value = saved.value;
+        }
+      }
     }
 
     function bindActionRow(row) {
@@ -1192,6 +1200,16 @@
     sync();
   }
 
+  function initConfirmForms() {
+    document.addEventListener('submit', function (ev) {
+      var form = ev.target;
+      if (!form || !form.getAttribute) return;
+      var msg = form.getAttribute('data-confirm');
+      if (!msg) return;
+      if (!confirm(msg)) ev.preventDefault();
+    });
+  }
+
   function init() {
     var prefs = loadPrefs();
     applyPrefs(prefs);
@@ -1206,6 +1224,7 @@
     initEntryPreview();
     initKeyboardNav();
     initFeedForm();
+    initConfirmForms();
     initWebhookKindForm();
     initFilterForm();
     initSidebarVersion();
@@ -1257,6 +1276,38 @@
         });
       }
       setTimeout(tick, 800);
+    }
+    var wbtn = document.getElementById('btn-workers-toggle');
+    if (wbtn) {
+      wbtn.addEventListener('click', function () {
+        var status = document.getElementById('workers-toggle-status');
+        var runEl = document.getElementById('workers-run-status');
+        var paused = wbtn.getAttribute('data-paused') === '1';
+        var url = paused ? '/ui/admin/system/workers/resume' : '/ui/admin/system/workers/pause';
+        wbtn.disabled = true;
+        if (status) { status.hidden = false; status.textContent = paused ? 'Запуск воркеров…' : 'Остановка воркеров…'; }
+        postForm(url, wbtn.getAttribute('data-csrf')).then(function (res) {
+          if (!res.ok || !res.j.ok) {
+            if (status) status.textContent = (res.j && res.j.error) || 'Ошибка';
+            wbtn.disabled = false;
+            return;
+          }
+          var nowPaused = !!res.j.paused;
+          wbtn.setAttribute('data-paused', nowPaused ? '1' : '0');
+          wbtn.textContent = nowPaused ? 'Запустить сервис' : 'Остановить сервис';
+          wbtn.className = 'btn ' + (nowPaused ? 'btn-primary' : 'btn-danger');
+          if (runEl) {
+            runEl.textContent = nowPaused
+              ? 'Воркеры остановлены: опрос лент и вебхуки не выполняются. HTTP и UI работают.'
+              : 'Воркеры работают.';
+          }
+          if (status) status.textContent = nowPaused ? 'Воркеры остановлены' : 'Воркеры запущены';
+          wbtn.disabled = false;
+        }).catch(function () {
+          if (status) status.textContent = 'Сеть оборвалась';
+          wbtn.disabled = false;
+        });
+      });
     }
     var rst = document.getElementById('btn-restart');
     if (rst) {

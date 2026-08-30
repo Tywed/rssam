@@ -44,6 +44,11 @@
     {{end}}
     <div class="card">
       <h2 style="margin-top:0">Сервис</h2>
+      <p class="meta" id="workers-run-status">{{if .Info.WorkersPaused}}Воркеры остановлены: опрос лент и вебхуки не выполняются. HTTP и UI работают.{{else}}Воркеры работают.{{end}}</p>
+      <p>
+        <button type="button" class="btn {{if .Info.WorkersPaused}}btn-primary{{else}}btn-danger{{end}}" id="btn-workers-toggle" data-csrf="{{.CSRFToken}}" data-paused="{{if .Info.WorkersPaused}}1{{else}}0{{end}}">{{if .Info.WorkersPaused}}Запустить сервис{{else}}Остановить сервис{{end}}</button>
+      </p>
+      <p class="meta" id="workers-toggle-status" hidden></p>
       {{if .Info.CanRestart}}
       <button type="button" class="btn btn-primary" id="btn-restart" data-csrf="{{.CSRFToken}}">Перезапустить сервис</button>
       <p class="meta" id="restart-status" hidden></p>

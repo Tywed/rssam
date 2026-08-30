@@ -314,6 +314,7 @@ func main() {
 		EnvFilePath:             os.Getenv("RSSAM_ENV_FILE"),
 		DatabaseURL:             cfg.DatabaseURL,
 		GitHubRepo:              strings.TrimSpace(os.Getenv("GITHUB_REPO")),
+		WorkerControl:           w,
 	})
 
 	if err := srv.Run(ctx, cfg.ListenAddr, cfg.ShutdownTimeout); err != nil {

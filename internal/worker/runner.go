@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"sync/atomic"
 	"time"
 
 	"rssam/internal/capacity"
@@ -65,6 +66,31 @@ type Runner struct {
 	SSRFGuard         *ssrf.Guard
 	Rand              *rand.Rand
 	WebhookDelivery   webhookDeliveryStore
+	paused            atomic.Bool
+}
+
+func (r *Runner) Pause() {
+	if r == nil {
+		return
+	}
+	r.paused.Store(true)
+	if r.Log != nil {
+		r.Log.Info("workers paused")
+	}
+}
+
+func (r *Runner) Resume() {
+	if r == nil {
+		return
+	}
+	r.paused.Store(false)
+	if r.Log != nil {
+		r.Log.Info("workers resumed")
+	}
+}
+
+func (r *Runner) Paused() bool {
+	return r != nil && r.paused.Load()
 }
 
 func DefaultInstanceID() string {
@@ -140,6 +166,9 @@ func (r *Runner) schedulerLoop(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-t.C:
+			if r.Paused() {
+				continue
+			}
 			ids, err := r.Store.ListFeedsDue(ctx, 1000)
 			if err != nil {
 				r.Log.Error("scheduler: list due feeds failed", "err", err)
@@ -166,6 +195,9 @@ func (r *Runner) dispatchLoop(ctx context.Context, out chan<- storage.Job) {
 		case <-ctx.Done():
 			return
 		case <-t.C:
+			if r.Paused() {
+				continue
+			}
 			now := time.Now()
 			if lastReclaim.IsZero() || now.Sub(lastReclaim) >= 20*time.Second {
 				staleAfter := r.Cfg.FetchTimeout * 2

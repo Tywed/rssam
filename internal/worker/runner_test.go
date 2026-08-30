@@ -153,3 +153,18 @@ func TestProcessPollFeed_SuccessResetsIntervalAfterErrors(t *testing.T) {
 		t.Fatalf("success next_check delay=%s, want ~%s (user interval)", gotDelay, wantDelay)
 	}
 }
+
+func TestRunnerPauseResume(t *testing.T) {
+	var r Runner
+	if r.Paused() {
+		t.Fatal("new runner should not be paused")
+	}
+	r.Pause()
+	if !r.Paused() {
+		t.Fatal("expected paused")
+	}
+	r.Resume()
+	if r.Paused() {
+		t.Fatal("expected running")
+	}
+}

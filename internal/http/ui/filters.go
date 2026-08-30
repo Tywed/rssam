@@ -389,7 +389,7 @@ func parseActionsFromForm(r *http.Request) []storage.CreateFilterActionParams {
 		}
 		param := ""
 		if i < len(params) {
-			param = strings.TrimSpace(params[i])
+			param = parseFilterActionParam(actionType, params[i])
 		}
 		out = append(out, storage.CreateFilterActionParams{
 			ActionType:  actionType,
@@ -398,4 +398,38 @@ func parseActionsFromForm(r *http.Request) []storage.CreateFilterActionParams {
 		})
 	}
 	return out
+}
+
+// filterActionOptionValue is the <option value> for a label/webhook so IDs
+// from different tables do not collide in one <select> (label 1 vs webhook 1).
+func filterActionOptionValue(kind string, id int64) string {
+	return strings.TrimSpace(kind) + ":" + strconv.FormatInt(id, 10)
+}
+
+func filterActionSavedOptionValue(actionType, param string) string {
+	actionType = strings.TrimSpace(actionType)
+	param = strings.TrimSpace(param)
+	if actionType == "" || actionType == "delete" || param == "" {
+		return ""
+	}
+	return actionType + ":" + param
+}
+
+func parseFilterActionParam(actionType, raw string) string {
+	raw = strings.TrimSpace(raw)
+	actionType = strings.TrimSpace(actionType)
+	if raw == "" || actionType == "" || actionType == "delete" {
+		return ""
+	}
+	prefix := actionType + ":"
+	if strings.HasPrefix(raw, prefix) {
+		return strings.TrimSpace(raw[len(prefix):])
+	}
+	if i := strings.IndexByte(raw, ':'); i > 0 {
+		kind := raw[:i]
+		if kind == "label" || kind == "webhook" {
+			return ""
+		}
+	}
+	return raw
 }

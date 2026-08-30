@@ -30,6 +30,12 @@
         </form>
         {{end}}
         <a class="btn" href="/ui/feeds/{{.AdminFeedDetail.Feed.ID}}/edit">Редактировать</a>
+        {{if or (eq .AdminFeedDetail.Status "errors") (eq .AdminFeedDetail.Status "paused")}}
+        <form method="post" action="/ui/admin/feeds/{{.AdminFeedDetail.Feed.ID}}/delete" class="inline-form" data-confirm="Удалить ленту «{{.AdminFeedDetail.Feed.Title}}»? Записи этой ленты тоже будут удалены.">
+          <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+          <button type="submit" class="btn btn-danger">Удалить</button>
+        </form>
+        {{end}}
       </div>
     </div>
 

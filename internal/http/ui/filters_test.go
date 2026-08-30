@@ -131,6 +131,45 @@ func TestUI_FilterFormPage(t *testing.T) {
 	if strings.Contains(body, "document.querySelectorAll('.filter-tab')") {
 		t.Fatal("filter form inline script should be removed (CSP)")
 	}
+	if !strings.Contains(body, `value="label:1"`) {
+		t.Fatal("label option values must be prefixed so they do not collide with webhook IDs")
+	}
+}
+
+func TestParseFilterActionParam(t *testing.T) {
+	cases := []struct {
+		typ, raw, want string
+	}{
+		{"webhook", "webhook:1", "1"},
+		{"label", "label:1", "1"},
+		{"webhook", "label:1", ""},
+		{"webhook", "1", "1"},
+		{"delete", "webhook:1", ""},
+		{"webhook", "", ""},
+	}
+	for _, tc := range cases {
+		if got := parseFilterActionParam(tc.typ, tc.raw); got != tc.want {
+			t.Fatalf("parseFilterActionParam(%q, %q)=%q want %q", tc.typ, tc.raw, got, tc.want)
+		}
+	}
+}
+
+func TestParseActionsFromFormPrefixed(t *testing.T) {
+	r := httptest.NewRequest(http.MethodPost, "/", strings.NewReader("action_type=webhook&action_param=webhook:1&action_type=label&action_param=label:2"))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	if err := r.ParseForm(); err != nil {
+		t.Fatal(err)
+	}
+	got := parseActionsFromForm(r)
+	if len(got) != 2 {
+		t.Fatalf("got %d actions", len(got))
+	}
+	if got[0].ActionType != "webhook" || got[0].ActionParam != "1" {
+		t.Fatalf("webhook action: %+v", got[0])
+	}
+	if got[1].ActionType != "label" || got[1].ActionParam != "2" {
+		t.Fatalf("label action: %+v", got[1])
+	}
 }
 
 func TestUI_LabelsListPage(t *testing.T) {

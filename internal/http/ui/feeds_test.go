@@ -160,7 +160,15 @@ func (m *uiMemFeeds) CreateFeed(context.Context, int64, storage.CreateFeedParams
 func (m *uiMemFeeds) UpdateFeed(context.Context, int64, storage.UpdateFeedParams) (storage.Feed, error) {
 	return storage.Feed{}, nil
 }
-func (m *uiMemFeeds) DeleteFeed(context.Context, int64, int64) error { return nil }
+func (m *uiMemFeeds) DeleteFeed(_ context.Context, _ int64, id int64) error {
+	for i, f := range m.feeds {
+		if f.ID == id {
+			m.feeds = append(m.feeds[:i], m.feeds[i+1:]...)
+			return nil
+		}
+	}
+	return storage.ErrNotFound
+}
 func (m *uiMemFeeds) GetFeedByID(_ context.Context, id int64) (storage.Feed, error) {
 	return m.GetFeed(context.Background(), 0, id)
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/http/cookiejar"
 	"strconv"
 	"strings"
 	"time"
@@ -156,13 +157,34 @@ func (f *RSSFetcher) httpClient(useProxy, tlsInsecure bool) (*http.Client, error
 	if f.client != nil && f.client.Timeout > 0 {
 		timeout = f.client.Timeout
 	}
+	var base *http.Client
+	var err error
 	if f.proxy != nil {
-		return f.proxy.client(useProxy, tlsInsecure, f.guard, f.client, timeout)
+		base, err = f.proxy.client(useProxy, tlsInsecure, f.guard, f.client, timeout)
+		if err != nil {
+			return nil, err
+		}
+	} else if f.guard != nil {
+		base = f.guard.HTTPClientForFetch(timeout, tlsInsecure)
+	} else {
+		base = f.client
 	}
-	if f.guard != nil {
-		return f.guard.HTTPClientForFetch(timeout, tlsInsecure), nil
+	return clientWithIsolatedCookieJar(base), nil
+}
+
+// clientWithIsolatedCookieJar copies base and attaches a fresh jar so Set-Cookie
+// is sent on redirects. Cached transports stay shared; cookies are not.
+func clientWithIsolatedCookieJar(base *http.Client) *http.Client {
+	if base == nil {
+		base = http.DefaultClient
 	}
-	return f.client, nil
+	c := *base
+	jar, err := cookiejar.New(nil)
+	if err != nil {
+		return &c
+	}
+	c.Jar = jar
+	return &c
 }
 
 func normalizeItem(it *gofeed.Item) storage.CreateEntryParams {
