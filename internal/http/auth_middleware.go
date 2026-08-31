@@ -16,10 +16,7 @@ func (s *Server) authenticateRequest(ctx context.Context, r *http.Request) (auth
 		return p, true
 	}
 
-	token := strings.TrimSpace(r.Header.Get("X-Auth-Token"))
-	if token == "" {
-		token = strings.TrimSpace(r.URL.Query().Get("token"))
-	}
+	token := tokenFromHeader(r)
 	if token == "" {
 		return auth.Principal{}, false
 	}
@@ -49,6 +46,16 @@ func (s *Server) authenticateRequest(ctx context.Context, r *http.Request) (auth
 	}
 
 	return auth.Principal{}, false
+}
+
+func tokenFromHeader(r *http.Request) string {
+	if v := strings.TrimSpace(r.Header.Get("X-Auth-Token")); v != "" {
+		return v
+	}
+	if v := r.Header.Get("Authorization"); strings.HasPrefix(v, "Bearer ") {
+		return strings.TrimSpace(strings.TrimPrefix(v, "Bearer "))
+	}
+	return ""
 }
 
 func (s *Server) authenticateSession(ctx context.Context, r *http.Request) (auth.Principal, bool) {

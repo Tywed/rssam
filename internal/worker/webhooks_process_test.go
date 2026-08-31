@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"math/rand"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -116,7 +115,6 @@ func processTestRunner(store *memWebhookDelivery, timeout time.Duration) *Runner
 			WebhookRetryBase:   time.Second,
 			WebhookRetryMax:    time.Hour,
 		},
-		Rand: rand.New(rand.NewSource(1)),
 	}
 }
 

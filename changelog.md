@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+## 0.1.2
+
+- CSRF: если нет AUTH_TOKEN/METRICS_TOKEN, генерируется CSRF_SECRET и пишется в .env.
+- API-токен больше не принимается из query string (`?token=`); только заголовок или сессия. WebSocket в UI по-прежнему через cookie.
+- Retry вебхуков: потокобезопасный jitter, без panic на крошечных интервалах.
+- Rate limit: вытеснение неактивных IP и потолок размера карты.
+- Cleanup retention: удаление батчами, без одной длинной транзакции.
+- Поиск: не роняет весь UI («search failed»); `plainto_tsquery` вместо `websearch_to_tsquery`.
+
 ## 0.1.1
 
 - Telegram-вебхуки: превью ссылки включено по умолчанию.

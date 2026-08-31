@@ -48,10 +48,12 @@ func ftsVectorExprPlaceholders(lang, titlePlaceholder, contentPlaceholder string
 	return fmt.Sprintf("to_tsvector('%s', coalesce(%s, '') || ' ' || coalesce(%s, ''))", lang, titlePlaceholder, contentPlaceholder)
 }
 
-// ftsWebsearchExpr returns SQL for websearch_to_tsquery(config, $arg).
+// ftsWebsearchExpr returns SQL for plainto_tsquery(config, $arg).
+// Named historically; plainto_tsquery is used because websearch_to_tsquery
+// errors on unmatched quotes and other query syntax.
 func ftsWebsearchExpr(lang string, argPlaceholder string) string {
 	if !isAllowedFTSLanguage(lang) {
 		lang = DefaultFTSLanguage
 	}
-	return fmt.Sprintf("websearch_to_tsquery('%s', %s)", lang, argPlaceholder)
+	return fmt.Sprintf("plainto_tsquery('%s', %s)", lang, argPlaceholder)
 }

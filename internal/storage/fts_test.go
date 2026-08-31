@@ -32,7 +32,7 @@ func TestFTSVectorExpr_allowlisted(t *testing.T) {
 
 func TestFTSWebsearchExpr_allowlisted(t *testing.T) {
 	expr := ftsWebsearchExpr("russian", "$1")
-	if expr != "websearch_to_tsquery('russian', $1)" {
+	if expr != "plainto_tsquery('russian', $1)" {
 		t.Fatalf("unexpected expr: %s", expr)
 	}
 }

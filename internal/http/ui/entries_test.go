@@ -3,6 +3,7 @@ package ui
 import (
 	"bytes"
 	"context"
+	"errors"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -98,7 +99,7 @@ func loginTestSession(t *testing.T, mux *http.ServeMux) string {
 	return sid
 }
 
-func newEntryReadMux(t *testing.T, store *entryReadStore) *http.ServeMux {
+func newEntryReadMux(t *testing.T, store storage.EntryStore) *http.ServeMux {
 	t.Helper()
 	hash, err := auth.HashPassword("secret")
 	if err != nil {
@@ -152,6 +153,39 @@ func TestUI_EntryReadMultipartCSRF(t *testing.T) {
 	}
 	if !strings.Contains(rec.Body.String(), "hl-row read") {
 		t.Fatalf("expected read row partial, got %q", rec.Body.String())
+	}
+}
+
+type searchFailStore struct {
+	entryReadStore
+}
+
+func (s *searchFailStore) SearchEntries(context.Context, int64, storage.SearchEntriesFilter) ([]storage.Entry, int, error) {
+	return nil, 0, errors.New("boom")
+}
+
+func TestUI_SearchFailureKeepsLayout(t *testing.T) {
+	store := &searchFailStore{entryReadStore: entryReadStore{}}
+	mux := newEntryReadMux(t, store)
+	sid := loginTestSession(t, mux)
+
+	req := httptest.NewRequest(http.MethodGet, "/ui/search?q=test", nil)
+	req.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: sid})
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%q", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+	if strings.TrimSpace(body) == "search failed" {
+		t.Fatal("raw search failed page")
+	}
+	if !strings.Contains(body, "Поиск не выполнен") {
+		t.Fatalf("expected flash error, got %q", body)
+	}
+	if !strings.Contains(body, "rssam-app") {
+		t.Fatal("expected full UI layout")
 	}
 }
 

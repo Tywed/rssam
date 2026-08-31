@@ -57,8 +57,13 @@ func TestWSConnectAndReceiveNewEntry(t *testing.T) {
 	ts := httptest.NewServer(mux)
 	t.Cleanup(ts.Close)
 
-	wsURL := "ws" + strings.TrimPrefix(ts.URL, "http") + "/ws/v1?token=secret"
-	conn, err := websocket.Dial(wsURL, "", "http://localhost/")
+	wsURL := "ws" + strings.TrimPrefix(ts.URL, "http") + "/ws/v1"
+	cfg, err := websocket.NewConfig(wsURL, "http://localhost/")
+	if err != nil {
+		t.Fatalf("ws config: %v", err)
+	}
+	cfg.Header.Set("X-Auth-Token", "secret")
+	conn, err := websocket.DialConfig(cfg)
 	if err != nil {
 		t.Fatalf("dial ws: %v", err)
 	}

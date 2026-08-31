@@ -13,11 +13,13 @@ import (
 
 	"rssam/internal/bridgeconfig"
 	"rssam/internal/config"
+	"rssam/internal/envfile"
 	"rssam/internal/filter"
 	httpserver "rssam/internal/http"
 	"rssam/internal/logger"
 	"rssam/internal/metrics"
 	"rssam/internal/migrations"
+	"rssam/internal/ops"
 	"rssam/internal/proxy"
 	"rssam/internal/reader"
 	"rssam/internal/service"
@@ -337,5 +339,22 @@ func csrfSecret(cfg config.Config) string {
 	if v := cfg.MetricsToken; v != "" {
 		return v
 	}
-	return "rssam-ui-csrf-dev-only"
+	if v := strings.TrimSpace(os.Getenv("CSRF_SECRET")); v != "" {
+		return v
+	}
+
+	secret, err := ops.GenerateHexSecret(32)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "csrf secret: %v\n", err)
+		os.Exit(1)
+	}
+
+	envPath := ops.EnvFilePath()
+	if err := envfile.SetKeys(envPath, map[string]string{"CSRF_SECRET": secret}); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: generated CSRF secret but could not save to %s: %v\n", envPath, err)
+	} else {
+		_ = os.Setenv("CSRF_SECRET", secret)
+		fmt.Fprintf(os.Stderr, "warning: AUTH_TOKEN and METRICS_TOKEN are empty; generated CSRF secret and saved to %s\n", envPath)
+	}
+	return secret
 }

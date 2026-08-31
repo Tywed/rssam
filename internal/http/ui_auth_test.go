@@ -96,3 +96,21 @@ func TestWSAuthSessionCookie(t *testing.T) {
 		t.Fatal("expected ws cookie auth")
 	}
 }
+
+func TestAuthenticateRejectsQueryToken(t *testing.T) {
+	s := New(Dependencies{AuthToken: "secret"})
+	req := httptest.NewRequest(http.MethodGet, "/v1/me?token=secret", nil)
+	if _, ok := s.authenticateRequest(req.Context(), req); ok {
+		t.Fatal("query token must not authenticate API requests")
+	}
+}
+
+func TestAuthenticateBearerHeader(t *testing.T) {
+	s := New(Dependencies{AuthToken: "secret"})
+	req := httptest.NewRequest(http.MethodGet, "/v1/me", nil)
+	req.Header.Set("Authorization", "Bearer secret")
+	p, ok := s.authenticateRequest(req.Context(), req)
+	if !ok || p.UserID != 1 {
+		t.Fatalf("bearer auth failed: ok=%v p=%+v", ok, p)
+	}
+}

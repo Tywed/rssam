@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 )
 
 func TestLimiter_Returns429AfterBurst(t *testing.T) {
@@ -43,6 +44,31 @@ func TestLimiter_Returns429AfterBurst(t *testing.T) {
 	}
 	if body.ErrorMessage == "" {
 		t.Fatal("expected error_message in 429 body")
+	}
+}
+
+func TestLimiter_EvictsStaleBuckets(t *testing.T) {
+	limiter := NewLimiter(true, 10, 20)
+	if !limiter.Allow("stale") {
+		t.Fatal("expected allow")
+	}
+	limiter.mu.Lock()
+	limiter.buckets["stale"].last = time.Now().Add(-10 * time.Minute)
+	limiter.lastCleanup = time.Now().Add(-cleanupInterval - time.Second)
+	limiter.mu.Unlock()
+
+	if !limiter.Allow("fresh") {
+		t.Fatal("expected allow fresh")
+	}
+	limiter.mu.Lock()
+	_, stale := limiter.buckets["stale"]
+	_, fresh := limiter.buckets["fresh"]
+	limiter.mu.Unlock()
+	if stale {
+		t.Fatal("stale bucket was not evicted")
+	}
+	if !fresh {
+		t.Fatal("fresh bucket missing")
 	}
 }
 

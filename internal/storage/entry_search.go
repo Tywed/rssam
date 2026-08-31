@@ -61,11 +61,12 @@ func (s *PostgresStore) SearchEntries(ctx context.Context, userID int64, filter 
 
 	likeArg := fmt.Sprintf("$%d", argN)
 	likePattern := "%" + escapeLikePattern(query) + "%"
-	// FTS + ILIKE fallback: simple config ignores Cyrillic; ILIKE catches title/body text.
+	// FTS + ILIKE: plainto_tsquery does not error on quotes/operators;
+	// ILIKE covers substrings that the stemmer misses (especially Cyrillic with simple config).
 	where = append(where, fmt.Sprintf(`(
   search_vector @@ %s
   OR title ILIKE %s ESCAPE '\'
-  OR regexp_replace(coalesce(content, ''), '<[^>]+>', ' ', 'g') ILIKE %s ESCAPE '\'
+  OR coalesce(content, '') ILIKE %s ESCAPE '\'
 )`, tsq, likeArg, likeArg))
 	args = append(args, likePattern)
 	argN++

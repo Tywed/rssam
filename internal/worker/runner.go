@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"log/slog"
-	"math/rand"
 	"net/http"
 	"os"
 	"strconv"
@@ -64,7 +63,6 @@ type Runner struct {
 
 	WebhookHTTPClient *http.Client
 	SSRFGuard         *ssrf.Guard
-	Rand              *rand.Rand
 	WebhookDelivery   webhookDeliveryStore
 	paused            atomic.Bool
 }

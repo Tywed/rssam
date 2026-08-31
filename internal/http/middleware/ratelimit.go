@@ -7,14 +7,21 @@ import (
 	"time"
 )
 
+const (
+	bucketTTL       = 5 * time.Minute
+	cleanupInterval = 5 * time.Minute
+	maxBuckets      = 100_000
+)
+
 // Limiter is an in-memory per-key token bucket rate limiter.
 type Limiter struct {
 	enabled bool
 	rate    float64
 	burst   float64
 
-	mu      sync.Mutex
-	buckets map[string]*tokenBucket
+	mu          sync.Mutex
+	buckets     map[string]*tokenBucket
+	lastCleanup time.Time
 }
 
 type tokenBucket struct {
@@ -57,6 +64,14 @@ func (l *Limiter) Allow(key string) bool {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
+	if len(l.buckets) > maxBuckets || (!l.lastCleanup.IsZero() && now.Sub(l.lastCleanup) >= cleanupInterval) || l.lastCleanup.IsZero() {
+		l.evictStaleLocked(now)
+		if len(l.buckets) > maxBuckets {
+			l.evictOldestLocked(len(l.buckets) - maxBuckets)
+		}
+		l.lastCleanup = now
+	}
+
 	b, ok := l.buckets[key]
 	if !ok {
 		b = &tokenBucket{tokens: l.burst, last: now}
@@ -77,6 +92,44 @@ func (l *Limiter) Allow(key string) bool {
 	}
 	b.tokens--
 	return true
+}
+
+func (l *Limiter) evictStaleLocked(now time.Time) {
+	cutoff := now.Add(-bucketTTL)
+	for key, b := range l.buckets {
+		if b.last.Before(cutoff) {
+			delete(l.buckets, key)
+		}
+	}
+}
+
+func (l *Limiter) evictOldestLocked(n int) {
+	if n <= 0 {
+		return
+	}
+	type kv struct {
+		key  string
+		last time.Time
+	}
+	oldest := make([]kv, 0, n)
+	for key, b := range l.buckets {
+		if len(oldest) < n {
+			oldest = append(oldest, kv{key, b.last})
+			continue
+		}
+		imax := 0
+		for i := 1; i < len(oldest); i++ {
+			if oldest[i].last.After(oldest[imax].last) {
+				imax = i
+			}
+		}
+		if b.last.Before(oldest[imax].last) {
+			oldest[imax] = kv{key, b.last}
+		}
+	}
+	for _, item := range oldest {
+		delete(l.buckets, item.key)
+	}
 }
 
 // IsSensitiveRoute returns true for endpoints that should be rate limited per IP.

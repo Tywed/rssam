@@ -31,3 +31,18 @@ func TestSetKeys(t *testing.T) {
 		t.Fatal("worker")
 	}
 }
+
+func TestSetKeys_createsFile(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, ".env")
+	if err := SetKeys(p, map[string]string{"CSRF_SECRET": "abc"}); err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), "CSRF_SECRET=abc\n") {
+		t.Fatalf("got %s", b)
+	}
+}

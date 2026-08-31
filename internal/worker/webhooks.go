@@ -10,7 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"math/rand"
+	"math/rand/v2"
 	"net/http"
 	"strings"
 	"text/template"
@@ -382,12 +382,12 @@ func (r *Runner) webhookRetrySchedule(attempt int) (*time.Time, bool) {
 	if max <= 0 {
 		max = time.Hour
 	}
-	delay := webhookBackoffWithJitter(attempt, base, max, r.rand())
+	delay := webhookBackoffWithJitter(attempt, base, max)
 	next := time.Now().UTC().Add(delay)
 	return &next, false
 }
 
-func webhookBackoffWithJitter(attempt int, base, max time.Duration, rnd *rand.Rand) time.Duration {
+func webhookBackoffWithJitter(attempt int, base, max time.Duration) time.Duration {
 	if attempt <= 0 {
 		attempt = 1
 	}
@@ -405,19 +405,12 @@ func webhookBackoffWithJitter(attempt int, base, max time.Duration, rnd *rand.Ra
 	if max > 0 && d > max {
 		d = max
 	}
-	if rnd == nil {
-		rnd = rand.New(rand.NewSource(time.Now().UnixNano()))
+	half := int64(d / 2)
+	if half <= 0 {
+		return d
 	}
-	// Jitter in [0, d/2).
-	jitter := time.Duration(rnd.Int63n(int64(d / 2)))
+	jitter := time.Duration(rand.Int64N(half))
 	return d + jitter
-}
-
-func (r *Runner) rand() *rand.Rand {
-	if r.Rand != nil {
-		return r.Rand
-	}
-	return rand.New(rand.NewSource(time.Now().UnixNano()))
 }
 
 var _ webhookDeliveryStore = (*storage.PostgresStore)(nil)

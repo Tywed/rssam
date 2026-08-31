@@ -95,11 +95,14 @@ func (h *Handler) handleSearch(w http.ResponseWriter, r *http.Request) {
 			Offset: offset,
 		})
 		if err != nil {
-			http.Error(w, "search failed", http.StatusInternalServerError)
-			return
+			if h.log != nil {
+				h.log.Error("ui search failed", "err", err, "q", q)
+			}
+			data.FlashErr = "Поиск не выполнен. Попробуйте другой запрос."
+		} else {
+			data.Entries = entries
+			data.Total = total
 		}
-		data.Entries = entries
-		data.Total = total
 	}
 	data.Title = "Поиск"
 	h.loadSelectedEntry(r, p.UserID, &data)

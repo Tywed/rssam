@@ -14,7 +14,10 @@ func SetKeys(path string, keys map[string]string) error {
 	}
 	raw, err := os.ReadFile(path)
 	if err != nil {
-		return err
+		if !os.IsNotExist(err) {
+			return err
+		}
+		raw = nil
 	}
 	text := string(raw)
 	if !strings.HasSuffix(text, "\n") && text != "" {

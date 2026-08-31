@@ -2,7 +2,6 @@ package worker
 
 import (
 	"encoding/json"
-	"math/rand"
 	"testing"
 	"time"
 
@@ -125,12 +124,11 @@ func TestSignWebhookPayload_HMACSHA256(t *testing.T) {
 }
 
 func TestWebhookBackoffWithJitter_Range(t *testing.T) {
-	rnd := rand.New(rand.NewSource(1))
 	base := 5 * time.Second
 	max := time.Hour
 
 	for attempt := 1; attempt <= 6; attempt++ {
-		got := webhookBackoffWithJitter(attempt, base, max, rnd)
+		got := webhookBackoffWithJitter(attempt, base, max)
 		exp := base
 		for i := 1; i < attempt; i++ {
 			exp *= 2
@@ -145,15 +143,21 @@ func TestWebhookBackoffWithJitter_Range(t *testing.T) {
 }
 
 func TestWebhookBackoffWithJitter_ClampedToMax(t *testing.T) {
-	rnd := rand.New(rand.NewSource(2))
 	base := 10 * time.Minute
 	max := 1 * time.Hour
 
-	got := webhookBackoffWithJitter(10, base, max, rnd)
+	got := webhookBackoffWithJitter(10, base, max)
 	if got < max {
 		t.Fatalf("expected >= max due to clamp, got %s", got)
 	}
 	if got >= max+(max/2) {
 		t.Fatalf("expected jitter < max/2, got %s", got)
+	}
+}
+
+func TestWebhookBackoffWithJitter_TinyDuration(t *testing.T) {
+	got := webhookBackoffWithJitter(1, time.Nanosecond, time.Nanosecond)
+	if got != time.Nanosecond {
+		t.Fatalf("got %s", got)
 	}
 }
