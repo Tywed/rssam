@@ -8,15 +8,20 @@
     <p class="meta">Каналы max.ru через локальный Max API. Если мост не был включён при старте, после первого сохранения может потребоваться перезапуск.</p>
     <form method="post" action="/ui/settings/bridges/max" class="card">
       <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
-      <div class="form-group"><label>API base URL</label><input name="api_base_url" value="{{.BridgeSettings.Max.APIBaseURL}}" placeholder="http://max-api:8000"></div>
+      <div class="form-group"><label>Базовый URL API</label><input name="api_base_url" value="{{.BridgeSettings.Max.APIBaseURL}}" placeholder="http://max-api:8000"></div>
       <div class="form-row">
-        <div class="form-group"><label>Default limit</label><input name="default_limit" type="number" min="1" value="{{.BridgeSettings.Max.DefaultLimit}}"></div>
-        <div class="form-group"><label>Default lookback</label><input name="default_lookback" value="{{durationValue .BridgeSettings.Max.DefaultLookback}}" placeholder="24h"></div>
-        <div class="form-group"><label>Overlap</label><input name="overlap" value="{{durationValue .BridgeSettings.Max.Overlap}}" placeholder="2m"></div>
-        <div class="form-group"><label>Rate limit (с)</label><input name="rate_limit_seconds" type="number" min="1" value="{{.BridgeSettings.Max.RateLimitSeconds}}"></div>
+        <div class="form-group"><label>Лимит по умолчанию</label><input name="default_limit" type="number" min="1" value="{{.BridgeSettings.Max.DefaultLimit}}"></div>
+        <div class="form-group"><label>Глубина по умолчанию</label><input name="default_lookback" value="{{durationValue .BridgeSettings.Max.DefaultLookback}}" placeholder="24h"></div>
+        <div class="form-group"><label>Перекрытие</label><input name="overlap" value="{{durationValue .BridgeSettings.Max.Overlap}}" placeholder="2m"></div>
       </div>
+      <div class="form-row">
+        <div class="form-group"><label>Параллельных слотов</label><input name="concurrent_slots" type="number" min="1" max="32" value="{{.BridgeSettings.Max.ConcurrentSlots}}"></div>
+        <div class="form-group"><label>Пауза между запросами (мс)</label><input name="request_interval_ms" type="number" min="0" max="60000" value="{{.BridgeSettings.Max.RequestIntervalMs}}"></div>
+        <div class="form-group"><label>Ожидание после лимита (с)</label><input name="rate_limit_seconds" type="number" min="1" value="{{.BridgeSettings.Max.RateLimitSeconds}}"></div>
+      </div>
+      <p class="meta">Слоты — сколько запросов к Max API идёт одновременно. 1 бережёт API, но копит просрочку. Пауза действует, когда все слоты свободны.</p>
       <div class="form-group">
-        <label><input type="checkbox" name="allow_private_api" value="1" {{if .BridgeSettings.Max.AllowPrivateAPI}}checked{{end}}> Allow private API</label>
+        <label><input type="checkbox" name="allow_private_api" value="1" {{if .BridgeSettings.Max.AllowPrivateAPI}}checked{{end}}> Разрешить частные адреса API</label>
       </div>
       <button type="submit" class="btn btn-primary">Сохранить</button>
     </form>

@@ -233,6 +233,7 @@ type FeedStore interface {
 	ListFeeds(ctx context.Context, userID int64, limit, offset int) ([]Feed, int, error)
 	ListFeedsByCategory(ctx context.Context, userID, categoryID int64) ([]Feed, error)
 	ListFeedsByCategoryPaginated(ctx context.Context, userID, categoryID int64, limit, offset int) ([]Feed, int, error)
+	ListFeedsByStatus(ctx context.Context, userID int64, status string, limit, offset int) ([]Feed, int, error)
 	SearchFeeds(ctx context.Context, userID int64, filter SearchFeedsFilter) ([]Feed, error)
 	ListFeedsByIDs(ctx context.Context, userID int64, ids []int64) ([]Feed, error)
 	FeedCountsByCategory(ctx context.Context, userID int64) (FeedCategoryCounts, error)
@@ -244,6 +245,7 @@ type FeedStore interface {
 	SetFeedNextCheckAt(ctx context.Context, feedID int64, nextCheckAt time.Time) error
 	RecordFeedPollFailure(ctx context.Context, feedID int64, errMsg string, threshold int, checkedAt time.Time) error
 	ResetFeedPollCircuit(ctx context.Context, feedID int64) error
+	ResetErrorFeedPollCircuits(ctx context.Context) (int64, error)
 	SetFeedManualPaused(ctx context.Context, feedID int64, paused bool) error
 	BulkUpdateFeedsByCategory(ctx context.Context, userID, categoryID int64, update BulkFeedUpdate) (feedIDs []int64, count int, err error)
 	DeleteFeed(ctx context.Context, userID int64, id int64) error
@@ -264,6 +266,21 @@ type EntryDedupStore interface {
 	FilterKnownEntryHashes(ctx context.Context, feedID int64, hashes []string) (map[string]struct{}, error)
 	RecordFeedEntryDedup(ctx context.Context, feedID int64, items []FeedEntryDedupParams) (int, error)
 	StripEntryPayloadAfterWebhook(ctx context.Context, entryID int64) error
+	// CollapseEntriesToHashes copies hashes into feed_entry_dedup and deletes
+	// full entry rows (starred and pending-webhook entries are kept).
+	CollapseEntriesToHashes(ctx context.Context, params CollapseEntriesParams) (int64, error)
+}
+
+// CollapseEntriesParams selects which entries to convert to hash-only storage.
+// CategoryID 0 means uncategorized feeds; nil means all categories.
+type CollapseEntriesParams struct {
+	UserID     int64
+	FeedID     *int64
+	CategoryID *int64
+	// OnlyHashOnlyFeeds skips feeds that still store full entries.
+	OnlyHashOnlyFeeds bool
+	// IncludeLabeled also converts entries that have labels (filter matches).
+	IncludeLabeled bool
 }
 
 type EntryStore interface {
@@ -327,6 +344,7 @@ type WebhookStore interface {
 	CreateWebhook(ctx context.Context, params CreateWebhookParams) (Webhook, error)
 	GetWebhook(ctx context.Context, userID int64, id int64) (Webhook, error)
 	UpdateWebhook(ctx context.Context, params UpdateWebhookParams) (Webhook, error)
+	SetWebhookEnabled(ctx context.Context, userID, id int64, enabled bool) error
 	DeleteWebhook(ctx context.Context, userID int64, id int64) error
 
 	// ListEnabledWebhooks returns enabled webhooks for dispatch/enqueue.

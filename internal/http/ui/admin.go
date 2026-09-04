@@ -177,7 +177,24 @@ func (h *Handler) handleAdminSystem(w http.ResponseWriter, r *http.Request) {
 	}
 	data.Info = info
 	data.Title = "Система"
+	if n := strings.TrimSpace(r.URL.Query().Get("hashed")); n != "" {
+		data.FlashMsg = "Свёрнуто в хеш: " + n + " записей (избранные сохранены)"
+	}
 	h.render(w, r, "admin_system", data)
+}
+
+func (h *Handler) handleAdminHashEntries(w http.ResponseWriter, r *http.Request) {
+	if !h.validateCSRF(r) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	p, _ := principal(r)
+	n, err := h.collapseEntries(r, p.UserID, nil, nil, true)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	http.Redirect(w, r, "/ui/admin/system?hashed="+fmt.Sprint(n), http.StatusFound)
 }
 
 func (h *Handler) envPath() string {

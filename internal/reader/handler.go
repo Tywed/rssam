@@ -3,10 +3,11 @@ package reader
 import (
 	"context"
 	"errors"
+	"time"
 
+	"rssam/internal/reader/dzen"
 	maxbridge "rssam/internal/reader/max"
 	maxstatbridge "rssam/internal/reader/maxstat"
-	"rssam/internal/reader/dzen"
 	"rssam/internal/reader/rutube"
 	"rssam/internal/reader/smotrim"
 	"rssam/internal/reader/telegram"
@@ -137,4 +138,21 @@ func DetectFeedTypeFromURL(feedURL string) string {
 		return FeedTypeSmotrim
 	}
 	return FeedTypeRSS
+}
+
+// RetryAtError is a fetch result that should be retried later without counting as a poll failure.
+type RetryAtError interface {
+	error
+	RetryAt() time.Time
+}
+
+func RetryAt(err error) (time.Time, bool) {
+	var e RetryAtError
+	if errors.As(err, &e) {
+		at := e.RetryAt()
+		if !at.IsZero() {
+			return at, true
+		}
+	}
+	return time.Time{}, false
 }

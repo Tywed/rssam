@@ -178,3 +178,28 @@ WHERE id = $1 AND status = $3`
 	}
 	return nil
 }
+
+func (s *PostgresStore) EntryOnSuccessAction(ctx context.Context, entryID int64) (string, error) {
+	const q = `
+SELECT w.on_success_entry
+FROM webhook_logs wl
+JOIN webhooks w ON w.id = wl.webhook_id
+WHERE wl.entry_id = $1`
+	rows, err := s.db.Query(ctx, q, entryID)
+	if err != nil {
+		return WebhookOnSuccessNone, fmt.Errorf("entry on_success actions: %w", err)
+	}
+	defer rows.Close()
+	var actions []string
+	for rows.Next() {
+		var a string
+		if err := rows.Scan(&a); err != nil {
+			return WebhookOnSuccessNone, fmt.Errorf("scan on_success: %w", err)
+		}
+		actions = append(actions, a)
+	}
+	if err := rows.Err(); err != nil {
+		return WebhookOnSuccessNone, err
+	}
+	return MergeOnSuccessActions(actions), nil
+}

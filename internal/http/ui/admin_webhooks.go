@@ -111,7 +111,7 @@ func adminWebhookStatusLabel(status string) string {
 	case "dead":
 		return "Мёртвые"
 	case "disabled":
-		return "Выключен"
+		return "На паузе"
 	case "idle":
 		return "Без отправок"
 	default:

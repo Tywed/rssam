@@ -47,3 +47,21 @@ WHERE id = $1`
 	}
 	return nil
 }
+
+// ResetErrorFeedPollCircuits clears circuit-breaker state on feeds with errors or autostop.
+// Does not change manual_paused.
+func (s *PostgresStore) ResetErrorFeedPollCircuits(ctx context.Context) (int64, error) {
+	const q = `
+UPDATE feeds
+SET parsing_error_count = 0,
+    poll_paused = FALSE,
+    updated_at = now()
+WHERE poll_paused
+   OR parsing_error_count > 0
+   OR coalesce(last_error, '') != ''`
+	cmd, err := s.db.Exec(ctx, q)
+	if err != nil {
+		return 0, fmt.Errorf("reset error feed poll circuits: %w", err)
+	}
+	return cmd.RowsAffected(), nil
+}

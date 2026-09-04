@@ -19,24 +19,26 @@ type Stored struct {
 }
 
 type TelegramStored struct {
-	UseProxy            bool   `json:"use_proxy"`
-	ProxyServiceURL     string `json:"proxy_service_url"`
-	ProxyServiceToken   string `json:"proxy_service_token"`
-	ProxyTargetURL      string `json:"proxy_target_url"`
-	StaticProxy         string `json:"static_proxy"`
-	ConnectTimeout      string `json:"connect_timeout"`
-	RequestTimeout      string `json:"request_timeout"`
-	ProxyRetry          int    `json:"proxy_retry"`
-	MaxPages            int    `json:"max_pages"`
+	UseProxy          bool   `json:"use_proxy"`
+	ProxyServiceURL   string `json:"proxy_service_url"`
+	ProxyServiceToken string `json:"proxy_service_token"`
+	ProxyTargetURL    string `json:"proxy_target_url"`
+	StaticProxy       string `json:"static_proxy"`
+	ConnectTimeout    string `json:"connect_timeout"`
+	RequestTimeout    string `json:"request_timeout"`
+	ProxyRetry        int    `json:"proxy_retry"`
+	MaxPages          int    `json:"max_pages"`
 }
 
 type MaxStored struct {
-	APIBaseURL       string `json:"api_base_url"`
-	DefaultLimit     int    `json:"default_limit"`
-	DefaultLookback  string `json:"default_lookback"`
-	Overlap          string `json:"overlap"`
-	RateLimitSeconds int    `json:"rate_limit_seconds"`
-	AllowPrivateAPI  bool   `json:"allow_private_api"`
+	APIBaseURL        string `json:"api_base_url"`
+	DefaultLimit      int    `json:"default_limit"`
+	DefaultLookback   string `json:"default_lookback"`
+	Overlap           string `json:"overlap"`
+	RateLimitSeconds  int    `json:"rate_limit_seconds"`
+	RequestIntervalMs int    `json:"request_interval_ms"`
+	ConcurrentSlots   int    `json:"concurrent_slots"`
+	AllowPrivateAPI   bool   `json:"allow_private_api"`
 }
 
 type VKStored struct {
@@ -61,15 +63,15 @@ type Runtime struct {
 }
 
 type TelegramRuntime struct {
-	UseProxy            bool
-	ProxyServiceURL     string
-	ProxyServiceToken   string
-	ProxyTargetURL      string
-	StaticProxy         string
-	ConnectTimeout      time.Duration
-	RequestTimeout      time.Duration
-	ProxyRetry          int
-	MaxPages            int
+	UseProxy          bool
+	ProxyServiceURL   string
+	ProxyServiceToken string
+	ProxyTargetURL    string
+	StaticProxy       string
+	ConnectTimeout    time.Duration
+	RequestTimeout    time.Duration
+	ProxyRetry        int
+	MaxPages          int
 }
 
 type MaxRuntime struct {
@@ -78,6 +80,8 @@ type MaxRuntime struct {
 	DefaultLookback   time.Duration
 	Overlap           time.Duration
 	RateLimitSeconds  int
+	RequestIntervalMs int
+	ConcurrentSlots   int
 	AllowPrivateAPI   bool
 }
 
@@ -97,23 +101,25 @@ type RutubeRuntime struct {
 func MergeEnv(cfg config.Config, stored Stored) Runtime {
 	rt := Runtime{
 		Telegram: TelegramRuntime{
-			UseProxy:            cfg.TelegramProxyServiceURL != "" || cfg.TelegramStaticProxy != "",
-			ProxyServiceURL:     cfg.TelegramProxyServiceURL,
-			ProxyServiceToken:   cfg.TelegramProxyServiceToken,
-			ProxyTargetURL:      cfg.TelegramProxyTargetURL,
-			StaticProxy:         cfg.TelegramStaticProxy,
-			ConnectTimeout:      cfg.TelegramProxyConnectTimeout,
-			RequestTimeout:      cfg.TelegramProxyRequestTimeout,
-			ProxyRetry:          cfg.TelegramProxyRetry,
-			MaxPages:            cfg.TelegramMaxPages,
+			UseProxy:          cfg.TelegramProxyServiceURL != "" || cfg.TelegramStaticProxy != "",
+			ProxyServiceURL:   cfg.TelegramProxyServiceURL,
+			ProxyServiceToken: cfg.TelegramProxyServiceToken,
+			ProxyTargetURL:    cfg.TelegramProxyTargetURL,
+			StaticProxy:       cfg.TelegramStaticProxy,
+			ConnectTimeout:    cfg.TelegramProxyConnectTimeout,
+			RequestTimeout:    cfg.TelegramProxyRequestTimeout,
+			ProxyRetry:        cfg.TelegramProxyRetry,
+			MaxPages:          cfg.TelegramMaxPages,
 		},
 		Max: MaxRuntime{
-			APIBaseURL:       cfg.MaxAPIBaseURL,
-			DefaultLimit:     cfg.MaxDefaultLimit,
-			DefaultLookback:  cfg.MaxDefaultLookback,
-			Overlap:          cfg.MaxOverlap,
-			RateLimitSeconds: cfg.MaxRateLimitSeconds,
-			AllowPrivateAPI:  cfg.MaxAllowPrivateAPI,
+			APIBaseURL:        cfg.MaxAPIBaseURL,
+			DefaultLimit:      cfg.MaxDefaultLimit,
+			DefaultLookback:   cfg.MaxDefaultLookback,
+			Overlap:           cfg.MaxOverlap,
+			RateLimitSeconds:  cfg.MaxRateLimitSeconds,
+			RequestIntervalMs: cfg.MaxRequestIntervalMs,
+			ConcurrentSlots:   cfg.MaxConcurrentSlots,
+			AllowPrivateAPI:   cfg.MaxAllowPrivateAPI,
 		},
 		VK: VKRuntime{
 			AccessToken:      cfg.VKAccessToken,
@@ -180,6 +186,12 @@ func applyMaxStored(dst *MaxRuntime, s MaxStored) {
 	if s.RateLimitSeconds > 0 {
 		dst.RateLimitSeconds = s.RateLimitSeconds
 	}
+	if s.RequestIntervalMs > 0 {
+		dst.RequestIntervalMs = s.RequestIntervalMs
+	}
+	if s.ConcurrentSlots > 0 {
+		dst.ConcurrentSlots = s.ConcurrentSlots
+	}
 	dst.AllowPrivateAPI = s.AllowPrivateAPI
 }
 
@@ -213,23 +225,25 @@ func applyRutubeStored(dst *RutubeRuntime, s RutubeStored) {
 func RuntimeToStored(rt Runtime) Stored {
 	return Stored{
 		Telegram: TelegramStored{
-			UseProxy:            rt.Telegram.UseProxy,
-			ProxyServiceURL:     rt.Telegram.ProxyServiceURL,
-			ProxyServiceToken:   rt.Telegram.ProxyServiceToken,
-			ProxyTargetURL:      rt.Telegram.ProxyTargetURL,
-			StaticProxy:         rt.Telegram.StaticProxy,
-			ConnectTimeout:      rt.Telegram.ConnectTimeout.String(),
-			RequestTimeout:      rt.Telegram.RequestTimeout.String(),
-			ProxyRetry:          rt.Telegram.ProxyRetry,
-			MaxPages:            rt.Telegram.MaxPages,
+			UseProxy:          rt.Telegram.UseProxy,
+			ProxyServiceURL:   rt.Telegram.ProxyServiceURL,
+			ProxyServiceToken: rt.Telegram.ProxyServiceToken,
+			ProxyTargetURL:    rt.Telegram.ProxyTargetURL,
+			StaticProxy:       rt.Telegram.StaticProxy,
+			ConnectTimeout:    rt.Telegram.ConnectTimeout.String(),
+			RequestTimeout:    rt.Telegram.RequestTimeout.String(),
+			ProxyRetry:        rt.Telegram.ProxyRetry,
+			MaxPages:          rt.Telegram.MaxPages,
 		},
 		Max: MaxStored{
-			APIBaseURL:       rt.Max.APIBaseURL,
-			DefaultLimit:     rt.Max.DefaultLimit,
-			DefaultLookback:  rt.Max.DefaultLookback.String(),
-			Overlap:          rt.Max.Overlap.String(),
-			RateLimitSeconds: rt.Max.RateLimitSeconds,
-			AllowPrivateAPI:  rt.Max.AllowPrivateAPI,
+			APIBaseURL:        rt.Max.APIBaseURL,
+			DefaultLimit:      rt.Max.DefaultLimit,
+			DefaultLookback:   rt.Max.DefaultLookback.String(),
+			Overlap:           rt.Max.Overlap.String(),
+			RateLimitSeconds:  rt.Max.RateLimitSeconds,
+			RequestIntervalMs: rt.Max.RequestIntervalMs,
+			ConcurrentSlots:   rt.Max.ConcurrentSlots,
+			AllowPrivateAPI:   rt.Max.AllowPrivateAPI,
 		},
 		VK: VKStored{
 			AccessToken:      rt.VK.AccessToken,

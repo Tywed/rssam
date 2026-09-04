@@ -88,6 +88,34 @@ func TestAdminFeedManualPauseUnpause(t *testing.T) {
 	}
 }
 
+func TestAdminFeedsResetCircuitsBulk(t *testing.T) {
+	mux, feedStore := newAdminPauseTestHandler(t)
+	sid := uiSessionCookie(t, nil, mux)
+	token := auth.CSRFToken("csrf-test", sid)
+
+	form := url.Values{
+		"csrf_token": {token},
+		"status":     {"errors"},
+	}
+	req := httptest.NewRequest(http.MethodPost, "/ui/admin/feeds/reset-circuits", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: sid})
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+	if rec.Code != http.StatusFound {
+		t.Fatalf("reset-circuits: status=%d", rec.Code)
+	}
+	if loc := rec.Header().Get("Location"); loc != "/ui/admin/feeds?status=errors&sort=name&order=asc&page=1" {
+		t.Fatalf("redirect: %q", loc)
+	}
+	if feedStore.feeds[1].PollPaused || feedStore.feeds[1].ParsingErrorCount != 0 {
+		t.Fatalf("bulk reset should clear circuit: %+v", feedStore.feeds[1])
+	}
+	if feedStore.feeds[0].PollPaused || feedStore.feeds[0].ParsingErrorCount != 0 {
+		t.Fatalf("healthy feed should stay healthy: %+v", feedStore.feeds[0])
+	}
+}
+
 func TestAdminFeedDelete(t *testing.T) {
 	mux, feedStore := newAdminPauseTestHandler(t)
 	sid := uiSessionCookie(t, nil, mux)

@@ -80,6 +80,9 @@ func (noopFeedStore) ListFeedsByCategory(_ context.Context, _ int64, _ int64) ([
 func (noopFeedStore) ListFeedsByCategoryPaginated(_ context.Context, _ int64, _ int64, _, _ int) ([]storage.Feed, int, error) {
 	return nil, 0, nil
 }
+func (noopFeedStore) ListFeedsByStatus(_ context.Context, _ int64, _ string, _, _ int) ([]storage.Feed, int, error) {
+	return nil, 0, nil
+}
 func (noopFeedStore) SearchFeeds(_ context.Context, _ int64, _ storage.SearchFeedsFilter) ([]storage.Feed, error) {
 	return nil, nil
 }
@@ -111,6 +114,9 @@ func (noopFeedStore) RecordFeedPollFailure(_ context.Context, _ int64, _ string,
 	return nil
 }
 func (noopFeedStore) ResetFeedPollCircuit(_ context.Context, _ int64) error { return nil }
+func (noopFeedStore) ResetErrorFeedPollCircuits(_ context.Context) (int64, error) {
+	return 0, nil
+}
 func (noopFeedStore) SetFeedManualPaused(_ context.Context, _ int64, _ bool) error { return nil }
 func (noopFeedStore) BulkUpdateFeedsByCategory(_ context.Context, _ int64, _ int64, _ storage.BulkFeedUpdate) ([]int64, int, error) {
 	return nil, 0, nil

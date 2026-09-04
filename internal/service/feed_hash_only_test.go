@@ -38,6 +38,9 @@ func (m *memDedupStore) RecordFeedEntryDedup(_ context.Context, _ int64, items [
 }
 
 func (m *memDedupStore) StripEntryPayloadAfterWebhook(context.Context, int64) error { return nil }
+func (m *memDedupStore) CollapseEntriesToHashes(context.Context, storage.CollapseEntriesParams) (int64, error) {
+	return 0, nil
+}
 
 type memEntryCreate struct {
 	created []storage.CreateEntryParams

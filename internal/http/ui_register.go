@@ -98,6 +98,9 @@ func (s *Server) registerUI(mux *http.ServeMux) {
 	cfg.EnvFilePath = s.envFilePath
 	cfg.DatabaseURL = s.databaseURL
 	cfg.GitHubRepo = s.gitHubRepo
+	if d, ok := s.entries.(storage.EntryDedupStore); ok {
+		cfg.Dedup = d
+	}
 	if s.workerControl != nil {
 		cfg.PauseWorkers = s.workerControl.Pause
 		cfg.ResumeWorkers = s.workerControl.Resume

@@ -7,6 +7,13 @@
         <h1 style="margin:0">Состояние лент</h1>
         <p class="meta" style="margin:0.35rem 0 0">Мониторинг опроса и проблем</p>
       </div>
+      {{if eq .AdminFeedsFilter "errors"}}
+      <form method="post" action="/ui/admin/feeds/reset-circuits" class="inline-form" onsubmit="return confirm('Сбросить автостоп у всех лент с ошибками? Счётчики ошибок будут обнулены.')">
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+        {{template "admin_feeds_return_fields" .}}
+        <button type="submit" class="btn">Сбросить автостоп у всех</button>
+      </form>
+      {{end}}
     </div>
 
     <div class="admin-feeds-meta meta">
@@ -27,38 +34,30 @@
     {{end}}
 
     <div class="admin-feeds-cards">
-      <div class="admin-feeds-card">
+      <a href="{{adminFeedsPageLink "all" .AdminFeedsSort .AdminFeedsOrder 1}}" class="admin-feeds-card {{if eq .AdminFeedsFilter "all"}}active{{end}}">
         <div class="admin-feeds-card-value">{{.AdminFeedSummary.TotalFeeds}}</div>
         <div class="admin-feeds-card-label">Всего</div>
-      </div>
-      <div class="admin-feeds-card">
+      </a>
+      <a href="{{adminFeedsPageLink "ok" .AdminFeedsSort .AdminFeedsOrder 1}}" class="admin-feeds-card {{if eq .AdminFeedsFilter "ok"}}active{{end}}">
         <div class="admin-feeds-card-value">{{.AdminFeedSummary.OKCount}}</div>
         <div class="admin-feeds-card-label">В норме</div>
-      </div>
-      <div class="admin-feeds-card">
+      </a>
+      <a href="{{adminFeedsPageLink "errors" .AdminFeedsSort .AdminFeedsOrder 1}}" class="admin-feeds-card {{if eq .AdminFeedsFilter "errors"}}active{{end}}">
         <div class="admin-feeds-card-value">{{.AdminFeedSummary.ErrorCount}}</div>
         <div class="admin-feeds-card-label">Ошибки</div>
-      </div>
-      <div class="admin-feeds-card">
+      </a>
+      <a href="{{adminFeedsPageLink "paused" .AdminFeedsSort .AdminFeedsOrder 1}}" class="admin-feeds-card {{if eq .AdminFeedsFilter "paused"}}active{{end}}">
         <div class="admin-feeds-card-value">{{.AdminFeedSummary.PausedCount}}</div>
         <div class="admin-feeds-card-label">На паузе</div>
-      </div>
-      <div class="admin-feeds-card">
+      </a>
+      <a href="{{adminFeedsPageLink "waiting" .AdminFeedsSort .AdminFeedsOrder 1}}" class="admin-feeds-card {{if eq .AdminFeedsFilter "waiting"}}active{{end}}">
         <div class="admin-feeds-card-value">{{.AdminFeedSummary.WaitingCount}}</div>
         <div class="admin-feeds-card-label">Ждут обновления</div>
-      </div>
+      </a>
       <div class="admin-feeds-card">
         <div class="admin-feeds-card-value">{{add .PollFeedJobCounts.Pending .PollFeedJobCounts.Running}}</div>
         <div class="admin-feeds-card-label">В очереди</div>
       </div>
-    </div>
-
-    <div class="feeds-filters">
-      <a href="/ui/admin/feeds?status=all&sort={{.AdminFeedsSort}}&order={{.AdminFeedsOrder}}" class="feeds-filter {{if eq .AdminFeedsFilter "all"}}active{{end}}">Все <span class="meta">({{.AdminFeedSummary.TotalFeeds}})</span></a>
-      <a href="/ui/admin/feeds?status=ok&sort={{.AdminFeedsSort}}&order={{.AdminFeedsOrder}}" class="feeds-filter {{if eq .AdminFeedsFilter "ok"}}active{{end}}">В норме <span class="meta">({{.AdminFeedSummary.OKCount}})</span></a>
-      <a href="/ui/admin/feeds?status=errors&sort={{.AdminFeedsSort}}&order={{.AdminFeedsOrder}}" class="feeds-filter {{if eq .AdminFeedsFilter "errors"}}active{{end}}">Ошибки <span class="meta">({{.AdminFeedSummary.ErrorCount}})</span></a>
-      <a href="/ui/admin/feeds?status=paused&sort={{.AdminFeedsSort}}&order={{.AdminFeedsOrder}}" class="feeds-filter {{if eq .AdminFeedsFilter "paused"}}active{{end}}">На паузе <span class="meta">({{.AdminFeedSummary.PausedCount}})</span></a>
-      <a href="/ui/admin/feeds?status=waiting&sort={{.AdminFeedsSort}}&order={{.AdminFeedsOrder}}" class="feeds-filter {{if eq .AdminFeedsFilter "waiting"}}active{{end}}">Ждут обновления <span class="meta">({{.AdminFeedSummary.WaitingCount}})</span></a>
     </div>
 
     <div class="card admin-feeds-table-wrap">
@@ -94,22 +93,26 @@
             <td class="admin-feeds-actions">
               <form method="post" action="/ui/admin/feeds/{{.ID}}/refresh" class="inline-form">
                 <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                {{template "admin_feeds_return_fields" $}}
                 <button type="submit" class="btn btn-sm" title="Обновить (сброс автостопа)">↻</button>
               </form>
               {{if .ManualPaused}}
               <form method="post" action="/ui/admin/feeds/{{.ID}}/unpause" class="inline-form">
                 <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                {{template "admin_feeds_return_fields" $}}
                 <button type="submit" class="btn btn-sm" title="Снять ручную паузу">▶</button>
               </form>
               {{else}}
               <form method="post" action="/ui/admin/feeds/{{.ID}}/pause" class="inline-form">
                 <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                {{template "admin_feeds_return_fields" $}}
                 <button type="submit" class="btn btn-sm" title="Поставить на паузу вручную">⏸</button>
               </form>
               {{end}}
               {{if .PollPaused}}
               <form method="post" action="/ui/admin/feeds/{{.ID}}/reset-circuit" class="inline-form">
                 <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                {{template "admin_feeds_return_fields" $}}
                 <button type="submit" class="btn btn-sm" title="Сбросить автостоп без опроса">⚡</button>
               </form>
               {{end}}
@@ -117,6 +120,7 @@
               {{if or (eq .Status "errors") (eq .Status "paused")}}
               <form method="post" action="/ui/admin/feeds/{{.ID}}/delete" class="inline-form" data-confirm="Удалить ленту «{{.Title}}»? Записи этой ленты тоже будут удалены.">
                 <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                {{template "admin_feeds_return_fields" $}}
                 <button type="submit" class="btn btn-sm btn-danger" title="Удалить ленту">✕</button>
               </form>
               {{end}}
@@ -144,4 +148,11 @@
     {{end}}
   </div>
 </div>
+{{end}}
+
+{{define "admin_feeds_return_fields"}}
+<input type="hidden" name="status" value="{{.AdminFeedsFilter}}">
+<input type="hidden" name="sort" value="{{.AdminFeedsSort}}">
+<input type="hidden" name="order" value="{{.AdminFeedsOrder}}">
+<input type="hidden" name="page" value="{{.AdminFeedsPage}}">
 {{end}}

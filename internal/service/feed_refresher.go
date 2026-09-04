@@ -170,6 +170,9 @@ func (r *FeedRefresher) refreshLoaded(ctx context.Context, feed storage.Feed, ma
 		TLSInsecure:   feed.TLSInsecure,
 	})
 	if fetchErr != nil {
+		if _, ok := reader.RetryAt(fetchErr); ok {
+			return 0, fetchErr
+		}
 		_ = r.Feeds.RecordFeedPollFailure(ctx, feedID, fetchErr.Error(), r.circuitThreshold(), now)
 		_ = r.Feeds.UpdateFeedRefreshMeta(ctx, storage.UpdateFeedRefreshMetaParams{
 			ID:            feedID,

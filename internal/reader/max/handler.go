@@ -25,6 +25,8 @@ type Config struct {
 	DefaultLookback   time.Duration
 	Overlap           time.Duration
 	RateLimitCooldown time.Duration
+	RequestInterval   time.Duration // min gap between HTTP calls when no slot is busy
+	ConcurrentSlots   int           // max parallel Max API requests (default 1)
 	AllowPrivateAPI   bool
 	FetchAllowPrivate bool
 }
@@ -33,10 +35,17 @@ type Config struct {
 type Handler struct {
 	client *http.Client
 	guard  *ssrf.Guard
-	cfg    Config
+
+	cfgMu sync.RWMutex
+	cfg   Config
 
 	mu          sync.Mutex
 	rateLimited map[int64]time.Time // feedID -> until (in-memory supplement)
+
+	slotMu      sync.Mutex
+	nextSlot    time.Time
+	globalUntil time.Time
+	inFlight    int
 }
 
 func NewHandler(client *http.Client, guard *ssrf.Guard, cfg Config) (*Handler, error) {
@@ -56,6 +65,10 @@ func NewHandler(client *http.Client, guard *ssrf.Guard, cfg Config) (*Handler, e
 	if cfg.RateLimitCooldown <= 0 {
 		cfg.RateLimitCooldown = 60 * time.Second
 	}
+	if cfg.RequestInterval < 0 {
+		cfg.RequestInterval = 0
+	}
+	cfg.ConcurrentSlots = ClampConcurrentSlots(cfg.ConcurrentSlots)
 	if err := validateAPIBase(cfg.APIBaseURL, guard, cfg.AllowPrivateAPI, cfg.FetchAllowPrivate); err != nil {
 		return nil, err
 	}
@@ -100,11 +113,23 @@ func (h *Handler) UpdateConfig(cfg Config) error {
 	if cfg.RateLimitCooldown <= 0 {
 		cfg.RateLimitCooldown = 60 * time.Second
 	}
+	if cfg.RequestInterval < 0 {
+		cfg.RequestInterval = 0
+	}
+	cfg.ConcurrentSlots = ClampConcurrentSlots(cfg.ConcurrentSlots)
 	if err := validateAPIBase(cfg.APIBaseURL, h.guard, cfg.AllowPrivateAPI, cfg.FetchAllowPrivate); err != nil {
 		return err
 	}
+	h.cfgMu.Lock()
 	h.cfg = cfg
+	h.cfgMu.Unlock()
 	return nil
+}
+
+func (h *Handler) snapshotConfig() Config {
+	h.cfgMu.RLock()
+	defer h.cfgMu.RUnlock()
+	return h.cfg
 }
 
 func (h *Handler) DetectFeedType(feedURL string) string {
@@ -126,38 +151,73 @@ type FetchResult struct {
 	State   FetchState
 }
 
+// ErrBackoff means this feed should be retried later; it is not a poll failure.
+type ErrBackoff struct {
+	Until time.Time
+}
+
+func (e *ErrBackoff) Error() string {
+	if e == nil {
+		return "max: backoff"
+	}
+	return fmt.Sprintf("max: retry after %s", e.Until.UTC().Format(time.RFC3339))
+}
+
+func (e *ErrBackoff) RetryAt() time.Time {
+	if e == nil {
+		return time.Time{}
+	}
+	return e.Until
+}
+
+func IsBackoff(err error) (time.Time, bool) {
+	var e *ErrBackoff
+	if errors.As(err, &e) && e != nil && !e.Until.IsZero() {
+		return e.Until, true
+	}
+	return time.Time{}, false
+}
+
 func (h *Handler) Fetch(ctx context.Context, feedURL string, st FetchState) (FetchResult, error) {
 	channel, ok := ParseChannelFromFeedURL(feedURL)
 	if !ok || channel == "" {
 		return FetchResult{}, fmt.Errorf("max: invalid feed url %q", feedURL)
 	}
 	now := time.Now().UTC()
+	cfg := h.snapshotConfig()
 
 	if st.RateLimitedUntil != nil && now.Before(*st.RateLimitedUntil) {
-		return FetchResult{}, fmt.Errorf("max: rate limited until %s", st.RateLimitedUntil.Format(time.RFC3339))
+		return FetchResult{State: st}, &ErrBackoff{Until: st.RateLimitedUntil.UTC()}
 	}
 
 	lastEnd := st.LastEndTimeMs
 	afterMs, endTimeMs := ComputeAfter(lastEnd, CursorParams{
-		DefaultLookback: h.cfg.DefaultLookback,
-		Overlap:         h.cfg.Overlap,
+		DefaultLookback: cfg.DefaultLookback,
+		Overlap:         cfg.Overlap,
 		NowTime:         now,
 	})
 
-	limit := clampLimit(h.cfg.DefaultLimit)
-	apiURL, err := h.buildMessagesURL(channel, limit, afterMs, lastEnd > 0)
+	limit := clampLimit(cfg.DefaultLimit)
+	apiURL, err := h.buildMessagesURL(cfg, channel, limit, afterMs, lastEnd > 0)
 	if err != nil {
 		return FetchResult{}, err
 	}
 
-	body, status, err := h.doGET(ctx, apiURL)
+	if until, ok := h.tryReserveSlot(); !ok {
+		return FetchResult{State: st}, &ErrBackoff{Until: until.UTC()}
+	}
+	rateLimited := false
+	defer h.releaseSlot(&rateLimited)
+
+	body, status, err := h.doGET(ctx, cfg, apiURL)
 	if err != nil {
 		return FetchResult{}, err
 	}
-	if status == http.StatusTooManyRequests {
-		until := now.Add(h.cfg.RateLimitCooldown)
+	if looksLikeRateLimit(status, body) {
+		rateLimited = true
+		until := time.Now().UTC().Add(cfg.RateLimitCooldown)
 		st.RateLimitedUntil = &until
-		return FetchResult{State: st}, fmt.Errorf("max: rate limited (HTTP 429)")
+		return FetchResult{State: st}, &ErrBackoff{Until: until}
 	}
 	if status != http.StatusOK {
 		return FetchResult{}, fmt.Errorf("max: unexpected status %d", status)
@@ -185,8 +245,8 @@ func (h *Handler) Fetch(ctx context.Context, feedURL string, st FetchState) (Fet
 	}, nil
 }
 
-func (h *Handler) buildMessagesURL(channel string, limit int, afterMs int64, hasCursor bool) (string, error) {
-	base, err := url.Parse(h.cfg.APIBaseURL + "/channel/" + url.PathEscape(channel) + "/messages")
+func (h *Handler) buildMessagesURL(cfg Config, channel string, limit int, afterMs int64, hasCursor bool) (string, error) {
+	base, err := url.Parse(cfg.APIBaseURL + "/channel/" + url.PathEscape(channel) + "/messages")
 	if err != nil {
 		return "", fmt.Errorf("max: build url: %w", err)
 	}
@@ -199,8 +259,8 @@ func (h *Handler) buildMessagesURL(channel string, limit int, afterMs int64, has
 	return base.String(), nil
 }
 
-func (h *Handler) doGET(ctx context.Context, rawURL string) ([]byte, int, error) {
-	if h.guard != nil && !h.cfg.AllowPrivateAPI && !h.cfg.FetchAllowPrivate {
+func (h *Handler) doGET(ctx context.Context, cfg Config, rawURL string) ([]byte, int, error) {
+	if h.guard != nil && !cfg.AllowPrivateAPI && !cfg.FetchAllowPrivate {
 		if err := h.guard.ValidateURL(rawURL); err != nil {
 			return nil, 0, err
 		}
@@ -224,6 +284,81 @@ func (h *Handler) doGET(ctx context.Context, rawURL string) ([]byte, int, error)
 	return body, resp.StatusCode, nil
 }
 
+func looksLikeRateLimit(status int, body []byte) bool {
+	if status == http.StatusTooManyRequests || status == http.StatusServiceUnavailable {
+		return true
+	}
+	if status == http.StatusOK || status == 0 {
+		return false
+	}
+	s := strings.ToLower(string(body))
+	return strings.Contains(s, "rate limit") ||
+		strings.Contains(s, "too many") ||
+		strings.Contains(s, "flood") ||
+		strings.Contains(s, "лимит")
+}
+
+func ClampConcurrentSlots(n int) int {
+	if n < 1 {
+		return 1
+	}
+	if n > 32 {
+		return 32
+	}
+	return n
+}
+
+func (h *Handler) tryReserveSlot() (until time.Time, ok bool) {
+	h.slotMu.Lock()
+	defer h.slotMu.Unlock()
+	now := time.Now()
+	cfg := h.snapshotConfig()
+	slots := ClampConcurrentSlots(cfg.ConcurrentSlots)
+	until = h.nextSlot
+	if h.globalUntil.After(until) {
+		until = h.globalUntil
+	}
+	if h.inFlight >= slots {
+		if until.Before(now.Add(50 * time.Millisecond)) {
+			until = now.Add(50 * time.Millisecond)
+		}
+		return until, false
+	}
+	if now.Before(h.globalUntil) {
+		return h.globalUntil, false
+	}
+	if h.inFlight == 0 && now.Before(h.nextSlot) {
+		return h.nextSlot, false
+	}
+	h.inFlight++
+	return time.Time{}, true
+}
+
+func (h *Handler) releaseSlot(rateLimited *bool) {
+	h.slotMu.Lock()
+	defer h.slotMu.Unlock()
+	if h.inFlight > 0 {
+		h.inFlight--
+	}
+	now := time.Now()
+	cfg := h.snapshotConfig()
+	interval := cfg.RequestInterval
+	if interval < 0 {
+		interval = 0
+	}
+	h.nextSlot = now.Add(interval)
+	if rateLimited != nil && *rateLimited {
+		cd := cfg.RateLimitCooldown
+		if cd <= 0 {
+			cd = 60 * time.Second
+		}
+		h.globalUntil = now.Add(cd)
+		if h.globalUntil.After(h.nextSlot) {
+			h.nextSlot = h.globalUntil
+		}
+	}
+}
+
 func clampLimit(n int) int {
 	if n < 1 {
 		return 1
@@ -243,7 +378,13 @@ func (h *Handler) SetFeedRateLimit(feedID int64, until time.Time) {
 
 func (h *Handler) IsFeedRateLimited(feedID int64) bool {
 	h.mu.Lock()
+	defer h.mu.Unlock()
+	now := time.Now()
+	for id, until := range h.rateLimited {
+		if !now.Before(until) {
+			delete(h.rateLimited, id)
+		}
+	}
 	until, ok := h.rateLimited[feedID]
-	h.mu.Unlock()
-	return ok && time.Now().Before(until)
+	return ok && now.Before(until)
 }

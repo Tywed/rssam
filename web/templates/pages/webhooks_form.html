@@ -2,20 +2,26 @@
 <div class="settings-layout">
   {{template "settings_nav" .}}
   <div class="settings-content">
-    <div class="toolbar">
+    <div class="toolbar toolbar-form">
       <div>
         {{if .Webhook.ID}}<p class="meta" style="margin:0"><a href="/ui/webhooks">← Вебхуки</a></p>{{end}}
         <h1 style="margin:0.25rem 0 0">{{if .Webhook.ID}}{{webhookLabel .Webhook.Name .Webhook.URL .Webhook.ID}}{{else}}Новый webhook{{end}}</h1>
       </div>
-      {{if .Webhook.ID}}
-      <div class="admin-feeds-actions">
+      <div class="form-actions">
+        <button type="submit" form="webhook-form" class="btn btn-primary">Сохранить</button>
+        <a class="btn" href="/ui/webhooks">Назад</a>
+        {{if .Webhook.ID}}
+        <form method="post" action="/ui/webhooks/{{.Webhook.ID}}/delete" class="inline-form" onsubmit="return confirm('Удалить?')">
+          <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+          <button type="submit" class="btn btn-danger">Удалить</button>
+        </form>
         <a class="btn" href="/ui/webhooks/{{.Webhook.ID}}/logs">Логи</a>
         <form method="post" action="/ui/webhooks/{{.Webhook.ID}}/test" class="inline-form">
           <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
           <button type="submit" class="btn">Тест</button>
         </form>
+        {{end}}
       </div>
-      {{end}}
     </div>
     {{if .Webhook.ID}}<p class="meta">Тест шлёт фиктивную запись (test feed / test entry) в цель. Очередь и журнал доставки не используются.</p>{{end}}
 
@@ -131,15 +137,10 @@
             <option value="delete" {{if eq .Webhook.OnSuccessEntry "delete"}}selected{{end}}>Удалить запись (скрыть)</option>
             <option value="mark_read" {{if eq .Webhook.OnSuccessEntry "mark_read"}}selected{{end}}>Пометить прочитанной</option>
           </select>
-          <p class="meta">Применяется после успешной доставки. Если ту же запись ещё ждут другие вебхуки, «хеш» и «удалить» откладываются.</p>
+          <p class="meta">Применяется, когда все вебхуки по этой записи доставлены (или умерли). Если у нескольких вебхуков разные действия, сильнее побеждает: удалить → хеш → прочитано. «Ничего» на втором вебхуке не отменяет хеш на первом.</p>
         </div>
         <div class="form-group"><label><input type="checkbox" name="enabled" value="1" {{if or (not .Webhook.ID) .Webhook.Enabled}}checked{{end}}> Включён</label></div>
-        <button type="submit" class="btn btn-primary">Сохранить</button>
-        <a class="btn" href="/ui/webhooks">Назад</a>
       </form>
-      {{if .Webhook.ID}}
-      <form method="post" action="/ui/webhooks/{{.Webhook.ID}}/delete" style="margin-top:1rem" onsubmit="return confirm('Удалить?')"><input type="hidden" name="csrf_token" value="{{.CSRFToken}}"><button class="btn btn-danger">Удалить</button></form>
-      {{end}}
     </div>
   </div>
 </div>

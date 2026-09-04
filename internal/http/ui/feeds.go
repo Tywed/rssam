@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -12,46 +11,74 @@ import (
 	"rssam/internal/storage"
 )
 
-func (h *Handler) populateFeedsListData(ctx context.Context, userID int64, data *pageData, feeds []storage.Feed, filter string, total int) {
+func (h *Handler) loadFeedsListPage(r *http.Request, data *pageData, userID int64, filter string) error {
 	data.FeedsFilter = filter
-	if total > 0 {
-		data.TotalFeedCount = total
-	} else {
-		data.TotalFeedCount = len(feeds)
+	ctx := r.Context()
+	if h.cfg.Feeds == nil {
+		return nil
 	}
-	if h.cfg.Feeds != nil {
-		if errCount, inactiveCount, err := h.cfg.Feeds.CountFeedStatuses(ctx, userID); err == nil {
-			data.ErrorFeedCount = errCount
-			data.InactiveFeedCount = inactiveCount
-		} else {
-			data.ErrorFeedCount, data.InactiveFeedCount = countFeedStatuses(feeds)
+
+	if counts, err := h.cfg.Feeds.FeedCountsByCategory(ctx, userID); err == nil {
+		data.TotalFeedCount = counts.Total
+		if filter == "" {
+			data.ListCategoryFeedCounts = counts.ByCategory
+			data.ListUncategorizedFeedCount = counts.Uncategorized
 		}
-	} else {
-		data.ErrorFeedCount, data.InactiveFeedCount = countFeedStatuses(feeds)
 	}
-	filtered := filterFeeds(feeds, filter)
-	data.ListCategoryFeedCounts, data.ListUncategorizedFeedCount = categoryFeedCounts(filtered)
+	if errCount, inactiveCount, err := h.cfg.Feeds.CountFeedStatuses(ctx, userID); err == nil {
+		data.ErrorFeedCount = errCount
+		data.InactiveFeedCount = inactiveCount
+	}
+
+	if filter == "errors" || filter == "inactive" {
+		limit, offset, page := parseFeedsListPage(r)
+		feeds, total, err := h.cfg.Feeds.ListFeedsByStatus(ctx, userID, filter, limit, offset)
+		if err != nil {
+			return err
+		}
+		data.ListFeeds = feeds
+		data.Total = total
+		data.Limit = limit
+		data.Offset = offset
+		data.FeedsListPage = page
+		data.FeedsListPageCount = adminFeedsPageCount(total, limit)
+		return nil
+	}
+
 	if data.TotalFeedCount > sidebarLazyFeedThreshold {
 		data.FeedsTreeLazy = true
-	} else {
-		data.ListFeeds = filtered
+		return nil
 	}
+
+	feeds, total, err := h.cfg.Feeds.ListFeeds(ctx, userID, storage.NoLimit, 0)
+	if err != nil {
+		return err
+	}
+	if data.TotalFeedCount == 0 {
+		data.TotalFeedCount = total
+	}
+	if data.ListCategoryFeedCounts == nil {
+		data.ListCategoryFeedCounts, data.ListUncategorizedFeedCount = categoryFeedCounts(feeds)
+	}
+	if data.ErrorFeedCount == 0 && data.InactiveFeedCount == 0 {
+		data.ErrorFeedCount, data.InactiveFeedCount = countFeedStatuses(feeds)
+	}
+	data.ListFeeds = feeds
+	return nil
 }
 
 func (h *Handler) handleFeedsList(w http.ResponseWriter, r *http.Request) {
 	p, _ := principal(r)
 	data := h.baseData(r, "settings")
 	data.SettingsSection = "feeds"
-	feeds, total, err := h.cfg.Feeds.ListFeeds(r.Context(), p.UserID, storage.NoLimit, 0)
-	if err != nil {
-		http.Error(w, "list feeds failed", http.StatusInternalServerError)
-		return
-	}
 	filter := strings.TrimSpace(r.URL.Query().Get("filter"))
 	if filter != "errors" && filter != "inactive" {
 		filter = ""
 	}
-	h.populateFeedsListData(r.Context(), p.UserID, &data, feeds, filter, total)
+	if err := h.loadFeedsListPage(r, &data, p.UserID, filter); err != nil {
+		http.Error(w, "list feeds failed", http.StatusInternalServerError)
+		return
+	}
 	if p.IsAdmin {
 		h.loadFeedFormWebhooks(r, &data)
 	}
@@ -280,8 +307,7 @@ func (h *Handler) handleFeedsImport(w http.ResponseWriter, r *http.Request) {
 		data := h.baseData(r, "settings")
 		data.SettingsSection = "feeds"
 		data.FlashMsg = fmt.Sprintf("Импорт: создано %d лент, %d категорий, пропущено %d", report.FeedsCreated, report.CategoriesCreated, report.FeedsSkipped)
-		feeds, total, _ := h.cfg.Feeds.ListFeeds(r.Context(), p.UserID, storage.NoLimit, 0)
-		h.populateFeedsListData(r.Context(), p.UserID, &data, feeds, "", total)
+		_ = h.loadFeedsListPage(r, &data, p.UserID, "")
 		h.render(w, r, "feeds_list", data)
 		return
 	}

@@ -2,7 +2,22 @@
 <div class="settings-layout">
   {{template "settings_nav" .}}
   <div class="settings-content">
-    <h1>{{if .Filter.ID}}Фильтр: {{.Filter.Name}}{{else}}Новый фильтр{{end}}</h1>
+    <div class="toolbar toolbar-form">
+      <div>
+        <h1 style="margin:0">{{if .Filter.ID}}Фильтр: {{.Filter.Name}}{{else}}Новый фильтр{{end}}</h1>
+      </div>
+      <div class="form-actions">
+        <button type="submit" form="filter-form" class="btn btn-primary">Сохранить</button>
+        {{if .Filter.ID}}<a class="btn" href="/ui/filters/{{.Filter.ID}}/test">Тест</a>{{end}}
+        <a class="btn" href="/ui/filters">Назад</a>
+        {{if .Filter.ID}}
+        <form method="post" action="/ui/filters/{{.Filter.ID}}/delete" class="inline-form" onsubmit="return confirm('Удалить?')">
+          <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+          <button type="submit" class="btn btn-danger">Удалить</button>
+        </form>
+        {{end}}
+      </div>
+    </div>
     <form method="post" action="{{if .Filter.ID}}/ui/filters/{{.Filter.ID}}{{else}}/ui/filters{{end}}" id="filter-form" class="filter-form">
       <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
 
@@ -129,12 +144,6 @@
         </table>
         <button type="button" class="btn btn-sm" id="add-action">+ Действие</button>
       </div>
-
-      <div class="filter-form-actions">
-        <button type="submit" class="btn btn-primary">Сохранить</button>
-        {{if .Filter.ID}}<a class="btn" href="/ui/filters/{{.Filter.ID}}/test">Тест</a>{{end}}
-        <a class="btn" href="/ui/filters">Назад</a>
-      </div>
     </form>
 
     <template id="filter-action-row-tpl">
@@ -154,13 +163,6 @@
         <td class="cell-actions"><button type="button" class="btn btn-sm btn-danger action-remove">×</button></td>
       </tr>
     </template>
-
-    {{if .Filter.ID}}
-    <form method="post" action="/ui/filters/{{.Filter.ID}}/delete" style="margin-top:1rem" onsubmit="return confirm('Удалить?')">
-      <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
-      <button class="btn btn-danger">Удалить</button>
-    </form>
-    {{end}}
   </div>
 </div>
 {{end}}

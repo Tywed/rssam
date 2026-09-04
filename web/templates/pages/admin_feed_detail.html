@@ -30,6 +30,10 @@
         </form>
         {{end}}
         <a class="btn" href="/ui/feeds/{{.AdminFeedDetail.Feed.ID}}/edit">Редактировать</a>
+        <form method="post" action="/ui/admin/feeds/{{.AdminFeedDetail.Feed.ID}}/hash-entries" class="inline-form" data-confirm="Свернуть записи этой ленты в хеши? Избранные останутся, текст остальных удалится.">
+          <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+          <button type="submit" class="btn">Хэшировать записи</button>
+        </form>
         {{if or (eq .AdminFeedDetail.Status "errors") (eq .AdminFeedDetail.Status "paused")}}
         <form method="post" action="/ui/admin/feeds/{{.AdminFeedDetail.Feed.ID}}/delete" class="inline-form" data-confirm="Удалить ленту «{{.AdminFeedDetail.Feed.Title}}»? Записи этой ленты тоже будут удалены.">
           <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">

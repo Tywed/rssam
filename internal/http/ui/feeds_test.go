@@ -133,6 +133,24 @@ func (m *uiMemFeeds) ListFeedsByCategoryPaginated(_ context.Context, _ int64, ca
 	}
 	return all[offset:end], total, nil
 }
+func (m *uiMemFeeds) ListFeedsByStatus(_ context.Context, _ int64, status string, limit, offset int) ([]storage.Feed, int, error) {
+	filtered := filterFeeds(m.feeds, status)
+	total := len(filtered)
+	if limit <= 0 {
+		limit = total - offset
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	if offset >= total {
+		return nil, total, nil
+	}
+	end := offset + limit
+	if end > total {
+		end = total
+	}
+	return filtered[offset:end], total, nil
+}
 func (m *uiMemFeeds) FeedCountsByCategory(_ context.Context, _ int64) (storage.FeedCategoryCounts, error) {
 	counts, uncategorized := categoryFeedCounts(m.feeds)
 	return storage.FeedCategoryCounts{
@@ -191,6 +209,17 @@ func (m *uiMemFeeds) ResetFeedPollCircuit(_ context.Context, id int64) error {
 		}
 	}
 	return storage.ErrNotFound
+}
+func (m *uiMemFeeds) ResetErrorFeedPollCircuits(_ context.Context) (int64, error) {
+	var n int64
+	for i, f := range m.feeds {
+		if f.PollPaused || f.ParsingErrorCount > 0 || f.LastError != "" {
+			m.feeds[i].PollPaused = false
+			m.feeds[i].ParsingErrorCount = 0
+			n++
+		}
+	}
+	return n, nil
 }
 func (m *uiMemFeeds) SetFeedManualPaused(_ context.Context, id int64, paused bool) error {
 	for i, f := range m.feeds {
@@ -359,10 +388,66 @@ func TestUI_FeedsListTreeAndFilters(t *testing.T) {
 		t.Fatal("errors filter should be active")
 	}
 	if !strings.Contains(body, "Bad Feed") || !strings.Contains(body, "Paused Feed") {
-		t.Fatal("errors filter should show problematic feeds in management tree")
+		t.Fatal("errors filter should show problematic feeds")
 	}
-	if !strings.Contains(body, "(2 канала)") {
-		t.Fatal("errors filter should show filtered category count")
+	if strings.Contains(body, "Импорт OPML") {
+		t.Fatal("OPML import should be hidden on status tabs")
+	}
+}
+
+func TestUI_FeedsListErrorsPagination(t *testing.T) {
+	feeds := make([]storage.Feed, 0, 60)
+	for i := 0; i < 60; i++ {
+		id := int64(i + 1)
+		feeds = append(feeds, storage.Feed{
+			ID: id, Title: fmt.Sprintf("Broken %02d", id), LastError: "timeout",
+		})
+	}
+	h, err := NewHandler(Config{
+		Users: &uiMemUsers{user: storage.User{
+			ID: 1, Username: "alice", PasswordHash: mustHash(t, "secret"),
+		}},
+		Sessions:   &uiMemSessions{sessions: map[string]storage.Session{}},
+		Entries:    uiMemEntries{},
+		Feeds:      &uiMemFeeds{feeds: feeds},
+		Categories: &uiMemCategories{},
+		CSRFSecret: "csrf-test",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	mux := http.NewServeMux()
+	h.Register(mux)
+	sid := uiSessionCookie(t, h, mux)
+
+	req := httptest.NewRequest(http.MethodGet, "/ui/feeds?filter=errors", nil)
+	req.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: sid})
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status=%d", rec.Code)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "Broken 01") || !strings.Contains(body, "Broken 50") {
+		t.Fatal("first page should include first 50 error feeds")
+	}
+	if strings.Contains(body, "Broken 51") {
+		t.Fatal("first page should not include feed 51")
+	}
+	if !strings.Contains(body, "Страница 1 из 2") || !strings.Contains(body, `href="/ui/feeds?filter=errors&amp;page=2"`) {
+		t.Fatal("expected pagination to page 2")
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/ui/feeds?filter=errors&page=2", nil)
+	req.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: sid})
+	rec = httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+	body = rec.Body.String()
+	if !strings.Contains(body, "Broken 51") || !strings.Contains(body, "Broken 60") {
+		t.Fatal("second page should include remaining error feeds")
+	}
+	if strings.Contains(body, "Broken 01") {
+		t.Fatal("second page should not include first-page feeds")
 	}
 }
 

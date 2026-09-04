@@ -222,6 +222,50 @@ func (h *Handler) handleWebhookDelete(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/ui/webhooks", http.StatusFound)
 }
 
+func webhooksListRedirect(r *http.Request) string {
+	status := strings.TrimSpace(r.FormValue("status"))
+	switch status {
+	case "ok", "queue", "retrying", "dead", "disabled", "idle":
+		return "/ui/webhooks?status=" + status
+	case "all":
+		return "/ui/webhooks"
+	}
+	ref := strings.TrimSpace(r.Header.Get("Referer"))
+	if ref != "" {
+		return ref
+	}
+	return "/ui/webhooks"
+}
+
+func (h *Handler) handleWebhookPause(w http.ResponseWriter, r *http.Request) {
+	h.setWebhookEnabled(w, r, false)
+}
+
+func (h *Handler) handleWebhookUnpause(w http.ResponseWriter, r *http.Request) {
+	h.setWebhookEnabled(w, r, true)
+}
+
+func (h *Handler) setWebhookEnabled(w http.ResponseWriter, r *http.Request, enabled bool) {
+	if !h.requireAdminPrincipal(w, r) || !h.validateCSRF(r) {
+		return
+	}
+	p, _ := principal(r)
+	id, err := parsePathID(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if _, err := h.cfg.Webhooks.GetWebhook(r.Context(), p.UserID, id); err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	if err := h.cfg.Webhooks.SetWebhookEnabled(r.Context(), p.UserID, id, enabled); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	http.Redirect(w, r, webhooksListRedirect(r), http.StatusFound)
+}
+
 func (h *Handler) handleWebhookTest(w http.ResponseWriter, r *http.Request) {
 	if !h.requireAdminPrincipal(w, r) || !h.validateCSRF(r) {
 		return

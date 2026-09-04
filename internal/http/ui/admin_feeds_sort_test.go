@@ -2,6 +2,9 @@ package ui
 
 import (
 	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"strings"
 	"testing"
 	"time"
 
@@ -51,6 +54,22 @@ func TestFilterAdminFeedRows(t *testing.T) {
 	}
 	if len(filterAdminFeedRows(rows, "all")) != 3 {
 		t.Fatal("filter all should keep all rows")
+	}
+}
+
+func TestAdminFeedsRedirectFromForm(t *testing.T) {
+	form := url.Values{
+		"status": {"errors"},
+		"sort":   {"id"},
+		"order":  {"desc"},
+		"page":   {"2"},
+	}
+	req := httptest.NewRequest(http.MethodPost, "/ui/admin/feeds/1/refresh", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	got := adminFeedsRedirect(req)
+	want := "/ui/admin/feeds?status=errors&sort=id&order=desc&page=2"
+	if got != want {
+		t.Fatalf("redirect=%q want %q", got, want)
 	}
 }
 

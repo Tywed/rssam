@@ -184,6 +184,15 @@ func TestUI_AdminFeedsPage(t *testing.T) {
 	if strings.Contains(body, `/ui/admin/feeds/1/delete`) {
 		t.Fatal("ok feeds should not show delete on admin feeds list")
 	}
+	if strings.Contains(body, `class="feeds-filters"`) {
+		t.Fatal("admin feeds should not render duplicate text filters")
+	}
+	if !strings.Contains(body, `class="admin-feeds-card active"`) {
+		t.Fatal("expected clickable summary card to mark the active filter")
+	}
+	if !strings.Contains(body, `name="sort"`) || !strings.Contains(body, `name="order"`) {
+		t.Fatal("action forms should keep current sort in hidden fields")
+	}
 }
 
 func TestUI_AdminFeedsPagination(t *testing.T) {

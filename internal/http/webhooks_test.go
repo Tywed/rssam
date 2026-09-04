@@ -143,6 +143,16 @@ func (m *memWebhookStore) UpdateWebhook(_ context.Context, p storage.UpdateWebho
 	m.webhooks[p.ID] = w
 	return w, nil
 }
+func (m *memWebhookStore) SetWebhookEnabled(_ context.Context, _ int64, id int64, enabled bool) error {
+	w, ok := m.webhooks[id]
+	if !ok {
+		return storage.ErrNotFound
+	}
+	w.Enabled = enabled
+	w.UpdatedAt = time.Now().UTC()
+	m.webhooks[id] = w
+	return nil
+}
 func (m *memWebhookStore) DeleteWebhook(_ context.Context, _ int64, id int64) error {
 	if _, ok := m.webhooks[id]; !ok {
 		return storage.ErrNotFound

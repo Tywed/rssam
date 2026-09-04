@@ -46,6 +46,8 @@ type pageData struct {
 	ListFeeds                  []storage.Feed
 	ListCategoryFeedCounts     map[int64]int
 	ListUncategorizedFeedCount int
+	FeedsListPage              int
+	FeedsListPageCount         int
 	Feeds                      []storage.Feed
 	Categories                 []storage.Category
 	FeedID                     int64

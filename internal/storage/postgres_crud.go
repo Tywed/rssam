@@ -333,7 +333,9 @@ func (s *PostgresStore) ListFeedsByCategoryPaginated(ctx context.Context, userID
 	}
 
 	cols := `
-SELECT id, user_id, feed_url, feed_type, title, category_id, interval_minutes, next_check_at, created_at, updated_at
+SELECT id, user_id, feed_url, feed_type, title, category_id, interval_minutes,
+       last_error, parsing_error_count, poll_paused, manual_paused,
+       next_check_at, created_at, updated_at
 FROM feeds
 WHERE ` + where + `
 ORDER BY title ASC, id ASC`
@@ -358,7 +360,11 @@ ORDER BY title ASC, id ASC`
 	out := make([]Feed, 0)
 	for rows.Next() {
 		var f Feed
-		if err := rows.Scan(&f.ID, &f.UserID, &f.FeedURL, &f.FeedType, &f.Title, &f.CategoryID, &f.IntervalMinutes, &f.NextCheckAt, &f.CreatedAt, &f.UpdatedAt); err != nil {
+		if err := rows.Scan(
+			&f.ID, &f.UserID, &f.FeedURL, &f.FeedType, &f.Title, &f.CategoryID, &f.IntervalMinutes,
+			&f.LastError, &f.ParsingErrorCount, &f.PollPaused, &f.ManualPaused,
+			&f.NextCheckAt, &f.CreatedAt, &f.UpdatedAt,
+		); err != nil {
 			return nil, 0, fmt.Errorf("scan feeds by category: %w", err)
 		}
 		out = append(out, f)

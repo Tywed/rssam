@@ -53,6 +53,12 @@ func (m *importJobManager) create(userID int64, total int) *importJob {
 		Report:    importReportDTO{Errors: make([]importErrorDTO, 0)},
 	}
 	m.mu.Lock()
+	cutoff := now.Add(-2 * time.Hour)
+	for jobID, job := range m.jobs {
+		if job.UpdatedAt.Before(cutoff) {
+			delete(m.jobs, jobID)
+		}
+	}
 	m.jobs[id] = j
 	m.mu.Unlock()
 	return j

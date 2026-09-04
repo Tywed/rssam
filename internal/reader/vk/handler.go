@@ -149,8 +149,13 @@ func entryFromPost(post wallPost, ownerNames map[int]string) storage.CreateEntry
 
 func (h *Handler) isQueryRateLimited(query string, now time.Time) bool {
 	h.mu.Lock()
+	defer h.mu.Unlock()
+	for q, until := range h.rateLimited {
+		if !now.Before(until) {
+			delete(h.rateLimited, q)
+		}
+	}
 	until, ok := h.rateLimited[query]
-	h.mu.Unlock()
 	return ok && now.Before(until)
 }
 

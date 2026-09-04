@@ -101,3 +101,78 @@ ON CONFLICT (feed_id, hash) DO NOTHING`
 	}
 	return nil
 }
+
+const collapseEntriesBatchSize = 5000
+
+// CollapseEntriesToHashes records hashes for poll dedup and deletes full entry rows.
+func (s *PostgresStore) CollapseEntriesToHashes(ctx context.Context, params CollapseEntriesParams) (int64, error) {
+	if params.UserID <= 0 {
+		return 0, fmt.Errorf("user_id is required")
+	}
+	var total int64
+	for {
+		if err := ctx.Err(); err != nil {
+			return total, err
+		}
+		n, err := s.collapseEntriesBatch(ctx, params)
+		if err != nil {
+			return total, err
+		}
+		total += n
+		if n < collapseEntriesBatchSize {
+			return total, nil
+		}
+	}
+}
+
+func (s *PostgresStore) collapseEntriesBatch(ctx context.Context, params CollapseEntriesParams) (int64, error) {
+	var feedID any
+	if params.FeedID != nil {
+		feedID = *params.FeedID
+	}
+	var categoryID any
+	if params.CategoryID != nil {
+		categoryID = *params.CategoryID
+	}
+
+	const q = `
+WITH doomed AS (
+  SELECT e.id, e.feed_id, e.hash, COALESCE(e.url, '') AS url
+  FROM entries e
+  INNER JOIN feeds f ON f.id = e.feed_id
+  WHERE f.user_id = $1
+    AND ($2::bigint IS NULL OR e.feed_id = $2)
+    AND (
+      $3::bigint IS NULL
+      OR ($3 = 0 AND f.category_id IS NULL)
+      OR f.category_id = $3
+    )
+    AND e.starred = FALSE
+    AND ($6::boolean OR NOT EXISTS (SELECT 1 FROM entry_labels el WHERE el.entry_id = e.id))
+    AND NOT EXISTS (
+      SELECT 1 FROM webhook_logs wl
+      WHERE wl.entry_id = e.id AND wl.status NOT IN ('sent', 'dead')
+    )
+    AND (NOT $4::boolean OR f.store_hash_only)
+  LIMIT $5
+),
+ins AS (
+  INSERT INTO feed_entry_dedup (feed_id, hash, url)
+  SELECT feed_id, hash, url FROM doomed
+  WHERE hash <> ''
+  ON CONFLICT (feed_id, hash) DO NOTHING
+),
+del AS (
+  DELETE FROM entries e
+  USING doomed d
+  WHERE e.id = d.id
+  RETURNING e.id
+)
+SELECT COUNT(*) FROM del`
+
+	var n int64
+	if err := s.db.QueryRow(ctx, q, params.UserID, feedID, categoryID, params.OnlyHashOnlyFeeds, collapseEntriesBatchSize, params.IncludeLabeled).Scan(&n); err != nil {
+		return 0, fmt.Errorf("collapse entries to hashes: %w", err)
+	}
+	return n, nil
+}

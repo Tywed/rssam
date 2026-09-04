@@ -56,3 +56,51 @@ WHERE user_id = $1`
 	}
 	return errors, inactive, nil
 }
+
+func (s *PostgresStore) ListFeedsByStatus(ctx context.Context, userID int64, status string, limit, offset int) ([]Feed, int, error) {
+	var cond string
+	switch status {
+	case "inactive":
+		cond = `poll_paused OR manual_paused`
+	default:
+		cond = `coalesce(last_error, '') != '' OR poll_paused OR manual_paused OR parsing_error_count > 0`
+	}
+	if limit <= 0 {
+		limit = 50
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	q := `
+SELECT id, user_id, feed_url, feed_type, title, category_id, interval_minutes,
+       last_error, parsing_error_count, poll_paused, manual_paused,
+       next_check_at, created_at, updated_at, count(*) OVER()
+FROM feeds
+WHERE user_id = $1
+  AND (` + cond + `)
+ORDER BY title ASC, id ASC
+LIMIT $2 OFFSET $3`
+	rows, err := s.db.Query(ctx, q, userID, limit, offset)
+	if err != nil {
+		return nil, 0, fmt.Errorf("list feeds by status: %w", err)
+	}
+	defer rows.Close()
+
+	out := make([]Feed, 0, limit)
+	total := 0
+	for rows.Next() {
+		var f Feed
+		if err := rows.Scan(
+			&f.ID, &f.UserID, &f.FeedURL, &f.FeedType, &f.Title, &f.CategoryID, &f.IntervalMinutes,
+			&f.LastError, &f.ParsingErrorCount, &f.PollPaused, &f.ManualPaused,
+			&f.NextCheckAt, &f.CreatedAt, &f.UpdatedAt, &total,
+		); err != nil {
+			return nil, 0, fmt.Errorf("scan feeds by status: %w", err)
+		}
+		out = append(out, f)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, fmt.Errorf("iterate feeds by status: %w", err)
+	}
+	return out, total, nil
+}

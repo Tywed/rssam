@@ -17,9 +17,10 @@ import (
 type memWebhookDelivery struct {
 	mu sync.Mutex
 
-	loadErr    error
-	delCtx     storage.WebhookDeliveryContext
-	incomplete int
+	loadErr           error
+	delCtx            storage.WebhookDeliveryContext
+	incomplete        int
+	resolvedOnSuccess string
 
 	logs     map[int64]storage.WebhookLog
 	stripped []int64
@@ -81,6 +82,13 @@ func (m *memWebhookDelivery) StripEntryPayloadAfterWebhook(_ context.Context, en
 
 func (m *memWebhookDelivery) CountIncompleteWebhookLogs(context.Context, int64, int64) (int, error) {
 	return m.incomplete, nil
+}
+
+func (m *memWebhookDelivery) EntryOnSuccessAction(context.Context, int64) (string, error) {
+	if m.resolvedOnSuccess != "" {
+		return m.resolvedOnSuccess, nil
+	}
+	return m.delCtx.Webhook.OnSuccessEntry, nil
 }
 
 func (m *memWebhookDelivery) MarkEntryRemovedKeepPayload(_ context.Context, entryID int64) error {
@@ -302,6 +310,28 @@ func TestProcessWebhookLog_HashAppliedWhenAlone(t *testing.T) {
 	processTestRunner(store, 0).processWebhookLog(context.Background(), log)
 	if len(store.stripped) != 1 {
 		t.Fatalf("expected strip, got %v", store.stripped)
+	}
+}
+
+func TestProcessWebhookLog_HashAppliedWhenPeerWebhookHasNone(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+	log := storage.WebhookLog{ID: 8, EntryID: 99, Attempt: 0}
+	store := newMemWebhookDelivery(log, storage.WebhookDeliveryContext{
+		Webhook: storage.Webhook{
+			Enabled:        true,
+			URL:            srv.URL,
+			Method:         http.MethodPost,
+			OnSuccessEntry: storage.WebhookOnSuccessNone,
+		},
+		Entry: storage.Entry{ID: 99},
+	})
+	store.resolvedOnSuccess = storage.WebhookOnSuccessHash
+	processTestRunner(store, 0).processWebhookLog(context.Background(), log)
+	if len(store.stripped) != 1 {
+		t.Fatalf("peer hash should apply after last delivery, stripped=%v", store.stripped)
 	}
 }
 

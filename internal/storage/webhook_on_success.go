@@ -57,3 +57,33 @@ func NormalizeWebhookOnSuccess(s string) (string, error) {
 		return "", fmt.Errorf("on_success_entry must be none, hash, delete, or mark_read")
 	}
 }
+
+// MergeOnSuccessActions picks the strongest on_success_entry among several webhooks.
+// delete > hash > mark_read > none.
+func MergeOnSuccessActions(actions []string) string {
+	hasDelete, hasHash, hasRead := false, false, false
+	for _, raw := range actions {
+		a, err := NormalizeWebhookOnSuccess(raw)
+		if err != nil {
+			continue
+		}
+		switch a {
+		case WebhookOnSuccessDelete:
+			hasDelete = true
+		case WebhookOnSuccessHash:
+			hasHash = true
+		case WebhookOnSuccessMarkRead:
+			hasRead = true
+		}
+	}
+	if hasDelete {
+		return WebhookOnSuccessDelete
+	}
+	if hasHash {
+		return WebhookOnSuccessHash
+	}
+	if hasRead {
+		return WebhookOnSuccessMarkRead
+	}
+	return WebhookOnSuccessNone
+}

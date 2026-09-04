@@ -31,7 +31,11 @@ func (c *unreadCountsCache) get(userID int64) (unreadCountsSnap, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	s, ok := c.items[userID]
-	if !ok || time.Now().After(s.exp) {
+	if !ok {
+		return unreadCountsSnap{}, false
+	}
+	if time.Now().After(s.exp) {
+		delete(c.items, userID)
 		return unreadCountsSnap{}, false
 	}
 	return s, true

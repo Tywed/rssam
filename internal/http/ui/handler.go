@@ -63,6 +63,7 @@ type Config struct {
 	PauseWorkers          func()
 	ResumeWorkers         func()
 	WorkersPaused         func() bool
+	Dedup                 storage.EntryDedupStore
 }
 
 type WebhookTestResult struct {
@@ -195,6 +196,7 @@ func parseTemplates() (*template.Template, error) {
 		"adminFeedStatusClass":         adminFeedStatusClass,
 		"adminFeedsSortLink":           adminFeedsSortLink,
 		"adminFeedsPageLink":           adminFeedsPageLink,
+		"feedsListPageLink":            feedsListPageLink,
 		"adminFeedsSortIndicator":      adminFeedsSortIndicator,
 		"truncateStr":                  truncateStr,
 		"formatBytes":                  formatBytes,
@@ -377,6 +379,7 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.Handle("POST /ui/categories/{categoryID}/feeds/bulk-interval", auth(h.requireAdmin(http.HandlerFunc(h.handleCategoryBulkInterval))))
 	mux.Handle("POST /ui/categories/{categoryID}/feeds/bulk-webhook", auth(h.requireAdmin(http.HandlerFunc(h.handleCategoryBulkWebhook))))
 	mux.Handle("POST /ui/categories/{categoryID}/feeds/bulk-hash-only", auth(h.requireAdmin(http.HandlerFunc(h.handleCategoryBulkHashOnly))))
+	mux.Handle("POST /ui/categories/{categoryID}/feeds/bulk-hash-entries", auth(h.requireAdmin(http.HandlerFunc(h.handleCategoryBulkHashEntries))))
 	mux.Handle("POST /ui/categories/{categoryID}/feeds/bulk-refresh", auth(h.requireAdmin(http.HandlerFunc(h.handleCategoryBulkRefresh))))
 	mux.Handle("POST /ui/categories/{categoryID}/feeds/bulk-pause", auth(h.requireAdmin(http.HandlerFunc(h.handleCategoryBulkPause))))
 	mux.Handle("POST /ui/categories/{categoryID}/feeds/bulk-move", auth(h.requireAdmin(http.HandlerFunc(h.handleCategoryBulkMove))))
@@ -402,6 +405,8 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.Handle("GET /ui/webhooks/{id}", auth(h.requireAdmin(http.HandlerFunc(h.handleWebhookEdit))))
 	mux.Handle("POST /ui/webhooks/{id}", auth(h.requireAdmin(http.HandlerFunc(h.handleWebhookUpdate))))
 	mux.Handle("POST /ui/webhooks/{id}/delete", auth(h.requireAdmin(http.HandlerFunc(h.handleWebhookDelete))))
+	mux.Handle("POST /ui/webhooks/{id}/pause", auth(h.requireAdmin(http.HandlerFunc(h.handleWebhookPause))))
+	mux.Handle("POST /ui/webhooks/{id}/unpause", auth(h.requireAdmin(http.HandlerFunc(h.handleWebhookUnpause))))
 	mux.Handle("POST /ui/webhooks/{id}/test", auth(h.requireAdmin(http.HandlerFunc(h.handleWebhookTest))))
 	mux.Handle("GET /ui/webhooks/{id}/logs", auth(h.requireAdmin(http.HandlerFunc(h.handleWebhookLogs))))
 	mux.Handle("POST /ui/webhooks/{id}/retry-all", auth(h.requireAdmin(http.HandlerFunc(h.handleWebhookRetryAll))))
@@ -426,6 +431,7 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.Handle("POST /ui/admin/users", auth(h.requireAdmin(http.HandlerFunc(h.handleAdminUserCreate))))
 	mux.Handle("POST /ui/admin/users/{id}/delete", auth(h.requireAdmin(http.HandlerFunc(h.handleAdminUserDelete))))
 	mux.Handle("POST /ui/admin/feeds/refresh-all", auth(h.requireAdmin(http.HandlerFunc(h.handleAdminRefreshAll))))
+	mux.Handle("POST /ui/admin/feeds/reset-circuits", auth(h.requireAdmin(http.HandlerFunc(h.handleAdminFeedsResetCircuits))))
 	mux.Handle("GET /ui/admin/feeds", auth(h.requireAdmin(http.HandlerFunc(h.handleAdminFeedsList))))
 	mux.Handle("GET /ui/admin/feeds/{id}", auth(h.requireAdmin(http.HandlerFunc(h.handleAdminFeedShow))))
 	mux.Handle("POST /ui/admin/feeds/{id}/refresh", auth(h.requireAdmin(http.HandlerFunc(h.handleAdminFeedRefresh))))
@@ -433,8 +439,10 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.Handle("POST /ui/admin/feeds/{id}/unpause", auth(h.requireAdmin(http.HandlerFunc(h.handleAdminFeedUnpause))))
 	mux.Handle("POST /ui/admin/feeds/{id}/reset-circuit", auth(h.requireAdmin(http.HandlerFunc(h.handleAdminFeedResetCircuit))))
 	mux.Handle("POST /ui/admin/feeds/{id}/delete", auth(h.requireAdmin(http.HandlerFunc(h.handleAdminFeedDelete))))
+	mux.Handle("POST /ui/admin/feeds/{id}/hash-entries", auth(h.requireAdmin(http.HandlerFunc(h.handleAdminFeedHashEntries))))
 	mux.Handle("GET /ui/version", auth(http.HandlerFunc(h.handleVersionJSON)))
 	mux.Handle("GET /ui/admin/system", auth(h.requireAdmin(http.HandlerFunc(h.handleAdminSystem))))
+	mux.Handle("POST /ui/admin/system/hash-entries", auth(h.requireAdmin(http.HandlerFunc(h.handleAdminHashEntries))))
 	mux.Handle("POST /ui/admin/system/workers", auth(h.requireAdmin(http.HandlerFunc(h.handleAdminWorkersSave))))
 	mux.Handle("POST /ui/admin/system/workers/pause", auth(h.requireAdmin(http.HandlerFunc(h.handleAdminWorkersPause))))
 	mux.Handle("POST /ui/admin/system/workers/resume", auth(h.requireAdmin(http.HandlerFunc(h.handleAdminWorkersResume))))

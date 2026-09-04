@@ -35,6 +35,11 @@
         <button type="submit" class="btn btn-sm">Выкл</button>
       </form>
     </div>
+    <form method="post" action="/ui/categories/{{.CategoryID}}/feeds/bulk-hash-entries" class="cat-action-row" data-confirm="Свернуть записи категории в хеши? Избранные останутся. Текст остальных удалится.">
+      <input type="hidden" name="csrf_token" value="{{.Root.CSRFToken}}">
+      <input type="hidden" name="filter" value="{{.Root.FeedsFilter}}">
+      <button type="submit" class="btn btn-sm">Хэшировать записи</button>
+    </form>
     <form method="post" action="/ui/categories/{{.CategoryID}}/feeds/bulk-refresh" class="cat-action-row">
       <input type="hidden" name="csrf_token" value="{{.Root.CSRFToken}}">
       <input type="hidden" name="filter" value="{{.Root.FeedsFilter}}">

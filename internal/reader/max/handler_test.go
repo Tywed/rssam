@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -115,7 +117,7 @@ func TestHandler_Fetch_RateLimited(t *testing.T) {
 	}
 	h, err := NewHandler(srv.Client(), guard, Config{
 		APIBaseURL:        srv.URL,
-		RateLimitCooldown: 30 * time.Second,
+		RateLimitCooldown: 40 * time.Millisecond,
 		AllowPrivateAPI:   true,
 	})
 	if err != nil {
@@ -123,7 +125,124 @@ func TestHandler_Fetch_RateLimited(t *testing.T) {
 	}
 
 	_, err = h.Fetch(context.Background(), "https://max.ru/test_channel", FetchState{})
-	if err == nil {
-		t.Fatal("expected rate limit error")
+	if _, ok := IsBackoff(err); !ok {
+		t.Fatalf("expected backoff after 429, err=%v", err)
+	}
+
+	start := time.Now()
+	_, err = h.Fetch(context.Background(), "https://max.ru/other_channel", FetchState{})
+	if _, ok := IsBackoff(err); !ok {
+		t.Fatalf("second fetch should backoff immediately, err=%v", err)
+	}
+	if time.Since(start) > 50*time.Millisecond {
+		t.Fatalf("busy slot must not block the worker, took %s", time.Since(start))
+	}
+}
+
+func TestHandler_Fetch_SerializesRequests(t *testing.T) {
+	var inFlight, maxInFlight atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		n := inFlight.Add(1)
+		for {
+			cur := maxInFlight.Load()
+			if n <= cur || maxInFlight.CompareAndSwap(cur, n) {
+				break
+			}
+		}
+		time.Sleep(25 * time.Millisecond)
+		inFlight.Add(-1)
+		_ = json.NewEncoder(w).Encode(APIResponse{})
+	}))
+	t.Cleanup(srv.Close)
+
+	guard, err := ssrf.New(ssrf.Config{AllowPrivateNetwork: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	h, err := NewHandler(srv.Client(), guard, Config{
+		APIBaseURL:      srv.URL,
+		RequestInterval: 30 * time.Millisecond,
+		AllowPrivateAPI: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var wg sync.WaitGroup
+	var okN atomic.Int32
+	for i := 0; i < 3; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			_, err := h.Fetch(context.Background(), "https://max.ru/ch"+string(rune('a'+i)), FetchState{})
+			if err == nil {
+				okN.Add(1)
+				return
+			}
+			if _, yes := IsBackoff(err); !yes {
+				t.Errorf("fetch: %v", err)
+			}
+		}(i)
+	}
+	wg.Wait()
+	if maxInFlight.Load() != 1 {
+		t.Fatalf("max in-flight=%d, want 1", maxInFlight.Load())
+	}
+	if okN.Load() < 1 {
+		t.Fatal("expected at least one fetch to reach the API")
+	}
+}
+
+func TestHandler_Fetch_ConcurrentSlots(t *testing.T) {
+	var inFlight, maxInFlight atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		n := inFlight.Add(1)
+		for {
+			cur := maxInFlight.Load()
+			if n <= cur || maxInFlight.CompareAndSwap(cur, n) {
+				break
+			}
+		}
+		time.Sleep(40 * time.Millisecond)
+		inFlight.Add(-1)
+		_ = json.NewEncoder(w).Encode(APIResponse{})
+	}))
+	t.Cleanup(srv.Close)
+
+	guard, err := ssrf.New(ssrf.Config{AllowPrivateNetwork: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	h, err := NewHandler(srv.Client(), guard, Config{
+		APIBaseURL:      srv.URL,
+		ConcurrentSlots: 3,
+		AllowPrivateAPI: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var wg sync.WaitGroup
+	var okN atomic.Int32
+	for i := 0; i < 6; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			_, err := h.Fetch(context.Background(), "https://max.ru/ch"+string(rune('a'+i)), FetchState{})
+			if err == nil {
+				okN.Add(1)
+				return
+			}
+			if _, yes := IsBackoff(err); !yes {
+				t.Errorf("fetch: %v", err)
+			}
+		}(i)
+	}
+	wg.Wait()
+	if maxInFlight.Load() != 3 {
+		t.Fatalf("max in-flight=%d, want 3", maxInFlight.Load())
+	}
+	if okN.Load() < 3 {
+		t.Fatalf("expected at least 3 fetches to reach the API, got %d", okN.Load())
 	}
 }

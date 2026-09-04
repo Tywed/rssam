@@ -122,6 +122,8 @@ func main() {
 		MaxDefaultLookback:   cfg.MaxDefaultLookback,
 		MaxOverlap:           cfg.MaxOverlap,
 		MaxRateLimitSeconds:  cfg.MaxRateLimitSeconds,
+		MaxRequestIntervalMs: cfg.MaxRequestIntervalMs,
+		MaxConcurrentSlots:   cfg.MaxConcurrentSlots,
 		MaxAllowPrivateAPI:   cfg.MaxAllowPrivateAPI,
 
 		MaxstatAccessToken:      cfg.MaxstatAccessToken,

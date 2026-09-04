@@ -19,6 +19,21 @@ func TestNormalizeWebhookOnSuccess(t *testing.T) {
 	}
 }
 
+func TestMergeOnSuccessActions(t *testing.T) {
+	if got := MergeOnSuccessActions(nil); got != WebhookOnSuccessNone {
+		t.Fatalf("empty: %q", got)
+	}
+	if got := MergeOnSuccessActions([]string{WebhookOnSuccessNone, WebhookOnSuccessHash}); got != WebhookOnSuccessHash {
+		t.Fatalf("none+hash: %q", got)
+	}
+	if got := MergeOnSuccessActions([]string{WebhookOnSuccessHash, WebhookOnSuccessDelete}); got != WebhookOnSuccessDelete {
+		t.Fatalf("hash+delete: %q", got)
+	}
+	if got := MergeOnSuccessActions([]string{WebhookOnSuccessNone, WebhookOnSuccessMarkRead}); got != WebhookOnSuccessMarkRead {
+		t.Fatalf("none+read: %q", got)
+	}
+}
+
 func TestNormalizeWebhookName(t *testing.T) {
 	got, err := NormalizeWebhookName("  tg  ")
 	if err != nil || got != "tg" {

@@ -122,6 +122,8 @@ func (m *Manager) apply() {
 			DefaultLookback:   rt.Max.DefaultLookback,
 			Overlap:           rt.Max.Overlap,
 			RateLimitCooldown: durationSeconds(rt.Max.RateLimitSeconds),
+			RequestInterval:   durationMillis(rt.Max.RequestIntervalMs),
+			ConcurrentSlots:   rt.Max.ConcurrentSlots,
 			AllowPrivateAPI:   rt.Max.AllowPrivateAPI,
 			FetchAllowPrivate: m.env.FetchAllowPrivateNetwork,
 		})
@@ -149,4 +151,11 @@ func durationSeconds(sec int) time.Duration {
 		return 0
 	}
 	return time.Duration(sec) * time.Second
+}
+
+func durationMillis(ms int) time.Duration {
+	if ms <= 0 {
+		return 0
+	}
+	return time.Duration(ms) * time.Millisecond
 }

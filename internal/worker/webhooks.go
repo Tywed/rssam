@@ -86,6 +86,7 @@ type webhookDeliveryStore interface {
 	MarkWebhookLogFailed(ctx context.Context, logID int64, statusCode *int, errMsg string, responseSnippet string, attempt int, nextRetryAt *time.Time, dead bool) error
 	StripEntryPayloadAfterWebhook(ctx context.Context, entryID int64) error
 	CountIncompleteWebhookLogs(ctx context.Context, entryID, excludeLogID int64) (int, error)
+	EntryOnSuccessAction(ctx context.Context, entryID int64) (string, error)
 	MarkEntryRemovedKeepPayload(ctx context.Context, entryID int64) error
 	MarkEntryReadIfActive(ctx context.Context, entryID int64) error
 }
@@ -238,32 +239,44 @@ func webhookHTTPRetryable(statusCode int) bool {
 }
 
 func (r *Runner) applyOnSuccessEntry(ctx context.Context, store webhookDeliveryStore, l storage.WebhookLog, delCtx storage.WebhookDeliveryContext) {
-	action, err := storage.NormalizeWebhookOnSuccess(delCtx.Webhook.OnSuccessEntry)
+	thisAction, err := storage.NormalizeWebhookOnSuccess(delCtx.Webhook.OnSuccessEntry)
 	if err != nil {
-		action = storage.WebhookOnSuccessNone
+		thisAction = storage.WebhookOnSuccessNone
 	}
-	switch action {
-	case storage.WebhookOnSuccessHash, storage.WebhookOnSuccessDelete:
-		n, cerr := store.CountIncompleteWebhookLogs(ctx, l.EntryID, l.ID)
-		if cerr != nil {
-			if r.Log != nil {
-				r.Log.Error("webhook on_success: count incomplete logs", "entry_id", l.EntryID, "err", cerr)
-			}
-			break
-		}
-		if n > 0 {
-			break
-		}
-		if action == storage.WebhookOnSuccessHash {
-			if err := store.StripEntryPayloadAfterWebhook(ctx, l.EntryID); err != nil && r.Log != nil {
-				r.Log.Error("webhook on_success: hash entry", "entry_id", l.EntryID, "err", err)
-			}
-		} else if err := store.MarkEntryRemovedKeepPayload(ctx, l.EntryID); err != nil && r.Log != nil {
-			r.Log.Error("webhook on_success: delete entry", "entry_id", l.EntryID, "err", err)
-		}
-	case storage.WebhookOnSuccessMarkRead:
+	if thisAction == storage.WebhookOnSuccessMarkRead {
 		if err := store.MarkEntryReadIfActive(ctx, l.EntryID); err != nil && r.Log != nil {
 			r.Log.Error("webhook on_success: mark read", "entry_id", l.EntryID, "err", err)
+		}
+	}
+
+	n, cerr := store.CountIncompleteWebhookLogs(ctx, l.EntryID, l.ID)
+	if cerr != nil {
+		if r.Log != nil {
+			r.Log.Error("webhook on_success: count incomplete logs", "entry_id", l.EntryID, "err", cerr)
+		}
+		return
+	}
+	if n > 0 {
+		return
+	}
+
+	action := thisAction
+	if resolved, rerr := store.EntryOnSuccessAction(ctx, l.EntryID); rerr != nil {
+		if r.Log != nil {
+			r.Log.Error("webhook on_success: resolve actions", "entry_id", l.EntryID, "err", rerr)
+		}
+	} else {
+		action = storage.MergeOnSuccessActions([]string{thisAction, resolved})
+	}
+
+	switch action {
+	case storage.WebhookOnSuccessHash:
+		if err := store.StripEntryPayloadAfterWebhook(ctx, l.EntryID); err != nil && r.Log != nil {
+			r.Log.Error("webhook on_success: hash entry", "entry_id", l.EntryID, "err", err)
+		}
+	case storage.WebhookOnSuccessDelete:
+		if err := store.MarkEntryRemovedKeepPayload(ctx, l.EntryID); err != nil && r.Log != nil {
+			r.Log.Error("webhook on_success: delete entry", "entry_id", l.EntryID, "err", err)
 		}
 	}
 	if r.Cfg.DedupOnlyStorage {

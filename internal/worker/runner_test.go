@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"rssam/internal/reader"
 	"rssam/internal/storage"
 )
 
@@ -29,7 +30,9 @@ func (s *stubFeedRefresher) RefreshFeed(_ context.Context, feedID int64) (int, e
 	}
 	if s.err != nil {
 		if s.store != nil {
-			s.store.feed.ParsingErrorCount++
+			if _, ok := reader.RetryAt(s.err); !ok {
+				s.store.feed.ParsingErrorCount++
+			}
 		}
 		return 0, s.err
 	}
@@ -166,5 +169,35 @@ func TestRunnerPauseResume(t *testing.T) {
 	r.Resume()
 	if r.Paused() {
 		t.Fatal("expected running")
+	}
+}
+
+type testBackoffErr struct{ at time.Time }
+
+func (e testBackoffErr) Error() string      { return "max slot busy" }
+func (e testBackoffErr) RetryAt() time.Time { return e.at }
+
+func TestProcessPollFeed_BackoffSkipsWithoutError(t *testing.T) {
+	feedID := int64(11)
+	store := &stubPollStore{feed: storage.Feed{ID: feedID, IntervalMinutes: 15}}
+	until := time.Now().UTC().Add(3 * time.Second)
+	cfg := Config{InstanceID: "test"}
+	ref := &stubFeedRefresher{err: testBackoffErr{at: until}, store: store, cfg: cfg}
+
+	processPollFeedJob(context.Background(), storage.Job{
+		ID: 4, Type: "poll_feed", FeedID: &feedID,
+	}, store, ref, cfg, slog.Default())
+
+	if store.feed.ParsingErrorCount != 0 {
+		t.Fatalf("error count=%d, want 0", store.feed.ParsingErrorCount)
+	}
+	if store.rescheduleCall {
+		t.Fatal("backoff should complete the job, not reschedule as failure")
+	}
+	if store.completeCalls != 1 {
+		t.Fatalf("complete calls=%d", store.completeCalls)
+	}
+	if store.nextCheckAt.Before(until.Add(-time.Second)) {
+		t.Fatalf("next_check=%s, want ~%s", store.nextCheckAt, until)
 	}
 }

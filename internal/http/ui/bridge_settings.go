@@ -30,13 +30,15 @@ type TelegramBridgeSettings struct {
 }
 
 type MaxBridgeSettings struct {
-	Enabled          bool
-	APIBaseURL       string
-	DefaultLimit     int
-	DefaultLookback  time.Duration
-	Overlap          time.Duration
-	RateLimitSeconds int
-	AllowPrivateAPI  bool
+	Enabled           bool
+	APIBaseURL        string
+	DefaultLimit      int
+	DefaultLookback   time.Duration
+	Overlap           time.Duration
+	RateLimitSeconds  int
+	RequestIntervalMs int
+	ConcurrentSlots   int
+	AllowPrivateAPI   bool
 }
 
 type VKBridgeSettings struct {
@@ -55,6 +57,10 @@ type RutubeBridgeSettings struct {
 }
 
 func BridgeSettingsFromRuntime(rt bridgeconfig.Runtime) BridgeSettings {
+	slots := rt.Max.ConcurrentSlots
+	if slots < 1 {
+		slots = 1
+	}
 	return BridgeSettings{
 		Telegram: TelegramBridgeSettings{
 			Enabled:              true,
@@ -69,13 +75,15 @@ func BridgeSettingsFromRuntime(rt bridgeconfig.Runtime) BridgeSettings {
 			MaxPages:             rt.Telegram.MaxPages,
 		},
 		Max: MaxBridgeSettings{
-			Enabled:          rt.Max.APIBaseURL != "",
-			APIBaseURL:       rt.Max.APIBaseURL,
-			DefaultLimit:     rt.Max.DefaultLimit,
-			DefaultLookback:  rt.Max.DefaultLookback,
-			Overlap:          rt.Max.Overlap,
-			RateLimitSeconds: rt.Max.RateLimitSeconds,
-			AllowPrivateAPI:  rt.Max.AllowPrivateAPI,
+			Enabled:           rt.Max.APIBaseURL != "",
+			APIBaseURL:        rt.Max.APIBaseURL,
+			DefaultLimit:      rt.Max.DefaultLimit,
+			DefaultLookback:   rt.Max.DefaultLookback,
+			Overlap:           rt.Max.Overlap,
+			RateLimitSeconds:  rt.Max.RateLimitSeconds,
+			RequestIntervalMs: rt.Max.RequestIntervalMs,
+			ConcurrentSlots:   slots,
+			AllowPrivateAPI:   rt.Max.AllowPrivateAPI,
 		},
 		VK: VKBridgeSettings{
 			Enabled:          rt.VK.AccessToken != "",

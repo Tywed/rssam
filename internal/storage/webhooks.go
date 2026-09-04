@@ -256,6 +256,22 @@ RETURNING ` + webhookSQLColumns
 	return out, nil
 }
 
+func (s *PostgresStore) SetWebhookEnabled(ctx context.Context, userID, id int64, enabled bool) error {
+	const q = `
+UPDATE webhooks
+SET enabled = $3,
+    updated_at = now()
+WHERE id = $1 AND user_id = $2`
+	cmd, err := s.db.Exec(ctx, q, id, userID, enabled)
+	if err != nil {
+		return fmt.Errorf("set webhook enabled: %w", err)
+	}
+	if cmd.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 func (s *PostgresStore) DeleteWebhook(ctx context.Context, userID int64, id int64) error {
 	cmd, err := s.db.Exec(ctx, `DELETE FROM webhooks WHERE id = $1 AND user_id = $2`, id, userID)
 	if err != nil {

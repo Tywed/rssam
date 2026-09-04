@@ -11,15 +11,15 @@
       <div class="form-group">
         <label><input type="checkbox" name="use_proxy" value="1" {{if .BridgeSettings.Telegram.UseProxy}}checked{{end}}> Использовать прокси</label>
       </div>
-      <div class="form-group"><label>Proxy-service URL</label><input name="proxy_service_url" value="{{.BridgeSettings.Telegram.ProxyServiceURL}}" placeholder="http://proxy-service:8787"></div>
-      <div class="form-group"><label>Service token</label><input name="proxy_service_token" type="password" placeholder="{{if .BridgeSettings.Telegram.ProxyServiceTokenSet}}•••• (оставьте пустым, чтобы не менять){{else}}не задан{{end}}"></div>
+      <div class="form-group"><label>URL прокси-сервиса</label><input name="proxy_service_url" value="{{.BridgeSettings.Telegram.ProxyServiceURL}}" placeholder="http://proxy-service:8787"></div>
+      <div class="form-group"><label>Токен сервиса</label><input name="proxy_service_token" type="password" placeholder="{{if .BridgeSettings.Telegram.ProxyServiceTokenSet}}•••• (оставьте пустым, чтобы не менять){{else}}не задан{{end}}"></div>
       <div class="form-group"><label>Статический SOCKS</label><input name="static_proxy" value="{{.BridgeSettings.Telegram.StaticProxy}}" placeholder="127.0.0.1:1080"></div>
-      <div class="form-group"><label>Target URL</label><input name="proxy_target_url" value="{{.BridgeSettings.Telegram.ProxyTargetURL}}"></div>
+      <div class="form-group"><label>Целевой URL</label><input name="proxy_target_url" value="{{.BridgeSettings.Telegram.ProxyTargetURL}}"></div>
       <div class="form-row">
-        <div class="form-group"><label>Connect timeout</label><input name="connect_timeout" value="{{durationValue .BridgeSettings.Telegram.ConnectTimeout}}" placeholder="10s"></div>
-        <div class="form-group"><label>Request timeout</label><input name="request_timeout" value="{{durationValue .BridgeSettings.Telegram.RequestTimeout}}" placeholder="25s"></div>
-        <div class="form-group"><label>Retry</label><input name="proxy_retry" type="number" min="0" max="20" value="{{.BridgeSettings.Telegram.ProxyRetry}}"></div>
-        <div class="form-group"><label>Max pages</label><input name="max_pages" type="number" min="1" max="100" value="{{.BridgeSettings.Telegram.MaxPages}}"></div>
+        <div class="form-group"><label>Таймаут соединения</label><input name="connect_timeout" value="{{durationValue .BridgeSettings.Telegram.ConnectTimeout}}" placeholder="10s"></div>
+        <div class="form-group"><label>Таймаут запроса</label><input name="request_timeout" value="{{durationValue .BridgeSettings.Telegram.RequestTimeout}}" placeholder="25s"></div>
+        <div class="form-group"><label>Повторы</label><input name="proxy_retry" type="number" min="0" max="20" value="{{.BridgeSettings.Telegram.ProxyRetry}}"></div>
+        <div class="form-group"><label>Макс. страниц</label><input name="max_pages" type="number" min="1" max="100" value="{{.BridgeSettings.Telegram.MaxPages}}"></div>
       </div>
       <button type="submit" class="btn btn-primary">Сохранить</button>
     </form>

@@ -7,9 +7,9 @@ import (
 	"time"
 
 	"rssam/internal/proxy"
+	"rssam/internal/reader/dzen"
 	"rssam/internal/reader/max"
 	"rssam/internal/reader/maxstat"
-	"rssam/internal/reader/dzen"
 	"rssam/internal/reader/rutube"
 	"rssam/internal/reader/smotrim"
 	"rssam/internal/reader/telegram"
@@ -26,12 +26,14 @@ type RegistryConfig struct {
 	FetchViaProxyURL     string
 	FetchTLSInsecure     bool
 
-	MaxAPIBaseURL       string
-	MaxDefaultLimit     int
-	MaxDefaultLookback  time.Duration
-	MaxOverlap          time.Duration
-	MaxRateLimitSeconds int
-	MaxAllowPrivateAPI  bool
+	MaxAPIBaseURL        string
+	MaxDefaultLimit      int
+	MaxDefaultLookback   time.Duration
+	MaxOverlap           time.Duration
+	MaxRateLimitSeconds  int
+	MaxRequestIntervalMs int
+	MaxConcurrentSlots   int
+	MaxAllowPrivateAPI   bool
 
 	MaxstatAccessToken      string
 	MaxstatAPIBaseURL       string
@@ -90,17 +92,17 @@ func NewRegistry(cfg RegistryConfig) (*RegistryBundle, error) {
 		proxyClient.ServiceToken = tok
 	}
 	tgHandler := telegram.NewHandler(proxyClient, cfg.HTTPClient, telegram.Config{
-		ProxyServiceURL:         cfg.TelegramProxyServiceURL,
-		ProxyServiceToken:       cfg.TelegramProxyServiceToken,
-		ProxyTargetURL:          cfg.TelegramProxyTargetURL,
-		StaticProxy:             cfg.TelegramStaticProxy,
-		UseProxy:                cfg.TelegramProxyServiceURL != "" || cfg.TelegramStaticProxy != "",
-		ProxyConnectTimeout:     cfg.TelegramProxyConnectTimeout,
-		ProxyRequestTimeout:     cfg.TelegramProxyRequestTimeout,
-		ProxyRetry:              cfg.TelegramProxyRetry,
-		MaxPages:                cfg.TelegramMaxPages,
-		UserAgent:               cfg.UserAgent,
-		TLSInsecureSkipVerify:   cfg.FetchTLSInsecure,
+		ProxyServiceURL:       cfg.TelegramProxyServiceURL,
+		ProxyServiceToken:     cfg.TelegramProxyServiceToken,
+		ProxyTargetURL:        cfg.TelegramProxyTargetURL,
+		StaticProxy:           cfg.TelegramStaticProxy,
+		UseProxy:              cfg.TelegramProxyServiceURL != "" || cfg.TelegramStaticProxy != "",
+		ProxyConnectTimeout:   cfg.TelegramProxyConnectTimeout,
+		ProxyRequestTimeout:   cfg.TelegramProxyRequestTimeout,
+		ProxyRetry:            cfg.TelegramProxyRetry,
+		MaxPages:              cfg.TelegramMaxPages,
+		UserAgent:             cfg.UserAgent,
+		TLSInsecureSkipVerify: cfg.FetchTLSInsecure,
 	})
 	reg.Register(newTelegramHandler(tgHandler))
 
@@ -112,6 +114,8 @@ func NewRegistry(cfg RegistryConfig) (*RegistryBundle, error) {
 			DefaultLookback:   cfg.MaxDefaultLookback,
 			Overlap:           cfg.MaxOverlap,
 			RateLimitCooldown: time.Duration(cfg.MaxRateLimitSeconds) * time.Second,
+			RequestInterval:   time.Duration(cfg.MaxRequestIntervalMs) * time.Millisecond,
+			ConcurrentSlots:   cfg.MaxConcurrentSlots,
 			AllowPrivateAPI:   cfg.MaxAllowPrivateAPI,
 			FetchAllowPrivate: cfg.FetchAllowPrivateNet,
 		})

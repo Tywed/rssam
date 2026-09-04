@@ -38,8 +38,7 @@ func (h *Handler) renderFeedsListFlash(w http.ResponseWriter, r *http.Request, f
 	data.SettingsSection = "feeds"
 	data.FlashMsg = flash
 	filter := feedsFilterFromForm(r)
-	feeds, total, _ := h.cfg.Feeds.ListFeeds(r.Context(), p.UserID, storage.NoLimit, 0)
-	h.populateFeedsListData(r.Context(), p.UserID, &data, feeds, filter, total)
+	_ = h.loadFeedsListPage(r, &data, p.UserID, filter)
 	if p.IsAdmin {
 		h.loadFeedFormWebhooks(r, &data)
 	}
@@ -153,7 +152,51 @@ func (h *Handler) handleCategoryBulkHashOnly(w http.ResponseWriter, r *http.Requ
 	if enabled {
 		label = "включён"
 	}
-	h.renderFeedsListFlash(w, r, fmt.Sprintf("Режим «хеш до фильтра» %s для %d лент", label, count))
+	flash := fmt.Sprintf("Режим «хеш до фильтра» %s для %d лент", label, count)
+	if enabled && h.cfg.Dedup != nil {
+		if n, err := h.collapseEntries(r, p.UserID, nil, &categoryID, false); err == nil && n > 0 {
+			flash += fmt.Sprintf(". Свёрнуто в хеш: %d записей", n)
+		}
+	}
+	h.renderFeedsListFlash(w, r, flash)
+}
+
+func (h *Handler) handleCategoryBulkHashEntries(w http.ResponseWriter, r *http.Request) {
+	if !h.validateCSRF(r) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	p, _ := principal(r)
+	categoryID, err := parseCategoryPathID(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	_ = r.ParseForm()
+	n, err := h.collapseEntries(r, p.UserID, nil, &categoryID, true)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	h.renderFeedsListFlash(w, r, fmt.Sprintf("Свёрнуто в хеш: %d записей (избранные сохранены)", n))
+}
+
+func (h *Handler) collapseEntries(r *http.Request, userID int64, feedID, categoryID *int64, onlyHashOnly bool) (int64, error) {
+	if h.cfg.Dedup == nil {
+		return 0, fmt.Errorf("dedup store is not configured")
+	}
+	n, err := h.cfg.Dedup.CollapseEntriesToHashes(r.Context(), storage.CollapseEntriesParams{
+		UserID:            userID,
+		FeedID:            feedID,
+		CategoryID:        categoryID,
+		OnlyHashOnlyFeeds: onlyHashOnly,
+		IncludeLabeled:    true,
+	})
+	if err != nil {
+		return 0, err
+	}
+	h.invalidateUnread(userID)
+	return n, nil
 }
 
 func (h *Handler) handleCategoryBulkRefresh(w http.ResponseWriter, r *http.Request) {

@@ -36,12 +36,14 @@ type Config struct {
 	FeedPollDailyResetTZ        string
 	FilterMatchTimeout          time.Duration
 
-	MaxAPIBaseURL       string
-	MaxDefaultLimit     int
-	MaxDefaultLookback  time.Duration
-	MaxOverlap          time.Duration
-	MaxRateLimitSeconds int
-	MaxAllowPrivateAPI  bool
+	MaxAPIBaseURL        string
+	MaxDefaultLimit      int
+	MaxDefaultLookback   time.Duration
+	MaxOverlap           time.Duration
+	MaxRateLimitSeconds  int
+	MaxRequestIntervalMs int
+	MaxConcurrentSlots   int
+	MaxAllowPrivateAPI   bool
 
 	MaxstatAccessToken      string
 	MaxstatAPIBaseURL       string
@@ -147,12 +149,14 @@ func Load() (Config, error) {
 		FeedPollDailyResetTZ:        getEnv("FEED_POLL_DAILY_RESET_TZ", "Europe/Moscow"),
 		FilterMatchTimeout:          parseDuration(getEnv("FILTER_MATCH_TIMEOUT", "50ms"), 50*time.Millisecond),
 
-		MaxAPIBaseURL:       strings.TrimSpace(os.Getenv("MAX_API_BASE_URL")),
-		MaxDefaultLimit:     parseInt(getEnv("MAX_DEFAULT_LIMIT", "100"), 100),
-		MaxDefaultLookback:  parseDuration(getEnv("MAX_DEFAULT_LOOKBACK_MS", "24h"), 24*time.Hour),
-		MaxOverlap:          parseDuration(getEnv("MAX_OVERLAP_MS", "2m"), 2*time.Minute),
-		MaxRateLimitSeconds: parseInt(getEnv("MAX_RATE_LIMIT_SECONDS", "60"), 60),
-		MaxAllowPrivateAPI:  parseBool(os.Getenv("MAX_ALLOW_PRIVATE_API")),
+		MaxAPIBaseURL:        strings.TrimSpace(os.Getenv("MAX_API_BASE_URL")),
+		MaxDefaultLimit:      parseInt(getEnv("MAX_DEFAULT_LIMIT", "100"), 100),
+		MaxDefaultLookback:   parseDuration(getEnv("MAX_DEFAULT_LOOKBACK_MS", "24h"), 24*time.Hour),
+		MaxOverlap:           parseDuration(getEnv("MAX_OVERLAP_MS", "2m"), 2*time.Minute),
+		MaxRateLimitSeconds:  parseInt(getEnv("MAX_RATE_LIMIT_SECONDS", "60"), 60),
+		MaxRequestIntervalMs: parseInt(getEnv("MAX_REQUEST_INTERVAL_MS", "1000"), 1000),
+		MaxConcurrentSlots:   parseInt(getEnv("MAX_CONCURRENT_SLOTS", "1"), 1),
+		MaxAllowPrivateAPI:   parseBool(os.Getenv("MAX_ALLOW_PRIVATE_API")),
 
 		MaxstatAccessToken:      strings.TrimSpace(os.Getenv("MAXSTAT_ACCESS_TOKEN")),
 		MaxstatAPIBaseURL:       strings.TrimSpace(getEnv("MAXSTAT_API_BASE_URL", "https://maxstat.ru/api/v1")),
@@ -274,6 +278,12 @@ func (c Config) Validate() error {
 	}
 	if c.MaxRateLimitSeconds < 1 || c.MaxRateLimitSeconds > 86400 {
 		errs = append(errs, fmt.Errorf("MAX_RATE_LIMIT_SECONDS must be between 1 and 86400, got %d", c.MaxRateLimitSeconds))
+	}
+	if c.MaxRequestIntervalMs < 0 || c.MaxRequestIntervalMs > 60000 {
+		errs = append(errs, fmt.Errorf("MAX_REQUEST_INTERVAL_MS must be between 0 and 60000, got %d", c.MaxRequestIntervalMs))
+	}
+	if c.MaxConcurrentSlots < 1 || c.MaxConcurrentSlots > 32 {
+		errs = append(errs, fmt.Errorf("MAX_CONCURRENT_SLOTS must be between 1 and 32, got %d", c.MaxConcurrentSlots))
 	}
 	if c.TelegramProxyConnectTimeout <= 0 || c.TelegramProxyConnectTimeout > 5*time.Minute {
 		errs = append(errs, fmt.Errorf("TELEGRAM_PROXY_CONNECT_TIMEOUT must be between 1ms and 5m, got %s", c.TelegramProxyConnectTimeout))

@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"fmt"
 	"net/http"
 )
 
@@ -30,8 +29,5 @@ func adminFeedsPageCount(total, limit int) int {
 }
 
 func adminFeedsPageLink(status, sortKey, order string, page int) string {
-	if page < 1 {
-		page = 1
-	}
-	return fmt.Sprintf("/ui/admin/feeds?status=%s&sort=%s&order=%s&page=%d", status, sortKey, order, page)
+	return adminFeedsListURL(status, sortKey, order, page)
 }

@@ -75,6 +75,14 @@
     </div>
     {{end}}
     <div class="card">
+      <h2 style="margin-top:0">Хранение записей</h2>
+      <p>Сворачивает уже сохранённые записи лент с режимом «только хеш до фильтра», включая совпадения фильтров (метки). Избранные не трогаются. Текст удаляется безвозвратно. Ленты с полным хранением не затрагиваются.</p>
+      <form method="post" action="/ui/admin/system/hash-entries" data-confirm="Хэшировать все записи? Избранные останутся. Записи с метками тоже сворачиваются, текст удалится безвозвратно.">
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+        <button type="submit" class="btn btn-danger">Хэшировать все записи</button>
+      </form>
+    </div>
+    <div class="card">
       <h2 style="margin-top:0">Резервная копия</h2>
       <p>Секреты из .env в браузер не выгружаются. Дамп БД:</p>
       <pre class="release-notes">pg_dump --no-owner --no-acl "$DATABASE_URL" &gt; rssam.sql</pre>

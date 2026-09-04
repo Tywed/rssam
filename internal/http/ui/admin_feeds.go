@@ -127,13 +127,35 @@ func parseAdminFeedsSort(r *http.Request) (sortKey, order string) {
 	return sortKey, order
 }
 
+func parseAdminFeedsStatus(v string) string {
+	switch strings.TrimSpace(v) {
+	case "errors", "paused", "waiting", "ok", "all":
+		return strings.TrimSpace(v)
+	default:
+		return "all"
+	}
+}
+
+func adminFeedsListURL(status, sortKey, order string, page int) string {
+	status = parseAdminFeedsStatus(status)
+	if _, ok := adminFeedSortKeys[sortKey]; !ok {
+		sortKey = "name"
+	}
+	if order != "desc" {
+		order = "asc"
+	}
+	if page < 1 {
+		page = 1
+	}
+	return fmt.Sprintf("/ui/admin/feeds?status=%s&sort=%s&order=%s&page=%d", status, sortKey, order, page)
+}
+
 func adminFeedsSortLink(status, sortKey, order, column string) string {
 	nextOrder := "asc"
 	if sortKey == column && order == "asc" {
 		nextOrder = "desc"
 	}
-	q := fmt.Sprintf("/ui/admin/feeds?status=%s&sort=%s&order=%s&page=1", status, column, nextOrder)
-	return q
+	return adminFeedsListURL(status, column, nextOrder, 1)
 }
 
 func adminFeedsSortIndicator(sortKey, order, column string) string {
@@ -240,14 +262,8 @@ func (h *Handler) loadAdminFeedsDashboard(r *http.Request) (pageData, error) {
 	runtime.ReadMemStats(&ms)
 	data.MemAllocBytes = int64(ms.Alloc)
 
-	status := strings.TrimSpace(r.URL.Query().Get("status"))
-	switch status {
-	case "errors", "paused", "waiting", "ok", "all":
-		data.AdminFeedsFilter = status
-	default:
-		data.AdminFeedsFilter = "all"
-		status = "all"
-	}
+	status := parseAdminFeedsStatus(r.URL.Query().Get("status"))
+	data.AdminFeedsFilter = status
 
 	sortKey, order := parseAdminFeedsSort(r)
 	limit, offset, page := parseAdminFeedsPage(r)
@@ -285,6 +301,9 @@ func (h *Handler) handleAdminFeedsList(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		http.Error(w, "admin feeds failed", http.StatusInternalServerError)
 		return
+	}
+	if n := strings.TrimSpace(r.URL.Query().Get("hashed")); n != "" {
+		data.FlashMsg = "Свёрнуто в хеш: " + n + " записей"
 	}
 	h.render(w, r, "admin_feeds", data)
 }
@@ -336,6 +355,9 @@ func (h *Handler) handleAdminFeedShow(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	data.AdminFeedDetail = detail
+	if n := strings.TrimSpace(r.URL.Query().Get("hashed")); n != "" {
+		data.FlashMsg = "Свёрнуто в хеш: " + n + " записей"
+	}
 	h.render(w, r, "admin_feed_detail", data)
 }
 
@@ -416,6 +438,15 @@ func (h *Handler) handleAdminFeedResetCircuit(w http.ResponseWriter, r *http.Req
 	http.Redirect(w, r, adminFeedsRedirect(r), http.StatusFound)
 }
 
+func (h *Handler) handleAdminFeedsResetCircuits(w http.ResponseWriter, r *http.Request) {
+	if !h.validateCSRF(r) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	_, _ = h.cfg.Feeds.ResetErrorFeedPollCircuits(r.Context())
+	http.Redirect(w, r, adminFeedsRedirect(r), http.StatusFound)
+}
+
 func (h *Handler) handleAdminFeedDelete(w http.ResponseWriter, r *http.Request) {
 	if !h.validateCSRF(r) {
 		http.Error(w, "forbidden", http.StatusForbidden)
@@ -438,7 +469,47 @@ func (h *Handler) handleAdminFeedDelete(w http.ResponseWriter, r *http.Request) 
 	http.Redirect(w, r, adminFeedsRedirect(r), http.StatusFound)
 }
 
+func (h *Handler) handleAdminFeedHashEntries(w http.ResponseWriter, r *http.Request) {
+	if !h.validateCSRF(r) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	id, err := parsePathID(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	feed, err := h.cfg.Feeds.GetFeedByID(r.Context(), id)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	feedID := feed.ID
+	n, err := h.collapseEntries(r, feed.UserID, &feedID, nil, false)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	ref := adminFeedsRedirect(r)
+	sep := "?"
+	if strings.Contains(ref, "?") {
+		sep = "&"
+	}
+	http.Redirect(w, r, ref+sep+"hashed="+fmt.Sprint(n), http.StatusFound)
+}
+
 func adminFeedsRedirect(r *http.Request) string {
+	status := strings.TrimSpace(r.FormValue("status"))
+	sortKey := strings.TrimSpace(r.FormValue("sort"))
+	order := strings.TrimSpace(r.FormValue("order"))
+	pageStr := strings.TrimSpace(r.FormValue("page"))
+	if status != "" || sortKey != "" || order != "" || pageStr != "" {
+		page := 1
+		if n, err := strconvAtoi(pageStr); err == nil && n > 0 {
+			page = n
+		}
+		return adminFeedsListURL(status, sortKey, order, page)
+	}
 	ref := strings.TrimSpace(r.Header.Get("Referer"))
 	if ref != "" {
 		return ref

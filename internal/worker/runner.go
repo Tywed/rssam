@@ -12,6 +12,7 @@ import (
 
 	"rssam/internal/capacity"
 	"rssam/internal/metrics"
+	"rssam/internal/reader"
 	"rssam/internal/ssrf"
 	"rssam/internal/storage"
 )
@@ -302,10 +303,19 @@ func processPollFeedJob(ctx context.Context, j storage.Job, store pollJobStore, 
 
 	_, err := refresher.RefreshLoadedFeed(runCtx, feed)
 	dur := time.Since(start)
+	now := time.Now().UTC()
+	if at, ok := reader.RetryAt(err); ok {
+		if at.Before(now.Add(50 * time.Millisecond)) {
+			at = now.Add(time.Second)
+		}
+		_ = store.SetFeedNextCheckAt(ctx, feedID, at)
+		_, _ = store.CompleteJob(ctx, j.ID, cfg.InstanceID)
+		return
+	}
+
 	metrics.PollDuration.Observe(dur.Seconds())
 	capacity.ObservePollDuration(dur)
 
-	now := time.Now().UTC()
 	if err != nil {
 		metrics.PollErrors.Inc()
 		metrics.PollAttempts.WithLabelValues("error").Inc()
