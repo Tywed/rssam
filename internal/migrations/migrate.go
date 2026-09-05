@@ -17,10 +17,28 @@ import (
 //go:embed *.sql
 var embedded embed.FS
 
+// migrationLockKey is an arbitrary but fixed pg_advisory_lock key for rssam.
+const migrationLockKey int64 = 0x7273_7361_6d6d_6967 // "rssammig"
+
 func Apply(ctx context.Context, db *pgxpool.Pool, log *slog.Logger) error {
 	if log == nil {
 		log = slog.Default()
 	}
+
+	// Serialise concurrent migrators (two instances starting at once, or a
+	// deploy hook racing the service). The session-level advisory lock is
+	// held on a dedicated connection for the whole run and released on return.
+	conn, err := db.Acquire(ctx)
+	if err != nil {
+		return fmt.Errorf("acquire migration connection: %w", err)
+	}
+	defer conn.Release()
+	if _, err := conn.Exec(ctx, `SELECT pg_advisory_lock($1)`, migrationLockKey); err != nil {
+		return fmt.Errorf("acquire migration lock: %w", err)
+	}
+	defer func() {
+		_, _ = conn.Exec(context.WithoutCancel(ctx), `SELECT pg_advisory_unlock($1)`, migrationLockKey)
+	}()
 
 	if err := ensureMigrationsTable(ctx, db); err != nil {
 		return err

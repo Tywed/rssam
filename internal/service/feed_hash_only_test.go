@@ -92,7 +92,8 @@ func (m *memEntryCreate) CountUnreadByFeed(context.Context, int64) (int, error) 
 func (m *memEntryCreate) CountUnreadByCategory(context.Context, int64) (int, error) {
 	return 0, nil
 }
-func (m *memEntryCreate) CountUnreadGlobal(context.Context) (int, error) { return 0, nil }
+func (m *memEntryCreate) CountUnreadGlobal(context.Context) (int, error)               { return 0, nil }
+func (m *memEntryCreate) CountUnreadGlobalForUser(context.Context, int64) (int, error) { return 0, nil }
 func (m *memEntryCreate) UnreadCountsForUser(context.Context, int64) (map[int64]int, map[int64]int, error) {
 	return nil, nil, nil
 }
@@ -136,10 +137,10 @@ func TestFeedRefresherPerFeedHashOnly(t *testing.T) {
 		Rules: []storage.FilterRule{{Field: "title", Pattern: "match", Op: "regex"}},
 	}}}
 	r := &FeedRefresher{
-		Dedup:    dedup,
-		Entries:  entries,
-		Filters:  filters,
-		Engine:   filter.New(filter.Config{}),
+		Dedup:   dedup,
+		Entries: entries,
+		Filters: filters,
+		Engine:  filter.New(filter.Config{}),
 	}
 	feed := storage.Feed{ID: 1, UserID: 1, StoreHashOnly: true}
 

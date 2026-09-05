@@ -8,8 +8,6 @@ import (
 	"time"
 )
 
-const csrfTTL = 24 * time.Hour
-
 // CSRFToken returns an HMAC-based token bound to sessionID.
 func CSRFToken(secret, sessionID string) string {
 	if secret == "" || sessionID == "" {

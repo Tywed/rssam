@@ -24,7 +24,8 @@ type userCreateRequest struct {
 }
 
 type meUpdateRequest struct {
-	Password string `json:"password"`
+	CurrentPassword string `json:"current_password"`
+	Password        string `json:"password"`
 }
 
 type apiKeyDTO struct {
@@ -110,15 +111,21 @@ func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ctx := r.Context()
-	count, err := s.users.CountUsers(ctx)
+	count, err := s.users.CountLoginCapableUsers(ctx)
 	if err != nil {
 		s.log.Error("count users failed", "err", err)
 		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
 
-	if count == 0 {
-		// First bootstrap: env admin credentials or explicit is_admin.
+	if p, authed := principalFromRequest(r); authed && p.UserID > 0 {
+		// Authenticated caller (session, API key or AUTH_TOKEN): admin only,
+		// is_admin is honoured as requested.
+		if _, ok := requireAdmin(w, r); !ok {
+			return
+		}
+	} else if count == 0 {
+		// Unauthenticated first bootstrap: env admin credentials or explicit is_admin.
 		if s.adminUsername != "" && s.adminPassword != "" {
 			if username != s.adminUsername || password != s.adminPassword {
 				writeError(w, http.StatusBadRequest, "bootstrap requires ADMIN_USERNAME/PASSWORD credentials")
@@ -129,9 +136,8 @@ func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 			isAdmin = true // first user is admin
 		}
 	} else {
-		if _, ok := requireAdmin(w, r); !ok {
-			return
-		}
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
 	}
 
 	hash, err := auth.HashPassword(password)
@@ -220,6 +226,20 @@ func (s *Server) handleUpdateMe(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "password is required")
 		return
 	}
+	cur, err := s.users.GetUser(r.Context(), p.UserID)
+	if err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			writeError(w, http.StatusNotFound, "user not found")
+			return
+		}
+		s.log.Error("update me: get user failed", "err", err)
+		writeError(w, http.StatusInternalServerError, "internal server error")
+		return
+	}
+	if cur.PasswordHash != "" && !auth.CheckPassword(cur.PasswordHash, req.CurrentPassword) {
+		writeError(w, http.StatusForbidden, "current_password is incorrect")
+		return
+	}
 	hash, err := auth.HashPassword(password)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
@@ -238,6 +258,11 @@ func (s *Server) handleUpdateMe(w http.ResponseWriter, r *http.Request) {
 		s.log.Error("update me failed", "err", err)
 		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
+	}
+	if s.sessions != nil {
+		if err := s.sessions.DeleteUserSessionsExcept(r.Context(), p.UserID, auth.SessionIDFromRequest(r)); err != nil {
+			s.log.Warn("revoke sessions after password change failed", "user_id", p.UserID, "err", err)
+		}
 	}
 	writeJSON(w, http.StatusOK, listResponse[userDTO]{Data: toUserDTO(u), Total: 1})
 }
@@ -331,7 +356,9 @@ func (s *Server) handleDeleteAPIKey(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleSystemInfo(w http.ResponseWriter, r *http.Request) {
-	if _, ok := requireUser(w, r); !ok {
+	// Build/runtime details and the user count are operator information;
+	// keep them away from ordinary accounts.
+	if _, ok := requireAdmin(w, r); !ok {
 		return
 	}
 	usersCount := 0

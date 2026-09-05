@@ -297,6 +297,7 @@ type EntryStore interface {
 	CountUnreadByFeed(ctx context.Context, feedID int64) (int, error)
 	CountUnreadByCategory(ctx context.Context, categoryID int64) (int, error)
 	CountUnreadGlobal(ctx context.Context) (int, error)
+	CountUnreadGlobalForUser(ctx context.Context, userID int64) (int, error)
 	UnreadCountsForUser(ctx context.Context, userID int64) (feedCounts map[int64]int, categoryCounts map[int64]int, err error)
 	BulkUpdateEntries(ctx context.Context, userID int64, entryIDs []int64, update BulkEntryUpdate) (int, error)
 	MarkAllFeedEntriesRead(ctx context.Context, userID, feedID int64) (int, error)

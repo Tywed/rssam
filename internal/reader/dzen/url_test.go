@@ -4,10 +4,10 @@ import "testing"
 
 func TestParseQueryFromFeedURL(t *testing.T) {
 	cases := map[string]string{
-		"dzen-news://golang":                                              "golang",
-		"dzen-search://machine learning":                                  "machine learning",
+		"dzen-news://golang":             "golang",
+		"dzen-search://machine learning": "machine learning",
 		"https://dzen.ru/news/search?issue_tld=ru&sortby=date&text=python": "python",
-		"https://www.dzen.ru/news/search?text=Go%20lang":                  "Go lang",
+		"https://www.dzen.ru/news/search?text=Go%20lang":                   "Go lang",
 	}
 	for url, want := range cases {
 		got, ok := ParseQueryFromFeedURL(url)

@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+## 0.1.4
+
+- Retention cleanup: типизация `$1::timestamptz` и удаление `feed_entry_dedup` по `(feed_id, hash)` — чистка снова выполняется.
+- Свежая установка: `ADMIN_USERNAME`/`ADMIN_PASSWORD` пишутся на placeholder `users.id=1` (логин UI и `AUTH_TOKEN` — один тенант).
+- WebSocket: Hijack через access-log, события только владельцу ленты, `subscribe`/reconnect в UI.
+- Rate-limit: `TRUSTED_PROXIES` (по умолчанию loopback); чужой `X-Forwarded-For` игнорируется.
+- RSS/Atom: лимит тела 16 MiB. Смена пароля требует текущий и отзывает прочие сессии. API-токен не в URL.
+- Миграции под `pg_advisory_lock`. CI: `-race`, staticcheck, Postgres integration и smoke логина на отдельной БД.
+
 ## 0.1.3
 
 - Подписки: вкладки «ошибки» и «неактивные» показывают ленты с пагинацией (раньше список был пустым — в выборке не было полей ошибок).

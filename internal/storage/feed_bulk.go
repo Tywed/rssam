@@ -108,7 +108,6 @@ func (s *PostgresStore) BulkUpdateFeedsByCategory(ctx context.Context, userID, c
 		if update.MoveToCategoryID != nil {
 			setParts = append(setParts, fmt.Sprintf("category_id = $%d", argN))
 			args = append(args, *update.MoveToCategoryID)
-			argN++
 		} else {
 			setParts = append(setParts, "category_id = NULL")
 		}

@@ -1,7 +1,10 @@
 package middleware
 
 import (
+	"bufio"
+	"errors"
 	"log/slog"
+	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -26,6 +29,28 @@ func (w *statusWriter) Write(b []byte) (int, error) {
 	w.bytes += n
 	return n, err
 }
+
+// Hijack lets WebSocket upgrades (x/net/websocket type-asserts http.Hijacker
+// without checking) work through the access-log wrapper. Without it every
+// /ws/v1 connection panicked with "statusWriter is not http.Hijacker".
+func (w *statusWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	hj, ok := w.ResponseWriter.(http.Hijacker)
+	if !ok {
+		return nil, nil, errors.New("statusWriter: underlying ResponseWriter does not implement http.Hijacker")
+	}
+	w.status = http.StatusSwitchingProtocols
+	return hj.Hijack()
+}
+
+// Flush forwards streaming flushes (SSE, long polls) to the real writer.
+func (w *statusWriter) Flush() {
+	if f, ok := w.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
+}
+
+// Unwrap supports http.ResponseController.
+func (w *statusWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
 
 const accessLogSlow = 200 * time.Millisecond
 

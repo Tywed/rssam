@@ -16,13 +16,13 @@ import (
 )
 
 var bridgeFeedSchemes = map[string]struct{}{
-	"vk-search":       {},
-	"maxstat-search":  {},
-	"dzen-news":       {},
-	"dzen-search":   {},
-	"rutube-person": {},
-	"smotrim":       {},
-	"smotrim-brand": {},
+	"vk-search":      {},
+	"maxstat-search": {},
+	"dzen-news":      {},
+	"dzen-search":    {},
+	"rutube-person":  {},
+	"smotrim":        {},
+	"smotrim-brand":  {},
 }
 
 // IsBridgeSchemeURL reports whether feedURL uses an internal bridge pseudo-scheme

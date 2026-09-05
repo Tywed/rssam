@@ -40,9 +40,9 @@ func TestParseOptionsFromFeedURL(t *testing.T) {
 func TestParsePublishedTime(t *testing.T) {
 	now := time.Date(2026, 8, 12, 18, 0, 0, 0, smotrim.MoscowLocation)
 	cases := map[string]bool{
-		"6 часов назад":             true,
-		"30 минут назад":            true,
-		"2026-08-12T11:30:38+0300":  true,
+		"6 часов назад":            true,
+		"30 минут назад":           true,
+		"2026-08-12T11:30:38+0300": true,
 	}
 	for raw, wantOK := range cases {
 		got := smotrim.ParsePublishedTime(raw, now)

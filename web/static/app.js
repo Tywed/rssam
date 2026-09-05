@@ -380,15 +380,41 @@
       .catch(function () { form.submit(); });
   });
 
+  var wsRetryDelay = 1000;
   function connectWS() {
     var el = document.getElementById('ws-enabled');
-    if (!el) return;
+    if (!el || typeof WebSocket === 'undefined') return;
     var proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-    var ws = new WebSocket(proto + '//' + location.host + '/ws/v1');
+    var ws;
+    try {
+      ws = new WebSocket(proto + '//' + location.host + '/ws/v1');
+    } catch (_) { return; }
+    ws.onopen = function () {
+      wsRetryDelay = 1000;
+      // Сервер ничего не шлёт без явной подписки.
+      ws.send(JSON.stringify({ action: 'subscribe', channels: ['all'] }));
+    };
+    ws.onclose = function () {
+      // Экспоненциальный реконнект (1s → 30s), только пока страница открыта.
+      if (document.hidden === true) { document.addEventListener('visibilitychange', function once() {
+        document.removeEventListener('visibilitychange', once); connectWS(); }); return; }
+      setTimeout(connectWS, wsRetryDelay);
+      wsRetryDelay = Math.min(wsRetryDelay * 2, 30000);
+    };
     ws.onmessage = function (ev) {
       try {
         var msg = JSON.parse(ev.data);
+        if (msg.event === 'ping') { ws.send('{"action":"pong"}'); return; }
+        if (msg.event === 'unread_count_changed' && msg.data && msg.data.scope === 'global') {
+          var badge = document.querySelector('[data-unread-global]');
+          if (badge) {
+            badge.textContent = msg.data.unread_count;
+            badge.classList.toggle('hidden', !(msg.data.unread_count > 0));
+          }
+          return;
+        }
         if (msg.event === 'new_entry' && msg.data && msg.data.entry) {
+          if (document.getElementById('entry-' + msg.data.entry.id)) return;
           var list = document.getElementById('entry-list');
           if (!list) return;
           var row = document.createElement('li');

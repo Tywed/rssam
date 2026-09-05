@@ -188,13 +188,7 @@ func (c *Client) fetchProxy(ctx context.Context, serviceURL, targetURL string) (
 	if strings.TrimSpace(data.Host) == "" || data.Port <= 0 || strings.TrimSpace(data.ID) == "" {
 		return Proxy{}, fmt.Errorf("proxy: incomplete proxy response")
 	}
-	return Proxy{
-		ID:       data.ID,
-		Host:     data.Host,
-		Port:     data.Port,
-		Username: data.Username,
-		Password: data.Password,
-	}, nil
+	return Proxy(data), nil
 }
 
 type badProxyRequest struct {

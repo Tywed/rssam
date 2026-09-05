@@ -11,7 +11,7 @@ import (
 type UnreadCounter interface {
 	CountUnreadByFeed(ctx context.Context, feedID int64) (int, error)
 	CountUnreadByCategory(ctx context.Context, categoryID int64) (int, error)
-	CountUnreadGlobal(ctx context.Context) (int, error)
+	CountUnreadGlobalForUser(ctx context.Context, userID int64) (int, error)
 }
 
 type Publisher struct {
@@ -41,14 +41,30 @@ func (p *Publisher) PublishNewEntries(ctx context.Context, feed storage.Feed, ne
 		channels = append(channels, "category:"+strconv.FormatInt(*feed.CategoryID, 10))
 	}
 	for _, entry := range newEntries {
-		p.hub.Publish(channels, Envelope{
+		p.hub.PublishToUser(feed.UserID, channels, Envelope{
 			Event: "new_entry",
 			Data: map[string]any{
-				"entry": entry,
+				"entry": newEntryPayload(feed, entry),
 			},
 		})
 	}
 	p.publishUnreadCounters(ctx, feed)
+}
+
+// newEntryPayload is the minimal, explicitly whitelisted projection of an entry
+// pushed over WebSocket. storage.Entry has no json tags, so publishing it
+// directly leaked every column (content, raw HTML, hashes) with Go field names.
+func newEntryPayload(feed storage.Feed, e storage.Entry) map[string]any {
+	return map[string]any{
+		"id":           e.ID,
+		"feed_id":      e.FeedID,
+		"feed_title":   feed.Title,
+		"title":        e.Title,
+		"url":          e.URL,
+		"author":       e.Author,
+		"published_at": e.PublishedAt,
+		"created_at":   e.CreatedAt,
+	}
 }
 
 func (p *Publisher) PublishFeedStatusChanged(feed storage.Feed, err error) {
@@ -65,7 +81,7 @@ func (p *Publisher) PublishFeedStatusChanged(feed storage.Feed, err error) {
 		msg = err.Error()
 		parsingErrorCount = 1
 	}
-	p.hub.Publish(channels, Envelope{
+	p.hub.PublishToUser(feed.UserID, channels, Envelope{
 		Event: "feed_status_changed",
 		Data: map[string]any{
 			"feed_id":               feed.ID,
@@ -82,7 +98,7 @@ func (p *Publisher) publishUnreadCounters(ctx context.Context, feed storage.Feed
 	}
 	feedUnread, err := p.entries.CountUnreadByFeed(ctx, feed.ID)
 	if err == nil {
-		p.hub.Publish([]string{ChannelAll, "feed:" + strconv.FormatInt(feed.ID, 10)}, Envelope{
+		p.hub.PublishToUser(feed.UserID, []string{ChannelAll, "feed:" + strconv.FormatInt(feed.ID, 10)}, Envelope{
 			Event: "unread_count_changed",
 			Data: map[string]any{
 				"scope":        "feed",
@@ -97,7 +113,7 @@ func (p *Publisher) publishUnreadCounters(ctx context.Context, feed storage.Feed
 	if feed.CategoryID != nil && *feed.CategoryID > 0 {
 		categoryUnread, err := p.entries.CountUnreadByCategory(ctx, *feed.CategoryID)
 		if err == nil {
-			p.hub.Publish([]string{ChannelAll, "category:" + strconv.FormatInt(*feed.CategoryID, 10)}, Envelope{
+			p.hub.PublishToUser(feed.UserID, []string{ChannelAll, "category:" + strconv.FormatInt(*feed.CategoryID, 10)}, Envelope{
 				Event: "unread_count_changed",
 				Data: map[string]any{
 					"scope":        "category",
@@ -110,9 +126,9 @@ func (p *Publisher) publishUnreadCounters(ctx context.Context, feed storage.Feed
 		}
 	}
 
-	globalUnread, err := p.entries.CountUnreadGlobal(ctx)
+	globalUnread, err := p.entries.CountUnreadGlobalForUser(ctx, feed.UserID)
 	if err == nil {
-		p.hub.Publish([]string{ChannelAll}, Envelope{
+		p.hub.PublishToUser(feed.UserID, []string{ChannelAll}, Envelope{
 			Event: "unread_count_changed",
 			Data: map[string]any{
 				"scope":        "global",

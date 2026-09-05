@@ -25,6 +25,9 @@ type SessionStore interface {
 	TouchSession(ctx context.Context, sessionID string, expiresAt time.Time) error
 	DeleteSession(ctx context.Context, sessionID string) error
 	DeleteUserSessions(ctx context.Context, userID int64) error
+	// DeleteUserSessionsExcept revokes every session of userID except keepSessionID
+	// (used after a password change so the current browser stays signed in).
+	DeleteUserSessionsExcept(ctx context.Context, userID int64, keepSessionID string) error
 }
 
 func (s *PostgresStore) CreateSession(ctx context.Context, userID int64, sessionID string, expiresAt time.Time) (Session, error) {
@@ -82,6 +85,14 @@ func (s *PostgresStore) DeleteUserSessions(ctx context.Context, userID int64) er
 	_, err := s.db.Exec(ctx, `DELETE FROM sessions WHERE user_id = $1`, userID)
 	if err != nil {
 		return fmt.Errorf("delete user sessions: %w", err)
+	}
+	return nil
+}
+
+func (s *PostgresStore) DeleteUserSessionsExcept(ctx context.Context, userID int64, keepSessionID string) error {
+	_, err := s.db.Exec(ctx, `DELETE FROM sessions WHERE user_id = $1 AND session_id <> $2`, userID, keepSessionID)
+	if err != nil {
+		return fmt.Errorf("delete other user sessions: %w", err)
 	}
 	return nil
 }

@@ -2,7 +2,9 @@ package reader
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/cookiejar"
 	"strconv"
@@ -21,6 +23,26 @@ type FetchResult struct {
 	ETag         string
 	LastModified string
 	NotModified  bool
+}
+
+// MaxFeedBodyBytes caps how much of a feed document is read. Bridges and the
+// scraper already had limits; plain RSS/Atom did not, so one hostile or
+// misconfigured feed could exhaust memory.
+const MaxFeedBodyBytes = 16 << 20
+
+// ErrFeedTooLarge is returned when the feed body exceeds MaxFeedBodyBytes.
+var ErrFeedTooLarge = errors.New("feed body exceeds size limit")
+
+func parseLimitedFeed(parser *gofeed.Parser, r io.Reader) (*gofeed.Feed, error) {
+	lr := &io.LimitedReader{R: r, N: MaxFeedBodyBytes + 1}
+	parsed, err := parser.Parse(lr)
+	if lr.N == 0 {
+		return nil, ErrFeedTooLarge
+	}
+	if err != nil {
+		return nil, err
+	}
+	return parsed, nil
 }
 
 type RSSFetcher struct {
@@ -91,7 +113,7 @@ func (f *RSSFetcher) Fetch(ctx context.Context, feedURL, etag, lastModified stri
 		return FetchResult{}, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
 	}
 
-	parsed, err := f.parser.Parse(resp.Body)
+	parsed, err := parseLimitedFeed(f.parser, resp.Body)
 	if err != nil {
 		return FetchResult{}, fmt.Errorf("parse feed: %w", err)
 	}
@@ -141,7 +163,7 @@ func (f *RSSFetcher) DiscoverTitle(ctx context.Context, feedURL string, useProxy
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("unexpected status code: %d", resp.StatusCode)
 	}
-	parsed, err := f.parser.Parse(resp.Body)
+	parsed, err := parseLimitedFeed(f.parser, resp.Body)
 	if err != nil {
 		return "", fmt.Errorf("parse feed: %w", err)
 	}

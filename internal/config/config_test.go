@@ -213,3 +213,18 @@ func TestLoad_WebhookWorkerPoolIndependent(t *testing.T) {
 		t.Fatalf("WebhookWorkerPoolSize=%d", cfg.WebhookWorkerPoolSize)
 	}
 }
+
+func TestTrustedProxiesEnv(t *testing.T) {
+	os.Unsetenv("TRUSTED_PROXIES")
+	if got := parseTrustedProxies(); len(got) != 2 {
+		t.Fatalf("default should be loopback, got %v", got)
+	}
+	t.Setenv("TRUSTED_PROXIES", "")
+	if got := parseTrustedProxies(); len(got) != 0 {
+		t.Fatalf("explicit empty should disable proxy headers, got %v", got)
+	}
+	t.Setenv("TRUSTED_PROXIES", "10.0.0.0/8, 192.168.1.1")
+	if got := parseTrustedProxies(); len(got) != 2 || got[1] != "192.168.1.1" {
+		t.Fatalf("got %v", got)
+	}
+}

@@ -56,9 +56,7 @@ func (r *FeedRefresher) listEnabledFiltersCached(ctx context.Context, userID int
 		r.filterCache.mu.Unlock()
 		return filters, nil
 	}
-	if _, ok := r.filterCache.items[userID]; ok {
-		delete(r.filterCache.items, userID)
-	}
+	delete(r.filterCache.items, userID)
 	r.filterCache.mu.Unlock()
 
 	filters, err := r.Filters.ListEnabledFilters(ctx, userID, 1000)

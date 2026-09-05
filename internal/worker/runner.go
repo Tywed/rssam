@@ -308,8 +308,12 @@ func processPollFeedJob(ctx context.Context, j storage.Job, store pollJobStore, 
 		if at.Before(now.Add(50 * time.Millisecond)) {
 			at = now.Add(time.Second)
 		}
-		_ = store.SetFeedNextCheckAt(ctx, feedID, at)
-		_, _ = store.CompleteJob(ctx, j.ID, cfg.InstanceID)
+		if err := store.SetFeedNextCheckAt(ctx, feedID, at); err != nil {
+			log.Warn("poll_feed: set next_check_at after retry-after failed", "feed_id", feedID, "err", err)
+		}
+		if _, err := store.CompleteJob(ctx, j.ID, cfg.InstanceID); err != nil {
+			log.Warn("poll_feed: complete job failed", "job_id", j.ID, "err", err)
+		}
 		return
 	}
 
@@ -329,8 +333,14 @@ func processPollFeedJob(ctx context.Context, j storage.Job, store pollJobStore, 
 			errCount = feedAfter.ParsingErrorCount
 			next = storage.FeedNextCheckAfterError(now, feedAfter.IntervalMinutes, feedAfter.ParsingErrorCount, cfg.MinPollInterval, cfg.MaxPollInterval)
 		}
-		_ = store.RescheduleJob(ctx, j.ID, cfg.InstanceID, next, err.Error())
-		_ = store.SetFeedNextCheckAt(ctx, feedID, next)
+		// If these fail the job may be reclaimed by the stale-job sweeper or,
+		// worse, never rescheduled — that must not be silent.
+		if rerr := store.RescheduleJob(ctx, j.ID, cfg.InstanceID, next, err.Error()); rerr != nil {
+			log.Error("poll_feed: reschedule job failed", "job_id", j.ID, "feed_id", feedID, "err", rerr)
+		}
+		if serr := store.SetFeedNextCheckAt(ctx, feedID, next); serr != nil {
+			log.Warn("poll_feed: set next_check_at failed", "feed_id", feedID, "err", serr)
+		}
 		log.Warn("poll_feed failed", "feed_id", feedID, "job_id", j.ID, "attempts", j.Attempts+1, "error_count", errCount, "next_check_at", next, "err", err)
 		return
 	}

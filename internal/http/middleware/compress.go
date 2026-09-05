@@ -151,6 +151,9 @@ func (w *gzipResponseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 	return hj.Hijack()
 }
 
+// Unwrap supports http.ResponseController.
+func (w *gzipResponseWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
+
 func (w *gzipResponseWriter) Flush() {
 	if f, ok := w.ResponseWriter.(http.Flusher); ok {
 		f.Flush()

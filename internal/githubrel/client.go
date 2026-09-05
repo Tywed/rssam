@@ -32,11 +32,11 @@ type Client struct {
 	Repo    string
 	BaseURL string
 	HTTP    *http.Client
-	TTL    time.Duration
-	mu     sync.Mutex
-	cached Release
-	at     time.Time
-	err    error
+	TTL     time.Duration
+	mu      sync.Mutex
+	cached  Release
+	at      time.Time
+	err     error
 }
 
 func New(repo string) *Client {

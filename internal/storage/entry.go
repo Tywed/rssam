@@ -365,6 +365,16 @@ func (s *PostgresStore) CountUnreadGlobal(ctx context.Context) (int, error) {
 	return total, nil
 }
 
+// CountUnreadGlobalForUser counts unread entries owned by userID.
+func (s *PostgresStore) CountUnreadGlobalForUser(ctx context.Context, userID int64) (int, error) {
+	const q = `SELECT count(*) FROM entries WHERE user_id = $1 AND status = $2`
+	var total int
+	if err := s.db.QueryRow(ctx, q, userID, EntryStatusUnread).Scan(&total); err != nil {
+		return 0, fmt.Errorf("count unread global for user: %w", err)
+	}
+	return total, nil
+}
+
 func (s *PostgresStore) UnreadCountsForUser(ctx context.Context, userID int64) (map[int64]int, map[int64]int, error) {
 	feedCounts := make(map[int64]int)
 	categoryCounts := make(map[int64]int)

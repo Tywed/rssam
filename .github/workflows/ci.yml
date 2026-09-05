@@ -6,14 +6,78 @@ on:
   pull_request:
 
 jobs:
-  test:
+  unit:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-      - name: Test
-        run: go test ./...
+      - name: gofmt
+        run: |
+          out=$(gofmt -l $(git ls-files '*.go'))
+          if [ -n "$out" ]; then echo "gofmt needed:"; echo "$out"; exit 1; fi
       - name: Vet
         run: go vet ./...
+      - name: staticcheck
+        run: |
+          go install honnef.co/go/tools/cmd/staticcheck@latest
+          staticcheck ./...
+      - name: Test (race)
+        run: go test -race -count=1 ./...
+
+  # Runs the storage layer against a real PostgreSQL. Three of the v0.1.3
+  # production bugs (retention cleanup, bootstrap admin, WS upgrade) were
+  # covered by tests that never executed in CI.
+  integration:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: rssam
+          POSTGRES_PASSWORD: rssam
+          POSTGRES_DB: rssam
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U rssam"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://rssam:rssam@localhost:5432/rssam?sslmode=disable
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Migrations apply on a clean database
+        run: go run ./cmd/rssam -migrate
+      - name: Integration tests
+        run: go test -tags=integration -count=1 ./internal/storage/...
+      - name: Fresh-install smoke (admin bootstrap + UI login)
+        run: |
+          set -eu
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client
+          PGPASSWORD=rssam psql -h localhost -U rssam -d rssam -v ON_ERROR_STOP=1 \
+            -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = 'rssam_smoke' AND pid <> pg_backend_pid();" \
+            -c "DROP DATABASE IF EXISTS rssam_smoke;" \
+            -c "CREATE DATABASE rssam_smoke;"
+          go build -o /tmp/rssam ./cmd/rssam
+          DATABASE_URL='postgres://rssam:rssam@localhost:5432/rssam_smoke?sslmode=disable' \
+            LISTEN_ADDR=127.0.0.1:8090 RUN_MIGRATIONS=true UI_ENABLED=true \
+            CSRF_SECRET=ci-csrf-secret-not-for-prod \
+            ADMIN_USERNAME=admin ADMIN_PASSWORD=changeme-ci-123 LOG_LEVEL=error \
+            /tmp/rssam >/tmp/rssam.log 2>&1 &
+          ok=0
+          for i in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:8090/healthz >/dev/null; then ok=1; break; fi
+            sleep 1
+          done
+          if [ "$ok" != 1 ]; then echo "rssam did not become healthy"; cat /tmp/rssam.log; exit 1; fi
+          csrf=$(curl -s -c /tmp/cj http://127.0.0.1:8090/ui/login | grep -o 'name="csrf_token" value="[^"]*"' | head -1 | sed 's/.*value="//;s/"//')
+          code=$(curl -s -o /dev/null -w '%{http_code}' -b /tmp/cj -c /tmp/cj \
+            -d "csrf_token=$csrf&username=admin&password=changeme-ci-123" http://127.0.0.1:8090/ui/login)
+          echo "login status: $code"; tail -20 /tmp/rssam.log
+          [ "$code" = "302" ]

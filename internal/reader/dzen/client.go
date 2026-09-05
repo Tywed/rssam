@@ -11,9 +11,9 @@ import (
 )
 
 type Client struct {
-	http   *http.Client
-	guard  *ssrf.Guard
-	cfg    Config
+	http  *http.Client
+	guard *ssrf.Guard
+	cfg   Config
 }
 
 func NewClient(client *http.Client, guard *ssrf.Guard, cfg Config) (*Client, error) {

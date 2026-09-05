@@ -25,9 +25,10 @@ func (m *memSessionStore) LookupSession(_ context.Context, sessionID string) (st
 	}
 	return storage.Session{}, storage.ErrNotFound
 }
-func (m *memSessionStore) TouchSession(_ context.Context, _ string, _ time.Time) error { return nil }
+func (m *memSessionStore) TouchSession(_ context.Context, _ string, _ time.Time) error   { return nil }
 func (m *memSessionStore) DeleteSession(_ context.Context, _ string) error               { return nil }
 func (m *memSessionStore) DeleteUserSessions(_ context.Context, _ int64) error           { return nil }
+func (m *memSessionStore) DeleteUserSessionsExcept(context.Context, int64, string) error { return nil }
 
 func TestAuthenticateSessionCookie(t *testing.T) {
 	sessions := &memSessionStore{}
@@ -35,7 +36,7 @@ func TestAuthenticateSessionCookie(t *testing.T) {
 
 	s := &Server{
 		sessions: sessions,
-		users: &uiMemUsersWS{user: storage.User{ID: 42, IsAdmin: true}},
+		users:    &uiMemUsersWS{user: storage.User{ID: 42, IsAdmin: true}},
 	}
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/me", nil)
@@ -48,7 +49,8 @@ func TestAuthenticateSessionCookie(t *testing.T) {
 
 type uiMemUsersWS struct{ user storage.User }
 
-func (u *uiMemUsersWS) CountUsers(context.Context) (int, error) { return 1, nil }
+func (u *uiMemUsersWS) CountUsers(context.Context) (int, error)             { return 1, nil }
+func (u *uiMemUsersWS) CountLoginCapableUsers(context.Context) (int, error) { return 1, nil }
 func (u *uiMemUsersWS) ListUsers(context.Context, int, int) ([]storage.User, int, error) {
 	return nil, 0, nil
 }

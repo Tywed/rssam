@@ -78,7 +78,8 @@ func (m *memEntryBulk) CountUnreadByFeed(context.Context, int64) (int, error) { 
 func (m *memEntryBulk) CountUnreadByCategory(context.Context, int64) (int, error) {
 	return 0, nil
 }
-func (m *memEntryBulk) CountUnreadGlobal(context.Context) (int, error) { return 0, nil }
+func (m *memEntryBulk) CountUnreadGlobal(context.Context) (int, error)               { return 0, nil }
+func (m *memEntryBulk) CountUnreadGlobalForUser(context.Context, int64) (int, error) { return 0, nil }
 func (m *memEntryBulk) UnreadCountsForUser(context.Context, int64) (map[int64]int, map[int64]int, error) {
 	return nil, nil, nil
 }

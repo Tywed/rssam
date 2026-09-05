@@ -28,13 +28,13 @@ type neoPayload struct {
 }
 
 type neoDoc struct {
-	URL                 string                  `json:"url"`
-	Time                string                  `json:"time"`
-	SourceName          string                  `json:"sourceName"`
-	DocID               string                  `json:"docId"`
-	Title               []textFragment          `json:"title"`
-	Text                []textFragment          `json:"text"`
-	StudioDocumentStats *studioDocumentStats     `json:"studioDocumentStats"`
+	URL                 string               `json:"url"`
+	Time                string               `json:"time"`
+	SourceName          string               `json:"sourceName"`
+	DocID               string               `json:"docId"`
+	Title               []textFragment       `json:"title"`
+	Text                []textFragment       `json:"text"`
+	StudioDocumentStats *studioDocumentStats `json:"studioDocumentStats"`
 }
 
 type studioDocumentStats struct {

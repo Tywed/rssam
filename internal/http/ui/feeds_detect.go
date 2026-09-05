@@ -8,11 +8,11 @@ import (
 	"strings"
 
 	"rssam/internal/reader"
-	"rssam/internal/reader/rutube"
-	vkbridge "rssam/internal/reader/vk"
-	maxstatbridge "rssam/internal/reader/maxstat"
 	dzenbridge "rssam/internal/reader/dzen"
+	maxstatbridge "rssam/internal/reader/maxstat"
+	"rssam/internal/reader/rutube"
 	smotrimbridge "rssam/internal/reader/smotrim"
+	vkbridge "rssam/internal/reader/vk"
 	"rssam/internal/storage"
 )
 

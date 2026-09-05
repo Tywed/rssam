@@ -7,10 +7,10 @@ import (
 )
 
 var (
-	relHoursAgoRe  = regexp.MustCompile(`(?i)^(\d+)\s+час(?:а|ов)?\s+назад$`)
+	relHoursAgoRe   = regexp.MustCompile(`(?i)^(\d+)\s+час(?:а|ов)?\s+назад$`)
 	relMinutesAgoRe = regexp.MustCompile(`(?i)^(\d+)\s+мин(?:ут(?:ы|у)?)?\s+назад$`)
-	relDaysAgoRe   = regexp.MustCompile(`(?i)^(\d+)\s+д(?:ень|ня|ней)?\s+назад$`)
-	ruDayMonthRe   = regexp.MustCompile(`(?i)^(\d{1,2})\s+(января|февраля|марта|апреля|мая|июня|июля|августа|сентября|октября|ноября|декабря)$`)
+	relDaysAgoRe    = regexp.MustCompile(`(?i)^(\d+)\s+д(?:ень|ня|ней)?\s+назад$`)
+	ruDayMonthRe    = regexp.MustCompile(`(?i)^(\d{1,2})\s+(января|февраля|марта|апреля|мая|июня|июля|августа|сентября|октября|ноября|декабря)$`)
 )
 
 var ruMonths = map[string]time.Month{

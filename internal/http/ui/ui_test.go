@@ -43,12 +43,21 @@ func (m *uiMemSessions) DeleteSession(_ context.Context, sessionID string) error
 	return nil
 }
 func (m *uiMemSessions) DeleteUserSessions(_ context.Context, _ int64) error { return nil }
+func (m *uiMemSessions) DeleteUserSessionsExcept(_ context.Context, userID int64, keep string) error {
+	for id, sess := range m.sessions {
+		if sess.UserID == userID && id != keep {
+			delete(m.sessions, id)
+		}
+	}
+	return nil
+}
 
 type uiMemUsers struct {
 	user storage.User
 }
 
-func (u *uiMemUsers) CountUsers(context.Context) (int, error) { return 1, nil }
+func (u *uiMemUsers) CountUsers(context.Context) (int, error)             { return 1, nil }
+func (u *uiMemUsers) CountLoginCapableUsers(context.Context) (int, error) { return 1, nil }
 func (u *uiMemUsers) ListUsers(context.Context, int, int) ([]storage.User, int, error) {
 	return []storage.User{u.user}, 1, nil
 }
@@ -118,18 +127,21 @@ func (uiMemEntries) SearchEntries(context.Context, int64, storage.SearchEntriesF
 func (uiMemEntries) ListEnclosuresByEntryIDs(context.Context, int64, []int64) (map[int64][]storage.Enclosure, error) {
 	return nil, nil
 }
-func (uiMemEntries) CountUnreadByFeed(context.Context, int64) (int, error) { return 0, nil }
-func (uiMemEntries) CountUnreadByCategory(context.Context, int64) (int, error) { return 0, nil }
-func (uiMemEntries) CountUnreadGlobal(context.Context) (int, error)            { return 0, nil }
+func (uiMemEntries) CountUnreadByFeed(context.Context, int64) (int, error)        { return 0, nil }
+func (uiMemEntries) CountUnreadByCategory(context.Context, int64) (int, error)    { return 0, nil }
+func (uiMemEntries) CountUnreadGlobal(context.Context) (int, error)               { return 0, nil }
+func (uiMemEntries) CountUnreadGlobalForUser(context.Context, int64) (int, error) { return 0, nil }
 func (uiMemEntries) UnreadCountsForUser(context.Context, int64) (map[int64]int, map[int64]int, error) {
 	return map[int64]int{}, map[int64]int{}, nil
 }
 func (uiMemEntries) BulkUpdateEntries(context.Context, int64, []int64, storage.BulkEntryUpdate) (int, error) {
 	return 0, nil
 }
-func (uiMemEntries) MarkAllFeedEntriesRead(context.Context, int64, int64) (int, error)     { return 0, nil }
-func (uiMemEntries) MarkAllCategoryEntriesRead(context.Context, int64, int64) (int, error) { return 0, nil }
-func (uiMemEntries) MarkAllEntriesRead(context.Context, int64) (int, error)                { return 0, nil }
+func (uiMemEntries) MarkAllFeedEntriesRead(context.Context, int64, int64) (int, error) { return 0, nil }
+func (uiMemEntries) MarkAllCategoryEntriesRead(context.Context, int64, int64) (int, error) {
+	return 0, nil
+}
+func (uiMemEntries) MarkAllEntriesRead(context.Context, int64) (int, error) { return 0, nil }
 
 func newTestUIHandler(t *testing.T, admin bool) *Handler {
 	t.Helper()
@@ -144,8 +156,8 @@ func newTestUIHandler(t *testing.T, admin bool) *Handler {
 			PasswordHash: hash,
 			IsAdmin:      admin,
 		}},
-		Sessions: &uiMemSessions{sessions: map[string]storage.Session{}},
-		Entries:  uiMemEntries{},
+		Sessions:   &uiMemSessions{sessions: map[string]storage.Session{}},
+		Entries:    uiMemEntries{},
 		CSRFSecret: "csrf-test",
 	})
 	if err != nil {

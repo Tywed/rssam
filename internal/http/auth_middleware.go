@@ -107,7 +107,7 @@ func (s *Server) allowBootstrapCreateUser(ctx context.Context) bool {
 	if s.users == nil {
 		return false
 	}
-	n, err := s.users.CountUsers(ctx)
+	n, err := s.users.CountLoginCapableUsers(ctx)
 	if err != nil || n > 0 {
 		return false
 	}

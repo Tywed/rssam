@@ -79,7 +79,7 @@ WHERE id IN (
   JOIN feeds f ON e.feed_id = f.id
   WHERE f.entry_retention_days IS NOT NULL
     AND e.starred = FALSE
-    AND e.created_at < $1 - (f.entry_retention_days * INTERVAL '1 day')
+    AND e.created_at < $1::timestamptz - (f.entry_retention_days * INTERVAL '1 day')
   LIMIT $2
 )`, now, deleteBatchSize)
 	if err != nil {
@@ -89,11 +89,11 @@ WHERE id IN (
 
 	n, err = s.deleteInBatches(ctx, `
 DELETE FROM feed_entry_dedup
-WHERE id IN (
-  SELECT d.id FROM feed_entry_dedup d
+WHERE (feed_id, hash) IN (
+  SELECT d.feed_id, d.hash FROM feed_entry_dedup d
   JOIN feeds f ON d.feed_id = f.id
   WHERE f.entry_retention_days IS NOT NULL
-    AND d.first_seen_at < $1 - (f.entry_retention_days * INTERVAL '1 day')
+    AND d.first_seen_at < $1::timestamptz - (f.entry_retention_days * INTERVAL '1 day')
   LIMIT $2
 )`, now, deleteBatchSize)
 	if err != nil {

@@ -79,18 +79,18 @@ func TestRBAC_SubscriptionWritesRequireAdmin(t *testing.T) {
 
 	handlers := map[string]http.Handler{
 		http.MethodGet + " /v1/feeds":                     http.HandlerFunc(s.handleListFeeds),
-		http.MethodGet + " /v1/feeds/{id}":                 http.HandlerFunc(s.handleGetFeed),
-		http.MethodGet + " /v1/categories":                 http.HandlerFunc(s.handleListCategories),
-		http.MethodPost + " /v1/feeds":                     http.HandlerFunc(s.handleCreateFeed),
-		http.MethodPut + " /v1/feeds/{id}":                 http.HandlerFunc(s.handleUpdateFeed),
-		http.MethodDelete + " /v1/feeds/{id}":              http.HandlerFunc(s.handleDeleteFeed),
-		http.MethodPost + " /v1/feeds/import":              http.HandlerFunc(s.handleImportFeeds),
-		http.MethodGet + " /v1/feeds/export":               http.HandlerFunc(s.handleExportFeeds),
-		http.MethodGet + " /v1/feeds/import/jobs/{jobID}":  http.HandlerFunc(s.handleGetImportJob),
-		http.MethodPost + " /v1/categories":                http.HandlerFunc(s.handleCreateCategory),
-		http.MethodPut + " /v1/categories/{id}":            http.HandlerFunc(s.handleUpdateCategory),
-		http.MethodDelete + " /v1/categories/{id}":         http.HandlerFunc(s.handleDeleteCategory),
-		http.MethodPost + " /v1/feeds/{feedID}/refresh":    http.HandlerFunc(s.handleRefreshFeed),
+		http.MethodGet + " /v1/feeds/{id}":                http.HandlerFunc(s.handleGetFeed),
+		http.MethodGet + " /v1/categories":                http.HandlerFunc(s.handleListCategories),
+		http.MethodPost + " /v1/feeds":                    http.HandlerFunc(s.handleCreateFeed),
+		http.MethodPut + " /v1/feeds/{id}":                http.HandlerFunc(s.handleUpdateFeed),
+		http.MethodDelete + " /v1/feeds/{id}":             http.HandlerFunc(s.handleDeleteFeed),
+		http.MethodPost + " /v1/feeds/import":             http.HandlerFunc(s.handleImportFeeds),
+		http.MethodGet + " /v1/feeds/export":              http.HandlerFunc(s.handleExportFeeds),
+		http.MethodGet + " /v1/feeds/import/jobs/{jobID}": http.HandlerFunc(s.handleGetImportJob),
+		http.MethodPost + " /v1/categories":               http.HandlerFunc(s.handleCreateCategory),
+		http.MethodPut + " /v1/categories/{id}":           http.HandlerFunc(s.handleUpdateCategory),
+		http.MethodDelete + " /v1/categories/{id}":        http.HandlerFunc(s.handleDeleteCategory),
+		http.MethodPost + " /v1/feeds/{feedID}/refresh":   http.HandlerFunc(s.handleRefreshFeed),
 	}
 
 	for _, c := range cases {

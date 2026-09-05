@@ -62,6 +62,11 @@ type CreateAPIKeyParams struct {
 
 type UserStore interface {
 	CountUsers(ctx context.Context) (int, error)
+	// CountLoginCapableUsers counts users that have a password set and can
+	// actually sign in. Migration 0009 seeds a placeholder user "default" with
+	// an empty password_hash (the AUTH_TOKEN principal), which must not count as
+	// a bootstrapped admin.
+	CountLoginCapableUsers(ctx context.Context) (int, error)
 	ListUsers(ctx context.Context, limit, offset int) ([]User, int, error)
 	GetUser(ctx context.Context, id int64) (User, error)
 	GetUserByUsername(ctx context.Context, username string) (User, error)
@@ -81,6 +86,14 @@ func (s *PostgresStore) CountUsers(ctx context.Context) (int, error) {
 	var n int
 	if err := s.db.QueryRow(ctx, `SELECT count(*) FROM users`).Scan(&n); err != nil {
 		return 0, fmt.Errorf("count users: %w", err)
+	}
+	return n, nil
+}
+
+func (s *PostgresStore) CountLoginCapableUsers(ctx context.Context) (int, error) {
+	var n int
+	if err := s.db.QueryRow(ctx, `SELECT count(*) FROM users WHERE password_hash <> ''`).Scan(&n); err != nil {
+		return 0, fmt.Errorf("count login-capable users: %w", err)
 	}
 	return n, nil
 }
@@ -305,14 +318,24 @@ func isDuplicateUsername(err error) bool {
 	return pgErr.Code == "23505" && strings.Contains(pgErr.ConstraintName, "username")
 }
 
-// EnsureBootstrapAdmin creates the first admin when users table is empty.
+// EnsureBootstrapAdmin creates the first admin when no user can sign in yet.
+//
+// Migration 0009 seeds users(id=1, username=default) with an empty password_hash
+// so AUTH_TOKEN has a principal. That row must not count as a bootstrapped
+// admin, otherwise ADMIN_USERNAME/ADMIN_PASSWORD are ignored and UI login fails.
+//
+// When the only rows are password-less placeholders, the env admin is written
+// onto id=1 (rename + password) so AUTH_TOKEN and the UI share the same tenant
+// and existing feeds stay visible. A password-less row that already has the
+// requested username is adopted in place. Only if neither exists is a new user
+// inserted.
 func (s *PostgresStore) EnsureBootstrapAdmin(ctx context.Context, username, password string) error {
 	username = strings.TrimSpace(username)
 	password = strings.TrimSpace(password)
 	if username == "" || password == "" {
 		return nil
 	}
-	n, err := s.CountUsers(ctx)
+	n, err := s.CountLoginCapableUsers(ctx)
 	if err != nil {
 		return err
 	}
@@ -323,6 +346,24 @@ func (s *PostgresStore) EnsureBootstrapAdmin(ctx context.Context, username, pass
 	if err != nil {
 		return err
 	}
+	fever := feverAPIKey(username, password)
+
+	existing, err := s.GetUserByUsername(ctx, username)
+	if err == nil && existing.PasswordHash == "" {
+		return s.adoptPlaceholderAdmin(ctx, existing.ID, username, hash, fever)
+	}
+	if err != nil && !errors.Is(err, ErrNotFound) {
+		return err
+	}
+
+	u, err := s.GetUser(ctx, 1)
+	if err == nil && u.PasswordHash == "" {
+		return s.adoptPlaceholderAdmin(ctx, u.ID, username, hash, fever)
+	}
+	if err != nil && !errors.Is(err, ErrNotFound) {
+		return err
+	}
+
 	_, err = s.CreateUser(ctx, CreateUserParams{
 		Username:      username,
 		PasswordHash:  hash,
@@ -333,6 +374,17 @@ func (s *PostgresStore) EnsureBootstrapAdmin(ctx context.Context, username, pass
 		return nil
 	}
 	return err
+}
+
+func (s *PostgresStore) adoptPlaceholderAdmin(ctx context.Context, id int64, username, hash, feverKey string) error {
+	const q = `
+UPDATE users
+SET username = $2, password_hash = $3, fever_api_key = $4, is_admin = TRUE
+WHERE id = $1 AND password_hash = ''`
+	if _, err := s.db.Exec(ctx, q, id, username, hash, feverKey); err != nil {
+		return fmt.Errorf("bootstrap admin: adopt placeholder user: %w", err)
+	}
+	return nil
 }
 
 // hashPassword is a thin wrapper to avoid importing auth in storage from users.go bootstrap.

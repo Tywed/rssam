@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"strconv"
 	"strings"
 
 	"rssam/internal/filter"
@@ -88,16 +87,4 @@ func enqueueLegacyFilterWebhooks(
 	if len(ids) > 0 {
 		_ = webhookLogs.EnqueueWebhookLogs(ctx, ids, entryID)
 	}
-}
-
-func parseWebhookIDForm(v string) *int64 {
-	v = strings.TrimSpace(v)
-	if v == "" || v == "0" {
-		return nil
-	}
-	id, err := strconv.ParseInt(v, 10, 64)
-	if err != nil || id <= 0 {
-		return nil
-	}
-	return &id
 }

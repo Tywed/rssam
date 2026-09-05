@@ -70,10 +70,6 @@ func (s *Server) handleImportFeeds(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, listResponse[importReportDTO]{Data: report, Total: 1})
 }
 
-func (s *Server) importOPMLWithProgress(r *http.Request, doc *opml.Document, userID int64, jobID string) importReportDTO {
-	return s.importOPML(r, doc, userID, jobID)
-}
-
 func (s *Server) importOPMLFromBytes(r *http.Request, userID int64, data []byte) importReportDTO {
 	doc, err := opml.ParseBytes(data)
 	if err != nil {

@@ -16,6 +16,7 @@ import (
 	"rssam/internal/envfile"
 	"rssam/internal/filter"
 	httpserver "rssam/internal/http"
+	"rssam/internal/http/middleware"
 	"rssam/internal/logger"
 	"rssam/internal/metrics"
 	"rssam/internal/migrations"
@@ -56,6 +57,11 @@ func main() {
 	}
 
 	log := logger.New(cfg.LogLevel, cfg.LogFormat)
+
+	if err := middleware.SetTrustedProxies(cfg.TrustedProxies); err != nil {
+		log.Error("invalid TRUSTED_PROXIES", "err", err)
+		os.Exit(2)
+	}
 
 	db, err := storage.NewPostgresPool(ctx, cfg.DatabaseURL, cfg.EffectiveDatabaseMaxConns())
 	if err != nil {
@@ -199,6 +205,7 @@ func main() {
 		Entries:                 pgStore,
 		Dedup:                   pgStore,
 		Registry:                registryBundle.Registry,
+		Log:                     log,
 		StoreEntriesMode:        cfg.StoreEntriesMode,
 		CircuitBreakerThreshold: cfg.FeedCircuitBreakerThreshold,
 		MinPollInterval:         cfg.MinPollInterval,

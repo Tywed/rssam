@@ -109,6 +109,7 @@ type Config struct {
 
 	// Hardening / HTTP
 	HSTSEnabled         bool
+	TrustedProxies      []string
 	RateLimitEnabled    bool
 	RateLimitRPS        float64
 	RateLimitBurst      int
@@ -215,6 +216,7 @@ func Load() (Config, error) {
 		StoreEntriesMode: parseStoreEntriesMode(),
 
 		HSTSEnabled:         parseBool(os.Getenv("HSTS")),
+		TrustedProxies:      parseTrustedProxies(),
 		RateLimitEnabled:    parseBoolDefault(os.Getenv("RATE_LIMIT_ENABLED"), true),
 		RateLimitRPS:        parseFloat(getEnv("RATE_LIMIT_RPS", "10"), 10),
 		RateLimitBurst:      parseInt(getEnv("RATE_LIMIT_BURST", "20"), 20),
@@ -490,6 +492,16 @@ func parseFloat(v string, def float64) float64 {
 		return def
 	}
 	return n
+}
+
+// parseTrustedProxies distinguishes "unset" (loopback default) from an
+// explicitly empty TRUSTED_PROXIES= (trust no forwarding headers at all).
+func parseTrustedProxies() []string {
+	v, ok := os.LookupEnv("TRUSTED_PROXIES")
+	if !ok {
+		return []string{"127.0.0.0/8", "::1/128"}
+	}
+	return parseCSV(v)
 }
 
 func parseCSV(v string) []string {

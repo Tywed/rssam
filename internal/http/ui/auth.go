@@ -449,8 +449,3 @@ func parsePathID(r *http.Request, keys ...string) (int64, error) {
 func isHX(r *http.Request) bool {
 	return r.Header.Get("HX-Request") == "true"
 }
-
-func hxRedirect(w http.ResponseWriter, url string) {
-	w.Header().Set("HX-Redirect", url)
-	w.WriteHeader(http.StatusOK)
-}

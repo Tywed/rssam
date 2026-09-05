@@ -6,16 +6,16 @@ type postsResponse struct {
 }
 
 type post struct {
-	ID           string         `json:"id"`
-	ChannelID    string         `json:"channel_id"`
-	Type         string         `json:"type"`
-	URL          string         `json:"url"`
-	Text         string         `json:"text"`
-	Views        int            `json:"views"`
-	Likes        int            `json:"likes"`
-	LikesDetail  map[string]int `json:"likes_detailed"`
-	Attachments  []attachment   `json:"attachments"`
-	PublishedAt  string         `json:"published_at"`
+	ID          string         `json:"id"`
+	ChannelID   string         `json:"channel_id"`
+	Type        string         `json:"type"`
+	URL         string         `json:"url"`
+	Text        string         `json:"text"`
+	Views       int            `json:"views"`
+	Likes       int            `json:"likes"`
+	LikesDetail map[string]int `json:"likes_detailed"`
+	Attachments []attachment   `json:"attachments"`
+	PublishedAt string         `json:"published_at"`
 }
 
 type attachment struct {

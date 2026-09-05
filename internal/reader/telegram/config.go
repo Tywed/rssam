@@ -10,16 +10,16 @@ import (
 
 // Config is service-level Telegram bridge configuration (from env).
 type Config struct {
-	ProxyServiceURL     string
-	ProxyServiceToken   string
-	ProxyTargetURL      string
-	StaticProxy         string
-	UseProxy            bool
-	ProxyConnectTimeout time.Duration
-	ProxyRequestTimeout time.Duration
-	ProxyRetry          int
-	MaxPages            int
-	UserAgent           string
+	ProxyServiceURL       string
+	ProxyServiceToken     string
+	ProxyTargetURL        string
+	StaticProxy           string
+	UseProxy              bool
+	ProxyConnectTimeout   time.Duration
+	ProxyRequestTimeout   time.Duration
+	ProxyRetry            int
+	MaxPages              int
+	UserAgent             string
 	TLSInsecureSkipVerify bool
 }
 

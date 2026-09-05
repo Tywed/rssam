@@ -14,18 +14,18 @@ import (
 var nuxtPayloadRe = regexp.MustCompile(`(?s)<script[^>]*type="application/json"[^>]*>(\[\[.*?\])\s*</script>`)
 
 type VideoItem struct {
-	PublicID    int64
-	InternalID  int64
-	Title       string
-	Description string
-	BrandTitle  string
-	BrandID     int64
+	PublicID     int64
+	InternalID   int64
+	Title        string
+	Description  string
+	BrandTitle   string
+	BrandID      int64
 	EpisodeTitle string
-	VideoType   string
-	DateText    string
-	PublishedAt time.Time
-	Duration    string
-	Thumbnail   string
+	VideoType    string
+	DateText     string
+	PublishedAt  time.Time
+	Duration     string
+	Thumbnail    string
 }
 
 type nuxtArray []json.RawMessage

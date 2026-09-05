@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"sync"
 	"time"
@@ -30,6 +31,10 @@ type FeedRefresher struct {
 	WebhookLogs storage.WebhookLogStore
 
 	Realtime RealtimePublisher
+
+	// Log receives persistence errors that must not abort a poll but must not
+	// disappear either (nil = slog.Default()).
+	Log *slog.Logger
 
 	// StoreEntriesMode: "full" (default) or "dedup_only" — see STORE_ENTRIES_MODE / DEDUP_ONLY_STORAGE.
 	StoreEntriesMode string
@@ -67,6 +72,32 @@ func (r *FeedRefresher) circuitThreshold() int {
 		return r.CircuitBreakerThreshold
 	}
 	return 10
+}
+
+// recordFailure persists the circuit-breaker counter and refresh meta for a
+// failed poll. Errors here used to be discarded, which hid a dead database
+// from the logs while feeds silently stopped being paused/marked.
+func (r *FeedRefresher) logger() *slog.Logger {
+	if r.Log != nil {
+		return r.Log
+	}
+	return slog.Default()
+}
+
+func (r *FeedRefresher) recordFailure(ctx context.Context, feed storage.Feed, now time.Time, cause error, bridgeState []byte) {
+	if err := r.Feeds.RecordFeedPollFailure(ctx, feed.ID, cause.Error(), r.circuitThreshold(), now); err != nil {
+		r.logger().Error("record feed poll failure failed", "feed_id", feed.ID, "err", err)
+	}
+	if err := r.Feeds.UpdateFeedRefreshMeta(ctx, storage.UpdateFeedRefreshMetaParams{
+		ID:            feed.ID,
+		ETag:          feed.ETag,
+		LastModified:  feed.LastModified,
+		LastCheckedAt: now,
+		LastError:     cause.Error(),
+		BridgeState:   bridgeState,
+	}); err != nil {
+		r.logger().Error("update feed refresh meta failed", "feed_id", feed.ID, "err", err)
+	}
 }
 
 func (r *FeedRefresher) pollBounds() (min, max time.Duration) {
@@ -115,7 +146,9 @@ func (r *FeedRefresher) RefreshLoadedFeed(ctx context.Context, feed storage.Feed
 // RefreshFeedManual resets the circuit breaker then polls (POST /v1/feeds/{id}/refresh).
 func (r *FeedRefresher) RefreshFeedManual(ctx context.Context, feedID int64) (inserted int, err error) {
 	if r.Feeds != nil {
-		_ = r.Feeds.ResetFeedPollCircuit(ctx, feedID)
+		if err := r.Feeds.ResetFeedPollCircuit(ctx, feedID); err != nil {
+			r.logger().Warn("reset feed poll circuit failed", "feed_id", feedID, "err", err)
+		}
 	}
 	if r.Feeds == nil || r.Entries == nil || r.Registry == nil {
 		return 0, errors.New("feed refresher is not configured")
@@ -127,17 +160,6 @@ func (r *FeedRefresher) RefreshFeedManual(ctx context.Context, feedID int64) (in
 	feed.PollPaused = false
 	feed.ParsingErrorCount = 0
 	return r.refreshLoaded(ctx, feed, true)
-}
-
-func (r *FeedRefresher) refreshFeed(ctx context.Context, feedID int64, manual bool) (inserted int, err error) {
-	if r.Feeds == nil || r.Entries == nil || r.Registry == nil {
-		return 0, errors.New("feed refresher is not configured")
-	}
-	feed, err := r.Feeds.GetFeedByID(ctx, feedID)
-	if err != nil {
-		return 0, fmt.Errorf("get feed: %w", err)
-	}
-	return r.refreshLoaded(ctx, feed, manual)
 }
 
 func (r *FeedRefresher) refreshLoaded(ctx context.Context, feed storage.Feed, manual bool) (inserted int, err error) {
@@ -173,15 +195,7 @@ func (r *FeedRefresher) refreshLoaded(ctx context.Context, feed storage.Feed, ma
 		if _, ok := reader.RetryAt(fetchErr); ok {
 			return 0, fetchErr
 		}
-		_ = r.Feeds.RecordFeedPollFailure(ctx, feedID, fetchErr.Error(), r.circuitThreshold(), now)
-		_ = r.Feeds.UpdateFeedRefreshMeta(ctx, storage.UpdateFeedRefreshMetaParams{
-			ID:            feedID,
-			ETag:          feed.ETag,
-			LastModified:  feed.LastModified,
-			LastCheckedAt: now,
-			LastError:     fetchErr.Error(),
-			BridgeState:   bridgeStateJSON(res.BridgeState),
-		})
+		r.recordFailure(ctx, feed, now, fetchErr, bridgeStateJSON(res.BridgeState))
 		err := fmt.Errorf("%w: %w", ErrFetchFeed, fetchErr)
 		if r.Realtime != nil {
 			r.Realtime.PublishFeedStatusChanged(feed, err)
@@ -201,15 +215,7 @@ func (r *FeedRefresher) refreshLoaded(ctx context.Context, feed storage.Feed, ma
 			inserted, insertedEntries, err = r.Entries.CreateEntries(ctx, feedID, entries)
 		}
 		if err != nil {
-			_ = r.Feeds.RecordFeedPollFailure(ctx, feedID, err.Error(), r.circuitThreshold(), now)
-			_ = r.Feeds.UpdateFeedRefreshMeta(ctx, storage.UpdateFeedRefreshMetaParams{
-				ID:            feedID,
-				ETag:          feed.ETag,
-				LastModified:  feed.LastModified,
-				LastCheckedAt: now,
-				LastError:     err.Error(),
-				BridgeState:   bridgeStateJSON(res.BridgeState),
-			})
+			r.recordFailure(ctx, feed, now, err, bridgeStateJSON(res.BridgeState))
 			wrappedErr := fmt.Errorf("%w: %w", ErrCreateEntries, err)
 			if r.Realtime != nil {
 				r.Realtime.PublishFeedStatusChanged(feed, wrappedErr)

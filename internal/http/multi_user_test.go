@@ -42,6 +42,18 @@ func (m *memUserStore) CountUsers(_ context.Context) (int, error) {
 	return len(m.users), nil
 }
 
+func (m *memUserStore) CountLoginCapableUsers(_ context.Context) (int, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	n := 0
+	for _, u := range m.users {
+		if u.PasswordHash != "" {
+			n++
+		}
+	}
+	return n, nil
+}
+
 func (m *memUserStore) ListUsers(_ context.Context, _, _ int) ([]storage.User, int, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

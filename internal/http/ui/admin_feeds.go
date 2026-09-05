@@ -11,7 +11,6 @@ import (
 	"rssam/internal/storage"
 )
 
-const adminFeedsLimit = 10000
 const adminFeedsDetailLookupLimit = 10000
 
 type adminFeedRowView struct {

@@ -2,6 +2,7 @@ package httpserver
 
 import (
 	"context"
+	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -431,6 +432,12 @@ func (s *Server) Run(ctx context.Context, addr string, shutdownTimeout time.Dura
 		Handler:           handler,
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       60 * time.Second,
+		// Bound slow readers and idle keep-alives; without these a handful of
+		// stalled connections can pin goroutines indefinitely. WebSocket
+		// connections are hijacked and therefore unaffected by WriteTimeout.
+		WriteTimeout:   120 * time.Second,
+		IdleTimeout:    120 * time.Second,
+		MaxHeaderBytes: 1 << 20,
 	}
 
 	errCh := make(chan error, 1)
@@ -505,7 +512,7 @@ func hasBearerToken(r *http.Request, token string) bool {
 	if len(v) <= len(prefix) || v[:len(prefix)] != prefix {
 		return false
 	}
-	return v[len(prefix):] == token
+	return subtle.ConstantTimeCompare([]byte(v[len(prefix):]), []byte(token)) == 1
 }
 
 type listResponse[T any] struct {

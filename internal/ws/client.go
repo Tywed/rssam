@@ -17,6 +17,10 @@ type Client struct {
 	conn *websocket.Conn
 	hub  *Hub
 
+	// UserID is the authenticated owner of this connection. Tenant-scoped
+	// events are only delivered when it matches the publishing user.
+	UserID int64
+
 	send chan []byte
 
 	mu            sync.RWMutex
@@ -25,9 +29,15 @@ type Client struct {
 }
 
 func NewClient(hub *Hub, conn *websocket.Conn) *Client {
+	return NewUserClient(hub, conn, 0)
+}
+
+// NewUserClient creates a client bound to userID.
+func NewUserClient(hub *Hub, conn *websocket.Conn, userID int64) *Client {
 	return &Client{
 		conn:          conn,
 		hub:           hub,
+		UserID:        userID,
 		send:          make(chan []byte, hub.ClientBuffer()),
 		subscriptions: make(map[string]struct{}),
 	}

@@ -1,0 +1,121 @@
+package ui
+
+import (
+	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"strings"
+	"testing"
+
+	"rssam/internal/auth"
+)
+
+func loginSID(t *testing.T, mux *http.ServeMux) string {
+	t.Helper()
+	token := auth.CSRFToken("csrf-test", "login")
+	form := url.Values{"username": {"alice"}, "password": {"secret"}, "csrf_token": {token}}
+	req := httptest.NewRequest(http.MethodPost, "/ui/login", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+	for _, c := range rec.Result().Cookies() {
+		if c.Name == auth.SessionCookieName {
+			return c.Value
+		}
+	}
+	t.Fatalf("login failed: %d %s", rec.Code, rec.Body.String())
+	return ""
+}
+
+func postPassword(mux *http.ServeMux, sid, current, next string) *httptest.ResponseRecorder {
+	form := url.Values{"current_password": {current}, "password": {next}, "csrf_token": {auth.CSRFToken("csrf-test", sid)}}
+	req := httptest.NewRequest(http.MethodPost, "/ui/settings/password", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: sid})
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+	return rec
+}
+
+// Regression: password could be changed without knowing the current one, and
+// other sessions of the account stayed valid afterwards.
+func TestUI_PasswordChangeRequiresCurrentAndRevokesOtherSessions(t *testing.T) {
+	h := newTestUIHandler(t, false)
+	mux := http.NewServeMux()
+	h.Register(mux)
+
+	sidA := loginSID(t, mux)
+	sidB := loginSID(t, mux)
+
+	if rec := postPassword(mux, sidA, "wrong-current", "newpass123"); rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "Текущий пароль неверный") {
+		t.Fatalf("wrong current password: code=%d body=%.200s", rec.Code, rec.Body.String())
+	}
+
+	if rec := postPassword(mux, sidA, "secret", "newpass123"); rec.Code != http.StatusFound {
+		t.Fatalf("valid change: code=%d body=%.200s", rec.Code, rec.Body.String())
+	}
+
+	// Session A (the one that changed the password) survives; B is revoked.
+	for _, tc := range []struct {
+		sid  string
+		want int
+	}{{sidA, http.StatusOK}, {sidB, http.StatusFound}} {
+		req := httptest.NewRequest(http.MethodGet, "/ui/settings", nil)
+		req.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: tc.sid})
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, req)
+		if rec.Code != tc.want {
+			t.Fatalf("session %q: got %d want %d", tc.sid[:6], rec.Code, tc.want)
+		}
+	}
+}
+
+// Regression: the new API token used to travel in the redirect URL
+// (/ui/settings?token=...), i.e. into browser history and proxy logs.
+func TestUI_APIKeyTokenNotInRedirectURL(t *testing.T) {
+	h := newTestUIHandler(t, false)
+	mux := http.NewServeMux()
+	h.Register(mux)
+	sid := loginSID(t, mux)
+
+	form := url.Values{"name": {"cli"}, "csrf_token": {auth.CSRFToken("csrf-test", sid)}}
+	req := httptest.NewRequest(http.MethodPost, "/ui/settings/api-keys", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: sid})
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+	if rec.Code != http.StatusFound {
+		t.Fatalf("create key: %d %s", rec.Code, rec.Body.String())
+	}
+	if loc := rec.Header().Get("Location"); strings.Contains(loc, "token=") {
+		t.Fatalf("token leaked into redirect URL: %s", loc)
+	}
+	var tokenCookie *http.Cookie
+	for _, c := range rec.Result().Cookies() {
+		if c.Name == newTokenCookie {
+			tokenCookie = c
+		}
+	}
+	if tokenCookie == nil || tokenCookie.Value == "" || !tokenCookie.HttpOnly {
+		t.Fatalf("expected one-shot HttpOnly token cookie, got %+v", tokenCookie)
+	}
+
+	// Following GET shows it once and clears the cookie.
+	req = httptest.NewRequest(http.MethodGet, "/ui/settings", nil)
+	req.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: sid})
+	req.AddCookie(tokenCookie)
+	rec = httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), tokenCookie.Value) {
+		t.Fatalf("token not shown on settings page: %d", rec.Code)
+	}
+	cleared := false
+	for _, c := range rec.Result().Cookies() {
+		if c.Name == newTokenCookie && c.MaxAge < 0 {
+			cleared = true
+		}
+	}
+	if !cleared {
+		t.Fatal("one-shot cookie was not cleared")
+	}
+}

@@ -68,7 +68,7 @@
     },
     "/v1/system/info": {
       "get": {
-        "summary": "Build and runtime info",
+        "summary": "Build and runtime info (admin only)",
         "responses": { "200": { "description": "System info" } }
       }
     },

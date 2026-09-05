@@ -17,13 +17,13 @@ var backgroundImageRegex = regexp.MustCompile(`background-image:\s*url\('([^']+)
 
 // ParsedMessage is one Telegram channel post from t.me/s preview HTML.
 type ParsedMessage struct {
-	URI        string
-	Title      string
-	Content    string
-	Timestamp  time.Time
-	Author     string
-	Enclosures []string
-	HasViews     bool // false for non-last items in a legacy split album
+	URI            string
+	Title          string
+	Content        string
+	Timestamp      time.Time
+	Author         string
+	Enclosures     []string
+	HasViews       bool // false for non-last items in a legacy split album
 	IsGroupedAlbum bool // data-view p ends with "g" or js-message_grouped_wrap present
 }
 
