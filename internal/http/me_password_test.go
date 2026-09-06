@@ -22,8 +22,8 @@ func (r *recSessions) DeleteUserSessionsExcept(_ context.Context, userID int64, 
 	return nil
 }
 
-// Regression: PUT /v1/me changed the password without the current one and
-// left every other session alive.
+// PUT /v1/me password change requires the current password and revokes the
+// other sessions.
 func TestUpdateMe_RequiresCurrentPasswordAndRevokesSessions(t *testing.T) {
 	users := newMemUserStore()
 	hash, _ := auth.HashPassword("oldpass123")

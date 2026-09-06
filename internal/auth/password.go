@@ -11,8 +11,7 @@ import (
 const bcryptCost = 12
 
 // MinPasswordLength is enforced server-side for every newly set password
-// (API and UI). The UI forms already declared minlength=8; this makes the API
-// agree with them.
+// (API and UI); the UI forms declare the same minlength.
 const MinPasswordLength = 8
 
 // MaxPasswordLength mirrors bcrypt's 72-byte input limit: anything longer is
@@ -25,15 +24,14 @@ var (
 )
 
 // dummyPasswordHash is a real bcrypt (cost 12) hash of 48 random bytes that
-// were discarded after hashing (no known preimage). It is
-// compared against when the login user does not exist so that a failed login
-// costs the same wall time whether or not the username is valid.
+// were discarded after hashing (no known preimage). It is compared against
+// when the login user does not exist so that a failed login costs the same
+// wall time whether or not the username is valid.
 const dummyPasswordHash = "$2a$12$8i1KqTXDhZTjY54C9GNBO.BgI.rLJ9u4kTTpbisT.Iyc1huITqoou"
 
 // ValidateNewPassword checks the policy for a password being set or changed.
-// It is intentionally not called from HashPassword: existing tests and data
-// migrations may hash legacy short passwords, and login must keep accepting
-// whatever hash is already stored.
+// It is intentionally not called from HashPassword: login must keep accepting
+// whatever hash is already stored, including legacy short passwords.
 func ValidateNewPassword(password string) error {
 	if password == "" {
 		return errors.New("password is required")

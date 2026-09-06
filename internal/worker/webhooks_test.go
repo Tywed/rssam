@@ -164,9 +164,8 @@ func TestWebhookBackoffWithJitter_TinyDuration(t *testing.T) {
 	}
 }
 
-// Regression: user-supplied webhook headers could override Host (defeating
-// the SSRF host check on the dialled address), Content-Length /
-// Transfer-Encoding (request framing) and X-RSSAM-Signature.
+// User-supplied webhook headers must not override Host (SSRF host check),
+// Content-Length / Transfer-Encoding (request framing) or X-RSSAM-Signature.
 func TestSetWebhookHeaders_ReservedAndUnsafeSkipped(t *testing.T) {
 	req, err := http.NewRequest(http.MethodPost, "https://hooks.example.com/x", strings.NewReader("{}"))
 	if err != nil {

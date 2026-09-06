@@ -37,8 +37,8 @@ func postPassword(mux *http.ServeMux, sid, current, next string) *httptest.Respo
 	return rec
 }
 
-// Regression: password could be changed without knowing the current one, and
-// other sessions of the account stayed valid afterwards.
+// Changing the password requires the current one and revokes the account's
+// other sessions.
 func TestUI_PasswordChangeRequiresCurrentAndRevokesOtherSessions(t *testing.T) {
 	h := newTestUIHandler(t, false)
 	mux := http.NewServeMux()
@@ -70,8 +70,8 @@ func TestUI_PasswordChangeRequiresCurrentAndRevokesOtherSessions(t *testing.T) {
 	}
 }
 
-// Regression: the new API token used to travel in the redirect URL
-// (/ui/settings?token=...), i.e. into browser history and proxy logs.
+// A newly created API token must not appear in the redirect URL (browser
+// history, proxy logs).
 func TestUI_APIKeyTokenNotInRedirectURL(t *testing.T) {
 	h := newTestUIHandler(t, false)
 	mux := http.NewServeMux()

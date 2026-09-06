@@ -12,10 +12,9 @@ import (
 const DefaultSessionTTL = 30 * 24 * time.Hour
 
 // SessionTouchInterval bounds how often a sliding-expiry session is written
-// back. A session is refreshed when it was last touched more than this long
-// ago (i.e. expires_at < now + TTL - interval); otherwise the request does
-// not issue an UPDATE at all. With a 30-day TTL, an hour of slack is
-// invisible to users but turns one UPDATE per request into one per hour.
+// back: a session is refreshed only when it was last touched more than this
+// long ago (expires_at < now + TTL - interval). With a 30-day TTL an hour of
+// slack is invisible to users and avoids an UPDATE on every request.
 const SessionTouchInterval = time.Hour
 
 // SessionNeedsTouch reports whether a session whose current expiry is

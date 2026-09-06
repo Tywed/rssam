@@ -25,9 +25,8 @@ type FetchResult struct {
 	NotModified  bool
 }
 
-// MaxFeedBodyBytes caps how much of a feed document is read. Bridges and the
-// scraper already had limits; plain RSS/Atom did not, so one hostile or
-// misconfigured feed could exhaust memory.
+// MaxFeedBodyBytes caps how much of a feed document is read, so one hostile
+// or misconfigured feed cannot exhaust memory.
 const MaxFeedBodyBytes = 16 << 20
 
 // ErrFeedTooLarge is returned when the feed body exceeds MaxFeedBodyBytes.

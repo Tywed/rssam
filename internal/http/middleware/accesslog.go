@@ -30,9 +30,8 @@ func (w *statusWriter) Write(b []byte) (int, error) {
 	return n, err
 }
 
-// Hijack lets WebSocket upgrades (x/net/websocket type-asserts http.Hijacker
-// without checking) work through the access-log wrapper. Without it every
-// /ws/v1 connection panicked with "statusWriter is not http.Hijacker".
+// Hijack is required for WebSocket upgrades: x/net/websocket type-asserts
+// http.Hijacker on the ResponseWriter without checking.
 func (w *statusWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 	hj, ok := w.ResponseWriter.(http.Hijacker)
 	if !ok {

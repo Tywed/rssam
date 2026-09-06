@@ -49,8 +49,8 @@ func ftsVectorExprPlaceholders(lang, titlePlaceholder, contentPlaceholder string
 }
 
 // ftsWebsearchExpr returns SQL for plainto_tsquery(config, $arg).
-// Named historically; plainto_tsquery is used because websearch_to_tsquery
-// errors on unmatched quotes and other query syntax.
+// plainto_tsquery is used because websearch_to_tsquery errors on unmatched
+// quotes and other query syntax.
 func ftsWebsearchExpr(lang string, argPlaceholder string) string {
 	if !isAllowedFTSLanguage(lang) {
 		lang = DefaultFTSLanguage

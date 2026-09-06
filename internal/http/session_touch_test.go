@@ -21,9 +21,8 @@ func (c *countingSessions) TouchSession(_ context.Context, _ string, _ time.Time
 	return nil
 }
 
-// Regression: every authenticated request issued UPDATE sessions. Now the
-// sliding expiry is only written when the session was last refreshed more
-// than SessionTouchInterval ago.
+// The sliding expiry is only written when the session was last refreshed more
+// than SessionTouchInterval ago, not on every authenticated request.
 func TestAuthenticateSession_TouchThrottled(t *testing.T) {
 	sessions := &countingSessions{}
 	s := &Server{sessions: sessions, users: &uiMemUsersWS{user: storage.User{ID: 7, Username: "kim"}}}

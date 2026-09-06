@@ -91,8 +91,8 @@ func (h *Handler) renderSettingsError(w http.ResponseWriter, r *http.Request, ms
 }
 
 // newTokenCookie carries a freshly created API token from the POST to the
-// following GET exactly once. Putting it in the redirect URL leaked it into
-// browser history, proxy access logs and Referer headers.
+// following GET exactly once. A redirect URL would leak it into browser
+// history, proxy access logs and Referer headers.
 const newTokenCookie = "rssam_new_token"
 
 func (h *Handler) handleAPIKeyCreate(w http.ResponseWriter, r *http.Request) {

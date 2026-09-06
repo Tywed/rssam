@@ -77,9 +77,6 @@ func (r *FeedRefresher) circuitThreshold() int {
 	return 10
 }
 
-// recordFailure persists the circuit-breaker counter and refresh meta for a
-// failed poll. Errors here used to be discarded, which hid a dead database
-// from the logs while feeds silently stopped being paused/marked.
 func (r *FeedRefresher) logger() *slog.Logger {
 	if r.Log != nil {
 		return r.Log
@@ -87,6 +84,9 @@ func (r *FeedRefresher) logger() *slog.Logger {
 	return slog.Default()
 }
 
+// recordFailure persists the circuit-breaker counter and refresh meta for a
+// failed poll. Persistence errors are logged, not swallowed: a dead database
+// would otherwise silently stop feeds from being paused/marked.
 func (r *FeedRefresher) recordFailure(ctx context.Context, feed storage.Feed, now time.Time, cause error, bridgeState []byte) {
 	if err := r.Feeds.RecordFeedPollFailure(ctx, feed.ID, cause.Error(), r.circuitThreshold(), now); err != nil {
 		r.logger().Error("record feed poll failure failed", "feed_id", feed.ID, "err", err)

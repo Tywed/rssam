@@ -39,9 +39,9 @@ func requireEmptyTenantForBootstrap(t *testing.T, store *PostgresStore) {
 	}
 }
 
-// Regression: migration 0009 seeds a password-less "default" user, which used to
-// make EnsureBootstrapAdmin a no-op on a fresh install (no admin could log in).
-// The env admin must be written onto id=1 so AUTH_TOKEN and UI share the tenant.
+// Migration 0009 seeds a password-less "default" user; it must not count as a
+// bootstrapped admin. The env admin is written onto id=1 so AUTH_TOKEN and the
+// UI share the tenant.
 func TestIntegration_EnsureBootstrapAdmin_AdoptsPlaceholderID1(t *testing.T) {
 	store := testStore(t)
 	ctx := context.Background()

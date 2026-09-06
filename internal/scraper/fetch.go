@@ -63,7 +63,6 @@ func (c *proxyClientCache) client(useProxy bool) (*http.Client, error) {
 	if !useProxy || c == nil || c.proxy == "" {
 		return c.base, nil
 	}
-	// lazy init with mutex would be better; single-threaded scrape is ok for MVP
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.cached != nil {

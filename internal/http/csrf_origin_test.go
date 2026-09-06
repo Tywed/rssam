@@ -91,9 +91,8 @@ func newCSRFTestServer(t *testing.T) (*Server, http.Handler) {
 	return s, mux
 }
 
-// Regression: a logged-in browser could be driven by any third-party page to
-// call state-changing /v1 endpoints (the session cookie was accepted with no
-// origin check; the web UI itself never calls /v1).
+// Cookie-authenticated state-changing /v1 calls require same-origin proof;
+// token-authenticated calls do not.
 func TestWrapAPI_CookieAuthRequiresSameOriginForMutations(t *testing.T) {
 	_, mux := newCSRFTestServer(t)
 	body := `{"title":"x"}`
@@ -142,7 +141,7 @@ func TestWrapAPI_CookieAuthRequiresSameOriginForMutations(t *testing.T) {
 	if rec := do(http.MethodPost, nil, true, true); rec.Code != http.StatusCreated {
 		t.Fatalf("token+cookie POST: got %d want 201", rec.Code)
 	}
-	// Bad token + valid cookie + same origin: falls back to cookie (previous behaviour kept).
+	// Bad token + valid cookie + same origin: falls back to cookie.
 	req := httptest.NewRequest(http.MethodPost, "http://rss.example.com/v1/categories", bytes.NewBufferString(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Auth-Token", "wrong")

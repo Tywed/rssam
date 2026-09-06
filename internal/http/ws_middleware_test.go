@@ -13,10 +13,9 @@ import (
 	"golang.org/x/net/websocket"
 )
 
-// Regression: the production handler chain (AccessLog → SecurityHeaders →
-// Compress → BodyLimit → RateLimit) wrapped the ResponseWriter in a type that
-// did not implement http.Hijacker, so every real WebSocket upgrade panicked.
-// The other WS tests bypass wrapMiddleware and could not catch it.
+// The WebSocket upgrade must work through the production handler chain
+// (AccessLog → SecurityHeaders → Compress → BodyLimit → RateLimit): every
+// wrapper must forward http.Hijacker. The other WS tests bypass wrapMiddleware.
 func TestWSUpgradeThroughFullMiddlewareChain(t *testing.T) {
 	hub := ws.NewHub(10, time.Second)
 	s := New(Dependencies{

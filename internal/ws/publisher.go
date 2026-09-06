@@ -52,8 +52,8 @@ func (p *Publisher) PublishNewEntries(ctx context.Context, feed storage.Feed, ne
 }
 
 // newEntryPayload is the minimal, explicitly whitelisted projection of an entry
-// pushed over WebSocket. storage.Entry has no json tags, so publishing it
-// directly leaked every column (content, raw HTML, hashes) with Go field names.
+// pushed over WebSocket. storage.Entry has no json tags; publishing it directly
+// would expose every column (content, raw HTML, hashes) with Go field names.
 func newEntryPayload(feed storage.Feed, e storage.Entry) map[string]any {
 	return map[string]any{
 		"id":           e.ID,

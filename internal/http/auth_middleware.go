@@ -56,8 +56,8 @@ func (s *Server) authenticateRequestSource(ctx context.Context, r *http.Request)
 		return auth.Principal{UserID: 1, IsAdmin: isAdmin}, true, false
 	}
 
-	// Invalid header token: fall back to the cookie (keeps previous behaviour
-	// for a browser tab that also sends a stale token header).
+	// Invalid header token: fall back to the cookie (a browser tab may also
+	// send a stale token header).
 	if p, ok := s.authenticateSession(ctx, r); ok {
 		return p, true, true
 	}
@@ -118,8 +118,7 @@ func (s *Server) wrapAPI(next http.Handler) http.Handler {
 		}
 		// CSRF: a session cookie is attached by the browser automatically, so a
 		// state-changing /v1 call must prove it came from our own origin. The
-		// web UI never calls /v1 (it uses /ui/* with form CSRF tokens); this
-		// covers the case of an attacker page driving the API of a logged-in user.
+		// web UI never calls /v1 (it uses /ui/* with form CSRF tokens).
 		if viaCookie && !isSafeMethod(r.Method) && !sameOriginRequest(r) {
 			writeError(w, http.StatusForbidden, "cross-origin request rejected: use an API token")
 			return

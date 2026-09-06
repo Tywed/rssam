@@ -10,8 +10,6 @@ import (
 	"testing"
 )
 
-// Regression: plain RSS/Atom had no body size limit (gofeed read to EOF),
-// unlike bridges and the scraper.
 func TestRSSFetcher_RejectsOversizedFeed(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/rss+xml")

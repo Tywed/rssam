@@ -38,8 +38,8 @@ func drain(c *Client) []string {
 	}
 }
 
-// Regression: events used to be broadcast to every authenticated socket and the
-// new_entry payload was the whole storage.Entry (content included).
+// new_entry events are delivered only to the owning user and carry the
+// minimal payload, not the whole storage.Entry.
 func TestPublisher_NewEntriesAreTenantScopedAndMinimal(t *testing.T) {
 	hub := NewHub(16, time.Second)
 	owner := newAttachedClient(t, hub, 1)

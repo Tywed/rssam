@@ -21,8 +21,7 @@ func (c *countingWebhookStore) ListEnabledWebhooks(_ context.Context, _ int64, _
 	return c.webhooks, c.err
 }
 
-// Regression: every feed refresh with filters ran ListEnabledWebhooks (error
-// ignored). The result is now cached per user for enabledWebhookCacheTTL and
+// Enabled webhooks are cached per user for enabledWebhookCacheTTL and
 // invalidated explicitly when webhooks change.
 func TestListLegacyFilterWebhooksCached(t *testing.T) {
 	fid := int64(5)

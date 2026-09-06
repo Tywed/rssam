@@ -274,8 +274,7 @@ func TestUI_CSRFRejected(t *testing.T) {
 	}
 }
 
-// Regression: server-side password policy on the UI forms (previously only
-// minlength=8 in HTML, trivially bypassed).
+// The password policy must be enforced server-side, not only by minlength in HTML.
 func TestUI_PasswordPolicyServerSide(t *testing.T) {
 	h := newTestUIHandler(t, true)
 	mux := http.NewServeMux()
@@ -323,9 +322,8 @@ func TestUI_PasswordPolicyServerSide(t *testing.T) {
 	}
 }
 
-// Regression: an unknown username returned in microseconds while a wrong
-// password for an existing user cost a bcrypt round, so response time
-// revealed which usernames exist.
+// Response time must not reveal whether a username exists: an unknown user
+// costs a bcrypt round like a wrong password does.
 func TestUI_LoginUnknownUserTakesBcryptTime(t *testing.T) {
 	h := newTestUIHandler(t, false)
 	mux := http.NewServeMux()

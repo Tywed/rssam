@@ -386,6 +386,3 @@ WHERE id = $1 AND password_hash = ''`
 	}
 	return nil
 }
-
-// hashPassword is a thin wrapper to avoid importing auth in storage from users.go bootstrap.
-// Implemented in users_password.go

@@ -30,8 +30,8 @@ func req(remote string, hdr map[string]string) *http.Request {
 	return r
 }
 
-// Regression: a remote client could rotate X-Forwarded-For and get a fresh
-// rate-limit bucket on every request (verified 30/30 logins → 200).
+// Forwarding headers from an untrusted peer are ignored; otherwise a client
+// could rotate X-Forwarded-For and get a fresh rate-limit bucket per request.
 func TestClientIP_IgnoresForwardedHeadersFromUntrustedPeer(t *testing.T) {
 	withProxies(t, "127.0.0.0/8")
 	r := req("203.0.113.9:4444", map[string]string{"X-Forwarded-For": "10.1.1.1", "X-Real-IP": "10.2.2.2"})

@@ -11,8 +11,7 @@ import (
 	"rssam/internal/storage"
 )
 
-// Regression: the 8-character minimum existed only as minlength=8 in the HTML
-// forms; POST /v1/users and PUT /v1/me accepted "1" as a password.
+// POST /v1/users and PUT /v1/me enforce the password policy server-side.
 func TestCreateUser_PasswordPolicy(t *testing.T) {
 	users := newMemUserStore()
 	s := New(Dependencies{UserStore: users})

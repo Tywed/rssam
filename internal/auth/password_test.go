@@ -67,9 +67,8 @@ func TestVerifyLogin(t *testing.T) {
 	}
 }
 
-// Regression for username enumeration: a login attempt for an unknown user
-// (hash == "") must take about as long as one for a known user with a wrong
-// password. Before the fix the unknown-user path returned in microseconds.
+// Username enumeration: a login attempt for an unknown user (hash == "") must
+// take about as long as one for a known user with a wrong password.
 func TestVerifyLogin_UnknownUserTakesBcryptTime(t *testing.T) {
 	hash, err := HashPassword("correct horse")
 	if err != nil {

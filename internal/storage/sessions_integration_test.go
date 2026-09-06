@@ -11,8 +11,7 @@ import (
 	"rssam/internal/auth"
 )
 
-// Sessions were never purged: the table only ever shrank via per-user
-// deletes, so every login (30-day TTL) stayed forever.
+// Expired sessions are purged by the retention cleanup.
 func TestIntegration_DeleteExpiredSessions(t *testing.T) {
 	store := testStore(t)
 	ctx := context.Background()

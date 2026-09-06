@@ -19,8 +19,7 @@ import (
 //     fail.
 //  2. Origin header: its host must equal the request Host.
 //  3. Referer header: same rule (older browsers send Referer on form posts).
-//  4. Nothing at all → rejected. Non-browser clients must use an API token,
-//     which is what the /v1 API is designed for anyway.
+//  4. Nothing at all → rejected. Non-browser clients must use an API token.
 func sameOriginRequest(r *http.Request) bool {
 	switch strings.ToLower(strings.TrimSpace(r.Header.Get("Sec-Fetch-Site"))) {
 	case "same-origin", "none":

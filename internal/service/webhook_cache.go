@@ -9,8 +9,8 @@ import (
 )
 
 // Enabled webhooks are needed on every feed refresh that has filters (to
-// route legacy filter-bound webhooks), which was one extra query per poll.
-// They change rarely, so they are cached per user like enabled filters.
+// route legacy filter-bound webhooks). They change rarely, so they are cached
+// per user like enabled filters instead of being queried on every poll.
 const enabledWebhookCacheTTL = enabledFilterCacheTTL
 
 type enabledWebhookCache struct {
