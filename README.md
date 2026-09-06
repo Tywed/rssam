@@ -92,6 +92,19 @@ docker compose up --build
 
 Не поднимайте compose-app на prod `DATABASE_URL` параллельно с systemd.
 
+## Публикация в интернете
+
+rssam слушает plain HTTP (`LISTEN_ADDR`, по умолчанию `:8080`) и сам TLS не терминирует. Минимум для внешнего доступа:
+
+1. Реверс-прокси с TLS (nginx/Caddy) перед rssam; rssam слушает только `127.0.0.1:8080`. В прокси: `proxy_set_header Host $host; X-Forwarded-For $remote_addr; X-Forwarded-Proto $scheme;` и включённый WebSocket-upgrade для `/ws/v1`.
+2. `HSTS=true` — HSTS-заголовок и cookie `Secure`.
+3. `TRUSTED_PROXIES` — адрес прокси, если он не на этом же хосте (по умолчанию доверяется только loopback; иначе rate-limit считает клиентом сам прокси).
+4. Сменить `ADMIN_PASSWORD`, убрать `AUTH_TOKEN` из `.env` (это dev-режим: один общий токен вместо API-ключей). `METRICS_TOKEN` нужен только если `/metrics` кто-то читает.
+5. `FETCH_ALLOW_PRIVATE_NETWORK=false` (по умолчанию): rssam ходит по URL, которые вводят пользователи; SSRF-guard не пускает его в приватные сети.
+6. Не публиковать порт PostgreSQL. `docker-compose.yml` в репозитории — dev-конфигурация (пароль `rssam`, порт 5432 наружу).
+
+Ограничения по умолчанию: логин — 10 попыток, затем одна в 5 с с одного IP (`LOGIN_RATE_LIMIT_*`); тело запроса 1 MiB (`MAX_REQUEST_BODY_BYTES`); лента до 16 MiB; заголовки 1 MiB. Обновление из UI запускает `rssam-update` через sudo — доступно только admin и принимает только semver-тег.
+
 ## Конфигурация
 
 Переменные — в [`.env.example`](.env.example). Кратко: `DATABASE_URL`, `LISTEN_ADDR`, `WORKER_POOL_SIZE`, мосты, SSRF `FETCH_ALLOW_PRIVATE_NETWORK`.
