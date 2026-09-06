@@ -86,7 +86,12 @@ func (r *HandlerRegistry) Fetch(ctx context.Context, req FetchRequest) (FetchRes
 	if err != nil {
 		return FetchResponse{}, err
 	}
-	return h.Fetch(ctx, req)
+	res, err := h.Fetch(ctx, req)
+	if err != nil {
+		return res, err
+	}
+	SanitizeEntries(res.Entries)
+	return res, nil
 }
 
 const (
