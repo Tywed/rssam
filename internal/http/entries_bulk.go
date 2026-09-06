@@ -62,7 +62,7 @@ func (s *Server) handleBulkUpdateEntries(w http.ResponseWriter, r *http.Request)
 
 	updated, err := s.entries.BulkUpdateEntries(r.Context(), p.UserID, req.EntryIDs, update)
 	if err != nil {
-		s.log.Error("bulk update entries failed", "err", err)
+		s.log.ErrorContext(r.Context(), "bulk update entries failed", "err", err)
 		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
@@ -92,7 +92,7 @@ func (s *Server) handleMarkFeedAllRead(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusNotFound, "feed not found")
 			return
 		}
-		s.log.Error("mark feed all read failed", "err", err)
+		s.log.ErrorContext(r.Context(), "mark feed all read failed", "err", err)
 		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}

@@ -47,14 +47,14 @@ func (s *Server) handleFetchEntryContent(w http.ResponseWriter, r *http.Request)
 			writeError(w, http.StatusBadGateway, "content fetch failed")
 			return
 		}
-		s.log.Error("fetch entry content failed", "err", err, "entry_id", id)
+		s.log.ErrorContext(r.Context(), "fetch entry content failed", "err", err, "entry_id", id)
 		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
 
 	dto, err := s.entryToDTO(r.Context(), p.UserID, entry)
 	if err != nil {
-		s.log.Error("load entry enclosures failed", "err", err)
+		s.log.ErrorContext(r.Context(), "load entry enclosures failed", "err", err)
 		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}

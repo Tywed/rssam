@@ -95,7 +95,7 @@ func (s *Server) handleListFilters(w http.ResponseWriter, r *http.Request) {
 	}
 	filters, total, err := s.filters.ListFilters(r.Context(), p.UserID, limit, offset)
 	if err != nil {
-		s.log.Error("list filters failed", "err", err)
+		s.log.ErrorContext(r.Context(), "list filters failed", "err", err)
 		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
@@ -130,7 +130,7 @@ func (s *Server) handleCreateFilter(w http.ResponseWriter, r *http.Request) {
 	}
 	f, err := s.filters.CreateFilter(r.Context(), params)
 	if err != nil {
-		s.log.Error("create filter failed", "err", err)
+		s.log.ErrorContext(r.Context(), "create filter failed", "err", err)
 		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
@@ -159,7 +159,7 @@ func (s *Server) handleGetFilter(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusNotFound, "filter not found")
 			return
 		}
-		s.log.Error("get filter failed", "err", err)
+		s.log.ErrorContext(r.Context(), "get filter failed", "err", err)
 		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
@@ -199,7 +199,7 @@ func (s *Server) handleUpdateFilter(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusNotFound, "filter not found")
 			return
 		}
-		s.log.Error("update filter failed", "err", err)
+		s.log.ErrorContext(r.Context(), "update filter failed", "err", err)
 		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
@@ -227,7 +227,7 @@ func (s *Server) handleDeleteFilter(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusNotFound, "filter not found")
 			return
 		}
-		s.log.Error("delete filter failed", "err", err)
+		s.log.ErrorContext(r.Context(), "delete filter failed", "err", err)
 		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
@@ -285,7 +285,7 @@ func (s *Server) handleTestFilter(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusNotFound, "filter not found")
 			return
 		}
-		s.log.Error("get filter failed", "err", err)
+		s.log.ErrorContext(r.Context(), "get filter failed", "err", err)
 		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
@@ -415,7 +415,7 @@ func (s *Server) handleListFilterMatches(w http.ResponseWriter, r *http.Request)
 	}
 	rows, total, err := s.filterMatches.ListFilterMatches(r.Context(), id, limit, offset)
 	if err != nil {
-		s.log.Error("list filter matches failed", "err", err)
+		s.log.ErrorContext(r.Context(), "list filter matches failed", "err", err)
 		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}

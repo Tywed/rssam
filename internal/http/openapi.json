@@ -3,80 +3,4708 @@
   "info": {
     "title": "rssam API",
     "version": "1.0.0",
-    "description": "RSS Aggregator Microservice REST API (subset; see spec for full surface)."
+    "description": "REST API of the rssam RSS aggregator.\n\n**Authentication.** Every `/v1` endpoint takes `X-Auth-Token: <token>` where the token is either a personal API key (`POST /v1/me/api-keys`) or the global `AUTH_TOKEN` (maps to user id 1). A browser session cookie is also accepted, but state-changing requests authenticated only by the cookie must pass the same-origin check (`Sec-Fetch-Site`/`Origin`), otherwise 403.\n\n**Envelope.** Successful JSON responses are `{\"data\": ..., \"total\": n}`; errors are `{\"error_message\": \"...\"}`. Lists take `limit`/`offset`; `total` is the full row count.\n\n**Ownership.** Objects are scoped to the calling user; reading another user's object yields 404. Endpoints marked \"Requires an admin principal\" return 403 for non-admins.\n\n**Request id.** Every response carries `X-Request-Id` (echoed from the request when a proxy set it, generated otherwise); quote it when reporting 5xx errors.\n\n**Limits.** Request bodies are capped (MAX_REQUEST_BODY_BYTES, default 1 MiB) → 413; per-IP rate limits on authentication failures and sensitive routes → 429."
   },
-  "servers": [{ "url": "/" }],
+  "servers": [
+    {
+      "url": "/"
+    }
+  ],
+  "tags": [
+    {
+      "name": "system",
+      "description": "Health, metrics, build info, WebSocket."
+    },
+    {
+      "name": "categories",
+      "description": "Feed categories."
+    },
+    {
+      "name": "feeds",
+      "description": "Feeds, OPML import/export, refresh."
+    },
+    {
+      "name": "entries",
+      "description": "Entries, read/star state, full-content fetch."
+    },
+    {
+      "name": "filters",
+      "description": "Rule-based filters with label/webhook/delete actions."
+    },
+    {
+      "name": "webhooks",
+      "description": "Outgoing HTTP/Telegram/Max notifications and their delivery log."
+    },
+    {
+      "name": "users",
+      "description": "Users, own profile, API keys."
+    }
+  ],
+  "security": [
+    {
+      "AuthToken": []
+    },
+    {
+      "SessionCookie": []
+    }
+  ],
+  "paths": {
+    "/healthz": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Health check",
+        "operationId": "healthz",
+        "description": "Pings the database with a 2 s timeout. Unauthenticated.",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Database reachable.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string",
+                  "example": "ok"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Database not configured or ping failed.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/openapi.json": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "This document",
+        "operationId": "openapi",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "OpenAPI 3.0 document.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/metrics": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Prometheus metrics",
+        "operationId": "metrics",
+        "description": "Authenticated with `Authorization: Bearer <METRICS_TOKEN>`, not with the API token.",
+        "security": [
+          {
+            "MetricsBearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Prometheus text exposition.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Metrics disabled (no METRICS_TOKEN) or bad bearer token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/system/info": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Build and runtime info",
+        "operationId": "systemInfo",
+        "description": "Requires an admin principal.",
+        "responses": {
+          "200": {
+            "description": "Info.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SystemInfoResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          }
+        }
+      }
+    },
+    "/v1/categories": {
+      "get": {
+        "tags": [
+          "categories"
+        ],
+        "summary": "List categories",
+        "operationId": "listCategories",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/limit"
+          },
+          {
+            "$ref": "#/components/parameters/offset"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Categories.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CategoryList"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "categories"
+        ],
+        "summary": "Create category",
+        "operationId": "createCategory",
+        "description": "Requires an admin principal.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CategoryWrite"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CategoryResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        }
+      }
+    },
+    "/v1/categories/{id}": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1
+          },
+          "description": "Object id."
+        }
+      ],
+      "put": {
+        "tags": [
+          "categories"
+        ],
+        "summary": "Update category",
+        "operationId": "updateCategory",
+        "description": "Requires an admin principal.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CategoryWrite"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CategoryResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "categories"
+        ],
+        "summary": "Delete category",
+        "operationId": "deleteCategory",
+        "description": "Requires an admin principal.",
+        "responses": {
+          "200": {
+            "description": "Deleted.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeletedResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        }
+      }
+    },
+    "/v1/categories/{categoryID}/mark-all-as-read": {
+      "parameters": [
+        {
+          "name": "categoryID",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1
+          },
+          "description": "Category id."
+        }
+      ],
+      "put": {
+        "tags": [
+          "entries"
+        ],
+        "summary": "Mark all entries of a category as read",
+        "operationId": "markCategoryRead",
+        "responses": {
+          "200": {
+            "description": "Count of entries marked.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarkAllReadResultResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        }
+      }
+    },
+    "/v1/feeds": {
+      "get": {
+        "tags": [
+          "feeds"
+        ],
+        "summary": "List feeds",
+        "operationId": "listFeeds",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/limit"
+          },
+          {
+            "$ref": "#/components/parameters/offset"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Feeds.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeedList"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "feeds"
+        ],
+        "summary": "Create feed",
+        "operationId": "createFeed",
+        "description": "feed_url is validated against the SSRF policy (no private networks unless FETCH_ALLOW_PRIVATE_NETWORK). Requires an admin principal.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FeedWrite"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeedResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        }
+      }
+    },
+    "/v1/feeds/import": {
+      "post": {
+        "tags": [
+          "feeds"
+        ],
+        "summary": "Import OPML",
+        "operationId": "importFeeds",
+        "description": "Body is either raw OPML or a multipart form with a `file` field. Existing feed URLs are skipped; categories are created on demand (MAX_IMPORT_FEEDS caps the total). Requires an admin principal.",
+        "parameters": [
+          {
+            "name": "async",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "1"
+              ]
+            },
+            "description": "Run in the background and return a job id."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/xml": {
+              "schema": {
+                "type": "string",
+                "format": "binary"
+              }
+            },
+            "text/xml": {
+              "schema": {
+                "type": "string",
+                "format": "binary"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary"
+                  }
+                },
+                "required": [
+                  "file"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Synchronous import finished.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportReportResponse"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Async import queued (async=1); poll /v1/feeds/import/jobs/{jobID}.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportJobAcceptedResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "413": {
+            "description": "OPML larger than the request body limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        }
+      }
+    },
+    "/v1/feeds/import/jobs/{jobID}": {
+      "parameters": [
+        {
+          "name": "jobID",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "get": {
+        "tags": [
+          "feeds"
+        ],
+        "summary": "Import job status",
+        "operationId": "getImportJob",
+        "description": "Requires an admin principal.",
+        "responses": {
+          "200": {
+            "description": "Job.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportJobResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        }
+      }
+    },
+    "/v1/feeds/export": {
+      "get": {
+        "tags": [
+          "feeds"
+        ],
+        "summary": "Export OPML",
+        "operationId": "exportFeeds",
+        "description": "Requires an admin principal.",
+        "responses": {
+          "200": {
+            "description": "OPML 2.0 document.",
+            "content": {
+              "application/xml": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/v1/feeds/refresh": {
+      "post": {
+        "tags": [
+          "feeds"
+        ],
+        "summary": "Refresh all feeds",
+        "operationId": "refreshAllFeeds",
+        "description": "Requires an admin principal.",
+        "responses": {
+          "200": {
+            "description": "Aggregate result. When a background scheduler is configured feeds are queued; otherwise they are refreshed inline.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RefreshAllResultResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        }
+      }
+    },
+    "/v1/feeds/{id}": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1
+          },
+          "description": "Object id."
+        }
+      ],
+      "get": {
+        "tags": [
+          "feeds"
+        ],
+        "summary": "Get feed",
+        "operationId": "getFeed",
+        "responses": {
+          "200": {
+            "description": "Feed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeedResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "feeds"
+        ],
+        "summary": "Update feed",
+        "operationId": "updateFeed",
+        "description": "Requires an admin principal.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FeedWrite"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeedResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "description": "Another feed already uses this URL.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "feeds"
+        ],
+        "summary": "Delete feed",
+        "operationId": "deleteFeed",
+        "description": "Requires an admin principal.",
+        "responses": {
+          "200": {
+            "description": "Deleted with its entries.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeletedResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        }
+      }
+    },
+    "/v1/feeds/{feedID}/mark-all-as-read": {
+      "parameters": [
+        {
+          "name": "feedID",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1
+          },
+          "description": "Feed id."
+        }
+      ],
+      "put": {
+        "tags": [
+          "entries"
+        ],
+        "summary": "Mark all entries of a feed as read",
+        "operationId": "markFeedRead",
+        "responses": {
+          "200": {
+            "description": "Count.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarkAllReadResultResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        }
+      }
+    },
+    "/v1/feeds/{feedID}/icon": {
+      "parameters": [
+        {
+          "name": "feedID",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1
+          },
+          "description": "Feed id."
+        }
+      ],
+      "get": {
+        "tags": [
+          "feeds"
+        ],
+        "summary": "Feed icon",
+        "operationId": "feedIcon",
+        "responses": {
+          "200": {
+            "description": "Icon, base64 in JSON (cached per feed).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeedIconResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "description": "Feed not found or the site has no icon.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "502": {
+            "$ref": "#/components/responses/BadGateway"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        }
+      }
+    },
+    "/v1/feeds/{feedID}/refresh": {
+      "parameters": [
+        {
+          "name": "feedID",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1
+          },
+          "description": "Feed id."
+        }
+      ],
+      "post": {
+        "tags": [
+          "feeds"
+        ],
+        "summary": "Refresh one feed now",
+        "operationId": "refreshFeed",
+        "responses": {
+          "200": {
+            "description": "Inserted entry count.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RefreshResultResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "502": {
+            "description": "Feed fetch or parse failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        }
+      }
+    },
+    "/v1/feeds/{feedID}/entries": {
+      "parameters": [
+        {
+          "name": "feedID",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1
+          },
+          "description": "Feed id."
+        }
+      ],
+      "get": {
+        "tags": [
+          "entries"
+        ],
+        "summary": "List entries of a feed",
+        "operationId": "listFeedEntries",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/limit"
+          },
+          {
+            "$ref": "#/components/parameters/offset"
+          },
+          {
+            "$ref": "#/components/parameters/entryStatus"
+          },
+          {
+            "$ref": "#/components/parameters/entryStarred"
+          },
+          {
+            "$ref": "#/components/parameters/entrySort"
+          },
+          {
+            "$ref": "#/components/parameters/entrySearch"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Entries.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EntryList"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        }
+      }
+    },
+    "/v1/feeds/{feedID}/entries/{entryID}": {
+      "parameters": [
+        {
+          "name": "feedID",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1
+          },
+          "description": "Feed id."
+        },
+        {
+          "name": "entryID",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1
+          },
+          "description": "Entry id."
+        }
+      ],
+      "get": {
+        "tags": [
+          "entries"
+        ],
+        "summary": "Get entry of a feed",
+        "operationId": "getFeedEntry",
+        "responses": {
+          "200": {
+            "description": "Entry.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EntryResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "entries"
+        ],
+        "summary": "Update entry status/starred",
+        "operationId": "updateFeedEntry",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EntryUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EntryResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        }
+      }
+    },
+    "/v1/entries": {
+      "get": {
+        "tags": [
+          "entries"
+        ],
+        "summary": "List entries",
+        "operationId": "listEntries",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/limit"
+          },
+          {
+            "$ref": "#/components/parameters/offset"
+          },
+          {
+            "$ref": "#/components/parameters/entryStatus"
+          },
+          {
+            "$ref": "#/components/parameters/entryStarred"
+          },
+          {
+            "$ref": "#/components/parameters/entrySort"
+          },
+          {
+            "$ref": "#/components/parameters/entrySearch"
+          },
+          {
+            "$ref": "#/components/parameters/feedIDQuery"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Entries across all feeds of the caller.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EntryList"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "entries"
+        ],
+        "summary": "Bulk update entries",
+        "operationId": "bulkUpdateEntries",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EntriesBulkUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Number of rows updated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BulkUpdateResultResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        }
+      }
+    },
+    "/v1/entries/{id}": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1
+          },
+          "description": "Object id."
+        }
+      ],
+      "get": {
+        "tags": [
+          "entries"
+        ],
+        "summary": "Get entry",
+        "operationId": "getEntry",
+        "responses": {
+          "200": {
+            "description": "Entry.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EntryResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        }
+      }
+    },
+    "/v1/entries/{id}/fetch-content": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1
+          },
+          "description": "Object id."
+        }
+      ],
+      "get": {
+        "tags": [
+          "entries"
+        ],
+        "summary": "Fetch full article content",
+        "operationId": "fetchEntryContent",
+        "description": "Downloads the entry URL (SSRF-guarded), applies the feed's scraper rules or the readability extractor, and stores the result.",
+        "responses": {
+          "200": {
+            "description": "Entry with content replaced by the extracted article; original kept in original_content.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EntryResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "502": {
+            "description": "The article page could not be fetched or parsed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        }
+      }
+    },
+    "/v1/filters": {
+      "get": {
+        "tags": [
+          "filters"
+        ],
+        "summary": "List filters",
+        "operationId": "listFilters",
+        "description": "Requires an admin principal.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/limit"
+          },
+          {
+            "$ref": "#/components/parameters/offset"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Filters with rules, scope and actions.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FilterList"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "filters"
+        ],
+        "summary": "Create filter",
+        "operationId": "createFilter",
+        "description": "Rules are validated (field, RE2 pattern) and actions must be one of label/webhook/delete. Requires an admin principal.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FilterWrite"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FilterResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        }
+      }
+    },
+    "/v1/filters/{id}": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1
+          },
+          "description": "Object id."
+        }
+      ],
+      "get": {
+        "tags": [
+          "filters"
+        ],
+        "summary": "Get filter",
+        "operationId": "getFilter",
+        "description": "Requires an admin principal.",
+        "responses": {
+          "200": {
+            "description": "Filter.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FilterResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "filters"
+        ],
+        "summary": "Update filter",
+        "operationId": "updateFilter",
+        "description": "rules/scope_items/actions, when present, replace the existing sets. Requires an admin principal.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FilterWrite"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FilterResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "filters"
+        ],
+        "summary": "Delete filter",
+        "operationId": "deleteFilter",
+        "description": "Requires an admin principal.",
+        "responses": {
+          "200": {
+            "description": "Deleted.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeletedResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        }
+      }
+    },
+    "/v1/filters/{id}/test": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1
+          },
+          "description": "Object id."
+        }
+      ],
+      "post": {
+        "tags": [
+          "filters"
+        ],
+        "summary": "Dry-run a filter",
+        "operationId": "testFilter",
+        "description": "Requires an admin principal.",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "description": "Same as body limit."
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FilterTestRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Match result for the sample and, with limit, per stored entry.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FilterTestResponseResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        }
+      }
+    },
+    "/v1/filters/{id}/matches": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1
+          },
+          "description": "Object id."
+        }
+      ],
+      "get": {
+        "tags": [
+          "filters"
+        ],
+        "summary": "Filter match history",
+        "operationId": "listFilterMatches",
+        "description": "Requires an admin principal.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/limit"
+          },
+          {
+            "$ref": "#/components/parameters/offset"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Matches, newest first, with the matched entry embedded.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FilterMatchList"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        }
+      }
+    },
+    "/v1/webhooks": {
+      "get": {
+        "tags": [
+          "webhooks"
+        ],
+        "summary": "List webhooks",
+        "operationId": "listWebhooks",
+        "description": "Requires an admin principal.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/limit"
+          },
+          {
+            "$ref": "#/components/parameters/offset"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Webhooks.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookList"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "webhooks"
+        ],
+        "summary": "Create webhook",
+        "operationId": "createWebhook",
+        "description": "url is SSRF-checked for kind=http. telegram/max kinds take their provider block instead. Requires an admin principal.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WebhookWrite"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        }
+      }
+    },
+    "/v1/webhooks/{id}": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1
+          },
+          "description": "Object id."
+        }
+      ],
+      "get": {
+        "tags": [
+          "webhooks"
+        ],
+        "summary": "Get webhook",
+        "operationId": "getWebhook",
+        "description": "Requires an admin principal.",
+        "responses": {
+          "200": {
+            "description": "Webhook.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "webhooks"
+        ],
+        "summary": "Update webhook",
+        "operationId": "updateWebhook",
+        "description": "Requires an admin principal.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WebhookWrite"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "webhooks"
+        ],
+        "summary": "Delete webhook",
+        "operationId": "deleteWebhook",
+        "description": "Requires an admin principal.",
+        "responses": {
+          "200": {
+            "description": "Deleted with its delivery log.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeletedResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        }
+      }
+    },
+    "/v1/webhooks/{id}/test": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1
+          },
+          "description": "Object id."
+        }
+      ],
+      "post": {
+        "tags": [
+          "webhooks"
+        ],
+        "summary": "Send a test delivery",
+        "operationId": "testWebhook",
+        "description": "Uses the newest matching entry (or a synthetic sample) and the webhook's template. Requires an admin principal.",
+        "responses": {
+          "200": {
+            "description": "Endpoint answered 2xx.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookTestResultResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "502": {
+            "description": "Delivery failed; body carries the same result object with ok=false.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookTestResultResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        }
+      }
+    },
+    "/v1/webhooks/{id}/logs": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1
+          },
+          "description": "Object id."
+        }
+      ],
+      "get": {
+        "tags": [
+          "webhooks"
+        ],
+        "summary": "Delivery log of a webhook",
+        "operationId": "listWebhookLogs",
+        "description": "Requires an admin principal.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/limit"
+          },
+          {
+            "$ref": "#/components/parameters/offset"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deliveries, newest first.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookLogList"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        }
+      }
+    },
+    "/v1/webhook-logs/{logID}/retry": {
+      "parameters": [
+        {
+          "name": "logID",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1
+          },
+          "description": "Delivery log id."
+        }
+      ],
+      "post": {
+        "tags": [
+          "webhooks"
+        ],
+        "summary": "Re-queue a failed delivery",
+        "operationId": "retryWebhookLog",
+        "description": "Requires an admin principal.",
+        "responses": {
+          "200": {
+            "description": "Marked pending; the webhook worker picks it up.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookLogRetriedResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        }
+      }
+    },
+    "/v1/users": {
+      "get": {
+        "tags": [
+          "users"
+        ],
+        "summary": "List users",
+        "operationId": "listUsers",
+        "description": "Requires an admin principal.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/limit"
+          },
+          {
+            "$ref": "#/components/parameters/offset"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Users.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserList"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "users"
+        ],
+        "summary": "Create user",
+        "operationId": "createUser",
+        "description": "Bootstrap exception: while no login-capable user exists and ADMIN_USERNAME/ADMIN_PASSWORD are configured, this endpoint accepts an unauthenticated request. Requires an admin principal.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UserCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "description": "Username taken.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        }
+      }
+    },
+    "/v1/users/{id}": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1
+          },
+          "description": "Object id."
+        }
+      ],
+      "delete": {
+        "tags": [
+          "users"
+        ],
+        "summary": "Delete user",
+        "operationId": "deleteUser",
+        "description": "Requires an admin principal.",
+        "responses": {
+          "200": {
+            "description": "Deleted with all owned data.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeletedResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid id, or the caller tried to delete their own account.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "description": "Refused: this is the last admin.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        }
+      }
+    },
+    "/v1/me": {
+      "get": {
+        "tags": [
+          "users"
+        ],
+        "summary": "Current user",
+        "operationId": "getMe",
+        "responses": {
+          "200": {
+            "description": "Profile.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "users"
+        ],
+        "summary": "Change own password",
+        "operationId": "updateMe",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MeUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated; other sessions are revoked.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "current_password is incorrect.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/v1/me/api-keys": {
+      "get": {
+        "tags": [
+          "users"
+        ],
+        "summary": "List own API keys",
+        "operationId": "listApiKeys",
+        "responses": {
+          "200": {
+            "description": "Keys (tokens are never returned).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiKeyList"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "users"
+        ],
+        "summary": "Create API key",
+        "operationId": "createApiKey",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApiKeyCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Key with the plaintext token, shown once.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiKeyCreatedResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/v1/me/api-keys/{id}": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1
+          },
+          "description": "Object id."
+        }
+      ],
+      "delete": {
+        "tags": [
+          "users"
+        ],
+        "summary": "Revoke API key",
+        "operationId": "deleteApiKey",
+        "responses": {
+          "200": {
+            "description": "Revoked.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeletedResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/ws/v1": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "WebSocket event stream",
+        "operationId": "websocket",
+        "description": "Authenticate with X-Auth-Token (or `?token=` is NOT supported - use the header or the session cookie). Server events: entry.created, feed.refreshed, webhook.delivered and others; inbound frames above 4 KiB close the connection.",
+        "responses": {
+          "101": {
+            "description": "Switching Protocols. Frames are JSON: {\"event\":..., \"data\":...}; the first frame is `subscribed` with the channel list. Client → server: {\"action\":\"subscribe\",\"channels\":[\"all\",\"feed:<id>\"]} and {\"action\":\"pong\"}."
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "Cookie-authenticated handshake from another origin.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "WebSocket disabled (WS_ENABLED=false).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
   "components": {
     "securitySchemes": {
       "AuthToken": {
         "type": "apiKey",
         "in": "header",
-        "name": "X-Auth-Token"
+        "name": "X-Auth-Token",
+        "description": "Personal API key or the global AUTH_TOKEN."
+      },
+      "SessionCookie": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "session_id",
+        "description": "Web UI session. Mutations additionally require a same-origin request."
+      },
+      "MetricsBearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "METRICS_TOKEN for /metrics only."
       }
-    }
-  },
-  "security": [{ "AuthToken": [] }],
-  "paths": {
-    "/healthz": {
-      "get": {
-        "summary": "Health check",
-        "security": [],
-        "responses": { "200": { "description": "OK" } }
-      }
     },
-    "/v1/me": {
-      "get": { "summary": "Current user", "responses": { "200": { "description": "User profile" } } }
-    },
-    "/v1/categories": {
-      "get": { "summary": "List categories", "responses": { "200": { "description": "Category list" } } },
-      "post": { "summary": "Create category", "responses": { "201": { "description": "Created" } } }
-    },
-    "/v1/feeds": {
-      "get": { "summary": "List feeds", "responses": { "200": { "description": "Feed list" } } },
-      "post": { "summary": "Create feed", "responses": { "201": { "description": "Created" } } }
-    },
-    "/v1/feeds/import": {
-      "post": {
-        "summary": "Import OPML (sync or ?async=1)",
-        "responses": {
-          "200": { "description": "Import report" },
-          "202": { "description": "Async job accepted" }
+    "parameters": {
+      "limit": {
+        "name": "limit",
+        "in": "query",
+        "schema": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10000,
+          "default": 100
+        },
+        "description": "Page size; values above 10000 are clamped."
+      },
+      "offset": {
+        "name": "offset",
+        "in": "query",
+        "schema": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 0
+        }
+      },
+      "entryStatus": {
+        "name": "status",
+        "in": "query",
+        "schema": {
+          "$ref": "#/components/schemas/EntryStatus"
+        }
+      },
+      "entryStarred": {
+        "name": "starred",
+        "in": "query",
+        "schema": {
+          "type": "boolean"
+        }
+      },
+      "entrySort": {
+        "name": "sort",
+        "in": "query",
+        "schema": {
+          "type": "string",
+          "enum": [
+            "newest",
+            "oldest"
+          ],
+          "default": "newest"
+        }
+      },
+      "entrySearch": {
+        "name": "q",
+        "in": "query",
+        "schema": {
+          "type": "string"
+        },
+        "description": "Full-text search over title and content."
+      },
+      "feedIDQuery": {
+        "name": "feed_id",
+        "in": "query",
+        "schema": {
+          "type": "integer",
+          "format": "int64",
+          "minimum": 1
         }
       }
     },
-    "/v1/feeds/import/jobs/{jobID}": {
-      "get": {
-        "summary": "OPML import job progress",
-        "parameters": [
-          { "name": "jobID", "in": "path", "required": true, "schema": { "type": "string" } }
+    "responses": {
+      "BadRequest": {
+        "description": "Malformed input or validation error.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "Unauthorized": {
+        "description": "Missing or invalid credentials.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "Forbidden": {
+        "description": "Admin required, or a cookie-authenticated request that failed the same-origin check.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "NotFound": {
+        "description": "Object not found or not owned by the caller.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "Conflict": {
+        "description": "Unique constraint or invariant violated.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "TooManyRequests": {
+        "description": "Rate limit exceeded.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "InternalError": {
+        "description": "Unexpected server error. The response carries an X-Request-Id header to correlate with server logs.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "ServiceUnavailable": {
+        "description": "The backing store for this resource is not configured.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "BadGateway": {
+        "description": "Upstream (feed, site or webhook endpoint) failed.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "properties": {
+          "error_message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "error_message"
         ],
-        "responses": { "200": { "description": "Job status" } }
-      }
-    },
-    "/v1/entries": {
-      "get": { "summary": "List entries", "responses": { "200": { "description": "Entry list" } } }
-    },
-    "/v1/filters": {
-      "get": { "summary": "List filters", "responses": { "200": { "description": "Filter list" } } },
-      "post": { "summary": "Create filter", "responses": { "201": { "description": "Created" } } }
-    },
-    "/v1/filters/{id}/test": {
-      "post": { "summary": "Test filter on sample entry", "responses": { "200": { "description": "Match result" } } }
-    },
-    "/v1/webhooks": {
-      "get": { "summary": "List webhooks", "responses": { "200": { "description": "Webhook list" } } }
-    },
-    "/v1/system/info": {
-      "get": {
-        "summary": "Build and runtime info (admin only)",
-        "responses": { "200": { "description": "System info" } }
-      }
-    },
-    "/ws/v1": {
-      "get": {
-        "summary": "WebSocket (token query param)",
-        "security": [],
-        "responses": { "101": { "description": "Switching Protocols" } }
+        "description": "Error envelope returned by every non-2xx JSON response."
+      },
+      "Deleted": {
+        "type": "object",
+        "properties": {
+          "deleted": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "deleted"
+        ]
+      },
+      "Category": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "title": {
+            "type": "string"
+          },
+          "color": {
+            "type": "string",
+            "description": "Hex colour, omitted when unset."
+          }
+        },
+        "required": [
+          "id",
+          "title"
+        ]
+      },
+      "CategoryWrite": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 1
+          },
+          "color": {
+            "type": "string",
+            "description": "Hex colour like #ff8800; empty clears."
+          }
+        },
+        "required": [
+          "title"
+        ]
+      },
+      "Feed": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "feed_url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "feed_type": {
+            "type": "string",
+            "description": "Detected feed format (rss, atom, json, ...); omitted when unknown."
+          },
+          "title": {
+            "type": "string"
+          },
+          "category_id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "interval_minutes": {
+            "type": "integer",
+            "description": "Refresh interval; 0 = use the global default."
+          },
+          "scraper_rules": {
+            "type": "string"
+          },
+          "rewrite_rules": {
+            "type": "string"
+          },
+          "blocked_rules": {
+            "type": "string"
+          },
+          "keep_rules": {
+            "type": "string"
+          },
+          "fetch_via_proxy": {
+            "type": "boolean"
+          },
+          "tls_insecure": {
+            "type": "boolean"
+          },
+          "crawler": {
+            "type": "boolean"
+          },
+          "user_agent": {
+            "type": "string"
+          },
+          "store_hash_only": {
+            "type": "boolean"
+          },
+          "entry_retention_days": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "feed_url",
+          "title",
+          "interval_minutes",
+          "fetch_via_proxy",
+          "tls_insecure",
+          "crawler"
+        ]
+      },
+      "FeedWrite": {
+        "type": "object",
+        "properties": {
+          "feed_url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "title": {
+            "type": "string"
+          },
+          "category_id": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "interval_minutes": {
+            "type": "integer",
+            "description": "Refresh interval; 0 = use the global default."
+          },
+          "scraper_rules": {
+            "type": "string"
+          },
+          "rewrite_rules": {
+            "type": "string"
+          },
+          "blocked_rules": {
+            "type": "string"
+          },
+          "keep_rules": {
+            "type": "string"
+          },
+          "fetch_via_proxy": {
+            "type": "boolean"
+          },
+          "tls_insecure": {
+            "type": "boolean"
+          },
+          "crawler": {
+            "type": "boolean"
+          },
+          "user_agent": {
+            "type": "string"
+          },
+          "store_hash_only": {
+            "type": "boolean"
+          },
+          "entry_retention_days": {
+            "type": "integer",
+            "nullable": true
+          }
+        },
+        "required": [
+          "feed_url"
+        ],
+        "description": "Full representation on PUT: omitted fields are reset to their zero value."
+      },
+      "Enclosure": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "size": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "mime_type": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "url",
+          "size",
+          "mime_type"
+        ]
+      },
+      "Entry": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "feed_id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "title": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "content": {
+            "type": "string"
+          },
+          "original_content": {
+            "type": "string",
+            "description": "Feed content kept when full content was fetched."
+          },
+          "content_fetched": {
+            "type": "boolean"
+          },
+          "author": {
+            "type": "string"
+          },
+          "published_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "hash": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/EntryStatus"
+          },
+          "starred": {
+            "type": "boolean"
+          },
+          "enclosures": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Enclosure"
+            }
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "feed_id",
+          "title",
+          "url",
+          "content",
+          "content_fetched",
+          "hash",
+          "status",
+          "starred",
+          "created_at",
+          "updated_at"
+        ]
+      },
+      "EntryStatus": {
+        "type": "string",
+        "enum": [
+          "unread",
+          "read",
+          "removed"
+        ]
+      },
+      "EntryUpdate": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/EntryStatus"
+          },
+          "starred": {
+            "type": "boolean"
+          }
+        },
+        "description": "At least one field must be present."
+      },
+      "EntriesBulkUpdate": {
+        "type": "object",
+        "properties": {
+          "entry_ids": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          "status": {
+            "$ref": "#/components/schemas/EntryStatus"
+          },
+          "starred": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "entry_ids"
+        ],
+        "description": "entry_ids: 1..1000 ids owned by the caller. Set status and/or starred."
+      },
+      "BulkUpdateResult": {
+        "type": "object",
+        "properties": {
+          "updated": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "updated"
+        ]
+      },
+      "MarkAllReadResult": {
+        "type": "object",
+        "properties": {
+          "marked": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "marked"
+        ]
+      },
+      "RefreshResult": {
+        "type": "object",
+        "properties": {
+          "inserted": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "inserted"
+        ]
+      },
+      "RefreshAllResult": {
+        "type": "object",
+        "properties": {
+          "feeds": {
+            "type": "integer"
+          },
+          "queued": {
+            "type": "integer"
+          },
+          "refreshed": {
+            "type": "integer"
+          },
+          "failed": {
+            "type": "integer"
+          },
+          "inserted": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "feeds",
+          "queued",
+          "refreshed",
+          "failed",
+          "inserted"
+        ]
+      },
+      "FeedIcon": {
+        "type": "object",
+        "properties": {
+          "icon": {
+            "type": "string",
+            "description": "Base64-encoded image bytes."
+          },
+          "content_type": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "icon",
+          "content_type"
+        ]
+      },
+      "ImportError": {
+        "type": "object",
+        "properties": {
+          "feed_url": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ]
+      },
+      "ImportReport": {
+        "type": "object",
+        "properties": {
+          "categories_created": {
+            "type": "integer"
+          },
+          "feeds_created": {
+            "type": "integer"
+          },
+          "feeds_skipped": {
+            "type": "integer"
+          },
+          "errors": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ImportError"
+            }
+          }
+        },
+        "required": [
+          "categories_created",
+          "feeds_created",
+          "feeds_skipped",
+          "errors"
+        ]
+      },
+      "ImportJobAccepted": {
+        "type": "object",
+        "properties": {
+          "job_id": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending"
+            ]
+          }
+        },
+        "required": [
+          "job_id",
+          "status"
+        ]
+      },
+      "ImportJob": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "running",
+              "done",
+              "failed"
+            ]
+          },
+          "total": {
+            "type": "integer"
+          },
+          "processed": {
+            "type": "integer"
+          },
+          "progress_pct": {
+            "type": "number"
+          },
+          "report": {
+            "$ref": "#/components/schemas/ImportReport"
+          },
+          "error": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "total",
+          "processed",
+          "progress_pct",
+          "created_at",
+          "updated_at"
+        ]
+      },
+      "FilterRule": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "field": {
+            "$ref": "#/components/schemas/FilterField"
+          },
+          "pattern": {
+            "type": "string"
+          },
+          "negate": {
+            "type": "boolean"
+          },
+          "op": {
+            "$ref": "#/components/schemas/FilterOp"
+          },
+          "priority": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "field",
+          "pattern",
+          "negate",
+          "op",
+          "priority"
+        ]
+      },
+      "FilterField": {
+        "type": "string",
+        "enum": [
+          "title",
+          "content",
+          "both",
+          "author",
+          "url",
+          "tags"
+        ]
+      },
+      "FilterOp": {
+        "type": "string",
+        "description": "Boolean operator joining this rule with the next one; empty means and.",
+        "enum": [
+          "and",
+          "or",
+          ""
+        ]
+      },
+      "FilterRuleWrite": {
+        "type": "object",
+        "properties": {
+          "field": {
+            "$ref": "#/components/schemas/FilterField"
+          },
+          "pattern": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Regular expression (RE2 syntax)."
+          },
+          "negate": {
+            "type": "boolean"
+          },
+          "op": {
+            "$ref": "#/components/schemas/FilterOp"
+          },
+          "priority": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "field",
+          "pattern"
+        ]
+      },
+      "FilterScopeItem": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "feed_id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "category_id": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      },
+      "FilterScopeItemWrite": {
+        "type": "object",
+        "properties": {
+          "feed_id": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "category_id": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          }
+        },
+        "description": "Exactly one of feed_id or category_id."
+      },
+      "FilterAction": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "action_type": {
+            "$ref": "#/components/schemas/FilterActionType"
+          },
+          "action_param": {
+            "type": "string"
+          },
+          "priority": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "action_type",
+          "action_param",
+          "priority"
+        ]
+      },
+      "FilterActionType": {
+        "type": "string",
+        "enum": [
+          "label",
+          "webhook",
+          "delete"
+        ]
+      },
+      "FilterActionWrite": {
+        "type": "object",
+        "properties": {
+          "action_type": {
+            "$ref": "#/components/schemas/FilterActionType"
+          },
+          "action_param": {
+            "type": "string"
+          },
+          "priority": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "action_type"
+        ]
+      },
+      "FilterFeedScope": {
+        "type": "string",
+        "enum": [
+          "all",
+          "include",
+          "exclude"
+        ]
+      },
+      "Filter": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "user_id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "name": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "match_any_rule": {
+            "type": "boolean"
+          },
+          "inverse": {
+            "type": "boolean"
+          },
+          "order_id": {
+            "type": "integer"
+          },
+          "feed_scope": {
+            "$ref": "#/components/schemas/FilterFeedScope"
+          },
+          "match_count": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "rules": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FilterRule"
+            }
+          },
+          "scope_items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FilterScopeItem"
+            }
+          },
+          "actions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FilterAction"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "user_id",
+          "name",
+          "enabled",
+          "match_any_rule",
+          "inverse",
+          "order_id",
+          "feed_scope",
+          "match_count",
+          "rules",
+          "scope_items",
+          "actions"
+        ]
+      },
+      "FilterWrite": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "match_any_rule": {
+            "type": "boolean"
+          },
+          "inverse": {
+            "type": "boolean"
+          },
+          "order_id": {
+            "type": "integer"
+          },
+          "feed_scope": {
+            "$ref": "#/components/schemas/FilterFeedScope"
+          },
+          "rules": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FilterRuleWrite"
+            }
+          },
+          "scope_items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FilterScopeItemWrite"
+            }
+          },
+          "actions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FilterActionWrite"
+            }
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "description": "Omitted booleans/order_id keep their current value on PUT and default to false/0 on POST."
+      },
+      "FilterTestEntry": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "content": {
+            "type": "string"
+          },
+          "author": {
+            "type": "string",
+            "nullable": true
+          },
+          "url": {
+            "type": "string"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "feed_id": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          }
+        }
+      },
+      "FilterTestRequest": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string",
+            "description": "Shortcut: matched as title and content."
+          },
+          "entry": {
+            "$ref": "#/components/schemas/FilterTestEntry"
+          },
+          "limit": {
+            "type": "integer",
+            "description": "When > 0, also evaluate the filter against the caller's latest N stored entries."
+          },
+          "feed_id": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          }
+        },
+        "description": "Provide text or entry (or only limit to test against stored entries)."
+      },
+      "FilterTestMatchRow": {
+        "type": "object",
+        "properties": {
+          "entry_id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "title": {
+            "type": "string"
+          },
+          "match": {
+            "type": "boolean"
+          },
+          "details": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "required": [
+          "entry_id",
+          "title",
+          "match"
+        ]
+      },
+      "FilterTestResponse": {
+        "type": "object",
+        "properties": {
+          "match": {
+            "type": "boolean"
+          },
+          "details": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "results": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FilterTestMatchRow"
+            }
+          }
+        },
+        "required": [
+          "match"
+        ]
+      },
+      "FilterMatch": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "filter_id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "entry_id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "matched_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "details": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "entry": {
+            "$ref": "#/components/schemas/Entry"
+          }
+        },
+        "required": [
+          "id",
+          "filter_id",
+          "entry_id",
+          "matched_at",
+          "entry"
+        ]
+      },
+      "WebhookKind": {
+        "type": "string",
+        "enum": [
+          "http",
+          "telegram",
+          "max"
+        ]
+      },
+      "WebhookOnSuccess": {
+        "type": "string",
+        "enum": [
+          "none",
+          "hash",
+          "delete",
+          "mark_read"
+        ],
+        "description": "What to do with the entry after a successful delivery."
+      },
+      "TelegramConfig": {
+        "type": "object",
+        "properties": {
+          "api_base": {
+            "type": "string",
+            "format": "uri"
+          },
+          "bot_token": {
+            "type": "string"
+          },
+          "chat_id": {
+            "type": "string"
+          }
+        }
+      },
+      "MaxConfig": {
+        "type": "object",
+        "properties": {
+          "api_base": {
+            "type": "string",
+            "format": "uri"
+          },
+          "target": {
+            "type": "string"
+          },
+          "target_id": {
+            "type": "string"
+          }
+        }
+      },
+      "Webhook": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "user_id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "filter_id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "name": {
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/WebhookKind"
+          },
+          "url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "method": {
+            "type": "string"
+          },
+          "headers": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "nullable": true
+          },
+          "body_template": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "on_success_entry": {
+            "$ref": "#/components/schemas/WebhookOnSuccess"
+          },
+          "telegram": {
+            "$ref": "#/components/schemas/TelegramConfig"
+          },
+          "max": {
+            "$ref": "#/components/schemas/MaxConfig"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "user_id",
+          "name",
+          "kind",
+          "url",
+          "method",
+          "headers",
+          "body_template",
+          "enabled",
+          "on_success_entry",
+          "created_at",
+          "updated_at"
+        ],
+        "description": "The signing secret is write-only and never returned."
+      },
+      "WebhookWrite": {
+        "type": "object",
+        "properties": {
+          "filter_id": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "name": {
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/WebhookKind"
+          },
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "description": "Required for kind=http."
+          },
+          "method": {
+            "type": "string",
+            "enum": [
+              "POST",
+              "PUT",
+              "PATCH",
+              "GET",
+              "DELETE"
+            ]
+          },
+          "headers": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "body_template": {
+            "type": "string",
+            "description": "Go text/template; empty = default JSON payload."
+          },
+          "secret": {
+            "type": "string",
+            "description": "HMAC-SHA256 signing secret (X-Rssam-Signature). Write-only."
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "on_success_entry": {
+            "$ref": "#/components/schemas/WebhookOnSuccess"
+          },
+          "telegram": {
+            "$ref": "#/components/schemas/TelegramConfig"
+          },
+          "max": {
+            "$ref": "#/components/schemas/MaxConfig"
+          }
+        },
+        "description": "On PUT, omitted fields keep their current value."
+      },
+      "WebhookTestResult": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "status_code": {
+            "type": "integer"
+          },
+          "response_snippet": {
+            "type": "string"
+          },
+          "error": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "ok",
+          "status_code"
+        ]
+      },
+      "WebhookLog": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "webhook_id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "entry_id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "sent",
+              "failed"
+            ]
+          },
+          "attempt": {
+            "type": "integer"
+          },
+          "next_retry_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "last_status_code": {
+            "type": "integer"
+          },
+          "last_error": {
+            "type": "string"
+          },
+          "response_snippet": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "webhook_id",
+          "entry_id",
+          "status",
+          "attempt",
+          "created_at",
+          "updated_at"
+        ]
+      },
+      "WebhookLogRetried": {
+        "type": "object",
+        "properties": {
+          "retried": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "retried"
+        ]
+      },
+      "User": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "username": {
+            "type": "string"
+          },
+          "is_admin": {
+            "type": "boolean"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "username",
+          "is_admin",
+          "created_at"
+        ]
+      },
+      "UserCreate": {
+        "type": "object",
+        "properties": {
+          "username": {
+            "type": "string",
+            "minLength": 1
+          },
+          "password": {
+            "type": "string",
+            "description": "Subject to the password policy (length, common-password check)."
+          },
+          "is_admin": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "username",
+          "password"
+        ]
+      },
+      "MeUpdate": {
+        "type": "object",
+        "properties": {
+          "current_password": {
+            "type": "string"
+          },
+          "password": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "current_password",
+          "password"
+        ],
+        "description": "Change own password. Users authenticated via API token must still know the current password."
+      },
+      "ApiKey": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "name": {
+            "type": "string"
+          },
+          "last_used_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "created_at"
+        ]
+      },
+      "ApiKeyCreate": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "name"
+        ]
+      },
+      "ApiKeyCreated": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/ApiKey"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "token": {
+                "type": "string",
+                "description": "Shown once; store it - only its hash is kept."
+              }
+            },
+            "required": [
+              "token"
+            ]
+          }
+        ]
+      },
+      "SystemInfo": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "string"
+          },
+          "go_version": {
+            "type": "string"
+          },
+          "build_date": {
+            "type": "string"
+          },
+          "arch": {
+            "type": "string"
+          },
+          "os": {
+            "type": "string"
+          },
+          "users_count": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version",
+          "go_version",
+          "build_date",
+          "arch",
+          "os",
+          "users_count"
+        ]
+      },
+      "CategoryList": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Category"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "description": "Number of items in data (1 for single objects) or total rows for lists."
+          }
+        },
+        "required": [
+          "data",
+          "total"
+        ]
+      },
+      "FeedList": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Feed"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "description": "Number of items in data (1 for single objects) or total rows for lists."
+          }
+        },
+        "required": [
+          "data",
+          "total"
+        ]
+      },
+      "EntryList": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Entry"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "description": "Number of items in data (1 for single objects) or total rows for lists."
+          }
+        },
+        "required": [
+          "data",
+          "total"
+        ]
+      },
+      "FilterList": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Filter"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "description": "Number of items in data (1 for single objects) or total rows for lists."
+          }
+        },
+        "required": [
+          "data",
+          "total"
+        ]
+      },
+      "WebhookList": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Webhook"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "description": "Number of items in data (1 for single objects) or total rows for lists."
+          }
+        },
+        "required": [
+          "data",
+          "total"
+        ]
+      },
+      "WebhookLogList": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WebhookLog"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "description": "Number of items in data (1 for single objects) or total rows for lists."
+          }
+        },
+        "required": [
+          "data",
+          "total"
+        ]
+      },
+      "UserList": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/User"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "description": "Number of items in data (1 for single objects) or total rows for lists."
+          }
+        },
+        "required": [
+          "data",
+          "total"
+        ]
+      },
+      "ApiKeyList": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ApiKey"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "description": "Number of items in data (1 for single objects) or total rows for lists."
+          }
+        },
+        "required": [
+          "data",
+          "total"
+        ]
+      },
+      "FilterMatchList": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FilterMatch"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "description": "Number of items in data (1 for single objects) or total rows for lists."
+          }
+        },
+        "required": [
+          "data",
+          "total"
+        ]
+      },
+      "CategoryResponse": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/Category"
+          },
+          "total": {
+            "type": "integer",
+            "description": "Number of items in data (1 for single objects) or total rows for lists."
+          }
+        },
+        "required": [
+          "data",
+          "total"
+        ]
+      },
+      "FeedResponse": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/Feed"
+          },
+          "total": {
+            "type": "integer",
+            "description": "Number of items in data (1 for single objects) or total rows for lists."
+          }
+        },
+        "required": [
+          "data",
+          "total"
+        ]
+      },
+      "EntryResponse": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/Entry"
+          },
+          "total": {
+            "type": "integer",
+            "description": "Number of items in data (1 for single objects) or total rows for lists."
+          }
+        },
+        "required": [
+          "data",
+          "total"
+        ]
+      },
+      "FilterResponse": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/Filter"
+          },
+          "total": {
+            "type": "integer",
+            "description": "Number of items in data (1 for single objects) or total rows for lists."
+          }
+        },
+        "required": [
+          "data",
+          "total"
+        ]
+      },
+      "WebhookResponse": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/Webhook"
+          },
+          "total": {
+            "type": "integer",
+            "description": "Number of items in data (1 for single objects) or total rows for lists."
+          }
+        },
+        "required": [
+          "data",
+          "total"
+        ]
+      },
+      "UserResponse": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/User"
+          },
+          "total": {
+            "type": "integer",
+            "description": "Number of items in data (1 for single objects) or total rows for lists."
+          }
+        },
+        "required": [
+          "data",
+          "total"
+        ]
+      },
+      "ApiKeyCreatedResponse": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/ApiKeyCreated"
+          },
+          "total": {
+            "type": "integer",
+            "description": "Number of items in data (1 for single objects) or total rows for lists."
+          }
+        },
+        "required": [
+          "data",
+          "total"
+        ]
+      },
+      "DeletedResponse": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/Deleted"
+          },
+          "total": {
+            "type": "integer",
+            "description": "Number of items in data (1 for single objects) or total rows for lists."
+          }
+        },
+        "required": [
+          "data",
+          "total"
+        ]
+      },
+      "BulkUpdateResultResponse": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/BulkUpdateResult"
+          },
+          "total": {
+            "type": "integer",
+            "description": "Number of items in data (1 for single objects) or total rows for lists."
+          }
+        },
+        "required": [
+          "data",
+          "total"
+        ]
+      },
+      "MarkAllReadResultResponse": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/MarkAllReadResult"
+          },
+          "total": {
+            "type": "integer",
+            "description": "Number of items in data (1 for single objects) or total rows for lists."
+          }
+        },
+        "required": [
+          "data",
+          "total"
+        ]
+      },
+      "RefreshResultResponse": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/RefreshResult"
+          },
+          "total": {
+            "type": "integer",
+            "description": "Number of items in data (1 for single objects) or total rows for lists."
+          }
+        },
+        "required": [
+          "data",
+          "total"
+        ]
+      },
+      "RefreshAllResultResponse": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/RefreshAllResult"
+          },
+          "total": {
+            "type": "integer",
+            "description": "Number of items in data (1 for single objects) or total rows for lists."
+          }
+        },
+        "required": [
+          "data",
+          "total"
+        ]
+      },
+      "FeedIconResponse": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/FeedIcon"
+          },
+          "total": {
+            "type": "integer",
+            "description": "Number of items in data (1 for single objects) or total rows for lists."
+          }
+        },
+        "required": [
+          "data",
+          "total"
+        ]
+      },
+      "ImportReportResponse": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/ImportReport"
+          },
+          "total": {
+            "type": "integer",
+            "description": "Number of items in data (1 for single objects) or total rows for lists."
+          }
+        },
+        "required": [
+          "data",
+          "total"
+        ]
+      },
+      "ImportJobAcceptedResponse": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/ImportJobAccepted"
+          },
+          "total": {
+            "type": "integer",
+            "description": "Number of items in data (1 for single objects) or total rows for lists."
+          }
+        },
+        "required": [
+          "data",
+          "total"
+        ]
+      },
+      "ImportJobResponse": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/ImportJob"
+          },
+          "total": {
+            "type": "integer",
+            "description": "Number of items in data (1 for single objects) or total rows for lists."
+          }
+        },
+        "required": [
+          "data",
+          "total"
+        ]
+      },
+      "FilterTestResponseResponse": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/FilterTestResponse"
+          },
+          "total": {
+            "type": "integer",
+            "description": "Number of items in data (1 for single objects) or total rows for lists."
+          }
+        },
+        "required": [
+          "data",
+          "total"
+        ]
+      },
+      "WebhookTestResultResponse": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/WebhookTestResult"
+          },
+          "total": {
+            "type": "integer",
+            "description": "Number of items in data (1 for single objects) or total rows for lists."
+          }
+        },
+        "required": [
+          "data",
+          "total"
+        ]
+      },
+      "WebhookLogRetriedResponse": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/WebhookLogRetried"
+          },
+          "total": {
+            "type": "integer",
+            "description": "Number of items in data (1 for single objects) or total rows for lists."
+          }
+        },
+        "required": [
+          "data",
+          "total"
+        ]
+      },
+      "SystemInfoResponse": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/SystemInfo"
+          },
+          "total": {
+            "type": "integer",
+            "description": "Number of items in data (1 for single objects) or total rows for lists."
+          }
+        },
+        "required": [
+          "data",
+          "total"
+        ]
       }
     }
   }

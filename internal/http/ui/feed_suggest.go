@@ -56,7 +56,7 @@ func (h *Handler) handleFeedSuggest(w http.ResponseWriter, r *http.Request) {
 	feeds, err := h.cfg.Feeds.SearchFeeds(r.Context(), p.UserID, filter)
 	if err != nil {
 		if h.log != nil {
-			h.log.Error("feed suggest failed", "err", err)
+			h.log.ErrorContext(r.Context(), "feed suggest failed", "err", err)
 		}
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "search failed"})
 		return

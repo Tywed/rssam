@@ -127,7 +127,7 @@ func (s *Server) handleListWebhooks(w http.ResponseWriter, r *http.Request) {
 	}
 	rows, total, err := s.webhooks.ListWebhooks(r.Context(), p.UserID, limit, offset)
 	if err != nil {
-		s.log.Error("list webhooks failed", "err", err)
+		s.log.ErrorContext(r.Context(), "list webhooks failed", "err", err)
 		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
@@ -239,7 +239,7 @@ func (s *Server) handleGetWebhook(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusNotFound, "webhook not found")
 			return
 		}
-		s.log.Error("get webhook failed", "err", err)
+		s.log.ErrorContext(r.Context(), "get webhook failed", "err", err)
 		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
@@ -342,7 +342,7 @@ func (s *Server) handleDeleteWebhook(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusNotFound, "webhook not found")
 			return
 		}
-		s.log.Error("delete webhook failed", "err", err)
+		s.log.ErrorContext(r.Context(), "delete webhook failed", "err", err)
 		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
@@ -564,7 +564,7 @@ func (s *Server) handleListWebhookLogs(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusNotFound, "webhook not found")
 			return
 		}
-		s.log.Error("get webhook failed", "err", err)
+		s.log.ErrorContext(r.Context(), "get webhook failed", "err", err)
 		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
@@ -575,7 +575,7 @@ func (s *Server) handleListWebhookLogs(w http.ResponseWriter, r *http.Request) {
 	}
 	rows, total, err := s.webhookLogs.ListWebhookLogs(r.Context(), id, limit, offset)
 	if err != nil {
-		s.log.Error("list webhook logs failed", "err", err)
+		s.log.ErrorContext(r.Context(), "list webhook logs failed", "err", err)
 		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
@@ -617,7 +617,7 @@ func (s *Server) handleRetryWebhookLog(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusNotFound, "webhook log not found")
 			return
 		}
-		s.log.Error("retry webhook log failed", "err", err)
+		s.log.ErrorContext(r.Context(), "retry webhook log failed", "err", err)
 		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}

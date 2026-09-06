@@ -382,7 +382,7 @@ func (h *Handler) baseData(r *http.Request, nav string) pageData {
 func (h *Handler) render(w http.ResponseWriter, r *http.Request, page string, data pageData) {
 	var body bytes.Buffer
 	if err := h.templates.ExecuteTemplate(&body, "body_"+page, data); err != nil {
-		h.log.Error("body template render failed", "page", page, "err", err)
+		h.log.ErrorContext(r.Context(), "body template render failed", "page", page, "err", err)
 		http.Error(w, "render error", http.StatusInternalServerError)
 		return
 	}
@@ -390,7 +390,7 @@ func (h *Handler) render(w http.ResponseWriter, r *http.Request, page string, da
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := h.templates.ExecuteTemplate(w, "layout", data); err != nil {
 		if !errors.Is(err, context.Canceled) {
-			h.log.Error("template render failed", "page", page, "err", err)
+			h.log.ErrorContext(r.Context(), "template render failed", "page", page, "err", err)
 		}
 		if w.Header().Get("Content-Type") == "" {
 			http.Error(w, "render error", http.StatusInternalServerError)
@@ -401,7 +401,7 @@ func (h *Handler) render(w http.ResponseWriter, r *http.Request, page string, da
 func (h *Handler) renderPartial(w http.ResponseWriter, r *http.Request, name string, data pageData) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := h.templates.ExecuteTemplate(w, name, data); err != nil {
-		h.log.Error("partial render failed", "template", name, "err", err)
+		h.log.ErrorContext(r.Context(), "partial render failed", "template", name, "err", err)
 	}
 }
 

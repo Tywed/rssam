@@ -16,6 +16,7 @@ import (
 	"rssam/internal/filter"
 	"rssam/internal/http/middleware"
 	"rssam/internal/reader"
+	"rssam/internal/requestid"
 	"rssam/internal/scraper"
 	"rssam/internal/service"
 	"rssam/internal/ssrf"
@@ -499,6 +500,7 @@ func (s *Server) wrapMiddleware(next http.Handler) http.Handler {
 	h = middleware.Compress(s.compressEnabled)(h)
 	h = middleware.SecurityHeaders(middleware.SecurityConfig{HSTSEnabled: s.hstsEnabled})(h)
 	h = middleware.AccessLog(s.log)(h)
+	h = middleware.RequestID(h) // outermost: the access log must see the id
 	return h
 }
 
@@ -532,6 +534,9 @@ type listResponse[T any] struct {
 
 type errorResponse struct {
 	ErrorMessage string `json:"error_message"`
+	// RequestID is set on 5xx responses so the caller can quote it; the
+	// same value is in the X-Request-Id header and in the server log line.
+	RequestID string `json:"request_id,omitempty"`
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
@@ -541,7 +546,13 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 }
 
 func writeError(w http.ResponseWriter, status int, msg string) {
-	writeJSON(w, status, errorResponse{ErrorMessage: msg})
+	resp := errorResponse{ErrorMessage: msg}
+	if status >= http.StatusInternalServerError {
+		// The middleware set the header before the handler ran, so it is
+		// available here without threading the request through.
+		resp.RequestID = w.Header().Get(requestid.Header)
+	}
+	writeJSON(w, status, resp)
 }
 
 type feedDTO struct {
@@ -612,7 +623,7 @@ func (s *Server) handleListCategories(w http.ResponseWriter, r *http.Request) {
 	}
 	categories, total, err := s.categories.ListCategories(r.Context(), p.UserID, limit, offset)
 	if err != nil {
-		s.log.Error("list categories failed", "err", err)
+		s.log.ErrorContext(r.Context(), "list categories failed", "err", err)
 		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
@@ -647,7 +658,7 @@ func (s *Server) handleCreateCategory(w http.ResponseWriter, r *http.Request) {
 	}
 	category, err := s.categories.CreateCategory(r.Context(), p.UserID, req.Title, strings.TrimSpace(req.Color))
 	if err != nil {
-		s.log.Error("create category failed", "err", err)
+		s.log.ErrorContext(r.Context(), "create category failed", "err", err)
 		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
@@ -686,7 +697,7 @@ func (s *Server) handleUpdateCategory(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusNotFound, "category not found")
 			return
 		}
-		s.log.Error("update category failed", "err", err)
+		s.log.ErrorContext(r.Context(), "update category failed", "err", err)
 		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
@@ -714,7 +725,7 @@ func (s *Server) handleDeleteCategory(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusNotFound, "category not found")
 			return
 		}
-		s.log.Error("delete category failed", "err", err)
+		s.log.ErrorContext(r.Context(), "delete category failed", "err", err)
 		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
@@ -736,7 +747,7 @@ func (s *Server) handleListFeeds(w http.ResponseWriter, r *http.Request) {
 	}
 	feeds, total, err := s.feeds.ListFeeds(r.Context(), p.UserID, limit, offset)
 	if err != nil {
-		s.log.Error("list feeds failed", "err", err)
+		s.log.ErrorContext(r.Context(), "list feeds failed", "err", err)
 		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
@@ -783,7 +794,7 @@ func (s *Server) handleCreateFeed(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, "invalid category_id")
 			return
 		}
-		s.log.Error("create feed failed", "err", err)
+		s.log.ErrorContext(r.Context(), "create feed failed", "err", err)
 		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
@@ -809,7 +820,7 @@ func (s *Server) handleGetFeed(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusNotFound, "feed not found")
 			return
 		}
-		s.log.Error("get feed failed", "err", err)
+		s.log.ErrorContext(r.Context(), "get feed failed", "err", err)
 		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
@@ -868,7 +879,7 @@ func (s *Server) handleUpdateFeed(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, "invalid category_id")
 			return
 		default:
-			s.log.Error("update feed failed", "err", err)
+			s.log.ErrorContext(r.Context(), "update feed failed", "err", err)
 			writeError(w, http.StatusInternalServerError, "internal server error")
 			return
 		}
@@ -897,7 +908,7 @@ func (s *Server) handleDeleteFeed(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusNotFound, "feed not found")
 			return
 		}
-		s.log.Error("delete feed failed", "err", err)
+		s.log.ErrorContext(r.Context(), "delete feed failed", "err", err)
 		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
@@ -1096,21 +1107,21 @@ func (s *Server) handleListEntries(w http.ResponseWriter, r *http.Request) {
 			Rank:    true,
 		})
 		if err != nil {
-			s.log.Error("search entries failed", "err", err)
+			s.log.ErrorContext(r.Context(), "search entries failed", "err", err)
 			writeError(w, http.StatusInternalServerError, "internal server error")
 			return
 		}
 	} else {
 		entries, total, err = s.entries.ListEntries(r.Context(), p.UserID, filter)
 		if err != nil {
-			s.log.Error("list entries failed", "err", err)
+			s.log.ErrorContext(r.Context(), "list entries failed", "err", err)
 			writeError(w, http.StatusInternalServerError, "internal server error")
 			return
 		}
 	}
 	out, err := s.entriesToDTOs(r.Context(), p.UserID, entries)
 	if err != nil {
-		s.log.Error("load entry enclosures failed", "err", err)
+		s.log.ErrorContext(r.Context(), "load entry enclosures failed", "err", err)
 		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
@@ -1136,13 +1147,13 @@ func (s *Server) handleGetEntry(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusNotFound, "entry not found")
 			return
 		}
-		s.log.Error("get entry failed", "err", err)
+		s.log.ErrorContext(r.Context(), "get entry failed", "err", err)
 		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
 	dto, err := s.entryToDTO(r.Context(), p.UserID, entry)
 	if err != nil {
-		s.log.Error("load entry enclosures failed", "err", err)
+		s.log.ErrorContext(r.Context(), "load entry enclosures failed", "err", err)
 		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
@@ -1175,13 +1186,13 @@ func (s *Server) handleListFeedEntries(w http.ResponseWriter, r *http.Request) {
 
 	entries, total, err := s.entries.ListFeedEntries(r.Context(), p.UserID, feedID, filter)
 	if err != nil {
-		s.log.Error("list feed entries failed", "err", err)
+		s.log.ErrorContext(r.Context(), "list feed entries failed", "err", err)
 		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
 	out, err := s.entriesToDTOs(r.Context(), p.UserID, entries)
 	if err != nil {
-		s.log.Error("load entry enclosures failed", "err", err)
+		s.log.ErrorContext(r.Context(), "load entry enclosures failed", "err", err)
 		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
@@ -1262,7 +1273,7 @@ func (s *Server) handleRefreshFeed(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusNotFound, "feed not found")
 			return
 		}
-		s.log.Error("refresh feed lookup failed", "err", err)
+		s.log.ErrorContext(r.Context(), "refresh feed lookup failed", "err", err)
 		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
@@ -1276,7 +1287,7 @@ func (s *Server) handleRefreshFeed(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadGateway, "feed fetch failed")
 			return
 		}
-		s.log.Error("refresh feed failed", "err", err)
+		s.log.ErrorContext(r.Context(), "refresh feed failed", "err", err)
 		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}

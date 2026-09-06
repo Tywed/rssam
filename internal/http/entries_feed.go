@@ -28,7 +28,7 @@ func (s *Server) handleMarkCategoryAllRead(w http.ResponseWriter, r *http.Reques
 			writeError(w, http.StatusNotFound, "category not found")
 			return
 		}
-		s.log.Error("mark category all read failed", "err", err)
+		s.log.ErrorContext(r.Context(), "mark category all read failed", "err", err)
 		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
@@ -63,14 +63,14 @@ func (s *Server) handleGetFeedEntry(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusNotFound, "entry not found")
 			return
 		}
-		s.log.Error("get feed entry failed", "err", err)
+		s.log.ErrorContext(r.Context(), "get feed entry failed", "err", err)
 		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
 
 	dto, err := s.entryToDTO(r.Context(), p.UserID, entry)
 	if err != nil {
-		s.log.Error("load entry enclosures failed", "err", err)
+		s.log.ErrorContext(r.Context(), "load entry enclosures failed", "err", err)
 		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
@@ -128,14 +128,14 @@ func (s *Server) handleUpdateFeedEntry(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusNotFound, "entry not found")
 			return
 		}
-		s.log.Error("update feed entry failed", "err", err)
+		s.log.ErrorContext(r.Context(), "update feed entry failed", "err", err)
 		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
 
 	dto, err := s.entryToDTO(r.Context(), p.UserID, entry)
 	if err != nil {
-		s.log.Error("load entry enclosures failed", "err", err)
+		s.log.ErrorContext(r.Context(), "load entry enclosures failed", "err", err)
 		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}

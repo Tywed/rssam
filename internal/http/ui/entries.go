@@ -92,7 +92,7 @@ func (h *Handler) handleSearch(w http.ResponseWriter, r *http.Request) {
 		})
 		if err != nil {
 			if h.log != nil {
-				h.log.Error("ui search failed", "err", err, "q", q)
+				h.log.ErrorContext(r.Context(), "ui search failed", "err", err, "q", q)
 			}
 			data.FlashErr = "Поиск не выполнен. Попробуйте другой запрос."
 		} else {

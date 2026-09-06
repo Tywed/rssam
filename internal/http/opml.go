@@ -129,7 +129,7 @@ func (s *Server) handleExportFeeds(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.exportOPMLForUser(w, r.Context(), p.UserID); err != nil {
-		s.log.Error("export feeds failed", "err", err)
+		s.log.ErrorContext(r.Context(), "export feeds failed", "err", err)
 		writeError(w, http.StatusInternalServerError, "internal server error")
 	}
 }

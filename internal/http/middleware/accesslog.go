@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"rssam/internal/requestid"
 )
 
 type statusWriter struct {
@@ -76,6 +78,9 @@ func AccessLog(log *slog.Logger) func(http.Handler) http.Handler {
 				"bytes", sw.bytes,
 				"remote_addr", ClientIP(r),
 				"user_agent", r.UserAgent(),
+			}
+			if id := requestid.FromContext(r.Context()); id != "" {
+				attrs = append(attrs, "request_id", id)
 			}
 			quiet := r.URL.Path == "/healthz" || r.URL.Path == "/favicon.ico" || strings.HasPrefix(r.URL.Path, "/ui/static/")
 			if status >= 400 || (!quiet && dur >= accessLogSlow) {

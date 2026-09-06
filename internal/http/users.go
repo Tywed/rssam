@@ -77,7 +77,7 @@ func (s *Server) handleListUsers(w http.ResponseWriter, r *http.Request) {
 	}
 	users, total, err := s.users.ListUsers(r.Context(), limit, offset)
 	if err != nil {
-		s.log.Error("list users failed", "err", err)
+		s.log.ErrorContext(r.Context(), "list users failed", "err", err)
 		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
@@ -113,7 +113,7 @@ func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	count, err := s.users.CountLoginCapableUsers(ctx)
 	if err != nil {
-		s.log.Error("count users failed", "err", err)
+		s.log.ErrorContext(r.Context(), "count users failed", "err", err)
 		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
@@ -166,7 +166,7 @@ func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusConflict, "username already exists")
 			return
 		}
-		s.log.Error("create user failed", "err", err)
+		s.log.ErrorContext(r.Context(), "create user failed", "err", err)
 		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
@@ -200,7 +200,7 @@ func (s *Server) handleDeleteUser(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusConflict, "cannot delete the last admin")
 			return
 		}
-		s.log.Error("delete user failed", "err", err)
+		s.log.ErrorContext(r.Context(), "delete user failed", "err", err)
 		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
@@ -218,7 +218,7 @@ func (s *Server) handleGetMe(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusNotFound, "user not found")
 			return
 		}
-		s.log.Error("get me failed", "err", err)
+		s.log.ErrorContext(r.Context(), "get me failed", "err", err)
 		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
@@ -246,7 +246,7 @@ func (s *Server) handleUpdateMe(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusNotFound, "user not found")
 			return
 		}
-		s.log.Error("update me: get user failed", "err", err)
+		s.log.ErrorContext(r.Context(), "update me: get user failed", "err", err)
 		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
@@ -273,13 +273,13 @@ func (s *Server) handleUpdateMe(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusNotFound, "user not found")
 			return
 		}
-		s.log.Error("update me failed", "err", err)
+		s.log.ErrorContext(r.Context(), "update me failed", "err", err)
 		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
 	if s.sessions != nil {
 		if err := s.sessions.DeleteUserSessionsExcept(r.Context(), p.UserID, auth.SessionIDFromRequest(r)); err != nil {
-			s.log.Warn("revoke sessions after password change failed", "user_id", p.UserID, "err", err)
+			s.log.WarnContext(r.Context(), "revoke sessions after password change failed", "user_id", p.UserID, "err", err)
 		}
 	}
 	writeJSON(w, http.StatusOK, listResponse[userDTO]{Data: toUserDTO(u), Total: 1})
@@ -292,7 +292,7 @@ func (s *Server) handleListAPIKeys(w http.ResponseWriter, r *http.Request) {
 	}
 	keys, err := s.users.ListAPIKeys(r.Context(), p.UserID)
 	if err != nil {
-		s.log.Error("list api keys failed", "err", err)
+		s.log.ErrorContext(r.Context(), "list api keys failed", "err", err)
 		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
@@ -324,7 +324,7 @@ func (s *Server) handleCreateAPIKey(w http.ResponseWriter, r *http.Request) {
 	}
 	raw, hash, err := auth.NewAPIToken()
 	if err != nil {
-		s.log.Error("generate api key failed", "err", err)
+		s.log.ErrorContext(r.Context(), "generate api key failed", "err", err)
 		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
@@ -334,7 +334,7 @@ func (s *Server) handleCreateAPIKey(w http.ResponseWriter, r *http.Request) {
 		TokenHash: hash,
 	})
 	if err != nil {
-		s.log.Error("create api key failed", "err", err)
+		s.log.ErrorContext(r.Context(), "create api key failed", "err", err)
 		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
@@ -366,7 +366,7 @@ func (s *Server) handleDeleteAPIKey(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusNotFound, "api key not found")
 			return
 		}
-		s.log.Error("delete api key failed", "err", err)
+		s.log.ErrorContext(r.Context(), "delete api key failed", "err", err)
 		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}

@@ -1,6 +1,7 @@
 package logger
 
 import (
+	"io"
 	"log/slog"
 	"os"
 	"strings"
@@ -12,6 +13,11 @@ type Option struct {
 }
 
 func New(level, format string) *slog.Logger {
+	return NewWithWriter(level, format, os.Stdout)
+}
+
+// NewWithWriter is New with an explicit destination (tests capture output).
+func NewWithWriter(level, format string, w io.Writer) *slog.Logger {
 	opts := Option{
 		Format: strings.ToLower(strings.TrimSpace(format)),
 		Level:  strings.ToLower(strings.TrimSpace(level)),
@@ -22,12 +28,12 @@ func New(level, format string) *slog.Logger {
 
 	switch opts.Format {
 	case "text":
-		h = slog.NewTextHandler(os.Stdout, handlerOpts)
+		h = slog.NewTextHandler(w, handlerOpts)
 	default:
-		h = slog.NewJSONHandler(os.Stdout, handlerOpts)
+		h = slog.NewJSONHandler(w, handlerOpts)
 	}
 
-	return slog.New(h)
+	return slog.New(requestIDHandler{h})
 }
 
 func parseLevel(v string) slog.Level {

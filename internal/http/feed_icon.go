@@ -42,7 +42,7 @@ func (s *Server) handleFeedIcon(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusNotFound, "feed not found")
 			return
 		}
-		s.log.Error("get feed icon failed", "err", err)
+		s.log.ErrorContext(r.Context(), "get feed icon failed", "err", err)
 		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
@@ -69,13 +69,13 @@ func (s *Server) handleFeedIcon(w http.ResponseWriter, r *http.Request) {
 
 	data, contentType, fetchErr := s.fetchIcon(ctx, iconURL)
 	if fetchErr != nil {
-		s.log.Warn("fetch feed icon failed", "feed_id", feedID, "icon_url", iconURL, "err", fetchErr)
+		s.log.WarnContext(r.Context(), "fetch feed icon failed", "feed_id", feedID, "icon_url", iconURL, "err", fetchErr)
 		writeError(w, http.StatusBadGateway, "icon fetch failed")
 		return
 	}
 
 	if err := s.feeds.UpdateFeedIcon(ctx, p.UserID, feedID, iconURL, data); err != nil {
-		s.log.Warn("cache feed icon failed", "feed_id", feedID, "err", err)
+		s.log.WarnContext(r.Context(), "cache feed icon failed", "feed_id", feedID, "err", err)
 	}
 
 	writeJSON(w, http.StatusOK, listResponse[feedIconDTO]{

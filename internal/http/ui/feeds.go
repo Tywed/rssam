@@ -488,7 +488,7 @@ func (h *Handler) renderFeedsCategoryTree(w http.ResponseWriter, r *http.Request
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := h.templates.ExecuteTemplate(w, "feeds_mgmt_category_feeds", data); err != nil {
-		h.log.Error("feeds tree template failed", "err", err)
+		h.log.ErrorContext(r.Context(), "feeds tree template failed", "err", err)
 		http.Error(w, "render error", http.StatusInternalServerError)
 	}
 }

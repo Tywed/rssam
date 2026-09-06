@@ -23,7 +23,7 @@ func (s *Server) handleRefreshAllFeeds(w http.ResponseWriter, r *http.Request) {
 
 	feeds, queued, err := s.refreshAll.EnqueueRefreshAllPollJobs(r.Context())
 	if err != nil {
-		s.log.Error("enqueue refresh-all failed", "err", err)
+		s.log.ErrorContext(r.Context(), "enqueue refresh-all failed", "err", err)
 		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}

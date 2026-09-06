@@ -72,7 +72,7 @@ func (h *Handler) renderSidebarCategoryFeeds(w http.ResponseWriter, r *http.Requ
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := h.templates.ExecuteTemplate(w, "sidebar_category_feeds", data); err != nil {
-		h.log.Error("sidebar feeds template failed", "err", err)
+		h.log.ErrorContext(r.Context(), "sidebar feeds template failed", "err", err)
 		http.Error(w, "render error", http.StatusInternalServerError)
 	}
 }
