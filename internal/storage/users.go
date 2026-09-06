@@ -73,6 +73,8 @@ type UserStore interface {
 	GetUserByFeverAPIKey(ctx context.Context, apiKey string) (User, error)
 	CreateUser(ctx context.Context, params CreateUserParams) (User, error)
 	UpdateUser(ctx context.Context, params UpdateUserParams) (User, error)
+	// DeleteUser returns ErrLastAdmin when the user is the only admin that
+	// can log in (is_admin with a non-empty password_hash).
 	DeleteUser(ctx context.Context, id int64) error
 
 	LookupAPIKey(ctx context.Context, tokenHash string) (APIKey, error)
@@ -224,15 +226,44 @@ RETURNING id, username, password_hash, fever_api_key, is_admin, created_at`
 	return s.GetUser(ctx, params.ID)
 }
 
+// userAdminLockKey serialises admin-count checks in DeleteUser so two
+// concurrent deletions cannot each see "another admin still exists".
+const userAdminLockKey int64 = 0x7273616d5f61646d // "rsam_adm"
+
+// DeleteUser removes a user and everything owned by it (ON DELETE CASCADE).
+// Deleting the last login-capable admin is refused with ErrLastAdmin:
+// without one nobody could administer the instance through the UI anymore.
 func (s *PostgresStore) DeleteUser(ctx context.Context, id int64) error {
-	cmd, err := s.db.Exec(ctx, `DELETE FROM users WHERE id = $1`, id)
-	if err != nil {
-		return fmt.Errorf("delete user: %w", err)
-	}
-	if cmd.RowsAffected() == 0 {
-		return ErrNotFound
-	}
-	return nil
+	return withTx(ctx, s.db, func(tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock($1)`, userAdminLockKey); err != nil {
+			return fmt.Errorf("delete user: lock: %w", err)
+		}
+		var isAdmin bool
+		var hash string
+		err := tx.QueryRow(ctx, `SELECT is_admin, password_hash FROM users WHERE id = $1 FOR UPDATE`, id).Scan(&isAdmin, &hash)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrNotFound
+		}
+		if err != nil {
+			return fmt.Errorf("delete user: %w", err)
+		}
+		if isAdmin && hash != "" {
+			var others int
+			err := tx.QueryRow(ctx, `
+SELECT count(*) FROM users
+WHERE is_admin AND password_hash <> '' AND id <> $1`, id).Scan(&others)
+			if err != nil {
+				return fmt.Errorf("delete user: count admins: %w", err)
+			}
+			if others == 0 {
+				return ErrLastAdmin
+			}
+		}
+		if _, err := tx.Exec(ctx, `DELETE FROM users WHERE id = $1`, id); err != nil {
+			return fmt.Errorf("delete user: %w", err)
+		}
+		return nil
+	})
 }
 
 func (s *PostgresStore) LookupAPIKey(ctx context.Context, tokenHash string) (APIKey, error) {

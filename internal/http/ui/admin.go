@@ -2,6 +2,7 @@ package ui
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -77,7 +78,14 @@ func (h *Handler) handleAdminUserDelete(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	if err := h.cfg.Users.DeleteUser(r.Context(), id); err != nil {
-		http.NotFound(w, r)
+		switch {
+		case errors.Is(err, storage.ErrNotFound):
+			http.NotFound(w, r)
+		case errors.Is(err, storage.ErrLastAdmin):
+			http.Error(w, "нельзя удалить последнего администратора", http.StatusConflict)
+		default:
+			http.Error(w, "delete user failed", http.StatusInternalServerError)
+		}
 		return
 	}
 	http.Redirect(w, r, "/ui/admin/users", http.StatusFound)

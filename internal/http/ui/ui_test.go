@@ -53,7 +53,8 @@ func (m *uiMemSessions) DeleteUserSessionsExcept(_ context.Context, userID int64
 }
 
 type uiMemUsers struct {
-	user storage.User
+	user      storage.User
+	deleteErr error
 }
 
 func (u *uiMemUsers) CountUsers(context.Context) (int, error)             { return 1, nil }
@@ -82,7 +83,7 @@ func (u *uiMemUsers) CreateUser(context.Context, storage.CreateUserParams) (stor
 func (u *uiMemUsers) UpdateUser(context.Context, storage.UpdateUserParams) (storage.User, error) {
 	return u.user, nil
 }
-func (u *uiMemUsers) DeleteUser(context.Context, int64) error { return nil }
+func (u *uiMemUsers) DeleteUser(context.Context, int64) error { return u.deleteErr }
 func (u *uiMemUsers) LookupAPIKey(context.Context, string) (storage.APIKey, error) {
 	return storage.APIKey{}, storage.ErrNotFound
 }
@@ -347,5 +348,54 @@ func TestUI_LoginUnknownUserTakesBcryptTime(t *testing.T) {
 	unknown := attempt("nobody")
 	if unknown < known/2 {
 		t.Fatalf("unknown-user login too fast: unknown=%v known=%v", unknown, known)
+	}
+}
+
+// The admin UI must surface a storage refusal to delete the last admin as a
+// 409 with a message, not as a misleading 404.
+func TestUI_AdminDeleteLastAdminConflict(t *testing.T) {
+	h := newTestUIHandler(t, true)
+	h.cfg.Users.(*uiMemUsers).deleteErr = storage.ErrLastAdmin
+	mux := http.NewServeMux()
+	h.Register(mux)
+
+	token := auth.CSRFToken("csrf-test", "login")
+	form := url.Values{"username": {"alice"}, "password": {"secret"}, "csrf_token": {token}}
+	req := httptest.NewRequest(http.MethodPost, "/ui/login", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+	var sid string
+	for _, c := range rec.Result().Cookies() {
+		if c.Name == auth.SessionCookieName {
+			sid = c.Value
+		}
+	}
+	if sid == "" {
+		t.Fatal("login failed")
+	}
+	csrf := auth.CSRFToken("csrf-test", sid)
+
+	post := func(path string) *httptest.ResponseRecorder {
+		f := url.Values{"csrf_token": {csrf}}
+		req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(f.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: sid})
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, req)
+		return rec
+	}
+
+	if rec := post("/ui/admin/users/2/delete"); rec.Code != http.StatusConflict ||
+		!strings.Contains(rec.Body.String(), "последнего администратора") {
+		t.Fatalf("last admin via UI: got %d body=%q, want 409", rec.Code, rec.Body.String())
+	}
+	h.cfg.Users.(*uiMemUsers).deleteErr = storage.ErrNotFound
+	if rec := post("/ui/admin/users/2/delete"); rec.Code != http.StatusNotFound {
+		t.Fatalf("unknown user via UI: got %d, want 404", rec.Code)
+	}
+	h.cfg.Users.(*uiMemUsers).deleteErr = nil
+	if rec := post("/ui/admin/users/2/delete"); rec.Code != http.StatusFound {
+		t.Fatalf("delete ok via UI: got %d, want 302", rec.Code)
 	}
 }

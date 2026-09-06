@@ -129,6 +129,17 @@ func (m *memUserStore) DeleteUser(_ context.Context, id int64) error {
 	if !ok {
 		return storage.ErrNotFound
 	}
+	if u.IsAdmin && u.PasswordHash != "" {
+		others := 0
+		for oid, o := range m.users {
+			if oid != id && o.IsAdmin && o.PasswordHash != "" {
+				others++
+			}
+		}
+		if others == 0 {
+			return storage.ErrLastAdmin
+		}
+	}
 	delete(m.users, id)
 	delete(m.byName, u.Username)
 	return nil

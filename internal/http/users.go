@@ -196,6 +196,10 @@ func (s *Server) handleDeleteUser(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusNotFound, "user not found")
 			return
 		}
+		if errors.Is(err, storage.ErrLastAdmin) {
+			writeError(w, http.StatusConflict, "cannot delete the last admin")
+			return
+		}
 		s.log.Error("delete user failed", "err", err)
 		writeError(w, http.StatusInternalServerError, "internal server error")
 		return

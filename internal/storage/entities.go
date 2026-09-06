@@ -10,6 +10,9 @@ var (
 	ErrNotFound         = errors.New("not found")
 	ErrDuplicateFeedURL = errors.New("feed_url already exists")
 	ErrInvalidReference = errors.New("invalid reference")
+	// ErrLastAdmin is returned when a change would leave the instance without
+	// any admin that can log in (is_admin with a password set).
+	ErrLastAdmin = errors.New("cannot remove the last admin")
 )
 
 const (
