@@ -43,6 +43,15 @@ done
 log() { printf '%s\n' "$*"; }
 die() { printf 'error: %s\n' "$*" >&2; exit 1; }
 
+# Only a plain semver tag may reach the download URL: the script runs as root
+# (sudo from the UI) and the version is its single untrusted argument.
+valid_tag() {
+  printf '%s' "$1" | grep -Eq '^v?[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$'
+}
+if [ -n "$TARGET_VER" ] && ! valid_tag "$TARGET_VER"; then
+  die "invalid version: $TARGET_VER"
+fi
+
 need_root() {
   [ "$(id -u)" -eq 0 ] || die "run as root"
 }

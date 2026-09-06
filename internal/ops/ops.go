@@ -6,10 +6,22 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"syscall"
 )
+
+// releaseTagRe is the only shape of version accepted for self-update. The
+// value ends up in the GitHub download URL that rssam-update fetches as
+// root; "v1.0.0/../../other/repo/releases/download/v1" would otherwise
+// resolve to another repository's asset.
+var releaseTagRe = regexp.MustCompile(`^v?[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$`)
+
+// ValidReleaseTag reports whether ver is a plain semver tag like v0.1.5.
+func ValidReleaseTag(ver string) bool {
+	return len(ver) <= 64 && releaseTagRe.MatchString(ver)
+}
 
 func EnvFilePath() string {
 	if p := strings.TrimSpace(os.Getenv("RSSAM_ENV_FILE")); p != "" {
@@ -176,6 +188,9 @@ func StartUpdate(ver string) error {
 	ver = strings.TrimSpace(ver)
 	if ver == "" {
 		return fmt.Errorf("не указана версия")
+	}
+	if !ValidReleaseTag(ver) {
+		return fmt.Errorf("недопустимая версия %q", ver)
 	}
 	helper := UpdateHelperPath()
 	args := []string{"-n", helper, "--update", "--quiet", ver}
