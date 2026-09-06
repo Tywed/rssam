@@ -545,13 +545,27 @@ type webhookLogDTO struct {
 }
 
 func (s *Server) handleListWebhookLogs(w http.ResponseWriter, r *http.Request) {
-	if s.webhookLogs == nil {
+	p, ok := requireAdmin(w, r)
+	if !ok {
+		return
+	}
+	if s.webhookLogs == nil || s.webhooks == nil {
 		writeError(w, http.StatusServiceUnavailable, "webhook log storage is not configured")
 		return
 	}
 	id, err := parsePathID(r)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	// Logs are addressed by webhook id; the webhook itself is tenant-scoped.
+	if _, err := s.webhooks.GetWebhook(r.Context(), p.UserID, id); err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			writeError(w, http.StatusNotFound, "webhook not found")
+			return
+		}
+		s.log.Error("get webhook failed", "err", err)
+		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
 	limit, offset, err := parseLimitOffset(r, 100, 10000)
@@ -585,6 +599,10 @@ func (s *Server) handleListWebhookLogs(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleRetryWebhookLog(w http.ResponseWriter, r *http.Request) {
+	p, ok := requireAdmin(w, r)
+	if !ok {
+		return
+	}
 	if s.webhookLogs == nil {
 		writeError(w, http.StatusServiceUnavailable, "webhook log storage is not configured")
 		return
@@ -594,7 +612,11 @@ func (s *Server) handleRetryWebhookLog(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if err := s.webhookLogs.RetryWebhookLogNow(r.Context(), logID); err != nil {
+	if err := s.webhookLogs.RetryWebhookLogNow(r.Context(), p.UserID, logID); err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			writeError(w, http.StatusNotFound, "webhook log not found")
+			return
+		}
 		s.log.Error("retry webhook log failed", "err", err)
 		writeError(w, http.StatusInternalServerError, "internal server error")
 		return

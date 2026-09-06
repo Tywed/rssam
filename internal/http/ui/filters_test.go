@@ -5,10 +5,12 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 
 	"rssam/internal/auth"
+	"rssam/internal/filter"
 	"rssam/internal/storage"
 )
 
@@ -73,6 +75,7 @@ func (uiMemFilters) ListEnabledFilters(context.Context, int64, int) ([]storage.F
 func newAdminUIHandler(t *testing.T) http.Handler {
 	t.Helper()
 	h, err := NewHandler(Config{
+		FilterEngine: filter.New(filter.Config{}),
 		Users: &uiMemUsers{user: storage.User{
 			ID: 1, Username: "alice", PasswordHash: mustHash(t, "secret"), IsAdmin: true,
 		}},
@@ -266,5 +269,33 @@ func TestUI_FeedSuggest(t *testing.T) {
 	}
 	if len(got.Data) != 1 || got.Data[0].ID != 11 {
 		t.Fatalf("category browse: %+v", got.Data)
+	}
+}
+
+func TestUI_FilterCreateRejectsInvalidRegex(t *testing.T) {
+	mux := newAdminUIHandler(t)
+	sid := uiSessionCookie(t, nil, mux)
+	token := auth.CSRFToken("csrf-test", sid)
+
+	post := func(pattern string) *httptest.ResponseRecorder {
+		form := url.Values{
+			"csrf_token":   {token},
+			"name":         {"broken"},
+			"rule_field":   {"title"},
+			"rule_pattern": {pattern},
+		}
+		req := httptest.NewRequest(http.MethodPost, "/ui/filters", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: sid})
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, req)
+		return rec
+	}
+
+	if rec := post("("); rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "compile regex") {
+		t.Fatalf("invalid regex: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+	if rec := post("foo"); rec.Code != http.StatusFound {
+		t.Fatalf("valid regex: status=%d body=%q", rec.Code, rec.Body.String())
 	}
 }

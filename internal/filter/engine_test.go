@@ -2,6 +2,7 @@ package filter
 
 import (
 	"regexp"
+	"strings"
 	"testing"
 	"time"
 
@@ -284,5 +285,38 @@ func TestEngine_FeedScopeExclude(t *testing.T) {
 	)
 	if err != nil || len(matches) != 1 {
 		t.Fatalf("expected match outside excluded category")
+	}
+}
+
+func TestEngine_ValidateRules(t *testing.T) {
+	eng := New(Config{MaxRulesPerFilter: 2, MaxRegexLength: 5})
+	cases := []struct {
+		name    string
+		rules   []storage.CreateFilterRuleParams
+		wantErr string
+	}{
+		{name: "ok", rules: []storage.CreateFilterRuleParams{{Field: "title", Pattern: "foo"}}},
+		{name: "no rules", rules: nil},
+		{name: "invalid regex", rules: []storage.CreateFilterRuleParams{{Field: "title", Pattern: "("}}, wantErr: "compile regex"},
+		{name: "empty", rules: []storage.CreateFilterRuleParams{{Field: "title", Pattern: "  "}}, wantErr: "empty regex"},
+		{name: "too long", rules: []storage.CreateFilterRuleParams{{Field: "title", Pattern: "abcdef"}}, wantErr: "regex too long"},
+		{name: "bad field", rules: []storage.CreateFilterRuleParams{{Field: "body", Pattern: "x"}}, wantErr: "invalid field"},
+		{name: "too many", rules: []storage.CreateFilterRuleParams{
+			{Field: "title", Pattern: "a"}, {Field: "title", Pattern: "b"}, {Field: "title", Pattern: "c"},
+		}, wantErr: "too many rules"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := eng.ValidateRules(tc.rules)
+			if tc.wantErr == "" {
+				if err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+				t.Fatalf("want error containing %q, got %v", tc.wantErr, err)
+			}
+		})
 	}
 }

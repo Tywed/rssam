@@ -92,6 +92,22 @@ func (e *Engine) Limits() (maxRulesPerFilter int, maxRegexLength int) {
 	return e.cfg.MaxRulesPerFilter, e.cfg.MaxRegexLength
 }
 
+// ValidateRules applies the same checks compileFilter performs at match time
+// (rule count, empty/too long pattern, allowed field, regex syntax) so that a
+// filter which can never be compiled is rejected on write instead of being
+// silently skipped by the worker later.
+func (e *Engine) ValidateRules(rules []storage.CreateFilterRuleParams) error {
+	if e.cfg.MaxRulesPerFilter > 0 && len(rules) > e.cfg.MaxRulesPerFilter {
+		return errors.New("too many rules")
+	}
+	f := storage.Filter{Rules: make([]storage.FilterRule, 0, len(rules))}
+	for _, r := range rules {
+		f.Rules = append(f.Rules, storage.FilterRule{Field: r.Field, Pattern: r.Pattern, Negate: r.Negate, Op: r.Op, Priority: r.Priority})
+	}
+	_, err := compileFilter(f, e.cfg.MaxRegexLength, e.cfg.CompileTimeout)
+	return err
+}
+
 type Match struct {
 	FilterID int64
 	Details  []byte

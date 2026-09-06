@@ -126,6 +126,12 @@ func (h *Handler) handleFilterCreate(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	if h.cfg.FilterEngine != nil {
+		if err := h.cfg.FilterEngine.ValidateRules(params.Rules); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+	}
 	params.UserID = p.UserID
 	if _, err := h.cfg.Filters.CreateFilter(r.Context(), params); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -151,6 +157,12 @@ func (h *Handler) handleFilterUpdate(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
+	}
+	if h.cfg.FilterEngine != nil {
+		if err := h.cfg.FilterEngine.ValidateRules(params.Rules); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 	}
 	_, err = h.cfg.Filters.UpdateFilter(r.Context(), storage.UpdateFilterParams{
 		ID:           id,

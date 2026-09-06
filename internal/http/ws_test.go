@@ -76,7 +76,7 @@ func TestWSConnectAndReceiveNewEntry(t *testing.T) {
 	if err := websocket.JSON.Send(conn, subscribe); err != nil {
 		t.Fatalf("write subscribe: %v", err)
 	}
-	time.Sleep(50 * time.Millisecond)
+	awaitSubscribed(t, conn)
 
 	hub.Publish([]string{"all"}, ws.Envelope{
 		Event: "new_entry",
@@ -106,5 +106,19 @@ func TestWSConnectAndReceiveNewEntry(t *testing.T) {
 		if got.Event == "new_entry" {
 			break
 		}
+	}
+}
+
+// awaitSubscribed reads the "subscribed" acknowledgement so the test knows
+// the hub will route events to this connection.
+func awaitSubscribed(t *testing.T, conn *websocket.Conn) {
+	t.Helper()
+	_ = conn.SetReadDeadline(time.Now().Add(3 * time.Second))
+	var raw string
+	if err := websocket.Message.Receive(conn, &raw); err != nil {
+		t.Fatalf("await subscribed ack: %v", err)
+	}
+	if !strings.Contains(raw, `"event":"subscribed"`) {
+		t.Fatalf("expected subscribed ack, got %q", raw)
 	}
 }

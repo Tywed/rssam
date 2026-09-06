@@ -87,7 +87,16 @@ func (c *Client) readPump() {
 		if req.Action != "subscribe" {
 			continue
 		}
-		c.setSubscriptions(NormalizeChannels(req.Channels))
+		channels := NormalizeChannels(req.Channels)
+		c.setSubscriptions(channels)
+		// Acknowledge so a client can know when events will start flowing
+		// instead of guessing with a delay. Older clients ignore unknown events.
+		if ack, err := json.Marshal(Envelope{Event: "subscribed", Data: map[string]any{"channels": channels}}); err == nil {
+			select {
+			case c.send <- ack:
+			default:
+			}
+		}
 	}
 }
 

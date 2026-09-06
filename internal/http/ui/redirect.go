@@ -21,13 +21,18 @@ func localUIPath(raw, fallback string) string {
 	if err != nil || !strings.HasPrefix(u.Path, "/ui/") {
 		return fallback
 	}
-	// Reject dot segments that would escape the UI after normalisation.
-	if p := path.Clean(u.Path); p != u.Path && !strings.HasPrefix(p, "/ui/") {
+	// Normalise dot segments and redirect to the cleaned path: a browser would
+	// resolve them anyway, and anything that escapes /ui/ is rejected.
+	p := path.Clean(u.Path)
+	if !strings.HasPrefix(p, "/ui/") {
 		return fallback
+	}
+	if strings.HasSuffix(u.Path, "/") && !strings.HasSuffix(p, "/") {
+		p += "/"
 	}
 	// url.Parse("//evil/ui/x") gives Host=evil, Path=/ui/x — dropping the
 	// host is exactly what we want; RequestURI keeps only path and query.
-	return (&url.URL{Path: u.Path, RawQuery: u.RawQuery}).RequestURI()
+	return (&url.URL{Path: p, RawQuery: u.RawQuery}).RequestURI()
 }
 
 // refererOr returns the Referer reduced to a UI path, or fallback.

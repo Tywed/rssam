@@ -1,4 +1,4 @@
-.PHONY: build test lint vuln migrate run docker-up docker-down fmt
+.PHONY: build test lint vuln fuzz migrate run docker-up docker-down fmt
 
 BIN := rssam
 PKGS := $(shell go list ./... | grep -vE '/tmp(/|$$)')
@@ -36,6 +36,17 @@ lint:
 
 vuln:
 	go tool govulncheck ./...
+
+# Run every Fuzz* target for FUZZTIME each (go test can fuzz only one target
+# per invocation). New crashers land in <pkg>/testdata/fuzz/ and fail the run.
+FUZZTIME ?= 30s
+fuzz:
+	@set -e; for pkg in $$(go list $(PKGS)); do \
+	  for f in $$(go test -list '^Fuzz' $$pkg 2>/dev/null | grep '^Fuzz' || true); do \
+	    echo "== $$pkg $$f"; \
+	    go test -run='^$$' -fuzz="^$$f\$$" -fuzztime=$(FUZZTIME) $$pkg; \
+	  done; \
+	done
 
 migrate:
 	@DATABASE_URL=$${DATABASE_URL:?set DATABASE_URL} go run ./cmd/rssam -migrate

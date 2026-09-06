@@ -18,6 +18,9 @@ func TestLocalUIPath(t *testing.T) {
 		"::bad url::":                        "/ui/fallback",
 		"/ui/unread#frag":                    "/ui/unread",
 		"https://rss.example/ui/x?next=//e/": "/ui/x?next=//e/",
+		"/ui/../../ui/feeds":                 "/ui/feeds",
+		"/ui/./feeds/":                       "/ui/feeds/",
+		"/ui/%2e%2e/admin":                   "/ui/fallback",
 	}
 	for in, want := range cases {
 		if got := localUIPath(in, "/ui/fallback"); got != want {

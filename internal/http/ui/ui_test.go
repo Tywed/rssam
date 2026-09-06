@@ -326,7 +326,11 @@ func TestUI_PasswordPolicyServerSide(t *testing.T) {
 // Response time must not reveal whether a username exists: an unknown user
 // costs a bcrypt round like a wrong password does.
 func TestUI_LoginUnknownUserTakesBcryptTime(t *testing.T) {
+	// This test is about real bcrypt timing; use the production cost so the
+	// known-user path is as slow as the dummy-hash path is meant to match.
+	restore := auth.SetHashCost(12)
 	h := newTestUIHandler(t, false)
+	restore()
 	mux := http.NewServeMux()
 	h.Register(mux)
 	token := auth.CSRFToken("csrf-test", "login")

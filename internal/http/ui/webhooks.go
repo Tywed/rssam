@@ -375,7 +375,8 @@ func (h *Handler) handleWebhookLogRetry(w http.ResponseWriter, r *http.Request) 
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	_ = h.cfg.WebhookLogs.RetryWebhookLogNow(r.Context(), id)
+	p, _ := principal(r)
+	_ = h.cfg.WebhookLogs.RetryWebhookLogNow(r.Context(), p.UserID, id)
 	http.Redirect(w, r, refererOr(r, "/ui/webhooks"), http.StatusFound)
 }
 

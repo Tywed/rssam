@@ -8,7 +8,19 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-const bcryptCost = 12
+// bcryptCost is the work factor for new hashes (~250 ms per hash on 2024
+// hardware). Tests lower it through SetHashCost; production never does.
+var bcryptCost = 12
+
+// SetHashCost overrides the bcrypt cost used by HashPassword and returns a
+// function that restores the previous value. It exists for test suites that
+// create many users: at the production cost a package with a dozen logins
+// spends half a minute in bcrypt. Verification paths are unaffected.
+func SetHashCost(cost int) (restore func()) {
+	prev := bcryptCost
+	bcryptCost = cost
+	return func() { bcryptCost = prev }
+}
 
 // MinPasswordLength is enforced server-side for every newly set password
 // (API and UI); the UI forms declare the same minlength.

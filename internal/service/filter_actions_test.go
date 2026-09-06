@@ -117,7 +117,7 @@ func (m *memWebhookLogStore) MarkWebhookLogFailed(context.Context, int64, *int, 
 func (m *memWebhookLogStore) ListWebhookLogs(context.Context, int64, int, int) ([]storage.WebhookLog, int, error) {
 	return nil, 0, nil
 }
-func (m *memWebhookLogStore) RetryWebhookLogNow(context.Context, int64) error { return nil }
+func (m *memWebhookLogStore) RetryWebhookLogNow(context.Context, int64, int64) error { return nil }
 
 func TestApplyFilterActions(t *testing.T) {
 	labels := &memLabelStore{labels: map[int64]storage.Label{7: {ID: 7, UserID: 1}}}

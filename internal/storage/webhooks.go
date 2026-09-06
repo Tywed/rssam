@@ -452,16 +452,20 @@ LIMIT $2 OFFSET $3`
 	return out, total, nil
 }
 
-func (s *PostgresStore) RetryWebhookLogNow(ctx context.Context, logID int64) error {
+func (s *PostgresStore) RetryWebhookLogNow(ctx context.Context, userID, logID int64) error {
 	const q = `
-UPDATE webhook_logs
+UPDATE webhook_logs l
 SET status = 'pending',
     next_retry_at = now(),
     updated_at = now()
-WHERE id = $1 AND status <> 'sent'`
-	_, err := s.db.Exec(ctx, q, logID)
+FROM webhooks w
+WHERE l.id = $1 AND l.webhook_id = w.id AND w.user_id = $2 AND l.status <> 'sent'`
+	cmd, err := s.db.Exec(ctx, q, logID, userID)
 	if err != nil {
 		return fmt.Errorf("retry webhook log: %w", err)
+	}
+	if cmd.RowsAffected() == 0 {
+		return ErrNotFound
 	}
 	return nil
 }

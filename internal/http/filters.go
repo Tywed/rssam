@@ -572,23 +572,9 @@ func toCreateActions(actions []filterActionWriteRequest) []storage.CreateFilterA
 	return out
 }
 
-func validateRuleLimits(rules []filterRuleWriteRequest, eng interface{ Limits() (int, int) }) error {
+func validateRuleLimits(rules []filterRuleWriteRequest, eng *filter.Engine) error {
 	if eng == nil {
 		return nil
 	}
-	maxRules, maxLen := eng.Limits()
-	if maxRules > 0 && len(rules) > maxRules {
-		return errors.New("too many rules")
-	}
-	if maxLen > 0 {
-		for _, r := range rules {
-			if len(strings.TrimSpace(r.Pattern)) > maxLen {
-				return errors.New("regex too long")
-			}
-			if strings.TrimSpace(r.Pattern) == "" {
-				return errors.New("empty regex is not allowed")
-			}
-		}
-	}
-	return nil
+	return eng.ValidateRules(toCreateRules(rules))
 }

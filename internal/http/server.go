@@ -368,7 +368,10 @@ func New(dep Dependencies) *Server {
 	}
 }
 
-func (s *Server) Run(ctx context.Context, addr string, shutdownTimeout time.Duration) error {
+// Handler builds the complete HTTP handler: public endpoints, the /v1 API
+// behind wrapAPI, the WebSocket endpoint, the UI, and the outer middleware
+// chain. Run serves it; tests can drive it directly.
+func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", s.handleHealthz)
 	mux.HandleFunc("/openapi.json", s.handleOpenAPISpec)
@@ -428,7 +431,11 @@ func (s *Server) Run(ctx context.Context, addr string, shutdownTimeout time.Dura
 
 	s.registerUI(mux)
 
-	handler := s.wrapMiddleware(mux)
+	return s.wrapMiddleware(mux)
+}
+
+func (s *Server) Run(ctx context.Context, addr string, shutdownTimeout time.Duration) error {
+	handler := s.Handler()
 
 	srv := &http.Server{
 		Addr:              addr,

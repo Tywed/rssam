@@ -366,7 +366,9 @@ type WebhookLogStore interface {
 	MarkWebhookLogFailed(ctx context.Context, logID int64, statusCode *int, errMsg string, responseSnippet string, attempt int, nextRetryAt *time.Time, dead bool) error
 
 	ListWebhookLogs(ctx context.Context, webhookID int64, limit, offset int) ([]WebhookLog, int, error)
-	RetryWebhookLogNow(ctx context.Context, logID int64) error
+	// RetryWebhookLogNow re-queues a failed delivery. The row must belong to a
+	// webhook owned by userID and must not already be sent; otherwise ErrNotFound.
+	RetryWebhookLogNow(ctx context.Context, userID, logID int64) error
 }
 
 type CreateFeedParams struct {

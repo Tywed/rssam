@@ -64,7 +64,7 @@ func TestWSInboundFrameLimit(t *testing.T) {
 	if err := websocket.JSON.Send(conn, map[string]any{"action": "subscribe", "channels": []string{"all"}}); err != nil {
 		t.Fatal(err)
 	}
-	time.Sleep(50 * time.Millisecond)
+	awaitSubscribed(t, conn)
 	hub.Publish([]string{"all"}, ws.Envelope{Event: "new_entry", Data: map[string]any{"id": 1}})
 	_ = conn.SetReadDeadline(time.Now().Add(3 * time.Second))
 	if err := websocket.Message.Receive(conn, &raw); err != nil {

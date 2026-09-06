@@ -1,0 +1,38 @@
+name: fuzz
+
+# Runs every Fuzz* target for a short budget on a schedule and on demand.
+# In `go test` runs (CI) the same targets execute only over their seed corpus;
+# this workflow is what actually explores new inputs.
+on:
+  schedule:
+    - cron: "17 3 * * 1" # Mondays 03:17 UTC
+  workflow_dispatch:
+    inputs:
+      fuzztime:
+        description: "Time budget per target (Go duration)"
+        default: "2m"
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  fuzz:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: Fuzz every target
+        env:
+          FUZZTIME: ${{ github.event.inputs.fuzztime || '2m' }}
+        run: make fuzz FUZZTIME="$FUZZTIME"
+      - name: Upload failing inputs
+        if: failure()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: fuzz-failures
+          path: "**/testdata/fuzz/**"
+          if-no-files-found: ignore
