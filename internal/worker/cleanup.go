@@ -59,15 +59,19 @@ func (r *Runner) runRetentionCleanup(ctx context.Context) {
 	if result.FeedEntryDedup > 0 {
 		metrics.CleanupDeletedRows.WithLabelValues("feed_entry_dedup").Add(float64(result.FeedEntryDedup))
 	}
+	if result.ExpiredSessions > 0 {
+		metrics.CleanupDeletedRows.WithLabelValues("sessions").Add(float64(result.ExpiredSessions))
+	}
 
 	if result.RemovedEntries > 0 || result.WebhookLogs > 0 || result.FilterMatches > 0 ||
-		result.FeedEntries > 0 || result.FeedEntryDedup > 0 {
+		result.FeedEntries > 0 || result.FeedEntryDedup > 0 || result.ExpiredSessions > 0 {
 		r.Log.Info("retention cleanup completed",
 			"removed_entries", result.RemovedEntries,
 			"webhook_logs", result.WebhookLogs,
 			"filter_matches", result.FilterMatches,
 			"feed_entries", result.FeedEntries,
 			"feed_entry_dedup", result.FeedEntryDedup,
+			"expired_sessions", result.ExpiredSessions,
 		)
 	}
 }

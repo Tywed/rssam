@@ -23,11 +23,12 @@ type RetentionCleanupOpts struct {
 
 // RetentionCleanupResult reports how many rows were deleted per table.
 type RetentionCleanupResult struct {
-	RemovedEntries int64
-	WebhookLogs    int64
-	FilterMatches  int64
-	FeedEntries    int64
-	FeedEntryDedup int64
+	RemovedEntries  int64
+	WebhookLogs     int64
+	FilterMatches   int64
+	FeedEntries     int64
+	FeedEntryDedup  int64
+	ExpiredSessions int64
 }
 
 func (s *PostgresStore) RunRetentionCleanup(ctx context.Context, opts RetentionCleanupOpts) (RetentionCleanupResult, error) {
@@ -100,6 +101,12 @@ WHERE (feed_id, hash) IN (
 		return result, fmt.Errorf("delete feed entry dedup by retention: %w", err)
 	}
 	result.FeedEntryDedup = n
+
+	n, err = s.DeleteExpiredSessions(ctx, now)
+	if err != nil {
+		return result, fmt.Errorf("delete expired sessions: %w", err)
+	}
+	result.ExpiredSessions = n
 
 	return result, nil
 }

@@ -49,6 +49,10 @@ func (h *Handler) handleSettingsPassword(w http.ResponseWriter, r *http.Request)
 		h.renderSettingsError(w, r, "Текущий пароль неверный")
 		return
 	}
+	if err := auth.ValidateNewPassword(password); err != nil {
+		h.renderSettingsError(w, r, "Пароль должен быть от 8 символов до 72 байт")
+		return
+	}
 	hash, err := auth.HashPassword(password)
 	if err != nil {
 		h.renderSettingsError(w, r, err.Error())

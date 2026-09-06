@@ -10,6 +10,9 @@ const userKey ctxKey = 1
 type Principal struct {
 	UserID  int64
 	IsAdmin bool
+	// Username is filled by the session/token authenticators (the user row
+	// was already loaded there) so page rendering does not re-query it.
+	Username string
 }
 
 func WithPrincipal(ctx context.Context, p Principal) context.Context {

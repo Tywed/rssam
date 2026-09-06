@@ -11,6 +11,19 @@ import (
 
 const DefaultSessionTTL = 30 * 24 * time.Hour
 
+// SessionTouchInterval bounds how often a sliding-expiry session is written
+// back. A session is refreshed when it was last touched more than this long
+// ago (i.e. expires_at < now + TTL - interval); otherwise the request does
+// not issue an UPDATE at all. With a 30-day TTL, an hour of slack is
+// invisible to users but turns one UPDATE per request into one per hour.
+const SessionTouchInterval = time.Hour
+
+// SessionNeedsTouch reports whether a session whose current expiry is
+// expiresAt should be refreshed at now.
+func SessionNeedsTouch(expiresAt, now time.Time) bool {
+	return expiresAt.Before(now.Add(DefaultSessionTTL - SessionTouchInterval))
+}
+
 type Session struct {
 	ID        int64
 	UserID    int64
@@ -28,6 +41,18 @@ type SessionStore interface {
 	// DeleteUserSessionsExcept revokes every session of userID except keepSessionID
 	// (used after a password change so the current browser stays signed in).
 	DeleteUserSessionsExcept(ctx context.Context, userID int64, keepSessionID string) error
+}
+
+// DeleteExpiredSessions removes sessions whose expires_at has passed and
+// returns the number of rows deleted. Called from the retention cleanup.
+func (s *PostgresStore) DeleteExpiredSessions(ctx context.Context, now time.Time) (int64, error) {
+	return s.deleteInBatches(ctx, `
+DELETE FROM sessions
+WHERE id IN (
+  SELECT id FROM sessions
+  WHERE expires_at < $1
+  LIMIT $2
+)`, now.UTC(), deleteBatchSize)
 }
 
 func (s *PostgresStore) CreateSession(ctx context.Context, userID int64, sessionID string, expiresAt time.Time) (Session, error) {

@@ -166,7 +166,14 @@ func (h *Handler) handleWebhookCreate(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	h.invalidateWebhookCache(p.UserID)
 	http.Redirect(w, r, "/ui/webhooks", http.StatusFound)
+}
+
+func (h *Handler) invalidateWebhookCache(userID int64) {
+	if h.cfg.Refresher != nil {
+		h.cfg.Refresher.InvalidateWebhookCache(userID)
+	}
 }
 
 func (h *Handler) handleWebhookUpdate(w http.ResponseWriter, r *http.Request) {
@@ -202,6 +209,7 @@ func (h *Handler) handleWebhookUpdate(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	h.invalidateWebhookCache(p.UserID)
 	http.Redirect(w, r, "/ui/webhooks/"+strconv.FormatInt(id, 10), http.StatusFound)
 }
 
@@ -219,6 +227,7 @@ func (h *Handler) handleWebhookDelete(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
+	h.invalidateWebhookCache(p.UserID)
 	http.Redirect(w, r, "/ui/webhooks", http.StatusFound)
 }
 
@@ -263,6 +272,7 @@ func (h *Handler) setWebhookEnabled(w http.ResponseWriter, r *http.Request, enab
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	h.invalidateWebhookCache(p.UserID)
 	http.Redirect(w, r, webhooksListRedirect(r), http.StatusFound)
 }
 

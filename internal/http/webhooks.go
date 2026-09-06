@@ -210,7 +210,14 @@ func (s *Server) handleCreateWebhook(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	s.invalidateWebhookCache(p.UserID)
 	writeJSON(w, http.StatusCreated, listResponse[webhookDTO]{Data: toWebhookDTO(wh), Total: 1})
+}
+
+func (s *Server) invalidateWebhookCache(userID int64) {
+	if s.refresher != nil {
+		s.refresher.InvalidateWebhookCache(userID)
+	}
 }
 
 func (s *Server) handleGetWebhook(w http.ResponseWriter, r *http.Request) {
@@ -313,6 +320,7 @@ func (s *Server) handleUpdateWebhook(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	s.invalidateWebhookCache(p.UserID)
 	writeJSON(w, http.StatusOK, listResponse[webhookDTO]{Data: toWebhookDTO(wh), Total: 1})
 }
 
@@ -338,6 +346,7 @@ func (s *Server) handleDeleteWebhook(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
+	s.invalidateWebhookCache(p.UserID)
 	writeJSON(w, http.StatusOK, listResponse[deletedDTO]{Data: deletedDTO{Deleted: true}, Total: 1})
 }
 

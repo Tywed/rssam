@@ -122,3 +122,20 @@ func ClientIP(r *http.Request) string {
 	}
 	return host
 }
+
+// RequestHost returns the host the client addressed. Behind a trusted reverse
+// proxy that rewrites Host to the upstream address (nginx proxy_pass default),
+// X-Forwarded-Host carries the original value; it is only honoured when the
+// direct peer is a trusted proxy, like the other forwarding headers.
+func RequestHost(r *http.Request) string {
+	if _, peer, ok := remoteAddr(r); ok && isTrustedProxy(peer) {
+		if xfh := strings.TrimSpace(r.Header.Get("X-Forwarded-Host")); xfh != "" {
+			// Multiple proxies append comma-separated values; the first is the client-facing one.
+			if i := strings.IndexByte(xfh, ','); i >= 0 {
+				xfh = strings.TrimSpace(xfh[:i])
+			}
+			return xfh
+		}
+	}
+	return r.Host
+}

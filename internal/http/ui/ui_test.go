@@ -273,3 +273,81 @@ func TestUI_CSRFRejected(t *testing.T) {
 		t.Fatalf("expected CSRF 403, got %d", rec.Code)
 	}
 }
+
+// Regression: server-side password policy on the UI forms (previously only
+// minlength=8 in HTML, trivially bypassed).
+func TestUI_PasswordPolicyServerSide(t *testing.T) {
+	h := newTestUIHandler(t, true)
+	mux := http.NewServeMux()
+	h.Register(mux)
+
+	token := auth.CSRFToken("csrf-test", "login")
+	form := url.Values{"username": {"alice"}, "password": {"secret"}, "csrf_token": {token}}
+	req := httptest.NewRequest(http.MethodPost, "/ui/login", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+	var sid string
+	for _, c := range rec.Result().Cookies() {
+		if c.Name == auth.SessionCookieName {
+			sid = c.Value
+		}
+	}
+	if sid == "" {
+		t.Fatal("login failed")
+	}
+	csrf := auth.CSRFToken("csrf-test", sid)
+
+	post := func(path string, form url.Values) *httptest.ResponseRecorder {
+		form.Set("csrf_token", csrf)
+		req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: sid})
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, req)
+		return rec
+	}
+
+	if rec := post("/ui/admin/users", url.Values{"username": {"bob"}, "password": {"1234567"}}); rec.Code != http.StatusBadRequest {
+		t.Fatalf("admin create with 7-char password: got %d, want 400", rec.Code)
+	}
+	if rec := post("/ui/admin/users", url.Values{"username": {"bob"}, "password": {"12345678"}}); rec.Code != http.StatusFound {
+		t.Fatalf("admin create with 8-char password: got %d, want 302", rec.Code)
+	}
+	if rec := post("/ui/settings/password", url.Values{"current_password": {"secret"}, "password": {"1234567"}}); rec.Code != http.StatusBadRequest ||
+		!strings.Contains(rec.Body.String(), "от 8 символов") {
+		t.Fatalf("settings with 7-char password: got %d, body has error=%v", rec.Code, strings.Contains(rec.Body.String(), "от 8 символов"))
+	}
+	if rec := post("/ui/settings/password", url.Values{"current_password": {"secret"}, "password": {"12345678"}}); rec.Code != http.StatusFound {
+		t.Fatalf("settings with 8-char password: got %d, want 302", rec.Code)
+	}
+}
+
+// Regression: an unknown username returned in microseconds while a wrong
+// password for an existing user cost a bcrypt round, so response time
+// revealed which usernames exist.
+func TestUI_LoginUnknownUserTakesBcryptTime(t *testing.T) {
+	h := newTestUIHandler(t, false)
+	mux := http.NewServeMux()
+	h.Register(mux)
+	token := auth.CSRFToken("csrf-test", "login")
+
+	attempt := func(user string) time.Duration {
+		form := url.Values{"username": {user}, "password": {"wrong-password"}, "csrf_token": {token}}
+		req := httptest.NewRequest(http.MethodPost, "/ui/login", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		rec := httptest.NewRecorder()
+		start := time.Now()
+		mux.ServeHTTP(rec, req)
+		d := time.Since(start)
+		if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "Неверные учётные данные") {
+			t.Fatalf("login %q: unexpected response %d", user, rec.Code)
+		}
+		return d
+	}
+	known := attempt("alice")
+	unknown := attempt("nobody")
+	if unknown < known/2 {
+		t.Fatalf("unknown-user login too fast: unknown=%v known=%v", unknown, known)
+	}
+}

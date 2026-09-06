@@ -206,9 +206,11 @@ func (h *Handler) authenticate(r *http.Request) (auth.Principal, string, bool) {
 	if err != nil {
 		return auth.Principal{}, "", false
 	}
-	expires := time.Now().UTC().Add(storage.DefaultSessionTTL)
-	_ = h.cfg.Sessions.TouchSession(r.Context(), sid, expires)
-	return auth.Principal{UserID: u.ID, IsAdmin: u.IsAdmin}, sid, true
+	now := time.Now().UTC()
+	if storage.SessionNeedsTouch(sess.ExpiresAt, now) {
+		_ = h.cfg.Sessions.TouchSession(r.Context(), sid, now.Add(storage.DefaultSessionTTL))
+	}
+	return auth.Principal{UserID: u.ID, IsAdmin: u.IsAdmin, Username: u.Username}, sid, true
 }
 
 func principal(r *http.Request) (auth.Principal, bool) {
@@ -234,7 +236,13 @@ func (h *Handler) handleLoginPost(w http.ResponseWriter, r *http.Request) {
 	username := strings.TrimSpace(r.FormValue("username"))
 	password := r.FormValue("password")
 	u, err := h.cfg.Users.GetUserByUsername(r.Context(), username)
-	if err != nil || !auth.CheckPassword(u.PasswordHash, password) {
+	if err != nil {
+		u = storage.User{} // unknown user: VerifyLogin still burns one bcrypt round
+	}
+	// Evaluate VerifyLogin unconditionally (no short-circuit on err) so an
+	// unknown username costs the same as a wrong password.
+	ok := auth.VerifyLogin(u.PasswordHash, password)
+	if err != nil || !ok {
 		h.render(w, r, "login", pageData{Error: "Неверные учётные данные", CSRFToken: h.csrfToken(r), AssetVersion: assetVersion()})
 		return
 	}
@@ -317,7 +325,9 @@ func (h *Handler) baseData(r *http.Request, nav string) pageData {
 		data.VersionUpdate = st.UpdateAvail
 		data.VersionChecked = st.CheckedOK
 	}
-	if h.cfg.Users != nil && p.UserID > 0 {
+	data.Username = p.Username
+	if data.Username == "" && h.cfg.Users != nil && p.UserID > 0 {
+		// Principal built without a username (tests, custom middleware).
 		if u, err := h.cfg.Users.GetUser(r.Context(), p.UserID); err == nil {
 			data.Username = u.Username
 		}

@@ -1,4 +1,4 @@
-.PHONY: build test lint migrate run docker-up docker-down fmt release
+.PHONY: build test lint migrate run docker-up docker-down fmt
 
 BIN := rssam
 PKGS := $(shell go list ./... | grep -vE '/tmp(/|$$)')
@@ -9,10 +9,6 @@ LDFLAGS := -s -w \
 	-X rssam/internal/version.Version=$(VERSION) \
 	-X rssam/internal/version.Commit=$(COMMIT) \
 	-X rssam/internal/version.Date=$(DATE)
-
-# Tag, commit changelog, push. Example: make release VERSION=0.1.4
-release:
-	./scripts/release.sh $(VERSION)
 
 build:
 	go build -trimpath -ldflags="$(LDFLAGS)" -o bin/$(BIN) ./cmd/rssam

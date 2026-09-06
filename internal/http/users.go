@@ -118,6 +118,9 @@ func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// The env-provided bootstrap password is the operator's own choice and is
+	// not subject to the policy; every other new password is.
+	envBootstrap := false
 	if p, authed := principalFromRequest(r); authed && p.UserID > 0 {
 		// Authenticated caller (session, API key or AUTH_TOKEN): admin only,
 		// is_admin is honoured as requested.
@@ -132,6 +135,7 @@ func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			isAdmin = true
+			envBootstrap = true
 		} else if !isAdmin {
 			isAdmin = true // first user is admin
 		}
@@ -140,6 +144,12 @@ func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if !envBootstrap {
+		if err := auth.ValidateNewPassword(password); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+	}
 	hash, err := auth.HashPassword(password)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
@@ -238,6 +248,10 @@ func (s *Server) handleUpdateMe(w http.ResponseWriter, r *http.Request) {
 	}
 	if cur.PasswordHash != "" && !auth.CheckPassword(cur.PasswordHash, req.CurrentPassword) {
 		writeError(w, http.StatusForbidden, "current_password is incorrect")
+		return
+	}
+	if err := auth.ValidateNewPassword(password); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	hash, err := auth.HashPassword(password)

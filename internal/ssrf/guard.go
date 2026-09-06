@@ -53,9 +53,50 @@ var defaultBlockedCIDRs = []string{
 	"169.254.0.0/16",
 	"100.64.0.0/10",
 	"0.0.0.0/8",
+	"192.0.0.0/24",    // IETF protocol assignments (RFC 6890)
+	"192.0.2.0/24",    // TEST-NET-1
+	"198.18.0.0/15",   // benchmarking (RFC 2544)
+	"198.51.100.0/24", // TEST-NET-2
+	"203.0.113.0/24",  // TEST-NET-3
+	"224.0.0.0/4",     // multicast
+	"240.0.0.0/4",     // reserved + broadcast 255.255.255.255
+	"::/128",          // unspecified
 	"::1/128",
+	"100::/64",      // discard-only (RFC 6666)
+	"2001:db8::/32", // documentation
 	"fc00::/7",
 	"fe80::/10",
+	"ff00::/8", // multicast
+}
+
+// Transition-mechanism prefixes that embed an IPv4 address: the embedded
+// address must pass the same checks, otherwise 64:ff9b::7f00:1 (NAT64) or
+// 2002:7f00:1::1 (6to4) reach 127.0.0.1 through a translator/relay.
+var (
+	nat64Prefix = mustCIDR("64:ff9b::/96")
+	sixToFour   = mustCIDR("2002::/16")
+)
+
+func mustCIDR(s string) *net.IPNet {
+	_, n, err := net.ParseCIDR(s)
+	if err != nil {
+		panic(err)
+	}
+	return n
+}
+
+// embeddedIPv4 extracts the IPv4 address carried inside NAT64 / 6to4 addresses.
+func embeddedIPv4(ip net.IP) net.IP {
+	if ip = ip.To16(); ip == nil || ip.To4() != nil {
+		return nil
+	}
+	switch {
+	case nat64Prefix.Contains(ip):
+		return net.IPv4(ip[12], ip[13], ip[14], ip[15])
+	case sixToFour.Contains(ip):
+		return net.IPv4(ip[2], ip[3], ip[4], ip[5])
+	}
+	return nil
 }
 
 func New(cfg Config) (*Guard, error) {
@@ -222,6 +263,13 @@ func (g *Guard) validateIP(ip net.IP) error {
 	for _, n := range g.blockedNets {
 		if n.Contains(ip) {
 			return fmt.Errorf("ssrf: blocked ip range: %s", ip.String())
+		}
+	}
+	if inner := embeddedIPv4(ip); inner != nil {
+		for _, n := range g.blockedNets {
+			if n.Contains(inner) {
+				return fmt.Errorf("ssrf: blocked ip range: %s (embedded in %s)", inner.String(), ip.String())
+			}
 		}
 	}
 	return nil

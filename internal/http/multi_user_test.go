@@ -275,7 +275,7 @@ func TestMultiUser_CreateUserAndAPIKeyAuth(t *testing.T) {
 	admin := auth.Principal{UserID: 1, IsAdmin: true}
 
 	// Create user bob as admin (handler only; wrapAPI would require admin token)
-	body := `{"username":"bob","password":"bobpass","is_admin":false}`
+	body := `{"username":"bob","password":"bobpass123","is_admin":false}`
 	req := httptest.NewRequest(http.MethodPost, "/v1/users", bytes.NewBufferString(body))
 	req = req.WithContext(auth.WithPrincipal(req.Context(), admin))
 	rec := httptest.NewRecorder()

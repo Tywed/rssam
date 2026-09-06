@@ -32,6 +32,22 @@ func TestGuard_ValidateURL(t *testing.T) {
 		{name: "empty url", url: "   ", wantErr: "empty url"},
 		{name: "public ipv4 ok", url: "https://8.8.8.8/dns-query", wantErr: ""},
 		{name: "public ipv6 ok", url: "https://[2001:4860:4860::8888]/", wantErr: ""},
+		{name: "multicast ipv4", url: "http://224.0.0.1/", wantErr: "blocked ip range"},
+		{name: "ssdp multicast", url: "http://239.255.255.250:1900/", wantErr: "blocked ip range"},
+		{name: "reserved ipv4", url: "http://240.0.0.1/", wantErr: "blocked ip range"},
+		{name: "broadcast", url: "http://255.255.255.255/", wantErr: "blocked ip range"},
+		{name: "test-net", url: "http://192.0.2.1/", wantErr: "blocked ip range"},
+		{name: "benchmark range", url: "http://198.18.0.1/", wantErr: "blocked ip range"},
+		{name: "unspecified ipv6", url: "http://[::]/", wantErr: "blocked ip range"},
+		{name: "multicast ipv6", url: "http://[ff02::1]/", wantErr: "blocked ip range"},
+		{name: "documentation ipv6", url: "http://[2001:db8::1]/", wantErr: "blocked ip range"},
+		{name: "ipv4-mapped loopback", url: "http://[::ffff:127.0.0.1]/", wantErr: "blocked ip range"},
+		{name: "nat64 loopback", url: "http://[64:ff9b::7f00:1]/", wantErr: "blocked ip range"},
+		{name: "nat64 metadata", url: "http://[64:ff9b::a9fe:a9fe]/", wantErr: "blocked ip range"},
+		{name: "nat64 public ok", url: "http://[64:ff9b::808:808]/", wantErr: ""},
+		{name: "6to4 loopback", url: "http://[2002:7f00:1::1]/", wantErr: "blocked ip range"},
+		{name: "6to4 private", url: "http://[2002:c0a8:101::1]/", wantErr: "blocked ip range"},
+		{name: "6to4 public ok", url: "http://[2002:808:808::1]/", wantErr: ""},
 	}
 
 	for _, tc := range tests {

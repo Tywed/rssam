@@ -2,6 +2,8 @@ package worker
 
 import (
 	"encoding/json"
+	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -159,5 +161,54 @@ func TestWebhookBackoffWithJitter_TinyDuration(t *testing.T) {
 	got := webhookBackoffWithJitter(1, time.Nanosecond, time.Nanosecond)
 	if got != time.Nanosecond {
 		t.Fatalf("got %s", got)
+	}
+}
+
+// Regression: user-supplied webhook headers could override Host (defeating
+// the SSRF host check on the dialled address), Content-Length /
+// Transfer-Encoding (request framing) and X-RSSAM-Signature.
+func TestSetWebhookHeaders_ReservedAndUnsafeSkipped(t *testing.T) {
+	req, err := http.NewRequest(http.MethodPost, "https://hooks.example.com/x", strings.NewReader("{}"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw := []byte(`{
+		"Authorization": "Bearer abc",
+		"X-Custom": "ok",
+		"host": "169.254.169.254",
+		"Content-Length": "1",
+		"transfer-encoding": "chunked",
+		"Connection": "close",
+		"x-rssam-signature": "sha256=forged",
+		"X-Injected": "a\r\nX-Smuggled: b",
+		" ": "blank"
+	}`)
+	setWebhookHeaders(req, raw)
+
+	if got := req.Header.Get("Authorization"); got != "Bearer abc" {
+		t.Fatalf("Authorization=%q", got)
+	}
+	if got := req.Header.Get("X-Custom"); got != "ok" {
+		t.Fatalf("X-Custom=%q", got)
+	}
+	if req.Host != "hooks.example.com" || req.Header.Get("Host") != "" {
+		t.Fatalf("Host overridden: req.Host=%q header=%q", req.Host, req.Header.Get("Host"))
+	}
+	for _, h := range []string{"Content-Length", "Transfer-Encoding", "Connection", "X-RSSAM-Signature", "X-Injected", "X-Smuggled"} {
+		if v := req.Header.Get(h); v != "" {
+			t.Fatalf("%s must not be set, got %q", h, v)
+		}
+	}
+	if len(req.Header) != 2 {
+		t.Fatalf("unexpected headers: %v", req.Header)
+	}
+}
+
+func TestSetWebhookHeaders_InvalidJSONIgnored(t *testing.T) {
+	req, _ := http.NewRequest(http.MethodPost, "https://hooks.example.com/x", nil)
+	setWebhookHeaders(req, []byte(`not json`))
+	setWebhookHeaders(req, []byte(`   `))
+	if len(req.Header) != 0 {
+		t.Fatalf("headers set from invalid input: %v", req.Header)
 	}
 }

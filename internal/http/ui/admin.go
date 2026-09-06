@@ -39,6 +39,10 @@ func (h *Handler) handleAdminUserCreate(w http.ResponseWriter, r *http.Request) 
 	username := stringsTrim(r.FormValue("username"))
 	password := r.FormValue("password")
 	isAdmin := r.FormValue("is_admin") == "1"
+	if err := auth.ValidateNewPassword(password); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 	hash, err := auth.HashPassword(password)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)

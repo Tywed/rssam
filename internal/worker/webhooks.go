@@ -328,6 +328,30 @@ func webhookEventType(ctx storage.WebhookDeliveryContext) string {
 	return webhookEventNewEntry
 }
 
+// reservedWebhookHeaders cannot be overridden by user-supplied webhook
+// headers. net/http already ignores Host/Content-Length/Transfer-Encoding
+// from the header map, but honours Connection/Upgrade/Keep-Alive; and the
+// signature header must only ever be produced by the worker itself.
+var reservedWebhookHeaders = map[string]struct{}{
+	"Host":              {},
+	"Content-Length":    {},
+	"Transfer-Encoding": {},
+	"Connection":        {},
+	"Keep-Alive":        {},
+	"Upgrade":           {},
+	"Te":                {},
+	"Trailer":           {},
+	"Proxy-Connection":  {},
+	"X-Rssam-Signature": {},
+}
+
+// isReservedWebhookHeader reports whether a user-supplied header name may not
+// be set on outgoing webhook requests. Names are canonicalised first.
+func isReservedWebhookHeader(name string) bool {
+	_, reserved := reservedWebhookHeaders[http.CanonicalHeaderKey(name)]
+	return reserved
+}
+
 func setWebhookHeaders(req *http.Request, raw []byte) {
 	raw = bytes.TrimSpace(raw)
 	if len(raw) == 0 {
@@ -339,7 +363,12 @@ func setWebhookHeaders(req *http.Request, raw []byte) {
 	}
 	for k, v := range m {
 		k = strings.TrimSpace(k)
-		if k == "" {
+		if k == "" || isReservedWebhookHeader(k) {
+			continue
+		}
+		// A CR/LF in a value would otherwise be rejected by net/http at send
+		// time with an opaque error; skip the header instead of failing delivery.
+		if strings.ContainsAny(v, "\r\n") {
 			continue
 		}
 		req.Header.Set(k, v)

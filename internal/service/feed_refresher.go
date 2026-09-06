@@ -47,6 +47,9 @@ type FeedRefresher struct {
 
 	filterCacheOnce sync.Once
 	filterCache     *enabledFilterCache
+
+	webhookCacheOnce sync.Once
+	webhookCache     *enabledWebhookCache
 }
 
 func (r *FeedRefresher) dedupOnlyStorage() bool {
@@ -279,11 +282,11 @@ func (r *FeedRefresher) applyFiltersBestEffort(ctx context.Context, feed storage
 	}
 	var legacyWebhooks []storage.Webhook
 	if r.Webhooks != nil && r.WebhookLogs != nil {
-		all, _ := r.Webhooks.ListEnabledWebhooks(ctx, feed.UserID, 1000)
-		for _, wh := range all {
-			if wh.FilterID != nil {
-				legacyWebhooks = append(legacyWebhooks, wh)
-			}
+		var err error
+		legacyWebhooks, err = r.listLegacyFilterWebhooksCached(ctx, feed.UserID)
+		if err != nil && r.Log != nil {
+			r.Log.Warn("list enabled webhooks failed; legacy filter webhooks skipped for this refresh",
+				"feed_id", feed.ID, "user_id", feed.UserID, "err", err)
 		}
 	}
 	matchCtx := filter.MatchContext{FeedID: feed.ID, CategoryID: feed.CategoryID}

@@ -5,6 +5,7 @@
 
 # Local scratch: plans, one-off scripts, dumps, host-specific deploy
 tmp/
+scripts/
 
 # Build artifacts
 bin/
