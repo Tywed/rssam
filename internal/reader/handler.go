@@ -152,8 +152,7 @@ type RetryAtError interface {
 }
 
 func RetryAt(err error) (time.Time, bool) {
-	var e RetryAtError
-	if errors.As(err, &e) {
+	if e, ok := errors.AsType[RetryAtError](err); ok {
 		at := e.RetryAt()
 		if !at.IsZero() {
 			return at, true

@@ -342,10 +342,7 @@ func (h *Handler) releaseSlot(rateLimited *bool) {
 	}
 	now := time.Now()
 	cfg := h.snapshotConfig()
-	interval := cfg.RequestInterval
-	if interval < 0 {
-		interval = 0
-	}
+	interval := max(cfg.RequestInterval, 0)
 	h.nextSlot = now.Add(interval)
 	if rateLimited != nil && *rateLimited {
 		cd := cfg.RateLimitCooldown

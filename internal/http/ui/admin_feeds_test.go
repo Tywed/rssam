@@ -51,17 +51,11 @@ func (m *uiMemAdminFeeds) ListAdminFeedsPage(_ context.Context, params storage.A
 	if limit <= 0 {
 		limit = adminFeedsPageSize
 	}
-	offset := params.Offset
-	if offset < 0 {
-		offset = 0
-	}
+	offset := max(params.Offset, 0)
 	if offset >= total {
 		return nil, total, nil
 	}
-	end := offset + limit
-	if end > total {
-		end = total
-	}
+	end := min(offset+limit, total)
 	out := make([]storage.AdminFeedRow, 0, end-offset)
 	for _, v := range filtered[offset:end] {
 		out = append(out, v.AdminFeedRow)
@@ -109,9 +103,9 @@ func newAdminFeedsUIHandler(t *testing.T) http.Handler {
 			},
 			jobs: storage.PollFeedJobCounts{Pending: 2, Running: 1},
 			rows: []storage.AdminFeedRow{
-				{Feed: storage.Feed{ID: 1, Title: "News", FeedType: "rss", NextCheckAt: &next}, EntryCount: 80, UnreadCount: 3},
-				{Feed: storage.Feed{ID: 2, Title: "Broken", FeedType: "rss", LastError: "timeout", ParsingErrorCount: 3, PollPaused: true}, EntryCount: 20, UnreadCount: 2},
-				{Feed: storage.Feed{ID: 3, Title: "Glitch", FeedType: "rss", LastError: "parse error", ParsingErrorCount: 1}, EntryCount: 5, UnreadCount: 0},
+				{ID: 1, Title: "News", FeedType: "rss", NextCheckAt: &next, EntryCount: 80, UnreadCount: 3},
+				{ID: 2, Title: "Broken", FeedType: "rss", LastError: "timeout", ParsingErrorCount: 3, PollPaused: true, EntryCount: 20, UnreadCount: 2},
+				{ID: 3, Title: "Glitch", FeedType: "rss", LastError: "parse error", ParsingErrorCount: 1, EntryCount: 5, UnreadCount: 0},
 			},
 		},
 		CSRFSecret: "csrf-test",
@@ -199,10 +193,10 @@ func TestUI_AdminFeedsPagination(t *testing.T) {
 	now := time.Now()
 	next := now.Add(time.Hour)
 	rows := make([]storage.AdminFeedRow, 0, 55)
-	for i := 0; i < 55; i++ {
+	for i := range 55 {
 		id := int64(i + 1)
 		rows = append(rows, storage.AdminFeedRow{
-			Feed: storage.Feed{ID: id, Title: fmt.Sprintf("Feed %03d", id), FeedType: "rss", NextCheckAt: &next},
+			ID: id, Title: fmt.Sprintf("Feed %03d", id), FeedType: "rss", NextCheckAt: &next,
 		})
 	}
 	h, err := NewHandler(Config{
@@ -261,16 +255,16 @@ func TestUI_AdminFeedsStatusFilterWithPagination(t *testing.T) {
 	now := time.Now()
 	next := now.Add(time.Hour)
 	rows := make([]storage.AdminFeedRow, 0, 60)
-	for i := 0; i < 55; i++ {
+	for i := range 55 {
 		id := int64(i + 1)
 		rows = append(rows, storage.AdminFeedRow{
-			Feed: storage.Feed{ID: id, Title: fmt.Sprintf("OK %d", id), FeedType: "rss", NextCheckAt: &next},
+			ID: id, Title: fmt.Sprintf("OK %d", id), FeedType: "rss", NextCheckAt: &next,
 		})
 	}
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		id := int64(100 + i)
 		rows = append(rows, storage.AdminFeedRow{
-			Feed: storage.Feed{ID: id, Title: fmt.Sprintf("Err %d", id), FeedType: "rss", LastError: "fail"},
+			ID: id, Title: fmt.Sprintf("Err %d", id), FeedType: "rss", LastError: "fail",
 		})
 	}
 	h, err := NewHandler(Config{
@@ -302,7 +296,7 @@ func TestUI_AdminFeedsStatusFilterWithPagination(t *testing.T) {
 	if strings.Contains(body, "OK 1") {
 		t.Fatal("errors filter should not show ok feeds")
 	}
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		if !strings.Contains(body, fmt.Sprintf("Err %d", 100+i)) {
 			t.Fatalf("errors filter should show Err %d", 100+i)
 		}
@@ -317,16 +311,16 @@ func TestClassifyAdminFeedStatus(t *testing.T) {
 	future := now.Add(time.Hour)
 	past := now.Add(-time.Hour)
 
-	if got := classifyAdminFeedStatus(storage.AdminFeedRow{Feed: storage.Feed{PollPaused: true}}, now); got != "paused" {
+	if got := classifyAdminFeedStatus(storage.AdminFeedRow{PollPaused: true}, now); got != "paused" {
 		t.Fatalf("paused: got %q", got)
 	}
-	if got := classifyAdminFeedStatus(storage.AdminFeedRow{Feed: storage.Feed{LastError: "x"}}, now); got != "errors" {
+	if got := classifyAdminFeedStatus(storage.AdminFeedRow{LastError: "x"}, now); got != "errors" {
 		t.Fatalf("errors: got %q", got)
 	}
-	if got := classifyAdminFeedStatus(storage.AdminFeedRow{Feed: storage.Feed{NextCheckAt: &past}}, now); got != "waiting" {
+	if got := classifyAdminFeedStatus(storage.AdminFeedRow{NextCheckAt: &past}, now); got != "waiting" {
 		t.Fatalf("waiting: got %q", got)
 	}
-	if got := classifyAdminFeedStatus(storage.AdminFeedRow{Feed: storage.Feed{NextCheckAt: &future}}, now); got != "ok" {
+	if got := classifyAdminFeedStatus(storage.AdminFeedRow{NextCheckAt: &future}, now); got != "ok" {
 		t.Fatalf("ok: got %q", got)
 	}
 }

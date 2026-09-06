@@ -14,7 +14,7 @@ import (
 func TestUI_SidebarLazySkipsFeedNodes(t *testing.T) {
 	catTelegram := int64(10)
 	feeds := make([]storage.Feed, 0, 60)
-	for i := 0; i < 60; i++ {
+	for i := range 60 {
 		id := int64(i + 1)
 		catID := catTelegram
 		feeds = append(feeds, storage.Feed{ID: id, Title: fmt.Sprintf("TG %d", id), CategoryID: &catID})
@@ -61,7 +61,7 @@ func TestUI_SidebarLazySkipsFeedNodes(t *testing.T) {
 func TestUI_SidebarCategoryFeedsPartial(t *testing.T) {
 	catTelegram := int64(10)
 	feeds := make([]storage.Feed, 0, 55)
-	for i := 0; i < 55; i++ {
+	for i := range 55 {
 		id := int64(i + 1)
 		catID := catTelegram
 		feeds = append(feeds, storage.Feed{ID: id, Title: fmt.Sprintf("TG %d", id), CategoryID: &catID})

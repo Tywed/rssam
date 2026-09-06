@@ -40,7 +40,7 @@ func CompareSemver(a, b string) int {
 	if !bok {
 		return 1
 	}
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		if as[i] < bs[i] {
 			return -1
 		}

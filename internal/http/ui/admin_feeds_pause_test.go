@@ -152,7 +152,7 @@ func TestAdminFeedDelete(t *testing.T) {
 
 func TestClassifyAdminFeedStatusManualPause(t *testing.T) {
 	now := time.Now()
-	if got := classifyAdminFeedStatus(storage.AdminFeedRow{Feed: storage.Feed{ManualPaused: true}}, now); got != "paused" {
+	if got := classifyAdminFeedStatus(storage.AdminFeedRow{ManualPaused: true}, now); got != "paused" {
 		t.Fatalf("manual pause status: got %q", got)
 	}
 }

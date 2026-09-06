@@ -72,20 +72,8 @@ func (h *Handler) handleSettingsBridgeMaxSave(w http.ResponseWriter, r *http.Req
 	mx.DefaultLookback = strings.TrimSpace(r.FormValue("default_lookback"))
 	mx.Overlap = strings.TrimSpace(r.FormValue("overlap"))
 	mx.RateLimitSeconds = parseIntDefault(r.FormValue("rate_limit_seconds"), mx.RateLimitSeconds)
-	mx.RequestIntervalMs = parseIntDefault(r.FormValue("request_interval_ms"), mx.RequestIntervalMs)
-	if mx.RequestIntervalMs < 0 {
-		mx.RequestIntervalMs = 0
-	}
-	if mx.RequestIntervalMs > 60000 {
-		mx.RequestIntervalMs = 60000
-	}
-	mx.ConcurrentSlots = parseIntDefault(r.FormValue("concurrent_slots"), mx.ConcurrentSlots)
-	if mx.ConcurrentSlots < 1 {
-		mx.ConcurrentSlots = 1
-	}
-	if mx.ConcurrentSlots > 32 {
-		mx.ConcurrentSlots = 32
-	}
+	mx.RequestIntervalMs = min(max(parseIntDefault(r.FormValue("request_interval_ms"), mx.RequestIntervalMs), 0), 60000)
+	mx.ConcurrentSlots = min(max(parseIntDefault(r.FormValue("concurrent_slots"), mx.ConcurrentSlots), 1), 32)
 	mx.AllowPrivateAPI = r.FormValue("allow_private_api") == "1"
 	stored.Max = mx
 	if err := h.saveBridgeStored(r, stored); err != nil {

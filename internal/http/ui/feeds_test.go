@@ -25,10 +25,7 @@ func (m *uiMemFeeds) ListFeeds(_ context.Context, _ int64, limit, offset int) ([
 	if offset >= len(m.feeds) {
 		return nil, len(m.feeds), nil
 	}
-	end := offset + limit
-	if end > len(m.feeds) {
-		end = len(m.feeds)
-	}
+	end := min(offset+limit, len(m.feeds))
 	return m.feeds[offset:end], len(m.feeds), nil
 }
 func (m *uiMemFeeds) ListFeedsByCategory(_ context.Context, _ int64, categoryID int64) ([]storage.Feed, error) {
@@ -127,10 +124,7 @@ func (m *uiMemFeeds) ListFeedsByCategoryPaginated(_ context.Context, _ int64, ca
 	if offset >= total {
 		return nil, total, nil
 	}
-	end := offset + limit
-	if end > total {
-		end = total
-	}
+	end := min(offset+limit, total)
 	return all[offset:end], total, nil
 }
 func (m *uiMemFeeds) ListFeedsByStatus(_ context.Context, _ int64, status string, limit, offset int) ([]storage.Feed, int, error) {
@@ -145,10 +139,7 @@ func (m *uiMemFeeds) ListFeedsByStatus(_ context.Context, _ int64, status string
 	if offset >= total {
 		return nil, total, nil
 	}
-	end := offset + limit
-	if end > total {
-		end = total
-	}
+	end := min(offset+limit, total)
 	return filtered[offset:end], total, nil
 }
 func (m *uiMemFeeds) FeedCountsByCategory(_ context.Context, _ int64) (storage.FeedCategoryCounts, error) {
@@ -280,10 +271,7 @@ func (m *uiMemCategories) ListCategories(_ context.Context, _ int64, limit, offs
 	if offset >= len(m.cats) {
 		return nil, len(m.cats), nil
 	}
-	end := offset + limit
-	if end > len(m.cats) {
-		end = len(m.cats)
-	}
+	end := min(offset+limit, len(m.cats))
 	return m.cats[offset:end], len(m.cats), nil
 }
 func (m *uiMemCategories) CreateCategory(context.Context, int64, string, string) (storage.Category, error) {
@@ -397,7 +385,7 @@ func TestUI_FeedsListTreeAndFilters(t *testing.T) {
 
 func TestUI_FeedsListErrorsPagination(t *testing.T) {
 	feeds := make([]storage.Feed, 0, 60)
-	for i := 0; i < 60; i++ {
+	for i := range 60 {
 		id := int64(i + 1)
 		feeds = append(feeds, storage.Feed{
 			ID: id, Title: fmt.Sprintf("Broken %02d", id), LastError: "timeout",
@@ -455,12 +443,12 @@ func TestUI_FeedsListNoTruncation(t *testing.T) {
 	catTelegram := int64(10)
 	catVK := int64(20)
 	feeds := make([]storage.Feed, 0, 1100)
-	for i := 0; i < 1050; i++ {
+	for i := range 1050 {
 		id := int64(i + 1)
 		catID := catTelegram
 		feeds = append(feeds, storage.Feed{ID: id, Title: fmt.Sprintf("TG %d", id), CategoryID: &catID})
 	}
-	for i := 0; i < 50; i++ {
+	for i := range 50 {
 		id := int64(1050 + i + 1)
 		catID := catVK
 		feeds = append(feeds, storage.Feed{ID: id, Title: fmt.Sprintf("VK %d", id), CategoryID: &catID})

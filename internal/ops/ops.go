@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -106,8 +107,7 @@ func restartResult(err error, out []byte) error {
 	if err == nil {
 		return nil
 	}
-	var ee *exec.ExitError
-	if errors.As(err, &ee) {
+	if ee, ok := errors.AsType[*exec.ExitError](err); ok {
 		if ws, ok := ee.Sys().(syscall.WaitStatus); ok && ws.Signaled() {
 			return nil
 		}
@@ -196,8 +196,8 @@ func ParseUpdateLog(log string, running bool) (done, ok bool, errMsg string) {
 	}
 	lines := strings.Split(log, "\n")
 	last := ""
-	for i := len(lines) - 1; i >= 0; i-- {
-		s := strings.TrimSpace(lines[i])
+	for _, line := range slices.Backward(lines) {
+		s := strings.TrimSpace(line)
 		if s != "" {
 			last = s
 			break
@@ -206,8 +206,8 @@ func ParseUpdateLog(log string, running bool) (done, ok bool, errMsg string) {
 	if strings.HasPrefix(last, "ok ") {
 		return true, true, ""
 	}
-	if strings.HasPrefix(last, "error:") {
-		return true, false, strings.TrimSpace(strings.TrimPrefix(last, "error:"))
+	if after, ok0 := strings.CutPrefix(last, "error:"); ok0 {
+		return true, false, strings.TrimSpace(after)
 	}
 	return true, false, last
 }
@@ -281,7 +281,7 @@ func DualProcessWarning() string {
 		return ""
 	}
 	n := 0
-	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+	for line := range strings.SplitSeq(strings.TrimSpace(string(out)), "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" {
 			continue

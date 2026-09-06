@@ -4,6 +4,7 @@ import (
 	"net"
 	"net/http"
 	"net/netip"
+	"slices"
 	"strings"
 	"sync/atomic"
 )
@@ -102,8 +103,8 @@ func ClientIP(r *http.Request) string {
 
 	if xff := r.Header.Get("X-Forwarded-For"); strings.TrimSpace(xff) != "" {
 		parts := strings.Split(xff, ",")
-		for i := len(parts) - 1; i >= 0; i-- {
-			cand := strings.TrimSpace(parts[i])
+		for _, part := range slices.Backward(parts) {
+			cand := strings.TrimSpace(part)
 			a, err := netip.ParseAddr(strings.Trim(cand, "[]"))
 			if err != nil {
 				break // malformed hop: stop trusting the chain

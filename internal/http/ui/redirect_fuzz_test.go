@@ -44,7 +44,7 @@ func FuzzLocalUIPath(f *testing.F) {
 			t.Fatalf("%q -> %q: decoded path %q escapes /ui/", raw, got, u.Path)
 		}
 		// No dot segment may survive: a browser would resolve it away from /ui/.
-		for _, seg := range strings.Split(u.Path, "/") {
+		for seg := range strings.SplitSeq(u.Path, "/") {
 			if seg == ".." || seg == "." {
 				t.Fatalf("%q -> %q: dot segment survived", raw, got)
 			}

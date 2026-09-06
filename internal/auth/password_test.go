@@ -76,7 +76,7 @@ func TestVerifyLogin_UnknownUserTakesBcryptTime(t *testing.T) {
 	}
 	measure := func(h string) time.Duration {
 		var best time.Duration
-		for i := 0; i < 3; i++ {
+		for range 3 {
 			start := time.Now()
 			VerifyLogin(h, "wrong password")
 			d := time.Since(start)

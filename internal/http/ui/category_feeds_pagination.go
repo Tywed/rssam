@@ -57,9 +57,6 @@ func sliceFeedsPage(feeds []storage.Feed, limit, offset int) []storage.Feed {
 	if offset >= len(feeds) {
 		return nil
 	}
-	end := offset + limit
-	if end > len(feeds) {
-		end = len(feeds)
-	}
+	end := min(offset+limit, len(feeds))
 	return feeds[offset:end]
 }

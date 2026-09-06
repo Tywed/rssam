@@ -44,16 +44,10 @@ func ComputeAfter(lastEndTimeMs int64, p CursorParams) (afterMs, endTimeMs int64
 	now := p.now()
 	endTimeMs = now.UnixMilli()
 	if lastEndTimeMs > 0 {
-		afterMs = lastEndTimeMs - p.overlap().Milliseconds()
-		if afterMs < 0 {
-			afterMs = 0
-		}
+		afterMs = max(lastEndTimeMs-p.overlap().Milliseconds(), 0)
 		return afterMs, endTimeMs
 	}
-	afterMs = endTimeMs - p.lookback().Milliseconds()
-	if afterMs < 0 {
-		afterMs = 0
-	}
+	afterMs = max(endTimeMs-p.lookback().Milliseconds(), 0)
 	return afterMs, endTimeMs
 }
 

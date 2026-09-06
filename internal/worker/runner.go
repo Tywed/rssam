@@ -199,10 +199,7 @@ func (r *Runner) dispatchLoop(ctx context.Context, out chan<- storage.Job) {
 			}
 			now := time.Now()
 			if lastReclaim.IsZero() || now.Sub(lastReclaim) >= 20*time.Second {
-				staleAfter := r.Cfg.FetchTimeout * 2
-				if staleAfter < 2*time.Minute {
-					staleAfter = 2 * time.Minute
-				}
+				staleAfter := max(r.Cfg.FetchTimeout*2, 2*time.Minute)
 				n, err := r.Store.ReclaimStalePollJobs(ctx, r.Cfg.InstanceID, staleAfter)
 				if err != nil {
 					r.Log.Error("dispatcher: reclaim stale jobs failed", "err", err)
@@ -216,10 +213,7 @@ func (r *Runner) dispatchLoop(ctx context.Context, out chan<- storage.Job) {
 			if room <= 0 {
 				continue
 			}
-			limit := r.Cfg.PoolSize
-			if limit > room {
-				limit = room
-			}
+			limit := min(r.Cfg.PoolSize, room)
 			jobs, err := r.Store.ClaimDueJobs(ctx, limit, r.Cfg.InstanceID)
 			if err != nil {
 				r.Log.Error("dispatcher: claim due jobs failed", "err", err)

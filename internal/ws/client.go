@@ -65,10 +65,7 @@ func (c *Client) readPump() {
 	defer c.Close()
 	defer c.hub.Unregister(c)
 
-	readTimeout := c.hub.PingInterval() * 3
-	if readTimeout < 5*time.Second {
-		readTimeout = 5 * time.Second
-	}
+	readTimeout := max(c.hub.PingInterval()*3, 5*time.Second)
 	_ = c.conn.SetDeadline(time.Now().Add(readTimeout))
 
 	for {

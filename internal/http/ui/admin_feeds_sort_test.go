@@ -7,8 +7,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"rssam/internal/storage"
 )
 
 func TestSortAdminFeedRows(t *testing.T) {
@@ -16,9 +14,9 @@ func TestSortAdminFeedRows(t *testing.T) {
 	past := now.Add(-time.Hour)
 	future := now.Add(time.Hour)
 	rows := []adminFeedRowView{
-		{AdminFeedRow: storage.AdminFeedRow{Feed: storage.Feed{ID: 1, Title: "Beta"}, EntryCount: 10, UnreadCount: 2}, Status: "ok"},
-		{AdminFeedRow: storage.AdminFeedRow{Feed: storage.Feed{ID: 2, Title: "Alpha", ParsingErrorCount: 3, LastCheckedAt: &past}, EntryCount: 5, UnreadCount: 1}, Status: "errors"},
-		{AdminFeedRow: storage.AdminFeedRow{Feed: storage.Feed{ID: 3, Title: "Gamma", NextCheckAt: &future}, EntryCount: 20, UnreadCount: 4}, Status: "ok"},
+		{ID: 1, Title: "Beta", EntryCount: 10, UnreadCount: 2, Status: "ok"},
+		{ID: 2, Title: "Alpha", ParsingErrorCount: 3, LastCheckedAt: &past, EntryCount: 5, UnreadCount: 1, Status: "errors"},
+		{ID: 3, Title: "Gamma", NextCheckAt: &future, EntryCount: 20, UnreadCount: 4, Status: "ok"},
 	}
 
 	sortAdminFeedRows(rows, "name", "asc")

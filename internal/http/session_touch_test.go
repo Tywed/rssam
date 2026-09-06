@@ -31,7 +31,7 @@ func TestAuthenticateSession_TouchThrottled(t *testing.T) {
 
 	// Fresh session (touched just now): no write.
 	sessions.s = storage.Session{UserID: 7, SessionID: "s7", ExpiresAt: time.Now().Add(storage.DefaultSessionTTL)}
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		p, ok := s.authenticateRequest(req.Context(), req)
 		if !ok || p.UserID != 7 || p.Username != "kim" {
 			t.Fatalf("auth failed: ok=%v p=%+v", ok, p)

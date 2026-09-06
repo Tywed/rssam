@@ -62,7 +62,7 @@ func TestGenerateRoundtripStructure(t *testing.T) {
 			{ID: 1, Title: "Tech"},
 		},
 		Feeds: []ExportFeed{
-			{Title: "Example", FeedURL: "https://example.com/feed.xml", CategoryID: int64Ptr(1)},
+			{Title: "Example", FeedURL: "https://example.com/feed.xml", CategoryID: new(int64(1))},
 			{Title: "Root", FeedURL: "https://news.example.com/rss"},
 		},
 	})
@@ -82,4 +82,4 @@ func TestGenerateRoundtripStructure(t *testing.T) {
 	}
 }
 
-func int64Ptr(v int64) *int64 { return &v }
+//go:fix inline

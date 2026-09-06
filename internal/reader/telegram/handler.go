@@ -96,18 +96,12 @@ func (h *Handler) Fetch(ctx context.Context, feedURL string, override *BridgeOve
 		return FetchResult{}, fmt.Errorf("telegram: cannot extract channel username from URL: %s", feedURL)
 	}
 
-	maxPages := cfg.MaxPages
-	if maxPages < 1 {
-		maxPages = 1
-	}
-	if maxPages > 100 {
-		maxPages = 100
-	}
+	maxPages := min(max(cfg.MaxPages, 1), 100)
 
 	pageURL := PreviewURL(username)
 	var all []ParsedMessage
 
-	for page := 0; page < maxPages; page++ {
+	for page := range maxPages {
 		body, err := h.fetchPage(ctx, cfg, pageURL)
 		if err != nil {
 			return FetchResult{}, err
@@ -218,12 +212,9 @@ func (h *Handler) fetchPageWithRetry(ctx context.Context, cfg Config, pageURL st
 	if h.proxyClient == nil {
 		return nil, fmt.Errorf("telegram: proxy client is not configured")
 	}
-	maxTries := 1 + cfg.ProxyRetry
-	if maxTries < 1 {
-		maxTries = 1
-	}
+	maxTries := max(1+cfg.ProxyRetry, 1)
 	var lastErr error
-	for try := 0; try < maxTries; try++ {
+	for range maxTries {
 		if err := ctx.Err(); err != nil {
 			if lastErr != nil {
 				return nil, lastErr

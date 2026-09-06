@@ -170,7 +170,7 @@ func TestHandler_Fetch_SerializesRequests(t *testing.T) {
 
 	var wg sync.WaitGroup
 	var okN atomic.Int32
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
@@ -224,7 +224,7 @@ func TestHandler_Fetch_ConcurrentSlots(t *testing.T) {
 
 	var wg sync.WaitGroup
 	var okN atomic.Int32
-	for i := 0; i < 6; i++ {
+	for i := range 6 {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()

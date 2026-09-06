@@ -14,7 +14,7 @@ func TestValidateBulkFeedUpdate(t *testing.T) {
 	}{
 		{"empty", BulkFeedUpdate{}, true},
 		{"interval ok", BulkFeedUpdate{IntervalMinutes: &interval}, false},
-		{"interval low", BulkFeedUpdate{IntervalMinutes: ptrInt(0)}, true},
+		{"interval low", BulkFeedUpdate{IntervalMinutes: new(0)}, true},
 		{"webhook set", BulkFeedUpdate{WebhookSet: true}, false},
 		{"hash only", BulkFeedUpdate{StoreHashOnly: &hash}, false},
 		{"pause", BulkFeedUpdate{ManualPaused: &pause}, false},
@@ -31,4 +31,4 @@ func TestValidateBulkFeedUpdate(t *testing.T) {
 	}
 }
 
-func ptrInt(v int) *int { return &v }
+//go:fix inline

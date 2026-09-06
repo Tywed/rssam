@@ -98,10 +98,7 @@ func utilization(offeredPerMin, avgSec float64, workers int) float64 {
 
 // Recommend returns a poll-worker action. First matching rule wins.
 func Recommend(in Input) Advice {
-	workers := in.Workers
-	if workers < 1 {
-		workers = 1
-	}
+	workers := max(in.Workers, 1)
 	avgSec := avgPollSeconds(in)
 	avgDur := time.Duration(avgSec * float64(time.Second))
 	needed := neededWorkers(in.OfferedPerMin, avgSec)
@@ -139,10 +136,7 @@ func Recommend(in Input) Advice {
 	}
 
 	if workers > minWorkersKeep && float64(needed) < decreaseRatio*float64(workers) && in.MaxLag < lagIdle && in.Overdue <= workers {
-		suggested := needed
-		if suggested < minWorkersKeep {
-			suggested = minWorkersKeep
-		}
+		suggested := max(needed, minWorkersKeep)
 		if suggested > needed && needed >= minWorkersKeep {
 			suggested = needed
 		}

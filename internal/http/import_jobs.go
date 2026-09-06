@@ -157,10 +157,7 @@ func (s *Server) startAsyncOPMLImport(r *http.Request, doc *opml.Document, userI
 	if limit <= 0 {
 		limit = 500
 	}
-	total := len(entries)
-	if total > limit {
-		total = limit
-	}
+	total := min(len(entries), limit)
 	j := s.importJobs.create(userID, total)
 	go func() {
 		s.importJobs.update(j.ID, func(job *importJob) {

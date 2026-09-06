@@ -57,10 +57,7 @@ type RutubeBridgeSettings struct {
 }
 
 func BridgeSettingsFromRuntime(rt bridgeconfig.Runtime) BridgeSettings {
-	slots := rt.Max.ConcurrentSlots
-	if slots < 1 {
-		slots = 1
-	}
+	slots := max(rt.Max.ConcurrentSlots, 1)
 	return BridgeSettings{
 		Telegram: TelegramBridgeSettings{
 			Enabled:              true,

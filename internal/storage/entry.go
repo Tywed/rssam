@@ -189,10 +189,7 @@ func (s *PostgresStore) listEntries(ctx context.Context, userID int64, filter Li
 	if limit > 10000 {
 		limit = 10000
 	}
-	offset := filter.Offset
-	if offset < 0 {
-		offset = 0
-	}
+	offset := max(filter.Offset, 0)
 
 	var (
 		where []string

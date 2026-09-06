@@ -430,13 +430,7 @@ func (c Config) EffectiveDatabaseMaxConns() int {
 	if c.DatabaseMaxConns > 0 {
 		return c.DatabaseMaxConns
 	}
-	n := c.WorkerPoolSize + c.WebhookWorkerPoolSize + 8
-	if n < 16 {
-		n = 16
-	}
-	if n > 200 {
-		n = 200
-	}
+	n := min(max(c.WorkerPoolSize+c.WebhookWorkerPoolSize+8, 16), 200)
 	return n
 }
 

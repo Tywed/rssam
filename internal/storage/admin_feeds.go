@@ -259,10 +259,7 @@ func (s *PostgresStore) ListAdminFeedsPage(ctx context.Context, params AdminFeed
 	if limit > 200 {
 		limit = 200
 	}
-	offset := params.Offset
-	if offset < 0 {
-		offset = 0
-	}
+	offset := max(params.Offset, 0)
 
 	status := strings.TrimSpace(params.Status)
 	if status == "" {

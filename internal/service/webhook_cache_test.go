@@ -32,7 +32,7 @@ func TestListLegacyFilterWebhooksCached(t *testing.T) {
 	r := &FeedRefresher{Webhooks: store}
 	ctx := context.Background()
 
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		got, err := r.listLegacyFilterWebhooksCached(ctx, 1)
 		if err != nil {
 			t.Fatal(err)

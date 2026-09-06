@@ -22,10 +22,7 @@ func (m *uiMemLabels) ListLabels(_ context.Context, _ int64, limit, offset int) 
 	if offset >= len(m.labels) {
 		return nil, len(m.labels), nil
 	}
-	end := offset + limit
-	if end > len(m.labels) {
-		end = len(m.labels)
-	}
+	end := min(offset+limit, len(m.labels))
 	return m.labels[offset:end], len(m.labels), nil
 }
 func (m *uiMemLabels) CreateLabel(context.Context, storage.CreateLabelParams) (storage.Label, error) {

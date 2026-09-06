@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"html"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -135,8 +136,8 @@ func mergeMessageGroup(group []ParsedMessage) ParsedMessage {
 	merged.Enclosures = uniqueStrings(merged.Enclosures)
 	merged.Content = content.String()
 	if merged.Title == "" || isGenericMediaTitle(merged.Title) {
-		for i := len(group) - 1; i >= 0; i-- {
-			if t := strings.TrimSpace(group[i].Title); t != "" && !isGenericMediaTitle(t) {
+		for _, g := range slices.Backward(group) {
+			if t := strings.TrimSpace(g.Title); t != "" && !isGenericMediaTitle(t) {
 				merged.Title = t
 				break
 			}

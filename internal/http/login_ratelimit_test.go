@@ -45,7 +45,7 @@ func TestLoginUsesDedicatedLimiter(t *testing.T) {
 		return rec.Code
 	}
 
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		if code := attempt("203.0.113.5"); code != http.StatusOK {
 			t.Fatalf("attempt %d: status=%d, want 200 (login page with error)", i+1, code)
 		}

@@ -14,20 +14,14 @@ func ComputeTimeWindow(lastEndTime int64, lookback, overlap time.Duration, now t
 	now = now.UTC()
 	end := now.Unix()
 	if lastEndTime > 0 {
-		start := lastEndTime - int64(overlap.Seconds())
-		if start < 0 {
-			start = 0
-		}
+		start := max(lastEndTime-int64(overlap.Seconds()), 0)
 		return TimeWindow{StartTime: start, EndTime: end}
 	}
 	lookbackSec := int64(lookback.Seconds())
 	if lookbackSec <= 0 {
 		lookbackSec = 86400
 	}
-	start := end - lookbackSec
-	if start < 0 {
-		start = 0
-	}
+	start := max(end-lookbackSec, 0)
 	return TimeWindow{StartTime: start, EndTime: end}
 }
 

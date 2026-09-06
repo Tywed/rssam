@@ -58,7 +58,7 @@ func extractWithRules(html, scraperRules string) string {
 		}
 	}
 
-	for _, line := range strings.Split(scraperRules, "\n") {
+	for line := range strings.SplitSeq(scraperRules, "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" || strings.Contains(line, "=") {
 			continue
@@ -72,7 +72,7 @@ func extractWithRules(html, scraperRules string) string {
 
 func parseScraperRules(raw string) map[string]string {
 	out := map[string]string{}
-	for _, line := range strings.Split(raw, "\n") {
+	for line := range strings.SplitSeq(raw, "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" {
 			continue

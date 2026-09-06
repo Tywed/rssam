@@ -47,8 +47,8 @@ func ParseUsernameFromFeedURL(feedURL string) (string, bool) {
 		}
 	case "":
 	default:
-		if strings.HasSuffix(host, ".t.me") {
-			sub := strings.TrimSuffix(host, ".t.me")
+		if before, ok := strings.CutSuffix(host, ".t.me"); ok {
+			sub := before
 			if sub != "" {
 				return NormalizeUsername(sub), true
 			}
