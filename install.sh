@@ -108,6 +108,21 @@ Restart=on-failure
 RestartSec=5
 LimitNOFILE=65535
 
+# --- Sandboxing (compatible with restart/update from the admin UI) ---------
+# The admin UI restarts and updates the service through `sudo systemctl` and
+# `sudo rssam-update` (deploy/sudoers.rssam). sudo needs to gain privileges,
+# so only options that do NOT imply NoNewPrivileges= are used here. If you do
+# not need restart/update from the UI, install deploy/rssam-hardened.service
+# instead and drop /etc/sudoers.d/rssam.
+ProtectSystem=full
+ProtectHome=true
+PrivateTmp=true
+ProtectControlGroups=true
+ProtectProc=invisible
+ProcSubset=pid
+RemoveIPC=true
+UMask=0077
+
 [Install]
 WantedBy=multi-user.target
 EOF
@@ -156,26 +171,44 @@ install_helper() {
   chmod 755 /usr/local/sbin/rssam-update
 }
 
+# Map uname -m to the GOARCH used in release asset names.
+release_arch() {
+  case "$(uname -m)" in
+    x86_64|amd64) echo amd64 ;;
+    aarch64|arm64) echo arm64 ;;
+    *) die "unsupported architecture: $(uname -m) (releases ship linux/amd64 and linux/arm64)" ;;
+  esac
+}
+
 download_release() {
   ver=$1
+  arch=$(release_arch)
+  asset="rssam-linux-${arch}.tar.gz"
   tmp=$(mktemp -d)
-  url="https://github.com/${REPO}/releases/download/${ver}/rssam-linux-amd64.tar.gz"
-  log "fetch $url"
-  fetch "$url" "$tmp/rssam-linux-amd64.tar.gz"
-  fetch "$url.sha256" "$tmp/rssam-linux-amd64.tar.gz.sha256" || true
-  if [ -s "$tmp/rssam-linux-amd64.tar.gz.sha256" ]; then
-    expect=$(tr -d ' \n\t' <"$tmp/rssam-linux-amd64.tar.gz.sha256" | awk '{print $1}')
-    got=$(sha256sum "$tmp/rssam-linux-amd64.tar.gz" | awk '{print $1}')
-    case "$expect" in
-      [a-fA-F0-9][a-fA-F0-9]*)
-        if [ ${#expect} -eq 64 ] && [ "$expect" != "$got" ]; then
-          rm -rf "$tmp"
-          die "sha256 mismatch"
-        fi
-        ;;
-    esac
+  base="https://github.com/${REPO}/releases/download/${ver}"
+  log "fetch $base/$asset"
+  fetch "$base/$asset" "$tmp/$asset"
+  # Prefer the release-wide SHA256SUMS (one attested file); fall back to the
+  # per-asset .sha256 that older releases ship. Refuse to install when neither
+  # is available: an unverifiable download is not worth a root-owned binary.
+  expect=""
+  if fetch "$base/SHA256SUMS" "$tmp/SHA256SUMS" 2>/dev/null && [ -s "$tmp/SHA256SUMS" ]; then
+    expect=$(awk -v a="$asset" '$2 == a || $2 == "*" a {print $1}' "$tmp/SHA256SUMS" | head -1)
   fi
-  tar -xzf "$tmp/rssam-linux-amd64.tar.gz" -C "$tmp"
+  if [ -z "$expect" ] && fetch "$base/$asset.sha256" "$tmp/$asset.sha256" 2>/dev/null && [ -s "$tmp/$asset.sha256" ]; then
+    expect=$(tr -d ' \n\t' <"$tmp/$asset.sha256")
+  fi
+  case "$expect" in
+    [a-fA-F0-9]*) [ ${#expect} -eq 64 ] || expect="" ;;
+    *) expect="" ;;
+  esac
+  [ -n "$expect" ] || { rm -rf "$tmp"; die "no checksum available for $asset (SHA256SUMS or .sha256)"; }
+  got=$(sha256sum "$tmp/$asset" | awk '{print $1}')
+  if [ "$expect" != "$got" ]; then
+    rm -rf "$tmp"
+    die "sha256 mismatch for $asset"
+  fi
+  tar -xzf "$tmp/$asset" -C "$tmp"
   [ -f "$tmp/rssam" ] || { rm -rf "$tmp"; die "binary missing in archive"; }
   mkdir -p "$BIN_DIR"
   if [ -f "$BIN_DIR/rssam" ]; then

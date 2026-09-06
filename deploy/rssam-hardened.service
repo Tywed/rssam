@@ -1,0 +1,57 @@
+[Unit]
+Description=rssam RSS aggregator (strict sandbox, no self-update from the UI)
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=rssam
+Group=rssam
+WorkingDirectory=/opt/rssam
+EnvironmentFile=/opt/rssam/.env
+ExecStart=/opt/rssam/bin/rssam
+Restart=on-failure
+RestartSec=5
+LimitNOFILE=65535
+
+# --- Strict sandbox ----------------------------------------------------------
+# NoNewPrivileges=true (also implied by most options below) means sudo cannot
+# work: the admin UI will show restart/update as unavailable, and
+# /etc/sudoers.d/rssam should not be installed. Restart and update the
+# service from the host instead (`systemctl restart rssam`, `rssam-update`).
+#
+# Needed by the process: outbound TCP (feeds, webhooks, Postgres), read access
+# to /opt/rssam, write access to /opt/rssam/log and to /opt/rssam/.env
+# (written as .env.tmp + rename, so the directory itself must be writable).
+# The binary directory stays read-only even for the service user.
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/opt/rssam
+ReadOnlyPaths=/opt/rssam/bin
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+ProtectProc=invisible
+ProcSubset=pid
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+RemoveIPC=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources
+CapabilityBoundingSet=
+AmbientCapabilities=
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

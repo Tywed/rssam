@@ -1,6 +1,8 @@
 package ops
 
 import (
+	"errors"
+	"os/exec"
 	"strings"
 	"testing"
 	"time"
@@ -65,5 +67,28 @@ func TestProbeCommandTimesOut(t *testing.T) {
 	}
 	if d := time.Since(start); d > 5*time.Second {
 		t.Fatalf("probe took %v, timeout did not apply", d)
+	}
+}
+
+func TestRestartResult(t *testing.T) {
+	if err := restartResult(nil, nil); err != nil {
+		t.Fatalf("nil error: %v", err)
+	}
+	// sudo killed by systemd stopping our cgroup → restart is in progress.
+	killed := exec.Command("sh", "-c", "kill -TERM $$")
+	if err := killed.Run(); err == nil {
+		t.Fatal("expected the helper process to be signalled")
+	} else if got := restartResult(err, nil); got != nil {
+		t.Fatalf("signalled sudo should count as success, got %v", got)
+	}
+	// A genuine non-zero exit (e.g. no sudoers entry) is still an error.
+	failed := exec.Command("sh", "-c", "exit 1")
+	if err := failed.Run(); err == nil {
+		t.Fatal("expected exit 1")
+	} else if got := restartResult(err, []byte("sudo: a password is required")); got == nil || !strings.Contains(got.Error(), "password is required") {
+		t.Fatalf("exit 1 should be an error carrying the output, got %v", got)
+	}
+	if got := restartResult(errors.New("exec: not found"), nil); got == nil {
+		t.Fatal("non-exit errors must propagate")
 	}
 }

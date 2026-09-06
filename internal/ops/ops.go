@@ -2,6 +2,7 @@ package ops
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/url"
 	"os"
@@ -93,10 +94,25 @@ func Restart() error {
 	defer cancel()
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	out, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("restart: %w: %s", err, strings.TrimSpace(string(out)))
+	return restartResult(err, out)
+}
+
+// restartResult interprets the exit of `sudo systemctl restart --no-block`.
+// Even with --no-block systemd starts stopping the unit at once, and the stop
+// signal goes to the whole control group - which includes the sudo child
+// (setsid does not leave the cgroup). A sudo killed by a signal therefore
+// means the restart is already in progress, not that it failed.
+func restartResult(err error, out []byte) error {
+	if err == nil {
+		return nil
 	}
-	return nil
+	var ee *exec.ExitError
+	if errors.As(err, &ee) {
+		if ws, ok := ee.Sys().(syscall.WaitStatus); ok && ws.Signaled() {
+			return nil
+		}
+	}
+	return fmt.Errorf("restart: %w: %s", err, strings.TrimSpace(string(out)))
 }
 
 func UpdateHelperPath() string {

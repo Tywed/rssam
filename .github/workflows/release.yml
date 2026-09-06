@@ -5,38 +5,161 @@ on:
     tags:
       - "v*.*.*"
 
+# Each job asks only for what it needs; the default token is read-only.
 permissions:
-  contents: write
+  contents: read
+
+env:
+  IMAGE: ghcr.io/${{ github.repository }}
 
 jobs:
-  release:
+  # Cross-compiled binaries for every supported platform. One job per
+  # platform keeps the matrix readable in the UI and lets a single failure
+  # be retried without rebuilding everything.
+  build:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { goos: linux, goarch: amd64 }
+          - { goos: linux, goarch: arm64 }
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
-      - name: Test
-        run: go test ./...
-      - name: Build
+      - name: Build ${{ matrix.goos }}/${{ matrix.goarch }}
         env:
           VERSION: ${{ github.ref_name }}
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: "0"
         run: |
+          set -euo pipefail
           COMMIT=$(git rev-parse --short HEAD)
-          DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-          mkdir -p dist
-          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath \
-            -ldflags="-s -w \
+          # Reproducible: the build date is the commit date, not "now".
+          DATE=$(git log -1 --format=%cI | sed 's/+00:00$/Z/')
+          NAME="rssam-${GOOS}-${GOARCH}"
+          mkdir -p "dist/${NAME}"
+          go build -trimpath \
+            -ldflags="-s -w -buildid= \
               -X rssam/internal/version.Version=${VERSION} \
               -X rssam/internal/version.Commit=${COMMIT} \
               -X rssam/internal/version.Date=${DATE}" \
-            -o dist/rssam ./cmd/rssam
-          tar -C dist -czf dist/rssam-linux-amd64.tar.gz rssam
-          sha256sum dist/rssam-linux-amd64.tar.gz | awk '{print $1}' > dist/rssam-linux-amd64.tar.gz.sha256
+            -o "dist/${NAME}/rssam" ./cmd/rssam
+          # Deterministic tarball: fixed mtime/owner, sorted entries, no gzip timestamp.
+          tar --sort=name --mtime="${DATE}" --owner=0 --group=0 --numeric-owner \
+            -C "dist/${NAME}" -cf - rssam | gzip -n -9 > "dist/${NAME}.tar.gz"
+          rm -r "dist/${NAME}"
+          # Per-asset .sha256 kept for install.sh compatibility; SHA256SUMS
+          # below is the single file to verify against.
+          (cd dist && sha256sum "${NAME}.tar.gz" | awk '{print $1}' > "${NAME}.tar.gz.sha256")
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: dist-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 7
+
+  # Collect binaries, write SHA256SUMS, attach SLSA build provenance and an
+  # SBOM, then publish the GitHub release.
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write     # create the release and upload assets
+      id-token: write     # sign provenance with the workflow identity (Sigstore)
+      attestations: write # store the attestation on the repository
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: dist-*
+          path: dist
+          merge-multiple: true
+      - name: SHA256SUMS
+        run: |
+          set -euo pipefail
+          cd dist
+          sha256sum *.tar.gz > SHA256SUMS
+          cat SHA256SUMS
+      - name: SBOM (SPDX, from go.mod)
+        uses: anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26 # v0.24.2
+        with:
+          path: .
+          format: spdx-json
+          artifact-name: rssam-${{ github.ref_name }}.spdx.json
+          output-file: dist/rssam-${{ github.ref_name }}.spdx.json
+          upload-artifact: false
+          upload-release-assets: false
+      - name: Build provenance attestation
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: |
+            dist/*.tar.gz
+            dist/SHA256SUMS
       - name: Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
           generate_release_notes: true
+          fail_on_unmatched_files: true
           files: |
-            dist/rssam-linux-amd64.tar.gz
-            dist/rssam-linux-amd64.tar.gz.sha256
+            dist/*.tar.gz
+            dist/*.tar.gz.sha256
+            dist/SHA256SUMS
+            dist/rssam-${{ github.ref_name }}.spdx.json
+
+  # Multi-arch container image on GHCR, built from the same commit and
+  # version metadata as the tarballs; attested like the binaries.
+  image:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write     # push to ghcr.io/<owner>/rssam
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: docker/setup-qemu-action@1f40c72289eff860ee54a304f1438e3cff362e0a # v4.3.0
+      - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: ${{ env.IMAGE }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,format=long
+      - name: Build metadata
+        id: buildmeta
+        run: |
+          echo "commit=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+          echo "date=$(git log -1 --format=%cI | sed 's/+00:00$/Z/')" >> "$GITHUB_OUTPUT"
+      - id: push
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          provenance: false # attested below, once, for the multi-arch index
+          sbom: false
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            VERSION=${{ github.ref_name }}
+            COMMIT=${{ steps.buildmeta.outputs.commit }}
+            DATE=${{ steps.buildmeta.outputs.date }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true

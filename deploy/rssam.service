@@ -14,5 +14,20 @@ Restart=on-failure
 RestartSec=5
 LimitNOFILE=65535
 
+# --- Sandboxing (compatible with restart/update from the admin UI) ---------
+# The admin UI restarts and updates the service through `sudo systemctl` and
+# `sudo rssam-update` (deploy/sudoers.rssam). sudo needs to gain privileges,
+# so only options that do NOT imply NoNewPrivileges= are used here. If you do
+# not need restart/update from the UI, install deploy/rssam-hardened.service
+# instead and drop /etc/sudoers.d/rssam.
+ProtectSystem=full
+ProtectHome=true
+PrivateTmp=true
+ProtectControlGroups=true
+ProtectProc=invisible
+ProcSubset=pid
+RemoveIPC=true
+UMask=0077
+
 [Install]
 WantedBy=multi-user.target
