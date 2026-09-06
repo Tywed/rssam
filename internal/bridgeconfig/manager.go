@@ -3,6 +3,7 @@ package bridgeconfig
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"sync"
 	"time"
 
@@ -50,7 +51,7 @@ func (m *Manager) Load(ctx context.Context) error {
 		return nil
 	}
 	raw, err := m.store.GetAppSetting(ctx, SettingsKey)
-	if err != nil && err != storage.ErrNotFound {
+	if err != nil && !errors.Is(err, storage.ErrNotFound) {
 		return err
 	}
 	stored := ParseStored(raw)

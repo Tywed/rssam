@@ -13,8 +13,8 @@ var urlPattern = regexp.MustCompile(`(?i)(https?://[^\s<>"']+)`)
 func BuildContentHTML(thumbnailURL, description string) string {
 	var b strings.Builder
 	if thumb := strings.TrimSpace(thumbnailURL); thumb != "" {
-		b.WriteString(fmt.Sprintf(`<p><a href="%s"><img src="%s" alt="" /></a></p>`,
-			html.EscapeString(thumb), html.EscapeString(thumb)))
+		fmt.Fprintf(&b, `<p><a href="%s"><img src="%s" alt="" /></a></p>`,
+			html.EscapeString(thumb), html.EscapeString(thumb))
 	}
 	if desc := strings.TrimSpace(description); desc != "" {
 		if b.Len() > 0 {

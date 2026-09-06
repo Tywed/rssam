@@ -1,6 +1,9 @@
 package maxstat
 
-import "testing"
+import (
+	"errors"
+	"testing"
+)
 
 func TestResolveAccessToken(t *testing.T) {
 	got, err := ResolveAccessToken("feed-token", "global-token")
@@ -12,7 +15,7 @@ func TestResolveAccessToken(t *testing.T) {
 		t.Fatalf("global fallback: got %q err=%v", got, err)
 	}
 	_, err = ResolveAccessToken("", "")
-	if err != errMissingToken {
+	if !errors.Is(err, errMissingToken) {
 		t.Fatalf("expected errMissingToken, got %v", err)
 	}
 }

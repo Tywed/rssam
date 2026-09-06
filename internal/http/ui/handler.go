@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"log/slog"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -143,7 +144,7 @@ func parseTemplates() (*template.Template, error) {
 		"entryListQuery":  entryListQuery,
 		"entrySortSuffix": entrySortSuffix,
 		"catColor": func(c storage.Category) template.CSS {
-			color := strings.TrimSpace(c.Color)
+			color := safeCSSColor(c.Color)
 			if color == "" {
 				palette := []string{"#c0392b", "#2980b9", "#27ae60", "#8e44ad", "#d35400", "#16a085", "#2c3e50", "#e67e22"}
 				if c.ID <= 0 {
@@ -155,16 +156,16 @@ func parseTemplates() (*template.Template, error) {
 			return template.CSS(color)
 		},
 		"labelBgColor": func(l storage.Label) template.CSS {
-			if strings.TrimSpace(l.BgColor) == "" {
-				return template.CSS("#2980b9")
+			if c := safeCSSColor(l.BgColor); c != "" {
+				return template.CSS(c)
 			}
-			return template.CSS(l.BgColor)
+			return template.CSS("#2980b9")
 		},
 		"labelFgColor": func(l storage.Label) template.CSS {
-			if strings.TrimSpace(l.FgColor) == "" {
-				return template.CSS("#ffffff")
+			if c := safeCSSColor(l.FgColor); c != "" {
+				return template.CSS(c)
 			}
-			return template.CSS(l.FgColor)
+			return template.CSS("#ffffff")
 		},
 		"querySuffix":       querySuffix,
 		"formatDuration":    formatDuration,
@@ -464,4 +465,19 @@ func (h *Handler) staticHandler() http.Handler {
 		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 		files.ServeHTTP(w, r)
 	})
+}
+
+// cssHexColor is the only colour shape the templates inject into style
+// attributes as template.CSS (which bypasses html/template escaping).
+var cssHexColor = regexp.MustCompile(`^#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$`)
+
+// safeCSSColor returns the trimmed colour if it is a hex literal, else "".
+// Colours are admin-supplied, but a stored value like
+// "red;background:url(https://x/)" must still never reach a style attribute.
+func safeCSSColor(v string) string {
+	v = strings.TrimSpace(v)
+	if cssHexColor.MatchString(v) {
+		return v
+	}
+	return ""
 }

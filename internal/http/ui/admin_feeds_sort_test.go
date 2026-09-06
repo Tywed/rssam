@@ -73,6 +73,30 @@ func TestAdminFeedsRedirectFromForm(t *testing.T) {
 	}
 }
 
+// Referer is reduced to a local UI path: the origin is always dropped, and
+// anything outside /ui/ falls back to the list.
+func TestAdminFeedsRedirectFromReferer(t *testing.T) {
+	cases := map[string]string{
+		"": "/ui/admin/feeds",
+		"https://rss.example/ui/admin/feeds?page=3":         "/ui/admin/feeds?page=3",
+		"http://127.0.0.1:8080/ui/admin/feeds/7":            "/ui/admin/feeds/7",
+		"https://evil.example/ui/settings":                  "/ui/settings",
+		"https://rss.example/ui/unread":                     "/ui/unread",
+		"//evil.example/ui/admin/feeds":                     "/ui/admin/feeds",
+		"https://evil.example\\@rss.example/ui/admin/feeds": "/ui/admin/feeds",
+		"::not a url::": "/ui/admin/feeds",
+	}
+	for ref, want := range cases {
+		req := httptest.NewRequest(http.MethodPost, "/ui/admin/feeds/1/refresh", nil)
+		if ref != "" {
+			req.Header.Set("Referer", ref)
+		}
+		if got := adminFeedsRedirect(req); got != want {
+			t.Errorf("referer %q: redirect=%q want %q", ref, got, want)
+		}
+	}
+}
+
 func TestParseAdminFeedsSort(t *testing.T) {
 	req := httptestNewRequest(t, "/ui/admin/feeds?sort=entries&order=desc")
 	sortKey, order := parseAdminFeedsSort(req)

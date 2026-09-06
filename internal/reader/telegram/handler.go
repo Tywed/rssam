@@ -273,7 +273,7 @@ func messageToEntry(m ParsedMessage) storage.CreateEntryParams {
 			if strings.Contains(content, enc) {
 				continue
 			}
-			b.WriteString(fmt.Sprintf(`<p><a href=%q rel="nofollow">media</a></p>`, enc))
+			fmt.Fprintf(&b, `<p><a href=%q rel="nofollow">media</a></p>`, enc)
 		}
 		content = b.String()
 	}

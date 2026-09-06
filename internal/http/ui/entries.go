@@ -68,11 +68,7 @@ func (h *Handler) handleUnreadMarkRead(w http.ResponseWriter, r *http.Request) {
 	p, _ := principal(r)
 	_, _ = h.cfg.Entries.MarkAllEntriesRead(r.Context(), p.UserID)
 	h.invalidateUnread(p.UserID)
-	ref := r.Header.Get("Referer")
-	if ref == "" {
-		ref = "/ui/unread"
-	}
-	http.Redirect(w, r, ref, http.StatusFound)
+	http.Redirect(w, r, refererOr(r, "/ui/unread"), http.StatusFound)
 }
 
 func (h *Handler) handleSearch(w http.ResponseWriter, r *http.Request) {
@@ -187,11 +183,7 @@ func (h *Handler) handleEntryRead(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	ref := r.Header.Get("Referer")
-	if ref == "" {
-		ref = "/ui/unread?entry_id=" + strconv.FormatInt(id, 10)
-	}
-	http.Redirect(w, r, ref, http.StatusFound)
+	http.Redirect(w, r, refererOr(r, "/ui/unread?entry_id="+strconv.FormatInt(id, 10)), http.StatusFound)
 }
 
 func (h *Handler) handleEntryStar(w http.ResponseWriter, r *http.Request) {
@@ -211,11 +203,7 @@ func (h *Handler) handleEntryStar(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "update failed", http.StatusInternalServerError)
 		return
 	}
-	ref := r.Header.Get("Referer")
-	if ref == "" {
-		ref = "/ui/unread?entry_id=" + strconv.FormatInt(id, 10)
-	}
-	http.Redirect(w, r, ref, http.StatusFound)
+	http.Redirect(w, r, refererOr(r, "/ui/unread?entry_id="+strconv.FormatInt(id, 10)), http.StatusFound)
 }
 
 func stringsTrim(s string) string {

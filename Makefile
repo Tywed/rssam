@@ -1,4 +1,4 @@
-.PHONY: build test lint migrate run docker-up docker-down fmt
+.PHONY: build test lint vuln migrate run docker-up docker-down fmt
 
 BIN := rssam
 PKGS := $(shell go list ./... | grep -vE '/tmp(/|$$)')
@@ -30,7 +30,12 @@ fmt:
 	gofmt -w $$(find . -name '*.go' -not -path './vendor/*' -not -path './tmp/*')
 
 lint:
-	golangci-lint run $(PKGS)
+	go vet $(PKGS)
+	go tool staticcheck $(PKGS)
+	golangci-lint run ./...
+
+vuln:
+	go tool govulncheck ./...
 
 migrate:
 	@DATABASE_URL=$${DATABASE_URL:?set DATABASE_URL} go run ./cmd/rssam -migrate

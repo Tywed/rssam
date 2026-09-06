@@ -179,7 +179,7 @@ func Generate(in ExportInput) ([]byte, error) {
 		if len(feeds) == 0 {
 			continue
 		}
-		body.WriteString(fmt.Sprintf("    <outline text=%s title=%s>\n", xmlAttr(c.Title), xmlAttr(c.Title)))
+		fmt.Fprintf(&body, "    <outline text=%s title=%s>\n", xmlAttr(c.Title), xmlAttr(c.Title))
 		for _, f := range feeds {
 			writeFeedOutline(&body, f, "      ")
 		}

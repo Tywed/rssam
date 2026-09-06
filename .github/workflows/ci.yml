@@ -5,30 +5,48 @@ on:
     branches: [main, master]
   pull_request:
 
+# Read-only token by default; no job here needs to write to the repository.
+permissions:
+  contents: read
+
 jobs:
   unit:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
+      - name: go.mod / go.sum are tidy and verified
+        run: |
+          go mod tidy
+          git diff --exit-code -- go.mod go.sum
+          go mod verify
       - name: gofmt
         run: |
           out=$(gofmt -l $(git ls-files '*.go'))
           if [ -n "$out" ]; then echo "gofmt needed:"; echo "$out"; exit 1; fi
       - name: Vet
         run: go vet ./...
+      # staticcheck and govulncheck are pinned through the tool directive in
+      # go.mod, so CI runs the same versions as a developer's `go tool`.
       - name: staticcheck
+        run: go tool staticcheck ./...
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        with:
+          version: v2.13.2
+      - name: Test (race, shuffled)
+        run: go test -race -shuffle=on -count=1 ./...
+      - name: Coverage summary
         run: |
-          go install honnef.co/go/tools/cmd/staticcheck@latest
-          staticcheck ./...
-      - name: Test (race)
-        run: go test -race -count=1 ./...
+          go test -count=1 -coverprofile=coverage.out ./... >/dev/null
+          echo '### Coverage' >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          go tool cover -func=coverage.out | tail -1 >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
       - name: govulncheck
-        run: |
-          go install golang.org/x/vuln/cmd/govulncheck@latest
-          govulncheck ./...
+        run: go tool govulncheck ./...
 
   # Runs the storage layer against a real PostgreSQL (the -tags=integration
   # tests do not execute in the unit job).
@@ -50,8 +68,8 @@ jobs:
     env:
       DATABASE_URL: postgres://rssam:rssam@localhost:5432/rssam?sslmode=disable
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
       - name: Migrations apply on a clean database

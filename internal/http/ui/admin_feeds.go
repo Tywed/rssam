@@ -509,9 +509,5 @@ func adminFeedsRedirect(r *http.Request) string {
 		}
 		return adminFeedsListURL(status, sortKey, order, page)
 	}
-	ref := strings.TrimSpace(r.Header.Get("Referer"))
-	if ref != "" {
-		return ref
-	}
-	return "/ui/admin/feeds"
+	return refererOr(r, "/ui/admin/feeds")
 }

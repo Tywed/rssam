@@ -261,9 +261,7 @@ func (h *Handler) handleLoginPost(w http.ResponseWriter, r *http.Request) {
 	if next == "" {
 		next = strings.TrimSpace(r.URL.Query().Get("next"))
 	}
-	if next == "" || !strings.HasPrefix(next, "/ui/") {
-		next = "/ui/unread"
-	}
+	next = localUIPath(next, "/ui/unread")
 	http.Redirect(w, r, next, http.StatusFound)
 }
 

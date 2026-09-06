@@ -330,7 +330,7 @@ func processPhoto(msg *goquery.Selection, channelUsername string) (string, strin
 		}
 		enc = append(enc, m[1])
 		href, _ := wrap.Attr("href")
-		b.WriteString(fmt.Sprintf(`<a href=%q><img src=%q></a><br>`, href, m[1]))
+		fmt.Fprintf(&b, `<a href=%q><img src=%q></a><br>`, href, m[1])
 	})
 	return b.String(), title, enc
 }
@@ -419,7 +419,7 @@ func processGroupedMedia(grouped *goquery.Selection, channelUsername string) (st
 		}
 		enc = append(enc, m[1])
 		href, _ := wrap.Attr("href")
-		b.WriteString(fmt.Sprintf(`<a href=%q><img src=%q></a><br>`, href, m[1]))
+		fmt.Fprintf(&b, `<a href=%q><img src=%q></a><br>`, href, m[1])
 	})
 
 	grouped.Find("a.tgme_widget_message_video_player").Each(func(_ int, player *goquery.Selection) {
@@ -436,8 +436,8 @@ func processGroupedMedia(grouped *goquery.Selection, channelUsername string) (st
 		if src != "" {
 			enc = append(enc, src)
 		}
-		b.WriteString(fmt.Sprintf(`<video controls poster=%q style="max-width:100%%"><source src=%q type="video/mp4"></video><br>`,
-			poster, src))
+		fmt.Fprintf(&b, `<video controls poster=%q style="max-width:100%%"><source src=%q type="video/mp4"></video><br>`,
+			poster, src)
 	})
 
 	return b.String(), title, uniqueStrings(enc)

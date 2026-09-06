@@ -1,28 +1,92 @@
+version: "2"
+
 run:
   timeout: 5m
   tests: true
   modules-download-mode: readonly
 
 linters:
+  default: none
   enable:
     - errcheck
-    - gosimple
     - govet
-    - ineffassign
     - staticcheck
     - unused
+    - ineffassign
+    - errorlint
+    - bodyclose
+    - noctx
+    - sqlclosecheck
+    - rowserrcheck
+    - nilerr
+    - copyloopvar
+    - gosec
+    - misspell
+  settings:
+    # misspell runs without a locale: the code mixes British prose with
+    # US-spelled identifiers (Color, Normalize, "unauthorized" in HTTP text),
+    # so any locale setting only produces rename churn. Real typos are still caught.
+    gosec:
+      excludes:
+        - G104 # errors unhandled: covered by errcheck with its own exclusions
+        - G115 # int -> int32/uint64 conversions on config values and runtime.MemStats
+        - G120 # ParseMultipartForm(32<<20): the global BodyLimit middleware caps the body first
+        - G124 # cookie attributes are set from RequestIsSecure/HSTS, gosec cannot see that
+        - G301 # /opt/rssam/log 0755 and 0644 update log are intentionally group-readable
+        - G302
+        - G306
+        - G703 # env file path comes from config, not from a request
+  exclusions:
+    presets:
+      - std-error-handling
+      - common-false-positives
+    rules:
+      - path: _test\.go
+        linters: [errcheck, gosec, noctx, bodyclose]
+      # bluemonday-sanitized HTML and regexp-validated hex colours are the
+      # only values deliberately marked safe for templates.
+      - path: internal/http/ui/(auth|entries|handler)\.go
+        linters: [gosec]
+        text: G203
+      # Every UI redirect target is either built from fixed paths or reduced
+      # to a local /ui/ path by localUIPath (redirect.go); gosec's taint
+      # analysis cannot see through that helper.
+      - path: internal/http/ui/
+        linters: [gosec]
+        text: G710
+      # The pprof shutdown goroutine must outlive the request that started it.
+      - path: internal/http/pprof\.go
+        linters: [gosec]
+        text: G118
+      # Fever API keys are md5(username:password) by protocol definition.
+      - path: internal/storage/fever_key\.go
+        linters: [gosec]
+        text: G(401|501)
+      # Non-cryptographic content cursor for the max bridge.
+      - path: internal/reader/max/cursor\.go
+        linters: [gosec]
+        text: G(401|505)
+      # Retry jitter for webhooks does not need crypto randomness.
+      - path: internal/worker/webhooks\.go
+        linters: [gosec]
+        text: G404
+      # Field names that merely contain "password"/"token"; no credentials inside.
+      - path: internal/(auth/password|http/ui/settings)\.go
+        linters: [gosec]
+        text: G101
+      # The self-update helper is meant to detach; probes use CommandContext.
+      - path: internal/ops/ops\.go
+        linters: [noctx]
+        text: "os/exec.Command must not be called"
+      # Client for GitHub releases has its own overall timeout on the client.
+      - path: internal/githubrel/client\.go
+        linters: [noctx]
+
+formatters:
+  enable:
     - gofmt
     - goimports
-    - misspell
-
-linters-settings:
-  misspell:
-    locale: US
 
 issues:
-  exclude-dirs:
-    - tmp
-  exclude-rules:
-    - path: _test\.go
-      linters:
-        - errcheck
+  max-issues-per-linter: 0
+  max-same-issues: 0

@@ -239,11 +239,7 @@ func webhooksListRedirect(r *http.Request) string {
 	case "all":
 		return "/ui/webhooks"
 	}
-	ref := strings.TrimSpace(r.Header.Get("Referer"))
-	if ref != "" {
-		return ref
-	}
-	return "/ui/webhooks"
+	return refererOr(r, "/ui/webhooks")
 }
 
 func (h *Handler) handleWebhookPause(w http.ResponseWriter, r *http.Request) {
@@ -380,11 +376,7 @@ func (h *Handler) handleWebhookLogRetry(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	_ = h.cfg.WebhookLogs.RetryWebhookLogNow(r.Context(), id)
-	ref := r.Header.Get("Referer")
-	if ref == "" {
-		ref = "/ui/webhooks"
-	}
-	http.Redirect(w, r, ref, http.StatusFound)
+	http.Redirect(w, r, refererOr(r, "/ui/webhooks"), http.StatusFound)
 }
 
 func fillWebhookProviderFields(data *pageData, w storage.Webhook) {

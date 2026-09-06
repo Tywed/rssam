@@ -1,6 +1,7 @@
 package ops
 
 import (
+	"context"
 	"fmt"
 	"net/url"
 	"os"
@@ -10,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 )
 
 // releaseTagRe is the only shape of version accepted for self-update. The
@@ -17,6 +19,16 @@ import (
 // root; "v1.0.0/../../other/repo/releases/download/v1" would otherwise
 // resolve to another repository's asset.
 var releaseTagRe = regexp.MustCompile(`^v?[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$`)
+
+// probeTimeout bounds the short sudo/systemctl probes that run inside HTTP
+// handlers. A hung sudo (e.g. PAM waiting on something) must not pin the
+// request goroutine forever. StartUpdate is exempt: it detaches on purpose.
+var probeTimeout = 15 * time.Second
+
+func probeCommand(name string, args ...string) (*exec.Cmd, context.CancelFunc) {
+	ctx, cancel := context.WithTimeout(context.Background(), probeTimeout)
+	return exec.CommandContext(ctx, name, args...), cancel
+}
 
 // ValidReleaseTag reports whether ver is a plain semver tag like v0.1.5.
 func ValidReleaseTag(ver string) bool {
@@ -63,7 +75,9 @@ func CanRestart() (bool, string) {
 }
 
 func lookSudoers() bool {
-	out, err := exec.Command("sudo", "-n", "-l").Output()
+	cmd, cancel := probeCommand("sudo", "-n", "-l")
+	defer cancel()
+	out, err := cmd.Output()
 	if err != nil {
 		return false
 	}
@@ -75,7 +89,8 @@ func Restart() error {
 	if InDocker() {
 		return fmt.Errorf("docker")
 	}
-	cmd := exec.Command("sudo", "-n", "systemctl", "restart", "--no-block", "rssam")
+	cmd, cancel := probeCommand("sudo", "-n", "systemctl", "restart", "--no-block", "rssam")
+	defer cancel()
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -104,8 +119,12 @@ func CanUpdate() (bool, string) {
 	if _, err := os.Stat(helper); err != nil {
 		return false, "Не найден rssam-update."
 	}
-	if err := exec.Command("sudo", "-n", helper, "--quiet", "--help").Run(); err != nil {
-		out, e2 := exec.Command("sudo", "-n", "-l").Output()
+	help, cancelHelp := probeCommand("sudo", "-n", helper, "--quiet", "--help")
+	defer cancelHelp()
+	if err := help.Run(); err != nil {
+		list, cancelList := probeCommand("sudo", "-n", "-l")
+		defer cancelList()
+		out, e2 := list.Output()
 		if e2 == nil && strings.Contains(string(out), "rssam-update") {
 			return true, ""
 		}

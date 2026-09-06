@@ -1,6 +1,7 @@
 package dzen
 
 import (
+	"errors"
 	"testing"
 )
 
@@ -37,7 +38,7 @@ func TestParseSearchHTML(t *testing.T) {
 
 func TestParseSearchHTML_MissingPayload(t *testing.T) {
 	_, err := ParseSearchHTML([]byte("<html></html>"))
-	if err != errNeoPayloadNotFound {
+	if !errors.Is(err, errNeoPayloadNotFound) {
 		t.Fatalf("err=%v", err)
 	}
 }

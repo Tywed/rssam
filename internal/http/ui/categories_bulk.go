@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -67,7 +68,7 @@ func (h *Handler) handleCategoryBulkInterval(w http.ResponseWriter, r *http.Requ
 		IntervalMinutes: &interval,
 	})
 	if err != nil {
-		if err == storage.ErrNotFound {
+		if errors.Is(err, storage.ErrNotFound) {
 			http.NotFound(w, r)
 			return
 		}
@@ -100,11 +101,11 @@ func (h *Handler) handleCategoryBulkWebhook(w http.ResponseWriter, r *http.Reque
 	}
 	_, count, err := h.cfg.Feeds.BulkUpdateFeedsByCategory(r.Context(), p.UserID, categoryID, update)
 	if err != nil {
-		if err == storage.ErrNotFound {
+		if errors.Is(err, storage.ErrNotFound) {
 			http.NotFound(w, r)
 			return
 		}
-		if err == storage.ErrInvalidReference {
+		if errors.Is(err, storage.ErrInvalidReference) {
 			http.Error(w, "webhook not found", http.StatusBadRequest)
 			return
 		}
@@ -141,7 +142,7 @@ func (h *Handler) handleCategoryBulkHashOnly(w http.ResponseWriter, r *http.Requ
 		StoreHashOnly: &enabled,
 	})
 	if err != nil {
-		if err == storage.ErrNotFound {
+		if errors.Is(err, storage.ErrNotFound) {
 			http.NotFound(w, r)
 			return
 		}
@@ -248,7 +249,7 @@ func (h *Handler) handleCategoryBulkPause(w http.ResponseWriter, r *http.Request
 		ManualPaused: &paused,
 	})
 	if err != nil {
-		if err == storage.ErrNotFound {
+		if errors.Is(err, storage.ErrNotFound) {
 			http.NotFound(w, r)
 			return
 		}
@@ -289,7 +290,7 @@ func (h *Handler) handleCategoryBulkMove(w http.ResponseWriter, r *http.Request)
 	}
 	_, count, err := h.cfg.Feeds.BulkUpdateFeedsByCategory(r.Context(), p.UserID, categoryID, update)
 	if err != nil {
-		if err == storage.ErrNotFound {
+		if errors.Is(err, storage.ErrNotFound) {
 			http.NotFound(w, r)
 			return
 		}

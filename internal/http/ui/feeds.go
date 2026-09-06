@@ -262,11 +262,7 @@ func (h *Handler) handleFeedRefresh(w http.ResponseWriter, r *http.Request) {
 	if h.cfg.Refresher != nil {
 		_, _ = h.cfg.Refresher.RefreshFeedManual(r.Context(), id)
 	}
-	ref := r.Header.Get("Referer")
-	if ref == "" {
-		ref = "/ui/feeds/" + strconv.FormatInt(id, 10)
-	}
-	http.Redirect(w, r, ref, http.StatusFound)
+	http.Redirect(w, r, refererOr(r, "/ui/feeds/"+strconv.FormatInt(id, 10)), http.StatusFound)
 }
 
 func (h *Handler) handleFeedMarkRead(w http.ResponseWriter, r *http.Request) {

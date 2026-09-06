@@ -3,6 +3,7 @@ package ops
 import (
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestRedactDatabaseURL(t *testing.T) {
@@ -46,5 +47,23 @@ func TestValidReleaseTag(t *testing.T) {
 		if ValidReleaseTag(bad) {
 			t.Errorf("%q must be rejected", bad)
 		}
+	}
+}
+
+// Probes run inside HTTP handlers; a hung sudo must be killed, not awaited.
+func TestProbeCommandTimesOut(t *testing.T) {
+	old := probeTimeout
+	probeTimeout = 200 * time.Millisecond
+	t.Cleanup(func() { probeTimeout = old })
+
+	cmd, cancel := probeCommand("sleep", "30")
+	defer cancel()
+	start := time.Now()
+	err := cmd.Run()
+	if err == nil {
+		t.Fatal("expected the probe to be killed")
+	}
+	if d := time.Since(start); d > 5*time.Second {
+		t.Fatalf("probe took %v, timeout did not apply", d)
 	}
 }

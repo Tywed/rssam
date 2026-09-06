@@ -81,12 +81,9 @@ func (h *Handler) handleLabelCreate(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	ref := r.FormValue("redirect")
+	ref := localUIPath(r.FormValue("redirect"), "")
 	if ref == "" {
-		ref = r.Header.Get("Referer")
-	}
-	if ref == "" {
-		ref = "/ui/labels"
+		ref = refererOr(r, "/ui/labels")
 	}
 	http.Redirect(w, r, ref, http.StatusFound)
 }
@@ -134,9 +131,5 @@ func (h *Handler) handleLabelDelete(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	ref := r.Header.Get("Referer")
-	if ref == "" {
-		ref = "/ui/labels"
-	}
-	http.Redirect(w, r, ref, http.StatusFound)
+	http.Redirect(w, r, refererOr(r, "/ui/labels"), http.StatusFound)
 }

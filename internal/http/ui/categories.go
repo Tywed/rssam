@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
@@ -125,7 +126,7 @@ func (h *Handler) handleCategoryReorder(w http.ResponseWriter, r *http.Request) 
 	}
 
 	if err := h.cfg.Categories.ReorderCategories(r.Context(), p.UserID, ids); err != nil {
-		if err == storage.ErrInvalidReference {
+		if errors.Is(err, storage.ErrInvalidReference) {
 			http.Error(w, "invalid order", http.StatusBadRequest)
 			return
 		}
