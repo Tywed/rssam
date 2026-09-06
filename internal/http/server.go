@@ -371,7 +371,6 @@ func New(dep Dependencies) *Server {
 func (s *Server) Run(ctx context.Context, addr string, shutdownTimeout time.Duration) error {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", s.handleHealthz)
-	mux.HandleFunc("/docs", s.handleDocs)
 	mux.HandleFunc("/openapi.json", s.handleOpenAPISpec)
 	mux.Handle("/metrics", s.wrapMetrics(promhttp.Handler()))
 

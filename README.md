@@ -12,7 +12,7 @@
 - Вебхуки HTTP, Telegram и Max; после доставки — `on_success_entry`. Протокол: [docs/WEBHOOK_RECEIVER_SPEC.md](docs/WEBHOOK_RECEIVER_SPEC.md)
 - На ленте можно хранить только хеш до срабатывания фильтра
 - Источники: RSS/Atom, Telegram, Max, MaxStat, VK Search, Rutube, Dzen News, Smotrim
-- REST `/v1` (API-ключи), `GET /openapi.json`
+- REST `/v1` (API-ключи), схема `GET /openapi.json` (без встроенного Swagger UI)
 - Метрики Prometheus: `GET /metrics` (`METRICS_TOKEN`)
 
 ## Требования

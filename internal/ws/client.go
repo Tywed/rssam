@@ -33,6 +33,9 @@ func NewClient(hub *Hub, conn *websocket.Conn) *Client {
 }
 
 // NewUserClient creates a client bound to userID.
+// MaxInboundFrameBytes caps a single client→server WebSocket frame.
+const MaxInboundFrameBytes = 16 << 10
+
 func NewUserClient(hub *Hub, conn *websocket.Conn, userID int64) *Client {
 	return &Client{
 		conn:          conn,

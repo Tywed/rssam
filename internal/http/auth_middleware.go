@@ -2,6 +2,7 @@ package httpserver
 
 import (
 	"context"
+	"crypto/subtle"
 	"net/http"
 	"strings"
 	"time"
@@ -45,7 +46,7 @@ func (s *Server) authenticateRequestSource(ctx context.Context, r *http.Request)
 	}
 
 	// Dev/migration fallback: global AUTH_TOKEN maps to default user (id=1).
-	if s.authToken != "" && token == s.authToken {
+	if s.authToken != "" && subtle.ConstantTimeCompare([]byte(token), []byte(s.authToken)) == 1 {
 		isAdmin := true
 		if s.users != nil {
 			if u, err := s.users.GetUser(ctx, 1); err == nil {

@@ -71,7 +71,6 @@ func TestE2E_CategoryCRUD(t *testing.T) {
 func TestE2E_OpenAPIDocs(t *testing.T) {
 	s := New(Dependencies{})
 	mux := http.NewServeMux()
-	mux.HandleFunc("/docs", s.handleDocs)
 	mux.HandleFunc("/openapi.json", s.handleOpenAPISpec)
 
 	req := httptest.NewRequest(http.MethodGet, "/openapi.json", nil)

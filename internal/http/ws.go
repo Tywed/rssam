@@ -28,6 +28,9 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 	}
 
 	xws.Handler(func(conn *xws.Conn) {
+		// Clients only ever send small subscribe/pong messages; the x/net
+		// default would let an authenticated peer push 32 MiB frames.
+		conn.MaxPayloadBytes = ws.MaxInboundFrameBytes
 		client := ws.NewUserClient(s.wsHub, conn, p.UserID)
 		s.wsHub.Register(client)
 		client.Run()
