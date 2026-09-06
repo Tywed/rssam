@@ -78,6 +78,8 @@ type Dependencies struct {
 	RateLimitEnabled    bool
 	RateLimitRPS        float64
 	RateLimitBurst      int
+	LoginRateLimitRPS   float64
+	LoginRateLimitBurst int
 	MaxRequestBodyBytes int64
 	CompressEnabled     bool
 	MaxImportFeeds      int
@@ -139,6 +141,7 @@ type Server struct {
 	wsHub              *ws.Hub
 
 	rateLimiter           *middleware.Limiter
+	loginLimiter          *middleware.Limiter
 	maxRequestBodyBytes   int64
 	compressEnabled       bool
 	hstsEnabled           bool
@@ -343,6 +346,7 @@ func New(dep Dependencies) *Server {
 		wsHub:              wsHub,
 
 		rateLimiter:           middleware.NewLimiter(dep.RateLimitEnabled, dep.RateLimitRPS, dep.RateLimitBurst),
+		loginLimiter:          middleware.NewLimiter(dep.RateLimitEnabled, dep.LoginRateLimitRPS, dep.LoginRateLimitBurst),
 		maxRequestBodyBytes:   maxBody,
 		compressEnabled:       dep.CompressEnabled,
 		hstsEnabled:           dep.HSTSEnabled,

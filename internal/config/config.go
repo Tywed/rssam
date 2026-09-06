@@ -108,11 +108,16 @@ type Config struct {
 	StoreEntriesMode string
 
 	// Hardening / HTTP
-	HSTSEnabled         bool
-	TrustedProxies      []string
-	RateLimitEnabled    bool
-	RateLimitRPS        float64
-	RateLimitBurst      int
+	HSTSEnabled      bool
+	TrustedProxies   []string
+	RateLimitEnabled bool
+	RateLimitRPS     float64
+	RateLimitBurst   int
+	// LoginRateLimitRPS / LoginRateLimitBurst throttle POST /ui/login per
+	// client IP separately from the general limiter: a password guess costs
+	// one bcrypt round, so the budget is per-minute, not per-second.
+	LoginRateLimitRPS   float64
+	LoginRateLimitBurst int
 	MaxRequestBodyBytes int64
 	MaxImportFeeds      int
 	CompressEnabled     bool
@@ -220,6 +225,8 @@ func Load() (Config, error) {
 		RateLimitEnabled:    parseBoolDefault(os.Getenv("RATE_LIMIT_ENABLED"), true),
 		RateLimitRPS:        parseFloat(getEnv("RATE_LIMIT_RPS", "10"), 10),
 		RateLimitBurst:      parseInt(getEnv("RATE_LIMIT_BURST", "20"), 20),
+		LoginRateLimitRPS:   parseFloat(getEnv("LOGIN_RATE_LIMIT_RPS", "0.2"), 0.2),
+		LoginRateLimitBurst: parseInt(getEnv("LOGIN_RATE_LIMIT_BURST", "10"), 10),
 		MaxRequestBodyBytes: int64(parseInt(getEnv("MAX_REQUEST_BODY_BYTES", "1048576"), 1048576)),
 		MaxImportFeeds:      parseInt(getEnv("MAX_IMPORT_FEEDS", "500"), 500),
 		CompressEnabled:     parseBoolDefault(os.Getenv("COMPRESS_ENABLED"), true),
@@ -395,6 +402,12 @@ func (c Config) Validate() error {
 	}
 	if c.RateLimitBurst <= 0 || c.RateLimitBurst > 100000 {
 		errs = append(errs, fmt.Errorf("RATE_LIMIT_BURST must be between 1 and 100000, got %d", c.RateLimitBurst))
+	}
+	if c.LoginRateLimitRPS <= 0 || c.LoginRateLimitRPS > 1000 {
+		errs = append(errs, fmt.Errorf("LOGIN_RATE_LIMIT_RPS must be between 0.001 and 1000, got %v", c.LoginRateLimitRPS))
+	}
+	if c.LoginRateLimitBurst <= 0 || c.LoginRateLimitBurst > 10000 {
+		errs = append(errs, fmt.Errorf("LOGIN_RATE_LIMIT_BURST must be between 1 and 10000, got %d", c.LoginRateLimitBurst))
 	}
 	if c.MaxRequestBodyBytes < 1024 || c.MaxRequestBodyBytes > 32*1024*1024 {
 		errs = append(errs, fmt.Errorf("MAX_REQUEST_BODY_BYTES must be between 1024 and 33554432, got %d", c.MaxRequestBodyBytes))

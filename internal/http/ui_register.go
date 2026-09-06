@@ -34,7 +34,7 @@ func (s *Server) registerUI(mux *http.ServeMux) {
 		CSRFSecret:     s.csrfSecret,
 		HSTSEnabled:    s.hstsEnabled,
 		MaxImportFeeds: s.maxImportFeeds,
-		RateLimit:      middleware.PerIPRateLimit(s.rateLimiter),
+		RateLimit:      middleware.PerIPRateLimit(s.loginLimiter),
 		OPMLImport: func(r *http.Request, userID int64, data []byte) ui.ImportReport {
 			rep := s.importOPMLFromBytes(r, userID, data)
 			return ui.ImportReport{

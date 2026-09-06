@@ -136,6 +136,9 @@ func TestLoad_Defaults(t *testing.T) {
 	if cfg.RateLimitBurst != 20 {
 		t.Fatalf("RateLimitBurst=%d", cfg.RateLimitBurst)
 	}
+	if cfg.LoginRateLimitRPS != 0.2 || cfg.LoginRateLimitBurst != 10 {
+		t.Fatalf("LoginRateLimit=%v/%d", cfg.LoginRateLimitRPS, cfg.LoginRateLimitBurst)
+	}
 	if cfg.MaxRequestBodyBytes != 1048576 {
 		t.Fatalf("MaxRequestBodyBytes=%d", cfg.MaxRequestBodyBytes)
 	}

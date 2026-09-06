@@ -310,6 +310,8 @@ func main() {
 		RateLimitEnabled:        cfg.RateLimitEnabled,
 		RateLimitRPS:            cfg.RateLimitRPS,
 		RateLimitBurst:          cfg.RateLimitBurst,
+		LoginRateLimitRPS:       cfg.LoginRateLimitRPS,
+		LoginRateLimitBurst:     cfg.LoginRateLimitBurst,
 		MaxRequestBodyBytes:     cfg.MaxRequestBodyBytes,
 		MaxImportFeeds:          cfg.MaxImportFeeds,
 		CompressEnabled:         cfg.CompressEnabled,
