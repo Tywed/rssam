@@ -14,7 +14,7 @@
     <div class="admin-feeds-meta meta">
       Отправлено за 24 ч: {{.AdminWebhookSummary.Sent24h}}
       {{if gt .AdminWebhookSummary.QueueDueTotal 0}} · В очереди сейчас: {{.AdminWebhookSummary.QueueDueTotal}}{{end}}
-      {{if gt .AdminWebhookSummary.DeadTotal 0}} · Мёртвых доставок: {{.AdminWebhookSummary.DeadTotal}}{{end}}
+      {{if gt .AdminWebhookSummary.FailedTotal 0}} · Недоставлено всего: {{.AdminWebhookSummary.FailedTotal}}{{end}}
     </div>
 
     <div class="admin-feeds-cards">
@@ -34,9 +34,9 @@
         <div class="admin-feeds-card-value">{{.AdminWebhookStatusCounts.Retrying}}</div>
         <div class="admin-feeds-card-label">Повторы</div>
       </a>
-      <a href="{{webhooksFilterLink "dead"}}" class="admin-feeds-card {{if eq .AdminWebhooksFilter "dead"}}active{{end}}">
-        <div class="admin-feeds-card-value">{{.AdminWebhookStatusCounts.Dead}}</div>
-        <div class="admin-feeds-card-label">Мёртвые</div>
+      <a href="{{webhooksFilterLink "error"}}" class="admin-feeds-card {{if eq .AdminWebhooksFilter "error"}}active{{end}}">
+        <div class="admin-feeds-card-value">{{.AdminWebhookStatusCounts.Error}}</div>
+        <div class="admin-feeds-card-label">Ошибки</div>
       </a>
       <a href="{{webhooksFilterLink "disabled"}}" class="admin-feeds-card {{if eq .AdminWebhooksFilter "disabled"}}active{{end}}">
         <div class="admin-feeds-card-value">{{.AdminWebhookStatusCounts.Disabled}}</div>
@@ -60,7 +60,7 @@
             <th>Отправлено</th>
             <th>24 ч</th>
             <th>Очередь</th>
-            <th>Мёртвые</th>
+            <th>Недоставлено</th>
             <th>Последняя отправка</th>
             <th>Последняя ошибка</th>
             <th>Привязки</th>
@@ -77,7 +77,7 @@
             <td>{{.SentCount}}</td>
             <td>{{.Sent24h}}</td>
             <td>{{if gt .QueueDueCount 0}}{{.QueueDueCount}}{{else}}—{{end}}</td>
-            <td>{{if gt .DeadCount 0}}{{.DeadCount}}{{else}}—{{end}}</td>
+            <td>{{if gt .FailedCount 0}}{{.FailedCount}}{{else}}—{{end}}</td>
             <td class="meta">{{formatTime .LastSentAt}}</td>
             <td class="meta admin-feeds-error" title="{{.LastError}}">{{if .LastError}}{{truncateStr .LastError 50}}{{else}}—{{end}}</td>
             <td class="meta">{{.FeedBindingCount}} лент · {{.FilterBindingCount}} фильтр.</td>

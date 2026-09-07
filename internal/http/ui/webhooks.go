@@ -2,6 +2,7 @@ package ui
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
@@ -55,10 +56,9 @@ func (h *Handler) loadAdminWebhooksDashboard(r *http.Request, userID int64) (pag
 	data.AdminWebhookStatusCounts = countAdminWebhookStatuses(views)
 
 	status := strings.TrimSpace(r.URL.Query().Get("status"))
-	switch status {
-	case "ok", "queue", "retrying", "dead", "disabled", "idle":
+	if isAdminWebhookStatus(status) {
 		data.AdminWebhooksFilter = status
-	default:
+	} else {
 		data.AdminWebhooksFilter = "all"
 		status = "all"
 	}
@@ -148,6 +148,9 @@ func (h *Handler) handleWebhookEdit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	data.Title = "Webhook"
+	if r.URL.Query().Get("stats_reset") == "1" {
+		data.FlashMsg = "Счётчики доставки сброшены"
+	}
 	h.render(w, r, "webhooks_form", data)
 }
 
@@ -233,10 +236,10 @@ func (h *Handler) handleWebhookDelete(w http.ResponseWriter, r *http.Request) {
 
 func webhooksListRedirect(r *http.Request) string {
 	status := strings.TrimSpace(r.FormValue("status"))
-	switch status {
-	case "ok", "queue", "retrying", "dead", "disabled", "idle":
+	if isAdminWebhookStatus(status) {
 		return "/ui/webhooks?status=" + status
-	case "all":
+	}
+	if status == "all" {
 		return "/ui/webhooks"
 	}
 	return refererOr(r, "/ui/webhooks")
@@ -322,6 +325,37 @@ func (h *Handler) handleWebhookRetryAll(w http.ResponseWriter, r *http.Request) 
 		_, _ = h.cfg.AdminWebhooks.RetryAllWebhookLogs(r.Context(), id)
 	}
 	http.Redirect(w, r, "/ui/webhooks/"+strconv.FormatInt(id, 10), http.StatusFound)
+}
+
+// handleWebhookResetStats clears the persistent delivery counters of a webhook
+// (sent/failed totals, last error). Delivery logs are not touched.
+func (h *Handler) handleWebhookResetStats(w http.ResponseWriter, r *http.Request) {
+	if !h.requireAdminPrincipal(w, r) {
+		return
+	}
+	if !h.validateCSRF(r) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	p, _ := principal(r)
+	id, err := parsePathID(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if h.cfg.AdminWebhooks == nil {
+		http.Error(w, "webhook stats are not available", http.StatusNotImplemented)
+		return
+	}
+	if err := h.cfg.AdminWebhooks.ResetWebhookStats(r.Context(), p.UserID, id); err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			http.NotFound(w, r)
+			return
+		}
+		http.Error(w, "reset webhook stats failed", http.StatusInternalServerError)
+		return
+	}
+	http.Redirect(w, r, "/ui/webhooks/"+strconv.FormatInt(id, 10)+"?stats_reset=1", http.StatusFound)
 }
 
 func (h *Handler) handleWebhookLogs(w http.ResponseWriter, r *http.Request) {

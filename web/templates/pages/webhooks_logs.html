@@ -13,8 +13,8 @@
       <a href="{{webhookLogsFilterLink .WebhookID "" .WebhookLogsPeriod}}" class="feeds-filter {{if eq .WebhookLogsFilter ""}}active{{end}}">Все</a>
       <a href="{{webhookLogsFilterLink .WebhookID "pending" .WebhookLogsPeriod}}" class="feeds-filter {{if eq .WebhookLogsFilter "pending"}}active{{end}}">Ожидает</a>
       <a href="{{webhookLogsFilterLink .WebhookID "sent" .WebhookLogsPeriod}}" class="feeds-filter {{if eq .WebhookLogsFilter "sent"}}active{{end}}">Отправлено</a>
-      <a href="{{webhookLogsFilterLink .WebhookID "failed" .WebhookLogsPeriod}}" class="feeds-filter {{if eq .WebhookLogsFilter "failed"}}active{{end}}">Ошибка</a>
-      <a href="{{webhookLogsFilterLink .WebhookID "dead" .WebhookLogsPeriod}}" class="feeds-filter {{if eq .WebhookLogsFilter "dead"}}active{{end}}">Мёртвые</a>
+      <a href="{{webhookLogsFilterLink .WebhookID "failed" .WebhookLogsPeriod}}" class="feeds-filter {{if eq .WebhookLogsFilter "failed"}}active{{end}}">Ждут повтора</a>
+      <a href="{{webhookLogsFilterLink .WebhookID "dead" .WebhookLogsPeriod}}" class="feeds-filter {{if eq .WebhookLogsFilter "dead"}}active{{end}}">Недоставлено</a>
       <span class="meta" style="margin-left:0.5rem">·</span>
       <a href="{{webhookLogsFilterLink .WebhookID .WebhookLogsFilter ""}}" class="feeds-filter {{if eq .WebhookLogsPeriod ""}}active{{end}}">Всё время</a>
       <a href="{{webhookLogsFilterLink .WebhookID .WebhookLogsFilter "24h"}}" class="feeds-filter {{if eq .WebhookLogsPeriod "24h"}}active{{end}}">24 ч</a>

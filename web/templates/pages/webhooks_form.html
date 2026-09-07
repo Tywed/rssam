@@ -33,22 +33,37 @@
       <table>
         <tr><th>Отправлено всего</th><td>{{.AdminWebhookDetail.SentCount}}</td></tr>
         <tr><th>За 24 ч</th><td>{{.AdminWebhookDetail.Sent24h}}</td></tr>
-        <tr><th>Успешность</th><td>{{webhookSuccessRate7d .AdminWebhookDetail.SentCount .AdminWebhookDetail.DeadCount}}</td></tr>
+        <tr><th>Недоставлено всего</th><td>{{if gt .AdminWebhookDetail.FailedCount 0}}{{.AdminWebhookDetail.FailedCount}}{{else}}—{{end}}</td></tr>
+        <tr><th>Успешность</th><td>{{webhookSuccessRate .AdminWebhookDetail.SentCount .AdminWebhookDetail.FailedCount}}</td></tr>
         <tr><th>В очереди</th><td>{{if gt .AdminWebhookDetail.QueueDueCount 0}}{{.AdminWebhookDetail.QueueDueCount}}{{else}}—{{end}}</td></tr>
         <tr><th>Повторы</th><td>{{if gt .AdminWebhookDetail.RetryingCount 0}}{{.AdminWebhookDetail.RetryingCount}}{{else}}—{{end}}</td></tr>
-        <tr><th>Мёртвые</th><td>{{if gt .AdminWebhookDetail.DeadCount 0}}{{.AdminWebhookDetail.DeadCount}}{{else}}—{{end}}</td></tr>
-        <tr><th>Последняя отправка</th><td>{{formatTime .AdminWebhookDetail.LastSentAt}}</td></tr>
+        <tr><th>Последняя успешная</th><td>{{if .AdminWebhookDetail.LastSentAt}}{{formatTime .AdminWebhookDetail.LastSentAt}}{{else}}—{{end}}</td></tr>
+        {{if .AdminWebhookDetail.LastFailedAt}}
+        <tr><th>Последняя недоставка</th><td>{{formatTime .AdminWebhookDetail.LastFailedAt}}</td></tr>
+        {{end}}
         {{if .AdminWebhookDetail.LastError}}
-        <tr><th>Последняя ошибка</th><td class="admin-feeds-error">{{if classifyWebhookError .AdminWebhookDetail.LastError}}<span class="meta">[{{classifyWebhookError .AdminWebhookDetail.LastError}}]</span> {{end}}{{.AdminWebhookDetail.LastError}}</td></tr>
+        <tr><th>Последняя ошибка</th><td class="admin-feeds-error">{{if classifyWebhookError .AdminWebhookDetail.LastError}}<span class="meta">[{{classifyWebhookError .AdminWebhookDetail.LastError}}]</span> {{end}}{{.AdminWebhookDetail.LastError}}{{if .AdminWebhookDetail.LastErrorAt}} <span class="meta">({{formatTime .AdminWebhookDetail.LastErrorAt}})</span>{{end}}</td></tr>
         {{end}}
         <tr><th>Макс. попыток</th><td class="meta">{{.WebhookMaxAttempts}}</td></tr>
+        {{if .AdminWebhookDetail.StatsResetAt}}
+        <tr><th>Счётчики сброшены</th><td class="meta">{{formatTime .AdminWebhookDetail.StatsResetAt}}</td></tr>
+        {{end}}
       </table>
-      {{if or (gt .AdminWebhookDetail.DeadCount 0) (gt .AdminWebhookDetail.RetryingCount 0)}}
-      <form method="post" action="/ui/webhooks/{{.Webhook.ID}}/retry-all" style="margin-top:0.75rem">
-        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
-        <button type="submit" class="btn btn-sm">Повторить все failed/dead</button>
-      </form>
-      {{end}}
+      <p class="meta">Счётчики хранятся отдельно от журнала доставки и не обнуляются при его очистке по сроку хранения.</p>
+      <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:0.75rem">
+        {{if or (gt .AdminWebhookDetail.QueueDueCount 0) (gt .AdminWebhookDetail.RetryingCount 0) (gt .AdminWebhookDetail.FailedCount 0)}}
+        <form method="post" action="/ui/webhooks/{{.Webhook.ID}}/retry-all">
+          <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+          <button type="submit" class="btn btn-sm" title="Поставить в очередь все недоставленные и ожидающие повтора записи журнала">Повторить недоставленные</button>
+        </form>
+        {{end}}
+        {{if or (gt .AdminWebhookDetail.SentCount 0) (gt .AdminWebhookDetail.FailedCount 0) .AdminWebhookDetail.LastError}}
+        <form method="post" action="/ui/webhooks/{{.Webhook.ID}}/reset-stats" data-confirm="Сбросить счётчики отправок и ошибок этого webhook? Журнал доставки не удаляется.">
+          <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+          <button type="submit" class="btn btn-sm">Сбросить счётчики</button>
+        </form>
+        {{end}}
+      </div>
     </div>
 
     {{if or .WebhookBindingFeeds .WebhookBindingFilters .Webhook.FilterID}}

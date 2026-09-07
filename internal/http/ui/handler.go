@@ -211,7 +211,7 @@ func parseTemplates() (*template.Template, error) {
 		"classifyWebhookError":         classifyWebhookError,
 		"webhooksFilterLink":           webhooksFilterLink,
 		"webhookLogsFilterLink":        webhookLogsFilterLink,
-		"webhookSuccessRate7d":         webhookSuccessRate7d,
+		"webhookSuccessRate":           webhookSuccessRate,
 		"derefString": func(p *string) string {
 			if p == nil {
 				return ""
@@ -411,6 +411,7 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.Handle("POST /ui/webhooks/{id}/test", auth(h.requireAdmin(http.HandlerFunc(h.handleWebhookTest))))
 	mux.Handle("GET /ui/webhooks/{id}/logs", auth(h.requireAdmin(http.HandlerFunc(h.handleWebhookLogs))))
 	mux.Handle("POST /ui/webhooks/{id}/retry-all", auth(h.requireAdmin(http.HandlerFunc(h.handleWebhookRetryAll))))
+	mux.Handle("POST /ui/webhooks/{id}/reset-stats", auth(h.requireAdmin(http.HandlerFunc(h.handleWebhookResetStats))))
 	mux.Handle("POST /ui/webhook-logs/{id}/retry", auth(h.requireAdmin(http.HandlerFunc(h.handleWebhookLogRetry))))
 
 	mux.Handle("GET /ui/settings/bridges", auth(h.requireAdmin(http.HandlerFunc(h.handleSettingsBridges))))

@@ -18,9 +18,21 @@ type adminWebhookStatusCounts struct {
 	OK       int
 	Queue    int
 	Retrying int
-	Dead     int
+	Error    int
 	Disabled int
 	Idle     int
+}
+
+// adminWebhookStatuses lists the dashboard filter values in display order.
+var adminWebhookStatuses = []string{"ok", "queue", "retrying", "error", "disabled", "idle"}
+
+func isAdminWebhookStatus(status string) bool {
+	for _, s := range adminWebhookStatuses {
+		if s == status {
+			return true
+		}
+	}
+	return false
 }
 
 func webhookLabel(name, url string, id int64) string {
@@ -47,12 +59,25 @@ func webhookKindLabel(kind string) string {
 	}
 }
 
+// classifyAdminWebhookStatus derives the dashboard status of a webhook.
+//
+//	disabled  — paused by the user
+//	error     — the most recent final outcome was a failure (a delivery gave
+//	            up) and no successful delivery happened after it
+//	queue     — deliveries are due right now
+//	retrying  — deliveries failed transiently and wait for the next attempt
+//	idle      — nothing was ever delivered (or the counters were reset)
+//	ok        — the last final outcome was a success
+//
+// A success after a failure therefore returns the webhook to "ok"; the
+// failure stays visible in FailedCount/LastError but no longer defines the
+// status.
 func classifyAdminWebhookStatus(row storage.AdminWebhookRow) string {
 	if !row.Enabled {
 		return "disabled"
 	}
-	if row.DeadCount > 0 {
-		return "dead"
+	if webhookLastOutcomeFailed(row) {
+		return "error"
 	}
 	if row.QueueDueCount > 0 {
 		return "queue"
@@ -66,6 +91,18 @@ func classifyAdminWebhookStatus(row storage.AdminWebhookRow) string {
 	return "ok"
 }
 
+// webhookLastOutcomeFailed reports whether the last *final* delivery outcome
+// (sent vs dead) of the webhook was a failure.
+func webhookLastOutcomeFailed(row storage.AdminWebhookRow) bool {
+	if row.LastFailedAt == nil {
+		return false
+	}
+	if row.LastSentAt == nil {
+		return true
+	}
+	return row.LastFailedAt.After(*row.LastSentAt)
+}
+
 func countAdminWebhookStatuses(rows []adminWebhookRowView) adminWebhookStatusCounts {
 	var counts adminWebhookStatusCounts
 	for _, row := range rows {
@@ -76,8 +113,8 @@ func countAdminWebhookStatuses(rows []adminWebhookRowView) adminWebhookStatusCou
 			counts.Queue++
 		case "retrying":
 			counts.Retrying++
-		case "dead":
-			counts.Dead++
+		case "error":
+			counts.Error++
 		case "disabled":
 			counts.Disabled++
 		case "idle":
@@ -108,8 +145,8 @@ func adminWebhookStatusLabel(status string) string {
 		return "В очереди"
 	case "retrying":
 		return "Повторы"
-	case "dead":
-		return "Мёртвые"
+	case "error":
+		return "Ошибки"
 	case "disabled":
 		return "На паузе"
 	case "idle":
@@ -125,7 +162,7 @@ func adminWebhookStatusClass(status string) string {
 		return "feed-status-ok"
 	case "queue", "retrying":
 		return "feed-status-waiting"
-	case "dead":
+	case "error":
 		return "feed-status-error"
 	case "disabled", "idle":
 		return "feed-status-muted"
@@ -141,9 +178,9 @@ func webhookLogStatusLabel(status string) string {
 	case "sent":
 		return "Отправлено"
 	case "failed":
-		return "Ошибка"
+		return "Ошибка, будет повтор"
 	case "dead":
-		return "Мёртвое"
+		return "Не доставлено"
 	default:
 		return status
 	}
@@ -249,8 +286,9 @@ func webhookLogsFilterLink(webhookID int64, status, period string) string {
 	return fmt.Sprintf("/ui/webhooks/%d/logs?%s", webhookID, strings.Join(parts, "&"))
 }
 
-func webhookSuccessRate7d(sent, dead int) string {
-	total := sent + dead
+// webhookSuccessRate renders sent/(sent+failed) from the persistent counters.
+func webhookSuccessRate(sent, failed int) string {
+	total := sent + failed
 	if total == 0 {
 		return "—"
 	}

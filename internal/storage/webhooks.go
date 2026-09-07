@@ -363,16 +363,26 @@ RETURNING
 }
 
 func (s *PostgresStore) MarkWebhookLogSent(ctx context.Context, logID int64, attempt int, statusCode int, responseSnippet string) error {
+	// The persistent per-webhook counters (migration 0031) are bumped in the
+	// same statement so they cannot drift from the log row.
 	const q = `
-UPDATE webhook_logs
-SET status = 'sent',
-    last_status_code = $2,
-    last_error = NULL,
-    response_snippet = $3,
-    attempt = $4,
-    next_retry_at = NULL,
-    updated_at = now()
-WHERE id = $1`
+WITH l AS (
+  UPDATE webhook_logs
+  SET status = 'sent',
+      last_status_code = $2,
+      last_error = NULL,
+      response_snippet = $3,
+      attempt = $4,
+      next_retry_at = NULL,
+      updated_at = now()
+  WHERE id = $1
+  RETURNING webhook_id
+)
+UPDATE webhooks w
+SET sent_total = w.sent_total + 1,
+    last_sent_at = now()
+FROM l
+WHERE w.id = l.webhook_id`
 	_, err := s.db.Exec(ctx, q, logID, statusCode, responseSnippet, attempt)
 	if err != nil {
 		return fmt.Errorf("mark webhook log sent: %w", err)
@@ -385,17 +395,32 @@ func (s *PostgresStore) MarkWebhookLogFailed(ctx context.Context, logID int64, s
 	if dead {
 		status = "dead"
 	}
+	// last_error/last_error_at record every failed attempt, failed_total and
+	// last_failed_at only final failures (dead). A delivery parked because the
+	// webhook is disabled is not an error of the webhook, so the counters are
+	// only touched for enabled webhooks or final failures.
 	const q = `
-UPDATE webhook_logs
-SET status = $2,
-    last_status_code = $3,
-    last_error = $4,
-    response_snippet = $5,
-    attempt = $6,
-    next_retry_at = $7,
-    updated_at = now()
-WHERE id = $1`
-	_, err := s.db.Exec(ctx, q, logID, status, statusCode, errMsg, responseSnippet, attempt, nextRetryAt)
+WITH l AS (
+  UPDATE webhook_logs
+  SET status = $2,
+      last_status_code = $3,
+      last_error = $4,
+      response_snippet = $5,
+      attempt = $6,
+      next_retry_at = $7,
+      updated_at = now()
+  WHERE id = $1
+  RETURNING webhook_id
+)
+UPDATE webhooks w
+SET last_error = $4,
+    last_error_at = now(),
+    failed_total = w.failed_total + CASE WHEN $8 THEN 1 ELSE 0 END,
+    last_failed_at = CASE WHEN $8 THEN now() ELSE w.last_failed_at END
+FROM l
+WHERE w.id = l.webhook_id
+  AND (w.enabled OR $8)`
+	_, err := s.db.Exec(ctx, q, logID, status, statusCode, errMsg, responseSnippet, attempt, nextRetryAt, dead)
 	if err != nil {
 		return fmt.Errorf("mark webhook log failed: %w", err)
 	}
