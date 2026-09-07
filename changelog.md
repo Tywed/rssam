@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+## 0.1.7
+
+- CI: golangci-lint v2 в workflow, staticcheck/govulncheck через `tool` в `go.mod`, Dependabot, actions по SHA.
+- Безопасность: редиректы UI только на путь `/ui/` (Referer/`next`); цвета категорий/меток — только `#hex`; логи вебхуков и retry проверяют владельца; правила фильтра валидируются при записи (не компилируемый regex → 400).
+- Админка: «Перезапустить сервис» больше не отвечает 400 из‑за SIGTERM дочернему `sudo`; `ops.Restart` считает такой сигнал штатным.
+- `install.sh`: arm64, проверка SHA256SUMS (без суммы — отказ). Два systemd‑юнита: обычный (с самообновлением из UI) и hardened (opt-in).
+- API: полный OpenAPI‑контракт + тест паритета роутов; `X-Request-Id` в ответе, логах и JSON 5xx.
+- Рефакторинг: `server.go` разнесён по областям, `go fix`; быстрые тесты (bcrypt MinCost в TestMain), fuzz, k6‑профиль.
+
 ## 0.1.6
 
 - Go 1.27; pgx 5.10 (CVE-2026-33815/-33816, CVE-2026-41889), x/crypto 0.56, gofeed 1.4.2; `govulncheck` в CI.
