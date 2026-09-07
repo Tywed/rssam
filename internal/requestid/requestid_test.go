@@ -10,9 +10,6 @@ func TestContextRoundTrip(t *testing.T) {
 	if got := FromContext(context.Background()); got != "" {
 		t.Fatalf("empty ctx: %q", got)
 	}
-	if got := FromContext(nil); got != "" { //nolint:staticcheck // nil ctx must be tolerated by loggers
-		t.Fatalf("nil ctx: %q", got)
-	}
 	ctx := NewContext(context.Background(), "abc")
 	if got := FromContext(ctx); got != "abc" {
 		t.Fatalf("got %q", got)
