@@ -17,6 +17,7 @@ import (
 	"rssam/internal/filter"
 	httpserver "rssam/internal/http"
 	"rssam/internal/http/middleware"
+	"rssam/internal/http/ui"
 	"rssam/internal/logger"
 	"rssam/internal/metrics"
 	"rssam/internal/migrations"
@@ -325,9 +326,16 @@ func main() {
 		WorkerPoolSize:          cfg.WorkerPoolSize,
 		WebhookWorkerPoolSize:   cfg.WebhookWorkerPoolSize,
 		EnvFilePath:             os.Getenv("RSSAM_ENV_FILE"),
-		DatabaseURL:             cfg.DatabaseURL,
-		GitHubRepo:              strings.TrimSpace(os.Getenv("GITHUB_REPO")),
-		WorkerControl:           w,
+		Retention: ui.RetentionSettings{
+			RemovedRetentionDays:     cfg.RemovedRetentionDays,
+			WebhookLogRetentionDays:  cfg.WebhookLogRetentionDays,
+			FilterMatchRetentionDays: cfg.FilterMatchRetentionDays,
+			CleanupInterval:          cfg.CleanupInterval,
+		},
+		RunRetentionCleanup: w.RetentionCleanupNow,
+		DatabaseURL:         cfg.DatabaseURL,
+		GitHubRepo:          strings.TrimSpace(os.Getenv("GITHUB_REPO")),
+		WorkerControl:       w,
 	})
 
 	if err := srv.Run(ctx, cfg.ListenAddr, cfg.ShutdownTimeout); err != nil {

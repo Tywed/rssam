@@ -189,8 +189,16 @@ func (h *Handler) handleAdminSystem(w http.ResponseWriter, r *http.Request) {
 	}
 	data.Info = info
 	data.Title = "Система"
+	data.Retention = h.cfg.Retention
+	data.RetentionCleanupAvailable = h.cfg.RunRetentionCleanup != nil
 	if n := strings.TrimSpace(r.URL.Query().Get("hashed")); n != "" {
 		data.FlashMsg = "Свёрнуто в хеш: " + n + " записей (избранные сохранены)"
+	}
+	if n := strings.TrimSpace(r.URL.Query().Get("cleaned")); n != "" {
+		data.FlashMsg = "Очистка выполнена: удалено строк — " + n
+	}
+	if r.URL.Query().Get("saved") == "1" {
+		data.FlashMsg = "Сохранено в .env. Чтобы применить — перезапустите сервис."
 	}
 	h.render(w, r, "admin_system", data)
 }

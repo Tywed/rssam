@@ -12,6 +12,7 @@ import (
 	"rssam/internal/bridgeconfig"
 	"rssam/internal/filter"
 	"rssam/internal/http/middleware"
+	"rssam/internal/http/ui"
 	"rssam/internal/reader"
 	"rssam/internal/scraper"
 	"rssam/internal/service"
@@ -87,6 +88,11 @@ type Dependencies struct {
 	DatabaseURL           string
 	GitHubRepo            string
 
+	// Retention settings shown on the admin system page and the hook that
+	// runs one cleanup pass on demand (nil = unavailable).
+	Retention           ui.RetentionSettings
+	RunRetentionCleanup func(ctx context.Context) (storage.RetentionCleanupResult, error)
+
 	HandlerRegistry *reader.HandlerRegistry
 	TitleResolver   *reader.TitleResolver
 	BridgeManager   *bridgeconfig.Manager
@@ -150,6 +156,8 @@ type Server struct {
 	webhookWorkerPoolSize int
 	fetchTimeoutSec       int
 	envFilePath           string
+	retention             ui.RetentionSettings
+	runRetentionCleanup   func(ctx context.Context) (storage.RetentionCleanupResult, error)
 	databaseURL           string
 	gitHubRepo            string
 	handlerRegistry       *reader.HandlerRegistry
@@ -355,6 +363,8 @@ func New(dep Dependencies) *Server {
 		webhookWorkerPoolSize: dep.WebhookWorkerPoolSize,
 		fetchTimeoutSec:       dep.FetchTimeoutSec,
 		envFilePath:           dep.EnvFilePath,
+		retention:             dep.Retention,
+		runRetentionCleanup:   dep.RunRetentionCleanup,
 		databaseURL:           dep.DatabaseURL,
 		gitHubRepo:            dep.GitHubRepo,
 		handlerRegistry:       registry,

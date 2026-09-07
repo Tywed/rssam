@@ -96,6 +96,8 @@ func (s *Server) registerUI(mux *http.ServeMux) {
 	cfg.WebhookWorkerPoolSize = s.webhookWorkerPoolSize
 	cfg.FetchTimeoutSeconds = s.fetchTimeoutSec
 	cfg.EnvFilePath = s.envFilePath
+	cfg.Retention = s.retention
+	cfg.RunRetentionCleanup = s.runRetentionCleanup
 	cfg.DatabaseURL = s.databaseURL
 	cfg.GitHubRepo = s.gitHubRepo
 	if d, ok := s.entries.(storage.EntryDedupStore); ok {

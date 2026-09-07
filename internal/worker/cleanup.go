@@ -27,7 +27,10 @@ func (r *Runner) cleanupLoop(ctx context.Context) {
 	}
 }
 
-func (r *Runner) runRetentionCleanup(ctx context.Context) {
+// RetentionCleanupNow runs one retention cleanup pass immediately with the
+// configured retention windows (the same pass the cleanup loop runs every
+// CleanupInterval). It is used by the admin UI "clean up now" action.
+func (r *Runner) RetentionCleanupNow(ctx context.Context) (storage.RetentionCleanupResult, error) {
 	now := time.Now().UTC()
 
 	opts := storage.RetentionCleanupOpts{
@@ -37,8 +40,11 @@ func (r *Runner) runRetentionCleanup(ctx context.Context) {
 	if r.Cfg.FilterMatchRetentionDays > 0 {
 		opts.FilterMatchesBefore = storage.RetentionCutoff(now, r.Cfg.FilterMatchRetentionDays)
 	}
+	return r.Store.RunRetentionCleanup(ctx, opts)
+}
 
-	result, err := r.Store.RunRetentionCleanup(ctx, opts)
+func (r *Runner) runRetentionCleanup(ctx context.Context) {
+	result, err := r.RetentionCleanupNow(ctx)
 	if err != nil {
 		r.Log.Error("retention cleanup failed", "err", err)
 		return

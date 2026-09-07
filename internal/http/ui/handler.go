@@ -65,6 +65,27 @@ type Config struct {
 	ResumeWorkers         func()
 	WorkersPaused         func() bool
 	Dedup                 storage.EntryDedupStore
+	// Retention holds the retention windows the running process was started
+	// with; shown (and editable via .env) on the admin system page.
+	Retention RetentionSettings
+	// RunRetentionCleanup triggers one cleanup pass immediately (nil = not
+	// available, e.g. workers run in another process).
+	RunRetentionCleanup func(ctx context.Context) (storage.RetentionCleanupResult, error)
+}
+
+// RetentionSettings mirrors the REMOVED_RETENTION_DAYS /
+// WEBHOOK_LOG_RETENTION_DAYS / FILTER_MATCH_RETENTION_DAYS / CLEANUP_INTERVAL
+// configuration.
+type RetentionSettings struct {
+	RemovedRetentionDays     int
+	WebhookLogRetentionDays  int
+	FilterMatchRetentionDays int
+	CleanupInterval          time.Duration
+}
+
+// Configured reports whether the settings were supplied by the host process.
+func (s RetentionSettings) Configured() bool {
+	return s.RemovedRetentionDays > 0 || s.WebhookLogRetentionDays > 0 || s.CleanupInterval > 0
 }
 
 type WebhookTestResult struct {
@@ -212,6 +233,7 @@ func parseTemplates() (*template.Template, error) {
 		"webhooksFilterLink":           webhooksFilterLink,
 		"webhookLogsFilterLink":        webhookLogsFilterLink,
 		"webhookSuccessRate":           webhookSuccessRate,
+		"formatCleanupInterval":        formatCleanupInterval,
 		"derefString": func(p *string) string {
 			if p == nil {
 				return ""
@@ -446,6 +468,8 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.Handle("GET /ui/admin/system", auth(h.requireAdmin(http.HandlerFunc(h.handleAdminSystem))))
 	mux.Handle("POST /ui/admin/system/hash-entries", auth(h.requireAdmin(http.HandlerFunc(h.handleAdminHashEntries))))
 	mux.Handle("POST /ui/admin/system/workers", auth(h.requireAdmin(http.HandlerFunc(h.handleAdminWorkersSave))))
+	mux.Handle("POST /ui/admin/system/retention", auth(h.requireAdmin(http.HandlerFunc(h.handleAdminRetentionSave))))
+	mux.Handle("POST /ui/admin/system/retention/cleanup", auth(h.requireAdmin(http.HandlerFunc(h.handleAdminRetentionCleanupNow))))
 	mux.Handle("POST /ui/admin/system/workers/pause", auth(h.requireAdmin(http.HandlerFunc(h.handleAdminWorkersPause))))
 	mux.Handle("POST /ui/admin/system/workers/resume", auth(h.requireAdmin(http.HandlerFunc(h.handleAdminWorkersResume))))
 	mux.Handle("POST /ui/admin/system/restart", auth(h.requireAdmin(http.HandlerFunc(h.handleAdminRestart))))

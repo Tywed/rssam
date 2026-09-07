@@ -118,6 +118,8 @@ type pageData struct {
 	AdminFeedDetail            adminFeedDetailView
 	PollFeedJobCounts          storage.PollFeedJobCounts
 	WorkerAdvice               workerAdviceView
+	Retention                  RetentionSettings
+	RetentionCleanupAvailable  bool
 	DBSizeBytes                int64
 	MemAllocBytes              int64
 	AppVersion                 string
