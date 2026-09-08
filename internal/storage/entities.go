@@ -307,6 +307,7 @@ type EntryStore interface {
 	MarkEntriesRemoved(ctx context.Context, userID int64, entryIDs []int64) (int, error)
 	MarkAllFeedEntriesRead(ctx context.Context, userID, feedID int64) (int, error)
 	MarkAllCategoryEntriesRead(ctx context.Context, userID, categoryID int64) (int, error)
+	MarkAllLabelEntriesRead(ctx context.Context, userID, labelID int64) (int, error)
 	MarkAllEntriesRead(ctx context.Context, userID int64) (int, error)
 }
 

@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"context"
 	"io/fs"
 	"net/http"
 	"net/http/httptest"
@@ -42,12 +43,23 @@ func TestUI_TemplatesHaveNoInlineStyleOrHandlers(t *testing.T) {
 	}
 }
 
-func TestUI_ColoursViaNoncedStyle(t *testing.T) {
+type labelMarkEntries struct {
+	uiMemEntries
+	marked []int64
+}
+
+func (m *labelMarkEntries) MarkAllLabelEntriesRead(_ context.Context, _ int64, labelID int64) (int, error) {
+	m.marked = append(m.marked, labelID)
+	return 1, nil
+}
+
+func TestUI_ColoursViaNoncedStyleAndLabelMarkRead(t *testing.T) {
 	catID := int64(7)
+	entries := &labelMarkEntries{}
 	h, err := NewHandler(Config{
 		Users:    &uiMemUsers{user: storage.User{ID: 1, Username: "alice", PasswordHash: mustHash(t, "secret"), IsAdmin: true}},
 		Sessions: &uiMemSessions{sessions: map[string]storage.Session{}},
-		Entries:  uiMemEntries{},
+		Entries:  entries,
 		Feeds:    &uiMemFeeds{feeds: []storage.Feed{{ID: 1, Title: "F", CategoryID: &catID}}},
 		Categories: &uiMemCategories{cats: []storage.Category{
 			{ID: catID, Title: "Cat", Color: "#ff0000"},
@@ -91,6 +103,7 @@ func TestUI_ColoursViaNoncedStyle(t *testing.T) {
 		`class="tree-row tree-special active" data-label-color="3"`,
 		`<span class="label-dot" aria-hidden="true"></span>`,
 		`<h1 class="headlines-title" data-label-color="3"><span class="label-badge">Росгвардия</span></h1>`,
+		`action="/ui/labels/3/mark-read"`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("label page missing %q", want)
@@ -116,4 +129,25 @@ func TestUI_ColoursViaNoncedStyle(t *testing.T) {
 		t.Fatal("login page has no colours to emit")
 	}
 
+	form := "csrf_token=" + auth.CSRFToken("csrf-test", sid)
+	req = httptest.NewRequest(http.MethodPost, "/ui/labels/3/mark-read", strings.NewReader(form))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: sid})
+	rec = httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+	if rec.Code != http.StatusFound || rec.Header().Get("Location") != "/ui/labels/3" {
+		t.Fatalf("mark-read: %d %q", rec.Code, rec.Header().Get("Location"))
+	}
+	if len(entries.marked) != 1 || entries.marked[0] != 3 {
+		t.Fatalf("marked labels = %v, want [3]", entries.marked)
+	}
+
+	req = httptest.NewRequest(http.MethodPost, "/ui/labels/3/mark-read", strings.NewReader("csrf_token=bad"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: sid})
+	rec = httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+	if rec.Code != http.StatusForbidden || len(entries.marked) != 1 {
+		t.Fatalf("mark-read without CSRF: %d marked=%v", rec.Code, entries.marked)
+	}
 }

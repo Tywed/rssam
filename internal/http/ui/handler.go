@@ -428,6 +428,7 @@ func (h *Handler) Register(mux *http.ServeMux) {
 
 	mux.Handle("GET /ui/labels", auth(h.requireAdmin(http.HandlerFunc(h.handleLabelsList))))
 	mux.Handle("GET /ui/labels/{id}", auth(http.HandlerFunc(h.handleLabelEntries)))
+	mux.Handle("POST /ui/labels/{id}/mark-read", auth(http.HandlerFunc(h.handleLabelMarkRead)))
 	mux.Handle("POST /ui/labels", auth(h.requireAdmin(http.HandlerFunc(h.handleLabelCreate))))
 	mux.Handle("POST /ui/labels/{id}", auth(h.requireAdmin(http.HandlerFunc(h.handleLabelUpdate))))
 	mux.Handle("POST /ui/labels/{id}/delete", auth(h.requireAdmin(http.HandlerFunc(h.handleLabelDelete))))

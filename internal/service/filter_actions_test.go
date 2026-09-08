@@ -100,6 +100,9 @@ func (m *memEntryBulk) MarkAllFeedEntriesRead(context.Context, int64, int64) (in
 func (m *memEntryBulk) MarkAllCategoryEntriesRead(context.Context, int64, int64) (int, error) {
 	return 0, nil
 }
+func (m *memEntryBulk) MarkAllLabelEntriesRead(context.Context, int64, int64) (int, error) {
+	return 0, nil
+}
 func (m *memEntryBulk) MarkAllEntriesRead(context.Context, int64) (int, error) { return 0, nil }
 
 type memWebhookLogStore struct {

@@ -60,6 +60,9 @@ func (noopEntryStore) MarkAllFeedEntriesRead(_ context.Context, _, _ int64) (int
 func (noopEntryStore) MarkAllCategoryEntriesRead(_ context.Context, _, _ int64) (int, error) {
 	return 0, nil
 }
+func (noopEntryStore) MarkAllLabelEntriesRead(_ context.Context, _, _ int64) (int, error) {
+	return 0, nil
+}
 func (noopEntryStore) MarkAllEntriesRead(_ context.Context, _ int64) (int, error) {
 	return 0, nil
 }

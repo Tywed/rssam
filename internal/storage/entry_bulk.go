@@ -112,6 +112,31 @@ WHERE e.feed_id = f.id
 	return int(cmd.RowsAffected()), nil
 }
 
+// MarkAllLabelEntriesRead marks all unread entries carrying a label as read.
+func (s *PostgresStore) MarkAllLabelEntriesRead(ctx context.Context, userID, labelID int64) (int, error) {
+	const qLabel = `SELECT id FROM labels WHERE id = $1 AND user_id = $2`
+	var id int64
+	if err := s.db.QueryRow(ctx, qLabel, labelID, userID).Scan(&id); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return 0, ErrNotFound
+		}
+		return 0, fmt.Errorf("lookup label: %w", err)
+	}
+	const q = `
+UPDATE entries e
+SET status = $4, updated_at = now()
+FROM entry_labels el
+WHERE el.entry_id = e.id
+  AND el.label_id = $1
+  AND e.user_id = $2
+  AND e.status = $3`
+	cmd, err := s.db.Exec(ctx, q, labelID, userID, EntryStatusUnread, EntryStatusRead)
+	if err != nil {
+		return 0, fmt.Errorf("mark all label entries read: %w", err)
+	}
+	return int(cmd.RowsAffected()), nil
+}
+
 // MarkAllEntriesRead marks all unread entries for a user as read.
 func (s *PostgresStore) MarkAllEntriesRead(ctx context.Context, userID int64) (int, error) {
 	const q = `

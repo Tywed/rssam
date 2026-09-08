@@ -2,6 +2,7 @@ package ui
 
 import (
 	"net/http"
+	"strconv"
 	"strings"
 
 	"rssam/internal/storage"
@@ -58,6 +59,22 @@ func (h *Handler) handleLabelEntries(w http.ResponseWriter, r *http.Request) {
 	data.Title = label.Caption
 	h.loadSelectedEntry(r, p.UserID, &data)
 	h.render(w, r, "label_entries", data)
+}
+
+func (h *Handler) handleLabelMarkRead(w http.ResponseWriter, r *http.Request) {
+	if !h.validateCSRF(r) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	p, _ := principal(r)
+	id, err := parsePathID(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	_, _ = h.cfg.Entries.MarkAllLabelEntriesRead(r.Context(), p.UserID, id)
+	h.invalidateUnread(p.UserID)
+	http.Redirect(w, r, "/ui/labels/"+strconv.FormatInt(id, 10), http.StatusFound)
 }
 
 func (h *Handler) handleLabelCreate(w http.ResponseWriter, r *http.Request) {

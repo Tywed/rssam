@@ -78,6 +78,9 @@ func (s *entryReadStore) MarkAllFeedEntriesRead(context.Context, int64, int64) (
 func (s *entryReadStore) MarkAllCategoryEntriesRead(context.Context, int64, int64) (int, error) {
 	return 0, nil
 }
+func (s *entryReadStore) MarkAllLabelEntriesRead(context.Context, int64, int64) (int, error) {
+	return 0, nil
+}
 func (s *entryReadStore) MarkAllEntriesRead(context.Context, int64) (int, error) { return 0, nil }
 func (s *entryReadStore) MarkEntriesRemoved(context.Context, int64, []int64) (int, error) {
 	return 0, nil

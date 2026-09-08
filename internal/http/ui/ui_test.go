@@ -142,6 +142,9 @@ func (uiMemEntries) MarkAllFeedEntriesRead(context.Context, int64, int64) (int, 
 func (uiMemEntries) MarkAllCategoryEntriesRead(context.Context, int64, int64) (int, error) {
 	return 0, nil
 }
+func (uiMemEntries) MarkAllLabelEntriesRead(context.Context, int64, int64) (int, error) {
+	return 0, nil
+}
 func (uiMemEntries) MarkAllEntriesRead(context.Context, int64) (int, error)          { return 0, nil }
 func (uiMemEntries) MarkEntriesRemoved(context.Context, int64, []int64) (int, error) { return 0, nil }
 

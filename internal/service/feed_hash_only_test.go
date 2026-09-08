@@ -106,6 +106,9 @@ func (m *memEntryCreate) MarkAllFeedEntriesRead(context.Context, int64, int64) (
 func (m *memEntryCreate) MarkAllCategoryEntriesRead(context.Context, int64, int64) (int, error) {
 	return 0, nil
 }
+func (m *memEntryCreate) MarkAllLabelEntriesRead(context.Context, int64, int64) (int, error) {
+	return 0, nil
+}
 func (m *memEntryCreate) MarkAllEntriesRead(context.Context, int64) (int, error) { return 0, nil }
 func (m *memEntryCreate) MarkEntriesRemoved(context.Context, int64, []int64) (int, error) {
 	return 0, nil

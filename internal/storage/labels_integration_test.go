@@ -4,15 +4,18 @@ package storage
 
 import (
 	"context"
+	"errors"
 	"testing"
 )
 
 // A hashed (removed) entry keeps its entry_labels row so dedup and counters
-// survive, but it must not show up in label/feed lists or search.
-func TestIntegration_LabelEntriesHideRemoved(t *testing.T) {
+// survive, but it must not show up in label/feed lists or search, and label
+// mark-read must be tenant-scoped like feed/category mark-read.
+func TestIntegration_LabelEntriesHideRemovedAndMarkRead(t *testing.T) {
 	store := testStore(t)
 	ctx := context.Background()
 	owner := newIntegrationUser(t, store, "lbl_owner")
+	other := newIntegrationUser(t, store, "lbl_other")
 	feed, entries := newIntegrationFeedWithEntries(t, store, owner.ID, 4)
 
 	label, err := store.CreateLabel(ctx, CreateLabelParams{UserID: owner.ID, Caption: "Росгвардия", BgColor: "#2980b9", FgColor: "#ffffff"})
@@ -59,4 +62,22 @@ func TestIntegration_LabelEntriesHideRemoved(t *testing.T) {
 		t.Fatalf("EntryCountsByLabel=%v err=%v", counts, err)
 	}
 
+	if _, err := store.MarkAllLabelEntriesRead(ctx, other.ID, label.ID); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("foreign label mark-read: err=%v", err)
+	}
+	n, err := store.MarkAllLabelEntriesRead(ctx, owner.ID, label.ID)
+	if err != nil || n != 2 {
+		t.Fatalf("label mark-read: n=%d err=%v", n, err)
+	}
+	unread, err := store.UnreadCountsByLabel(ctx, owner.ID)
+	if err != nil || unread[label.ID] != 0 {
+		t.Fatalf("unread by label after mark-read=%v err=%v", unread, err)
+	}
+	e0, _ := store.GetEntryByID(ctx, entries[0].ID)
+	if e0.Status != EntryStatusRemoved {
+		t.Fatalf("mark-read must not resurrect the hashed entry: %q", e0.Status)
+	}
+	if n, _ = store.MarkAllLabelEntriesRead(ctx, owner.ID, label.ID); n != 0 {
+		t.Fatalf("second mark-read n=%d, want 0", n)
+	}
 }
