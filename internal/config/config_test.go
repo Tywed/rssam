@@ -55,6 +55,7 @@ func TestLoad_Defaults(t *testing.T) {
 	os.Unsetenv("DEDUP_ONLY_STORAGE")
 	os.Unsetenv("WEBHOOK_LOG_RETENTION_DAYS")
 	os.Unsetenv("FILTER_MATCH_RETENTION_DAYS")
+	os.Unsetenv("FEED_POLL_LOG_RETENTION_DAYS")
 	os.Unsetenv("CLEANUP_INTERVAL")
 
 	cfg, err := Load()
@@ -78,6 +79,9 @@ func TestLoad_Defaults(t *testing.T) {
 	}
 	if cfg.FilterMatchRetentionDays != 90 {
 		t.Fatalf("FilterMatchRetentionDays=%d", cfg.FilterMatchRetentionDays)
+	}
+	if cfg.FeedPollLogRetentionDays != 14 {
+		t.Fatalf("FeedPollLogRetentionDays=%d", cfg.FeedPollLogRetentionDays)
 	}
 	if cfg.CleanupInterval.String() != "24h0m0s" {
 		t.Fatalf("CleanupInterval=%s", cfg.CleanupInterval)
@@ -229,5 +233,31 @@ func TestTrustedProxiesEnv(t *testing.T) {
 	t.Setenv("TRUSTED_PROXIES", "10.0.0.0/8, 192.168.1.1")
 	if got := parseTrustedProxies(); len(got) != 2 || got[1] != "192.168.1.1" {
 		t.Fatalf("got %v", got)
+	}
+}
+
+func TestLoad_FeedPollLogRetentionRange(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://u:p@localhost:5432/db?sslmode=disable")
+	// "0" is documented as "keep forever" for both log-like tables; it must
+	// not silently fall back to the default (that is what parseInt does).
+	t.Setenv("FEED_POLL_LOG_RETENTION_DAYS", "0")
+	t.Setenv("FILTER_MATCH_RETENTION_DAYS", "0")
+	cfg, err := Load()
+	if err != nil || cfg.FeedPollLogRetentionDays != 0 || cfg.FilterMatchRetentionDays != 0 {
+		t.Fatalf("0 must disable cleanup: poll=%d filter=%d err=%v", cfg.FeedPollLogRetentionDays, cfg.FilterMatchRetentionDays, err)
+	}
+	t.Setenv("FEED_POLL_LOG_RETENTION_DAYS", "7")
+	if cfg, err := Load(); err != nil || cfg.FeedPollLogRetentionDays != 7 {
+		t.Fatalf("7: cfg=%d err=%v", cfg.FeedPollLogRetentionDays, err)
+	}
+	t.Setenv("FEED_POLL_LOG_RETENTION_DAYS", "3651")
+	if _, err := Load(); err == nil {
+		t.Fatal("3651 must be rejected")
+	}
+	// Non-numeric garbage falls back to the default, like every other
+	// parseInt-backed setting.
+	t.Setenv("FEED_POLL_LOG_RETENTION_DAYS", "abc")
+	if cfg, err := Load(); err != nil || cfg.FeedPollLogRetentionDays != 14 {
+		t.Fatalf("garbage: cfg=%d err=%v", cfg.FeedPollLogRetentionDays, err)
 	}
 }

@@ -25,7 +25,14 @@ type adminFeedDetailView struct {
 	Status      string
 	Job         *storage.AdminFeedJob
 	OwnerName   string
+	// PollLog is the last adminFeedPollLogLimit poll attempts, newest first;
+	// PollLogEnabled is false when history is not wired at all.
+	PollLog        []storage.FeedPollLogEntry
+	PollLogEnabled bool
 }
+
+// adminFeedPollLogLimit is how many poll attempts the admin feed page shows.
+const adminFeedPollLogLimit = 30
 
 func classifyAdminFeedStatus(row storage.AdminFeedRow, now time.Time) string {
 	if row.ManualPaused || row.PollPaused {
@@ -351,6 +358,14 @@ func (h *Handler) handleAdminFeedShow(w http.ResponseWriter, r *http.Request) {
 	if h.cfg.Users != nil {
 		if u, err := h.cfg.Users.GetUser(r.Context(), feed.UserID); err == nil {
 			detail.OwnerName = u.Username
+		}
+	}
+	if h.cfg.FeedPollLog != nil {
+		detail.PollLogEnabled = true
+		if log, err := h.cfg.FeedPollLog.ListFeedPollLog(r.Context(), id, adminFeedPollLogLimit); err == nil {
+			detail.PollLog = log
+		} else {
+			h.log.Warn("list feed poll log failed", "feed_id", id, "err", err)
 		}
 	}
 	data.AdminFeedDetail = detail

@@ -3,6 +3,7 @@ package ws
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -89,6 +90,35 @@ func TestPublisher_FeedStatusIsTenantScoped(t *testing.T) {
 	}
 	if n := len(drain(owner)); n != 1 {
 		t.Fatalf("owner got %d frames, want 1", n)
+	}
+}
+
+func TestPublisher_FeedStatusCarriesPersistedState(t *testing.T) {
+	hub := NewHub(16, time.Second)
+	owner := newAttachedClient(t, hub, 5)
+	pub := NewPublisher(nil, hub, nil)
+	next := time.Date(2026, 9, 8, 12, 0, 0, 0, time.UTC)
+	pub.PublishFeedStatusChanged(storage.Feed{
+		ID: 1, UserID: 5, ParsingErrorCount: 4, PollPaused: true, LastError: "old", NextCheckAt: &next,
+	}, errors.New("fetch feed: 503"))
+	got := drain(owner)
+	if len(got) != 1 {
+		t.Fatalf("got %d frames, want 1", len(got))
+	}
+	for _, want := range []string{
+		`"event":"feed_status_changed"`, `"feed_id":1`, `"success":false`,
+		`"parsing_error_count":4`, `"poll_paused":true`, `"manual_paused":false`,
+		`"parsing_error_message":"fetch feed: 503"`, `"next_check_at":"2026-09-08T12:00:00Z"`,
+	} {
+		if !strings.Contains(got[0], want) {
+			t.Fatalf("frame missing %s: %s", want, got[0])
+		}
+	}
+
+	pub.PublishFeedStatusChanged(storage.Feed{ID: 1, UserID: 5}, nil)
+	got = drain(owner)
+	if len(got) != 1 || !strings.Contains(got[0], `"success":true`) || !strings.Contains(got[0], `"parsing_error_count":0`) || !strings.Contains(got[0], `"parsing_error_message":""`) {
+		t.Fatalf("success frame = %v", got)
 	}
 }
 

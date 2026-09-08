@@ -114,9 +114,40 @@ type e2eEnv struct {
 	store    *storage.PostgresStore
 	runner   *worker.Runner
 	receiver *hookReceiver
+	status   *feedStatusSink
 	hooks    *httptest.Server
 	feeds    *httptest.Server
 	user     storage.User
+}
+
+// feedStatusSink records feed_status_changed publications (what the WS hub
+// would fan out) so tests can assert on the persisted state the event carries.
+type feedStatusSink struct {
+	mu     sync.Mutex
+	events []feedStatusEvent
+}
+
+type feedStatusEvent struct {
+	Feed storage.Feed
+	Err  error
+}
+
+func (s *feedStatusSink) PublishNewEntries(context.Context, storage.Feed, []storage.Entry) {}
+func (s *feedStatusSink) PublishFeedStatusChanged(feed storage.Feed, err error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.events = append(s.events, feedStatusEvent{Feed: feed, Err: err})
+}
+func (s *feedStatusSink) forFeed(feedID int64) []feedStatusEvent {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var out []feedStatusEvent
+	for _, e := range s.events {
+		if e.Feed.ID == feedID {
+			out = append(out, e)
+		}
+	}
+	return out
 }
 
 // newEnv wires the production object graph (store, refresher, runner) with an
@@ -140,6 +171,7 @@ func newEnv(t *testing.T, feedDocs map[string]string) *e2eEnv {
 	}
 	store := storage.NewPostgresStore(pool)
 
+	statusSink := &feedStatusSink{}
 	receiver := &hookReceiver{}
 	receiver.failing.Store(true)
 	hooks := httptest.NewServer(receiver)
@@ -179,6 +211,8 @@ func newEnv(t *testing.T, feedDocs map[string]string) *e2eEnv {
 		Engine:      filter.New(filter.Config{}),
 		Webhooks:    store,
 		WebhookLogs: store,
+		PollLog:     store,
+		Realtime:    statusSink,
 		Log:         log,
 	}
 	runner := &worker.Runner{
@@ -229,7 +263,7 @@ func newEnv(t *testing.T, feedDocs map[string]string) *e2eEnv {
 		<-done
 	})
 
-	return &e2eEnv{pool: pool, store: store, runner: runner, receiver: receiver, hooks: hooks, feeds: feeds, user: user}
+	return &e2eEnv{pool: pool, store: store, runner: runner, receiver: receiver, status: statusSink, hooks: hooks, feeds: feeds, user: user}
 }
 
 func (e *e2eEnv) createWebhook(t *testing.T, p storage.CreateWebhookParams) storage.Webhook {

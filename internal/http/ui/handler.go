@@ -25,34 +25,37 @@ import (
 const defaultPageLimit = 50
 
 type Config struct {
-	Logger                *slog.Logger
-	Users                 storage.UserStore
-	Sessions              storage.SessionStore
-	Categories            storage.CategoryStore
-	Feeds                 storage.FeedStore
-	Entries               storage.EntryStore
-	Filters               storage.FilterStore
-	FilterMatches         storage.FilterMatchStore
-	Labels                storage.LabelStore
-	Webhooks              storage.WebhookStore
-	WebhookLogs           storage.WebhookLogStore
-	FilterEngine          *filter.Engine
-	Refresher             *service.FeedRefresher
-	ContentFetcher        *service.ContentFetcher
-	SSRFGuard             *ssrf.Guard
-	CSRFSecret            string
-	HSTSEnabled           bool
-	MaxImportFeeds        int
-	RateLimit             func(http.Handler) http.Handler
-	OPMLImport            func(r *http.Request, userID int64, data []byte) ImportReport
-	OPMLExport            func(w http.ResponseWriter, r *http.Request, userID int64) error
-	RefreshAllFeeds       func(r *http.Request, userID int64) error
-	TestWebhook           func(r *http.Request, userID, webhookID int64) (WebhookTestResult, error)
-	ResolveFeedTitle      func(ctx context.Context, feedURL, feedType string, tlsInsecure bool) (string, error)
-	GetBridgeSettings     func() BridgeSettings
-	GetBridgeStored       func() bridgeconfig.Stored
-	SaveBridgeSettings    func(ctx context.Context, stored bridgeconfig.Stored) error
-	AdminFeeds            storage.AdminFeedStore
+	Logger             *slog.Logger
+	Users              storage.UserStore
+	Sessions           storage.SessionStore
+	Categories         storage.CategoryStore
+	Feeds              storage.FeedStore
+	Entries            storage.EntryStore
+	Filters            storage.FilterStore
+	FilterMatches      storage.FilterMatchStore
+	Labels             storage.LabelStore
+	Webhooks           storage.WebhookStore
+	WebhookLogs        storage.WebhookLogStore
+	FilterEngine       *filter.Engine
+	Refresher          *service.FeedRefresher
+	ContentFetcher     *service.ContentFetcher
+	SSRFGuard          *ssrf.Guard
+	CSRFSecret         string
+	HSTSEnabled        bool
+	MaxImportFeeds     int
+	RateLimit          func(http.Handler) http.Handler
+	OPMLImport         func(r *http.Request, userID int64, data []byte) ImportReport
+	OPMLExport         func(w http.ResponseWriter, r *http.Request, userID int64) error
+	RefreshAllFeeds    func(r *http.Request, userID int64) error
+	TestWebhook        func(r *http.Request, userID, webhookID int64) (WebhookTestResult, error)
+	ResolveFeedTitle   func(ctx context.Context, feedURL, feedType string, tlsInsecure bool) (string, error)
+	GetBridgeSettings  func() BridgeSettings
+	GetBridgeStored    func() bridgeconfig.Stored
+	SaveBridgeSettings func(ctx context.Context, stored bridgeconfig.Stored) error
+	AdminFeeds         storage.AdminFeedStore
+	// FeedPollLog is the per-feed poll history shown on the admin feed page
+	// (nil = card hidden).
+	FeedPollLog           storage.FeedPollLogStore
 	AdminWebhooks         storage.AdminWebhookStore
 	WebhookMaxAttempts    int
 	WorkerPoolSize        int
@@ -74,12 +77,13 @@ type Config struct {
 }
 
 // RetentionSettings mirrors the REMOVED_RETENTION_DAYS /
-// WEBHOOK_LOG_RETENTION_DAYS / FILTER_MATCH_RETENTION_DAYS / CLEANUP_INTERVAL
-// configuration.
+// WEBHOOK_LOG_RETENTION_DAYS / FILTER_MATCH_RETENTION_DAYS /
+// FEED_POLL_LOG_RETENTION_DAYS / CLEANUP_INTERVAL configuration.
 type RetentionSettings struct {
 	RemovedRetentionDays     int
 	WebhookLogRetentionDays  int
 	FilterMatchRetentionDays int
+	FeedPollLogRetentionDays int
 	CleanupInterval          time.Duration
 }
 
@@ -131,9 +135,15 @@ func NewHandler(cfg Config) (*Handler, error) {
 func parseTemplates() (*template.Template, error) {
 	funcs := template.FuncMap{
 		"formatTime": formatTime,
-		"dict":       dict,
-		"add":        func(a, b int) int { return a + b },
-		"sub":        func(a, b int) int { return a - b },
+		"formatTimeSec": func(t time.Time) string {
+			if t.IsZero() {
+				return ""
+			}
+			return t.Local().Format("02.01.2006 15:04:05")
+		},
+		"dict": dict,
+		"add":  func(a, b int) int { return a + b },
+		"sub":  func(a, b int) int { return a - b },
 		"deref": func(p *int64) int64 {
 			if p == nil {
 				return 0

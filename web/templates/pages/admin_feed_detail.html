@@ -87,6 +87,31 @@
       </table>
     </div>
     {{end}}
+
+    {{if .AdminFeedDetail.PollLogEnabled}}
+    <div class="card">
+      <h2>Журнал опросов</h2>
+      {{if .AdminFeedDetail.PollLog}}
+      <p class="meta">Последние {{len .AdminFeedDetail.PollLog}} опросов, новые сверху. Срок хранения — FEED_POLL_LOG_RETENTION_DAYS (Система → Хранение журналов).</p>
+      <table class="admin-feeds-table">
+        <thead><tr><th>Когда</th><th>Результат</th><th>Новых</th><th>Длительность</th><th>Ошибка</th></tr></thead>
+        <tbody>
+        {{range .AdminFeedDetail.PollLog}}
+        <tr>
+          <td>{{formatTimeSec .At}}</td>
+          <td>{{if .OK}}<span class="feed-status-badge feed-status-ok">ок</span>{{else}}<span class="feed-status-badge feed-status-error">ошибка</span>{{end}}</td>
+          <td>{{.Inserted}}</td>
+          <td>{{.DurationMS}} мс</td>
+          <td class="admin-feeds-error">{{if .Error}}{{.Error}}{{else}}—{{end}}</td>
+        </tr>
+        {{end}}
+        </tbody>
+      </table>
+      {{else}}
+      <p class="meta">Опросов ещё не было (журнал ведётся с этой версии).</p>
+      {{end}}
+    </div>
+    {{end}}
   </div>
 </div>
 {{end}}

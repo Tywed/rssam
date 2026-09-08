@@ -52,6 +52,7 @@ type stubPollStore struct {
 	feed            storage.Feed
 	completeCalls   int
 	rescheduleCall  bool
+	rescheduledAt   time.Time
 	nextCheckAt     time.Time
 	lastSuccessNext time.Time
 }
@@ -60,8 +61,9 @@ func (s *stubPollStore) CompleteJob(context.Context, int64, string) (bool, error
 	s.completeCalls++
 	return true, nil
 }
-func (s *stubPollStore) RescheduleJob(context.Context, int64, string, time.Time, string) error {
+func (s *stubPollStore) RescheduleJob(_ context.Context, _ int64, _ string, runAt time.Time, _ string) error {
 	s.rescheduleCall = true
+	s.rescheduledAt = runAt
 	return nil
 }
 func (s *stubPollStore) GetFeedByID(context.Context, int64) (storage.Feed, error) {
@@ -199,5 +201,32 @@ func TestProcessPollFeed_BackoffSkipsWithoutError(t *testing.T) {
 	}
 	if store.nextCheckAt.Before(until.Add(-time.Second)) {
 		t.Fatalf("next_check=%s, want ~%s", store.nextCheckAt, until)
+	}
+}
+
+// When the refresher has already persisted the error backoff (next_check_at
+// in the future) the worker must reuse it for job.run_at instead of computing
+// a second, slightly different value.
+func TestProcessPollFeed_ErrorReusesPersistedNextCheck(t *testing.T) {
+	feedID := int64(7)
+	persisted := time.Now().UTC().Add(42 * time.Minute)
+	store := &stubPollStore{feed: storage.Feed{ID: feedID, IntervalMinutes: 5}}
+	cfg := Config{InstanceID: "test", MinPollInterval: time.Minute, MaxPollInterval: 24 * time.Hour}
+	ref := &stubFeedRefresher{err: errors.New("fetch failed"), store: store, cfg: cfg}
+	// Simulate service.FeedRefresher.recordFailure having set next_check_at.
+	ref.store.feed.NextCheckAt = &persisted
+
+	processPollFeedJob(context.Background(), storage.Job{
+		ID: 1, Type: "poll_feed", FeedID: &feedID,
+	}, store, ref, cfg, slog.Default())
+
+	if !store.rescheduleCall {
+		t.Fatal("job must be rescheduled")
+	}
+	if !store.rescheduledAt.Equal(persisted) {
+		t.Fatalf("job run_at=%s, want persisted next_check_at %s", store.rescheduledAt, persisted)
+	}
+	if !store.nextCheckAt.IsZero() {
+		t.Fatalf("SetFeedNextCheckAt must not be called again, got %s", store.nextCheckAt)
 	}
 }

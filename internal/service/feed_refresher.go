@@ -30,6 +30,9 @@ type FeedRefresher struct {
 	Webhooks    storage.WebhookStore
 	WebhookLogs storage.WebhookLogStore
 
+	// PollLog receives one row per finished poll attempt (nil = history off).
+	PollLog storage.FeedPollLogStore
+
 	Realtime RealtimePublisher
 
 	// Log receives persistence errors that must not abort a poll but must not
@@ -62,6 +65,9 @@ func (r *FeedRefresher) feedUsesHashOnlyStorage(feed storage.Feed) bool {
 
 type RealtimePublisher interface {
 	PublishNewEntries(ctx context.Context, feed storage.Feed, newEntries []storage.Entry)
+	// PublishFeedStatusChanged receives the feed as it looks *after* the poll
+	// was persisted (ParsingErrorCount, PollPaused, NextCheckAt, LastError,
+	// LastCheckedAt are already updated on the copy).
 	PublishFeedStatusChanged(feed storage.Feed, err error)
 }
 
@@ -84,10 +90,12 @@ func (r *FeedRefresher) logger() *slog.Logger {
 	return slog.Default()
 }
 
-// recordFailure persists the circuit-breaker counter and refresh meta for a
-// failed poll. Persistence errors are logged, not swallowed: a dead database
-// would otherwise silently stop feeds from being paused/marked.
-func (r *FeedRefresher) recordFailure(ctx context.Context, feed storage.Feed, now time.Time, cause error, bridgeState []byte) {
+// recordFailure persists the circuit-breaker counter, refresh meta and the
+// error-backoff next_check_at for a failed poll, and returns the feed as it
+// now looks in the database (for the WebSocket status event). Persistence
+// errors are logged, not swallowed: a dead database would otherwise silently
+// stop feeds from being paused/marked.
+func (r *FeedRefresher) recordFailure(ctx context.Context, feed storage.Feed, now time.Time, cause error, bridgeState []byte) storage.Feed {
 	if err := r.Feeds.RecordFeedPollFailure(ctx, feed.ID, cause.Error(), r.circuitThreshold(), now); err != nil {
 		r.logger().Error("record feed poll failure failed", "feed_id", feed.ID, "err", err)
 	}
@@ -100,6 +108,39 @@ func (r *FeedRefresher) recordFailure(ctx context.Context, feed storage.Feed, no
 		BridgeState:   bridgeState,
 	}); err != nil {
 		r.logger().Error("update feed refresh meta failed", "feed_id", feed.ID, "err", err)
+	}
+	after := feed
+	after.ParsingErrorCount = feed.ParsingErrorCount + 1
+	after.PollPaused = feed.PollPaused || after.ParsingErrorCount >= r.circuitThreshold()
+	after.LastError = cause.Error()
+	after.LastCheckedAt = &now
+	// Same backoff the worker applies to the job: base interval × 2^errors.
+	min, max := r.pollBounds()
+	next := storage.FeedNextCheckAfterError(now, feed.IntervalMinutes, after.ParsingErrorCount, min, max)
+	if err := r.Feeds.SetFeedNextCheckAt(ctx, feed.ID, next); err != nil {
+		r.logger().Warn("set next_check_at after failure failed", "feed_id", feed.ID, "err", err)
+	}
+	after.NextCheckAt = &next
+	return after
+}
+
+// recordPoll appends one row to the per-feed poll history (best effort).
+func (r *FeedRefresher) recordPoll(ctx context.Context, feedID int64, at time.Time, started time.Time, inserted int, cause error) {
+	if r.PollLog == nil {
+		return
+	}
+	p := storage.RecordFeedPollParams{
+		FeedID:   feedID,
+		At:       at,
+		OK:       cause == nil,
+		Inserted: inserted,
+		Duration: time.Since(started),
+	}
+	if cause != nil {
+		p.Error = cause.Error()
+	}
+	if err := r.PollLog.RecordFeedPoll(ctx, p); err != nil {
+		r.logger().Warn("record feed poll log failed", "feed_id", feedID, "err", err)
 	}
 }
 
@@ -115,18 +156,19 @@ func (r *FeedRefresher) pollBounds() (min, max time.Duration) {
 	return min, max
 }
 
-func (r *FeedRefresher) scheduleNextCheck(ctx context.Context, feedID int64, intervalMinutes int, from time.Time) error {
-	if r.Feeds == nil {
-		return nil
-	}
+func (r *FeedRefresher) scheduleNextCheck(ctx context.Context, feedID int64, intervalMinutes int, from time.Time) (time.Time, error) {
 	min, max := r.pollBounds()
 	next := storage.FeedNextCheckAt(from, intervalMinutes, min, max)
-	return r.Feeds.SetFeedNextCheckAt(ctx, feedID, next)
+	if r.Feeds == nil {
+		return next, nil
+	}
+	return next, r.Feeds.SetFeedNextCheckAt(ctx, feedID, next)
 }
 
 // RescheduleFeed sets next_check_at from now using the feed interval (e.g. after interval change).
 func (r *FeedRefresher) RescheduleFeed(ctx context.Context, feedID int64, intervalMinutes int) error {
-	return r.scheduleNextCheck(ctx, feedID, intervalMinutes, time.Now().UTC())
+	_, err := r.scheduleNextCheck(ctx, feedID, intervalMinutes, time.Now().UTC())
+	return err
 }
 
 // RefreshFeed polls a feed and persists entries. Use ResetCircuit first for manual recovery.
@@ -174,7 +216,8 @@ func (r *FeedRefresher) refreshLoaded(ctx context.Context, feed storage.Feed, ma
 		return 0, ErrFeedCircuitOpen
 	}
 
-	now := time.Now().UTC()
+	started := time.Now()
+	now := started.UTC()
 	bridgeState := reader.ParseBridgeState(feed.BridgeState)
 
 	if manual && reader.NormalizeFeedType(feed.FeedType) == reader.FeedTypeMax {
@@ -196,12 +239,16 @@ func (r *FeedRefresher) refreshLoaded(ctx context.Context, feed storage.Feed, ma
 	})
 	if fetchErr != nil {
 		if _, ok := reader.RetryAt(fetchErr); ok {
+			// Rate limited by the source: not counted as a feed error, but it
+			// is still a poll that did not deliver anything.
+			r.recordPoll(ctx, feedID, now, started, 0, fetchErr)
 			return 0, fetchErr
 		}
-		r.recordFailure(ctx, feed, now, fetchErr, bridgeStateJSON(res.BridgeState))
+		after := r.recordFailure(ctx, feed, now, fetchErr, bridgeStateJSON(res.BridgeState))
 		err := fmt.Errorf("%w: %w", ErrFetchFeed, fetchErr)
+		r.recordPoll(ctx, feedID, now, started, 0, err)
 		if r.Realtime != nil {
-			r.Realtime.PublishFeedStatusChanged(feed, err)
+			r.Realtime.PublishFeedStatusChanged(after, err)
 		}
 		return 0, err
 	}
@@ -218,10 +265,11 @@ func (r *FeedRefresher) refreshLoaded(ctx context.Context, feed storage.Feed, ma
 			inserted, insertedEntries, err = r.Entries.CreateEntries(ctx, feedID, entries)
 		}
 		if err != nil {
-			r.recordFailure(ctx, feed, now, err, bridgeStateJSON(res.BridgeState))
+			after := r.recordFailure(ctx, feed, now, err, bridgeStateJSON(res.BridgeState))
 			wrappedErr := fmt.Errorf("%w: %w", ErrCreateEntries, err)
+			r.recordPoll(ctx, feedID, now, started, 0, wrappedErr)
 			if r.Realtime != nil {
-				r.Realtime.PublishFeedStatusChanged(feed, wrappedErr)
+				r.Realtime.PublishFeedStatusChanged(after, wrappedErr)
 			}
 			return 0, wrappedErr
 		}
@@ -249,9 +297,19 @@ func (r *FeedRefresher) refreshLoaded(ctx context.Context, feed storage.Feed, ma
 		LastError:     "",
 		BridgeState:   bridgeStateJSON(res.BridgeState),
 	})
-	_ = r.scheduleNextCheck(ctx, feedID, feed.IntervalMinutes, now)
+	next, err := r.scheduleNextCheck(ctx, feedID, feed.IntervalMinutes, now)
+	if err != nil {
+		r.logger().Warn("set next_check_at after success failed", "feed_id", feedID, "err", err)
+	}
+	r.recordPoll(ctx, feedID, now, started, inserted, nil)
 	if r.Realtime != nil {
-		r.Realtime.PublishFeedStatusChanged(feed, nil)
+		after := feed
+		after.ParsingErrorCount = 0
+		after.PollPaused = false
+		after.LastError = ""
+		after.LastCheckedAt = &now
+		after.NextCheckAt = &next
+		r.Realtime.PublishFeedStatusChanged(after, nil)
 	}
 
 	return inserted, nil

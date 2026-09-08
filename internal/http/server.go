@@ -104,6 +104,9 @@ type Dependencies struct {
 
 	DedupStore              storage.EntryDedupStore
 	CircuitBreakerThreshold int
+	// FeedPollLogStore records poll history for manual refreshes triggered
+	// over HTTP/UI (nil = derived from DB when available).
+	FeedPollLogStore storage.FeedPollLogStore
 
 	WorkerControl WorkerControl
 }
@@ -135,6 +138,7 @@ type Server struct {
 	metricsToken  string
 
 	refresher      *service.FeedRefresher
+	feedPollLog    storage.FeedPollLogStore
 	contentFetcher *service.ContentFetcher
 	ssrfGuard      *ssrf.Guard
 
@@ -275,10 +279,15 @@ func New(dep Dependencies) *Server {
 	if dedupStore == nil && dep.DB != nil {
 		dedupStore = storage.NewPostgresStore(dep.DB)
 	}
+	pollLog := dep.FeedPollLogStore
+	if pollLog == nil && dep.DB != nil {
+		pollLog = storage.NewPostgresStore(dep.DB)
+	}
 	refresher := &service.FeedRefresher{
 		Feeds:                   feedStore,
 		Entries:                 entryStore,
 		Dedup:                   dedupStore,
+		PollLog:                 pollLog,
 		Registry:                registry,
 		Filters:                 filterStore,
 		Matches:                 filterMatchStore,
@@ -343,6 +352,7 @@ func New(dep Dependencies) *Server {
 		adminPassword:      dep.AdminPassword,
 		metricsToken:       dep.MetricsToken,
 		refresher:          refresher,
+		feedPollLog:        pollLog,
 		contentFetcher:     contentFetcher,
 		ssrfGuard:          guard,
 		webhookHTTPClient:  webhookClient,

@@ -75,19 +75,21 @@ func (p *Publisher) PublishFeedStatusChanged(feed storage.Feed, err error) {
 	if feed.CategoryID != nil && *feed.CategoryID > 0 {
 		channels = append(channels, "category:"+strconv.FormatInt(*feed.CategoryID, 10))
 	}
-	msg := ""
-	parsingErrorCount := 0
+	msg := feed.LastError
 	if err != nil {
 		msg = err.Error()
-		parsingErrorCount = 1
 	}
 	p.hub.PublishToUser(feed.UserID, channels, Envelope{
 		Event: "feed_status_changed",
 		Data: map[string]any{
 			"feed_id":               feed.ID,
-			"parsing_error_count":   parsingErrorCount,
-			"parsing_error_message": msg,
 			"success":               err == nil,
+			"parsing_error_count":   feed.ParsingErrorCount,
+			"parsing_error_message": msg,
+			"poll_paused":           feed.PollPaused,
+			"manual_paused":         feed.ManualPaused,
+			"last_checked_at":       feed.LastCheckedAt,
+			"next_check_at":         feed.NextCheckAt,
 		},
 	})
 }

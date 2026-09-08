@@ -92,6 +92,7 @@ func (s *Server) registerUI(mux *http.ServeMux) {
 	if af, ok := s.feeds.(storage.AdminFeedStore); ok {
 		cfg.AdminFeeds = af
 	}
+	cfg.FeedPollLog = s.feedPollLog
 	if aw, ok := s.webhooks.(storage.AdminWebhookStore); ok {
 		cfg.AdminWebhooks = aw
 	}

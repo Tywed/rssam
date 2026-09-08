@@ -413,6 +413,10 @@
           }
           return;
         }
+        if (msg.event === 'feed_status_changed' && msg.data && msg.data.feed_id) {
+          applyFeedStatus(msg.data);
+          return;
+        }
         if (msg.event === 'new_entry' && msg.data && msg.data.entry) {
           if (document.getElementById('entry-' + msg.data.entry.id)) return;
           var list = document.getElementById('entry-list');
@@ -427,6 +431,29 @@
         }
       } catch (_) {}
     };
+  }
+
+  // feed_status_changed: repaint the sidebar row of the feed without a reload.
+  // The server sends the state *after* the poll was persisted, so the row
+  // mirrors what feedHasError() would render on the next page load.
+  function applyFeedStatus(d) {
+    var hasError = !d.success || d.parsing_error_count > 0 || d.poll_paused === true || d.manual_paused === true;
+    var rows = document.querySelectorAll('[data-feed-id="' + d.feed_id + '"]');
+    rows.forEach(function (row) {
+      row.classList.toggle('feed-error', hasError);
+      var icon = row.querySelector('.tree-icon');
+      if (icon) {
+        icon.textContent = hasError ? '\u26A0' : '\u25B8';
+        icon.title = hasError ? (d.parsing_error_message || '') : '';
+      }
+      if (d.poll_paused === true) {
+        row.title = 'Автостоп: ' + d.parsing_error_count + ' ошибок подряд';
+      } else if (hasError && d.parsing_error_message) {
+        row.title = d.parsing_error_message;
+      } else {
+        row.removeAttribute('title');
+      }
+    });
   }
 
   function escapeHtml(s) {

@@ -36,6 +36,7 @@ type Config struct {
 	RemovedRetentionDays     int
 	WebhookLogRetentionDays  int
 	FilterMatchRetentionDays int
+	FeedPollLogRetentionDays int
 	CleanupInterval          time.Duration
 
 	FeedPollDailyResetEnabled bool
@@ -321,9 +322,17 @@ func processPollFeedJob(ctx context.Context, j storage.Job, store pollJobStore, 
 		feedAfter, feedErr := store.GetFeedByID(ctx, feedID)
 		var next time.Time
 		errCount := 0
-		if feedErr != nil {
+		persisted := false
+		switch {
+		case feedErr != nil:
 			next = now.Add(Backoff(j.Attempts+1, cfg.MinPollInterval, cfg.MaxPollInterval))
-		} else {
+		case feedAfter.NextCheckAt != nil && feedAfter.NextCheckAt.After(now):
+			// The refresher already persisted the error backoff (and published
+			// it over WebSocket); reuse it so job.run_at == feeds.next_check_at.
+			errCount = feedAfter.ParsingErrorCount
+			next = *feedAfter.NextCheckAt
+			persisted = true
+		default:
 			errCount = feedAfter.ParsingErrorCount
 			next = storage.FeedNextCheckAfterError(now, feedAfter.IntervalMinutes, feedAfter.ParsingErrorCount, cfg.MinPollInterval, cfg.MaxPollInterval)
 		}
@@ -332,8 +341,10 @@ func processPollFeedJob(ctx context.Context, j storage.Job, store pollJobStore, 
 		if rerr := store.RescheduleJob(ctx, j.ID, cfg.InstanceID, next, err.Error()); rerr != nil {
 			log.Error("poll_feed: reschedule job failed", "job_id", j.ID, "feed_id", feedID, "err", rerr)
 		}
-		if serr := store.SetFeedNextCheckAt(ctx, feedID, next); serr != nil {
-			log.Warn("poll_feed: set next_check_at failed", "feed_id", feedID, "err", serr)
+		if !persisted {
+			if serr := store.SetFeedNextCheckAt(ctx, feedID, next); serr != nil {
+				log.Warn("poll_feed: set next_check_at failed", "feed_id", feedID, "err", serr)
+			}
 		}
 		log.Warn("poll_feed failed", "feed_id", feedID, "job_id", j.ID, "attempts", j.Attempts+1, "error_count", errCount, "next_check_at", next, "err", err)
 		return

@@ -224,6 +224,7 @@ func main() {
 	refresher.Labels = pgStore
 	refresher.Webhooks = pgStore
 	refresher.WebhookLogs = pgStore
+	refresher.PollLog = pgStore
 	if cfg.WSEnabled {
 		refresher.Realtime = wsPublisher
 	}
@@ -250,6 +251,7 @@ func main() {
 			RemovedRetentionDays:     cfg.RemovedRetentionDays,
 			WebhookLogRetentionDays:  cfg.WebhookLogRetentionDays,
 			FilterMatchRetentionDays: cfg.FilterMatchRetentionDays,
+			FeedPollLogRetentionDays: cfg.FeedPollLogRetentionDays,
 			CleanupInterval:          cfg.CleanupInterval,
 
 			FeedPollDailyResetEnabled: cfg.FeedPollDailyResetEnabled,
@@ -321,6 +323,7 @@ func main() {
 		MinPollInterval:         cfg.MinPollInterval,
 		MaxPollInterval:         cfg.MaxPollInterval,
 		DedupStore:              pgStore,
+		FeedPollLogStore:        pgStore,
 		StoreEntriesMode:        cfg.StoreEntriesMode,
 		CircuitBreakerThreshold: cfg.FeedCircuitBreakerThreshold,
 		WorkerPoolSize:          cfg.WorkerPoolSize,
@@ -330,6 +333,7 @@ func main() {
 			RemovedRetentionDays:     cfg.RemovedRetentionDays,
 			WebhookLogRetentionDays:  cfg.WebhookLogRetentionDays,
 			FilterMatchRetentionDays: cfg.FilterMatchRetentionDays,
+			FeedPollLogRetentionDays: cfg.FeedPollLogRetentionDays,
 			CleanupInterval:          cfg.CleanupInterval,
 		},
 		RunRetentionCleanup: w.RetentionCleanupNow,

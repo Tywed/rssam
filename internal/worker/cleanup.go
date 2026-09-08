@@ -40,6 +40,9 @@ func (r *Runner) RetentionCleanupNow(ctx context.Context) (storage.RetentionClea
 	if r.Cfg.FilterMatchRetentionDays > 0 {
 		opts.FilterMatchesBefore = storage.RetentionCutoff(now, r.Cfg.FilterMatchRetentionDays)
 	}
+	if r.Cfg.FeedPollLogRetentionDays > 0 {
+		opts.FeedPollLogBefore = storage.RetentionCutoff(now, r.Cfg.FeedPollLogRetentionDays)
+	}
 	return r.Store.RunRetentionCleanup(ctx, opts)
 }
 
@@ -59,6 +62,9 @@ func (r *Runner) runRetentionCleanup(ctx context.Context) {
 	if result.FilterMatches > 0 {
 		metrics.CleanupDeletedRows.WithLabelValues("filter_matches").Add(float64(result.FilterMatches))
 	}
+	if result.FeedPollLog > 0 {
+		metrics.CleanupDeletedRows.WithLabelValues("feed_poll_log").Add(float64(result.FeedPollLog))
+	}
 	if result.FeedEntries > 0 {
 		metrics.CleanupDeletedRows.WithLabelValues("feed_entries").Add(float64(result.FeedEntries))
 	}
@@ -69,12 +75,13 @@ func (r *Runner) runRetentionCleanup(ctx context.Context) {
 		metrics.CleanupDeletedRows.WithLabelValues("sessions").Add(float64(result.ExpiredSessions))
 	}
 
-	if result.RemovedEntries > 0 || result.WebhookLogs > 0 || result.FilterMatches > 0 ||
+	if result.RemovedEntries > 0 || result.WebhookLogs > 0 || result.FilterMatches > 0 || result.FeedPollLog > 0 ||
 		result.FeedEntries > 0 || result.FeedEntryDedup > 0 || result.ExpiredSessions > 0 {
 		r.Log.Info("retention cleanup completed",
 			"removed_entries", result.RemovedEntries,
 			"webhook_logs", result.WebhookLogs,
 			"filter_matches", result.FilterMatches,
+			"feed_poll_log", result.FeedPollLog,
 			"feed_entries", result.FeedEntries,
 			"feed_entry_dedup", result.FeedEntryDedup,
 			"expired_sessions", result.ExpiredSessions,

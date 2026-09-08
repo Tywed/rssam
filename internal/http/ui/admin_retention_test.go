@@ -18,16 +18,17 @@ import (
 
 func TestParseRetentionForm(t *testing.T) {
 	ok := map[string]string{
-		"removed_retention_days":      "30",
-		"webhook_log_retention_days":  "90",
-		"filter_match_retention_days": "0",
-		"cleanup_interval":            "12h30m",
+		"removed_retention_days":       "30",
+		"webhook_log_retention_days":   "90",
+		"filter_match_retention_days":  "0",
+		"feed_poll_log_retention_days": "14",
+		"cleanup_interval":             "12h30m",
 	}
 	f, err := parseRetentionForm(func(k string) string { return ok[k] })
 	if err != nil {
 		t.Fatalf("valid form: %v", err)
 	}
-	if f.RemovedRetentionDays != 30 || f.WebhookLogRetentionDays != 90 || f.FilterMatchRetentionDays != 0 || f.CleanupInterval != 12*time.Hour+30*time.Minute {
+	if f.RemovedRetentionDays != 30 || f.WebhookLogRetentionDays != 90 || f.FilterMatchRetentionDays != 0 || f.FeedPollLogRetentionDays != 14 || f.CleanupInterval != 12*time.Hour+30*time.Minute {
 		t.Fatalf("parsed = %+v", f)
 	}
 
@@ -41,6 +42,8 @@ func TestParseRetentionForm(t *testing.T) {
 		{"removed not int", "removed_retention_days", "abc"},
 		{"webhook zero", "webhook_log_retention_days", "0"},
 		{"filter negative", "filter_match_retention_days", "-1"},
+		{"poll log negative", "feed_poll_log_retention_days", "-1"},
+		{"poll log too big", "feed_poll_log_retention_days", "3651"},
 		{"interval too short", "cleanup_interval", "30s"},
 		{"interval too long", "cleanup_interval", "169h"},
 		{"interval garbage", "cleanup_interval", "soon"},
@@ -111,6 +114,7 @@ func newRetentionTestHandler(t *testing.T, envPath string, cleanup func(context.
 			RemovedRetentionDays:     30,
 			WebhookLogRetentionDays:  90,
 			FilterMatchRetentionDays: 90,
+			FeedPollLogRetentionDays: 14,
 			CleanupInterval:          24 * time.Hour,
 		},
 		RunRetentionCleanup: cleanup,
@@ -141,7 +145,7 @@ func TestAdminRetentionSaveWritesEnv(t *testing.T) {
 		t.Fatalf("system page: %d", rec.Code)
 	}
 	body := rec.Body.String()
-	for _, want := range []string{`name="webhook_log_retention_days"`, `value="90"`, `name="cleanup_interval"`, `value="24h"`, "Хранение журналов"} {
+	for _, want := range []string{`name="webhook_log_retention_days"`, `value="90"`, `name="cleanup_interval"`, `value="24h"`, `name="feed_poll_log_retention_days"`, `value="14"`, "Хранение журналов"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("system page lacks %q", want)
 		}
@@ -151,11 +155,12 @@ func TestAdminRetentionSaveWritesEnv(t *testing.T) {
 	}
 
 	rec = postForm(t, mux, sid, "/ui/admin/system/retention", url.Values{
-		"csrf_token":                  {token},
-		"removed_retention_days":      {"14"},
-		"webhook_log_retention_days":  {"45"},
-		"filter_match_retention_days": {"0"},
-		"cleanup_interval":            {"6h"},
+		"csrf_token":                   {token},
+		"removed_retention_days":       {"14"},
+		"webhook_log_retention_days":   {"45"},
+		"filter_match_retention_days":  {"0"},
+		"feed_poll_log_retention_days": {"7"},
+		"cleanup_interval":             {"6h"},
 	})
 	if rec.Code != http.StatusFound || rec.Header().Get("Location") != "/ui/admin/system?saved=1" {
 		t.Fatalf("save: status=%d loc=%q body=%s", rec.Code, rec.Header().Get("Location"), rec.Body.String())
@@ -165,7 +170,7 @@ func TestAdminRetentionSaveWritesEnv(t *testing.T) {
 		t.Fatal(err)
 	}
 	env := string(raw)
-	for _, want := range []string{"LISTEN_ADDR=:8080", "REMOVED_RETENTION_DAYS=14", "WEBHOOK_LOG_RETENTION_DAYS=45", "FILTER_MATCH_RETENTION_DAYS=0", "CLEANUP_INTERVAL=6h"} {
+	for _, want := range []string{"LISTEN_ADDR=:8080", "REMOVED_RETENTION_DAYS=14", "WEBHOOK_LOG_RETENTION_DAYS=45", "FILTER_MATCH_RETENTION_DAYS=0", "FEED_POLL_LOG_RETENTION_DAYS=7", "CLEANUP_INTERVAL=6h"} {
 		if !strings.Contains(env, want) {
 			t.Fatalf(".env lacks %q:\n%s", want, env)
 		}
@@ -176,11 +181,12 @@ func TestAdminRetentionSaveWritesEnv(t *testing.T) {
 
 	// Invalid values are rejected and nothing is written.
 	rec = postForm(t, mux, sid, "/ui/admin/system/retention", url.Values{
-		"csrf_token":                  {token},
-		"removed_retention_days":      {"0"},
-		"webhook_log_retention_days":  {"45"},
-		"filter_match_retention_days": {"0"},
-		"cleanup_interval":            {"6h"},
+		"csrf_token":                   {token},
+		"removed_retention_days":       {"0"},
+		"webhook_log_retention_days":   {"45"},
+		"filter_match_retention_days":  {"0"},
+		"feed_poll_log_retention_days": {"7"},
+		"cleanup_interval":             {"6h"},
 	})
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("invalid save: status=%d", rec.Code)
@@ -192,10 +198,11 @@ func TestAdminRetentionSaveWritesEnv(t *testing.T) {
 
 	// CSRF is enforced.
 	rec = postForm(t, mux, sid, "/ui/admin/system/retention", url.Values{
-		"removed_retention_days":      {"14"},
-		"webhook_log_retention_days":  {"45"},
-		"filter_match_retention_days": {"0"},
-		"cleanup_interval":            {"6h"},
+		"removed_retention_days":       {"14"},
+		"webhook_log_retention_days":   {"45"},
+		"filter_match_retention_days":  {"0"},
+		"feed_poll_log_retention_days": {"7"},
+		"cleanup_interval":             {"6h"},
 	})
 	if rec.Code != http.StatusForbidden {
 		t.Fatalf("no csrf: status=%d", rec.Code)
@@ -206,7 +213,7 @@ func TestAdminRetentionCleanupNow(t *testing.T) {
 	calls := 0
 	mux := newRetentionTestHandler(t, filepath.Join(t.TempDir(), ".env"), func(context.Context) (storage.RetentionCleanupResult, error) {
 		calls++
-		return storage.RetentionCleanupResult{WebhookLogs: 5, ExpiredSessions: 2}, nil
+		return storage.RetentionCleanupResult{WebhookLogs: 5, ExpiredSessions: 2, FeedPollLog: 3}, nil
 	})
 	sid := uiSessionCookie(t, nil, mux)
 	token := auth.CSRFToken("csrf-test", sid)
@@ -220,18 +227,18 @@ func TestAdminRetentionCleanupNow(t *testing.T) {
 	}
 
 	rec = postForm(t, mux, sid, "/ui/admin/system/retention/cleanup", url.Values{"csrf_token": {token}})
-	if rec.Code != http.StatusFound || rec.Header().Get("Location") != "/ui/admin/system?cleaned=7" {
+	if rec.Code != http.StatusFound || rec.Header().Get("Location") != "/ui/admin/system?cleaned=10" {
 		t.Fatalf("cleanup: status=%d loc=%q body=%s", rec.Code, rec.Header().Get("Location"), rec.Body.String())
 	}
 	if calls != 1 {
 		t.Fatalf("cleanup hook calls = %d", calls)
 	}
 
-	req = httptest.NewRequest(http.MethodGet, "/ui/admin/system?cleaned=7", nil)
+	req = httptest.NewRequest(http.MethodGet, "/ui/admin/system?cleaned=10", nil)
 	req.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: sid})
 	rec = httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
-	if !strings.Contains(rec.Body.String(), "удалено строк — 7") {
+	if !strings.Contains(rec.Body.String(), "удалено строк — 10") {
 		t.Fatalf("flash missing: %s", rec.Body.String())
 	}
 
