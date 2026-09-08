@@ -64,6 +64,8 @@ curl -fsSL https://raw.githubusercontent.com/Tywed/rssam/main/install.sh | sudo 
 
 ## Сборка из исходников
 
+Версия Go задаётся в `go.mod` (`go 1.27.0` — минимум, `toolchain go1.27.1` — чем собираются релизы и CI; `go` сам скачает нужный toolchain, `GOTOOLCHAIN=local` это запрещает). Dependabot поднимает строку `toolchain` вместе с остальными обновлениями.
+
 ```bash
 cd /home/rssam/rssam
 VERSION=$(git describe --tags --always)
@@ -100,8 +102,8 @@ rssam слушает plain HTTP (`LISTEN_ADDR`, по умолчанию `:8080`)
 
 1. Реверс-прокси с TLS (nginx/Caddy) перед rssam; rssam слушает только `127.0.0.1:8080`. В прокси: `proxy_set_header Host $host; X-Forwarded-For $remote_addr; X-Forwarded-Proto $scheme;` и включённый WebSocket-upgrade для `/ws/v1`.
 2. `HSTS=true` — HSTS-заголовок и cookie `Secure`.
-3. `TRUSTED_PROXIES` — адрес прокси, если он не на этом же хосте (по умолчанию доверяется только loopback; иначе rate-limit считает клиентом сам прокси).
-4. Сменить `ADMIN_PASSWORD`, убрать `AUTH_TOKEN` из `.env` (это dev-режим: один общий токен вместо API-ключей). `METRICS_TOKEN` нужен только если `/metrics` кто-то читает.
+3. `TRUSTED_PROXIES` — адрес прокси, если он не на этом же хосте (по умолчанию доверяется только loopback). Заголовки `X-Forwarded-For` / `X-Forwarded-Host` / `X-Forwarded-Proto` принимаются только от адресов из этого списка: иначе rate-limit считает клиентом сам прокси, а cookie не получит флаг `Secure` (rssam видит plain HTTP).
+4. Сменить `ADMIN_PASSWORD`, убрать `AUTH_TOKEN` из `.env` (это dev-режим: один общий токен вместо API-ключей; значение `dev-token` из примера сервис не запустит без `ALLOW_DEV_TOKEN=true`). `METRICS_TOKEN` нужен только если `/metrics` кто-то читает.
 5. `FETCH_ALLOW_PRIVATE_NETWORK=false` (по умолчанию): rssam ходит по URL, которые вводят пользователи; SSRF-guard не пускает его в приватные сети.
 6. Не публиковать порт PostgreSQL. `docker-compose.yml` в репозитории — dev-конфигурация (пароль `rssam`, порт 5432 наружу).
 

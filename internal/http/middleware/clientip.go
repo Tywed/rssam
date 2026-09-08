@@ -140,3 +140,38 @@ func RequestHost(r *http.Request) string {
 	}
 	return r.Host
 }
+
+// PeerIsTrustedProxy reports whether the direct TCP peer of r is in the
+// trusted proxy list, i.e. whether any X-Forwarded-* header may be believed.
+func PeerIsTrustedProxy(r *http.Request) bool {
+	_, peer, ok := remoteAddr(r)
+	return ok && isTrustedProxy(peer)
+}
+
+// ForwardedProto returns the client-facing scheme announced by a trusted
+// reverse proxy in X-Forwarded-Proto ("http"/"https"), or "" when the header
+// is absent or the peer is not trusted. With several proxies the first value
+// is the client-facing one.
+func ForwardedProto(r *http.Request) string {
+	if !PeerIsTrustedProxy(r) {
+		return ""
+	}
+	v := strings.TrimSpace(r.Header.Get("X-Forwarded-Proto"))
+	if i := strings.IndexByte(v, ','); i >= 0 {
+		v = strings.TrimSpace(v[:i])
+	}
+	return strings.ToLower(v)
+}
+
+// RequestIsSecure reports whether the client reached us over HTTPS: direct
+// TLS, an HSTS deployment (which by definition is HTTPS-only at the edge), or
+// a trusted proxy saying so via X-Forwarded-Proto. A direct client cannot mark
+// its own plain-HTTP connection as secure by sending the header, which would
+// otherwise make session cookies carry the Secure flag over HTTP and be
+// silently dropped by the browser (login loop).
+func RequestIsSecure(r *http.Request, hstsEnabled bool) bool {
+	if r.TLS != nil || hstsEnabled {
+		return true
+	}
+	return ForwardedProto(r) == "https"
+}

@@ -13,7 +13,7 @@ import { check, sleep } from 'k6';
 // get_entry 20 ms, bulk_update 15 ms, list_feeds 18 ms. No ERROR/WARN in
 // the journal; EXPLAIN of the list query is 7 ms (sort of 6.8k rows).
 const baseURL = __ENV.BASE_URL || 'http://127.0.0.1:8080';
-const token = __ENV.AUTH_TOKEN || 'dev-token';
+const token = __ENV.AUTH_TOKEN || 'dev-token'; // server needs ALLOW_DEV_TOKEN=true for the default
 const headers = { 'X-Auth-Token': token, 'Content-Type': 'application/json' };
 
 export const options = {

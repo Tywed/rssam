@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"rssam/internal/auth"
+	"rssam/internal/http/middleware"
 	"rssam/internal/storage"
 )
 
@@ -121,7 +122,7 @@ func (h *Handler) handleAPIKeyCreate(w http.ResponseWriter, r *http.Request) {
 		Value:    raw,
 		Path:     "/ui/settings",
 		HttpOnly: true,
-		Secure:   auth.RequestIsSecure(r, h.cfg.HSTSEnabled),
+		Secure:   middleware.RequestIsSecure(r, h.cfg.HSTSEnabled),
 		SameSite: http.SameSiteStrictMode,
 		MaxAge:   60,
 	})

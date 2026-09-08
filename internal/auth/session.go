@@ -53,16 +53,3 @@ func SessionIDFromRequest(r *http.Request) string {
 	}
 	return strings.TrimSpace(c.Value)
 }
-
-func RequestIsSecure(r *http.Request, hstsEnabled bool) bool {
-	if r.TLS != nil {
-		return true
-	}
-	if hstsEnabled {
-		return true
-	}
-	if strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https") {
-		return true
-	}
-	return false
-}

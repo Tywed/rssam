@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"rssam/internal/auth"
+	"rssam/internal/http/middleware"
 	"rssam/internal/storage"
 	"rssam/internal/version"
 )
@@ -138,7 +139,7 @@ const (
 )
 
 func (h *Handler) sessionCookieCfg(r *http.Request) auth.SessionCookieConfig {
-	return auth.DefaultSessionCookieConfig(auth.RequestIsSecure(r, h.cfg.HSTSEnabled))
+	return auth.DefaultSessionCookieConfig(middleware.RequestIsSecure(r, h.cfg.HSTSEnabled))
 }
 
 func (h *Handler) csrfToken(r *http.Request) string {

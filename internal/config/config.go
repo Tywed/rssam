@@ -16,8 +16,13 @@ type Config struct {
 	LogFormat        string
 	RunMigrations    bool
 
-	AuthToken    string
-	MetricsToken string
+	AuthToken string
+	// AllowDevToken permits the well-known placeholder AUTH_TOKEN=dev-token
+	// from .env.example (ALLOW_DEV_TOKEN=true). Off by default: the token
+	// authenticates as the first user with full admin rights, and a copied
+	// example file must not become a production credential by accident.
+	AllowDevToken bool
+	MetricsToken  string
 
 	AdminUsername string
 	AdminPassword string
@@ -136,8 +141,9 @@ func Load() (Config, error) {
 		LogFormat:        strings.ToLower(getEnv("LOG_FORMAT", "json")), // json|text
 		RunMigrations:    parseBool(os.Getenv("RUN_MIGRATIONS")),
 
-		AuthToken:    strings.TrimSpace(os.Getenv("AUTH_TOKEN")),
-		MetricsToken: strings.TrimSpace(os.Getenv("METRICS_TOKEN")),
+		AuthToken:     strings.TrimSpace(os.Getenv("AUTH_TOKEN")),
+		AllowDevToken: parseBool(os.Getenv("ALLOW_DEV_TOKEN")),
+		MetricsToken:  strings.TrimSpace(os.Getenv("METRICS_TOKEN")),
 
 		AdminUsername: strings.TrimSpace(os.Getenv("ADMIN_USERNAME")),
 		AdminPassword: strings.TrimSpace(os.Getenv("ADMIN_PASSWORD")),
@@ -260,6 +266,9 @@ func (c Config) Validate() error {
 	}
 	if strings.TrimSpace(c.ListenAddr) == "" {
 		errs = append(errs, errors.New("LISTEN_ADDR must not be empty"))
+	}
+	if IsPlaceholderAuthToken(c.AuthToken) && !c.AllowDevToken {
+		errs = append(errs, fmt.Errorf("AUTH_TOKEN=%q is the placeholder from .env.example and grants admin access to anyone who reads the example; set a real secret, leave it empty (UI login + API keys), or set ALLOW_DEV_TOKEN=true for local development", c.AuthToken))
 	}
 	switch c.LogFormat {
 	case "json", "text":
@@ -549,6 +558,18 @@ func parseInt(v string, def int) int {
 		return def
 	}
 	return n
+}
+
+// placeholderAuthTokens are the values shipped in .env.example / docs that
+// people copy verbatim. They are refused at start unless ALLOW_DEV_TOKEN=true.
+var placeholderAuthTokens = map[string]struct{}{
+	"dev-token": {},
+}
+
+// IsPlaceholderAuthToken reports whether token is a well-known example value.
+func IsPlaceholderAuthToken(token string) bool {
+	_, ok := placeholderAuthTokens[strings.ToLower(strings.TrimSpace(token))]
+	return ok
 }
 
 // parseIntAllowZero is parseInt for settings where an explicit "0" is a valid
