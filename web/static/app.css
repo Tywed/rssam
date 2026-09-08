@@ -69,6 +69,7 @@ a:hover { text-decoration: underline; }
 }
 .entry-sort-btn:last-child { border-right: none; }
 .entry-sort-btn.active { background: var(--accent); color: #fff; }
+.auto-read-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
 .btn-header { white-space: nowrap; }
 .btn-header.active { background: var(--accent); color: #fff; border-color: var(--accent); }
 .btn-logout {

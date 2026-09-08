@@ -9,7 +9,8 @@
     viewMode: 'horizontal',
     feedsCollapsed: false,
     theme: 'light',
-    entrySort: 'newest'
+    entrySort: 'newest',
+    autoRead: false
   };
 
   function loadPrefs() {
@@ -63,6 +64,21 @@
     });
     document.querySelectorAll('.entry-sort-btn').forEach(function (btn) {
       btn.classList.toggle('active', btn.getAttribute('data-entry-sort') === (prefs.entrySort || 'newest'));
+    });
+    var autoRead = document.getElementById('auto-read-toggle');
+    if (autoRead) {
+      autoRead.classList.toggle('active', !!prefs.autoRead);
+      autoRead.setAttribute('aria-pressed', prefs.autoRead ? 'true' : 'false');
+    }
+  }
+
+  function initAutoRead(prefs) {
+    var btn = document.getElementById('auto-read-toggle');
+    if (!btn) return;
+    btn.addEventListener('click', function () {
+      prefs.autoRead = !prefs.autoRead;
+      savePrefs(prefs);
+      applyPrefs(prefs);
     });
   }
 
@@ -202,7 +218,7 @@
     if (backdrop) backdrop.addEventListener('click', closeMobile);
   }
 
-  function initEntryPreview() {
+  function initEntryPreview(prefs) {
     var content = document.getElementById('panel-content');
     if (!content) return;
 
@@ -230,6 +246,7 @@
           if (url && window.history && window.history.replaceState) {
             window.history.replaceState(null, '', url);
           }
+          if (prefs.autoRead) markRowRead(row);
         })
         .catch(function () {
           window.location.href = link.getAttribute('href');
@@ -298,7 +315,10 @@
   }
 
   function markActiveRead() {
-    var row = document.querySelector('#entry-list .hl-row.active');
+    markRowRead(document.querySelector('#entry-list .hl-row.active'));
+  }
+
+  function markRowRead(row) {
     if (!row || row.classList.contains('read')) return;
     var entryID = row.getAttribute('data-entry-id');
     if (!entryID) return;
@@ -314,7 +334,10 @@
     })
       .then(function (r) { return r.text(); })
       .then(function (html) {
-        if (html) row.outerHTML = html;
+        if (!html) return;
+        row.outerHTML = html;
+        var btn = document.querySelector('#entry-preview .article-toolbar form[action$="/read"]');
+        if (btn) btn.remove();
       })
       .catch(function () {});
   }
@@ -1269,12 +1292,13 @@
     initViewMode(prefs);
     initThemeToggle(prefs);
     initEntrySort(prefs);
+    initAutoRead(prefs);
     initSplitters(prefs);
     initFeedsToggle(prefs);
     initCategoryTree();
     initCategoryReorder();
     initFeedContextMenu();
-    initEntryPreview();
+    initEntryPreview(prefs);
     initKeyboardNav();
     initFeedForm();
     initConfirmForms();
