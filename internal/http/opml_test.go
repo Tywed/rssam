@@ -3,6 +3,7 @@ package httpserver
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -83,11 +84,23 @@ func (s *opmlFeedStore) CreateFeed(_ context.Context, _ int64, params storage.Cr
 		return storage.Feed{}, storage.ErrDuplicateFeedURL
 	}
 	f := storage.Feed{
-		ID:              s.next,
-		FeedURL:         params.FeedURL,
-		Title:           params.Title,
-		CategoryID:      params.CategoryID,
-		IntervalMinutes: params.IntervalMinutes,
+		ID:                 s.next,
+		FeedURL:            params.FeedURL,
+		FeedType:           params.FeedType,
+		Title:              params.Title,
+		CategoryID:         params.CategoryID,
+		IntervalMinutes:    params.IntervalMinutes,
+		ScraperRules:       params.ScraperRules,
+		RewriteRules:       params.RewriteRules,
+		BlockedRules:       params.BlockedRules,
+		KeepRules:          params.KeepRules,
+		FetchViaProxy:      params.FetchViaProxy,
+		TLSInsecure:        params.TLSInsecure,
+		Crawler:            params.Crawler,
+		UserAgent:          params.UserAgent,
+		WebhookID:          params.WebhookID,
+		StoreHashOnly:      params.StoreHashOnly,
+		EntryRetentionDays: params.EntryRetentionDays,
 	}
 	s.next++
 	s.feeds[key] = f
@@ -111,12 +124,15 @@ func (s *opmlFeedStore) GetFeedByID(ctx context.Context, id int64) (storage.Feed
 func (s *opmlFeedStore) ListAllFeeds(_ context.Context, _ int) ([]storage.Feed, error) {
 	return nil, nil
 }
+
+// ListFeeds mirrors the PostgreSQL projection (id/url/type/title/category/
+// interval only) so tests exercise the GetFeed round-trip the export needs.
 func (s *opmlFeedStore) ListFeeds(_ context.Context, _ int64, _, _ int) ([]storage.Feed, int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	out := make([]storage.Feed, 0, len(s.feeds))
 	for _, f := range s.feeds {
-		out = append(out, f)
+		out = append(out, storage.Feed{ID: f.ID, UserID: f.UserID, FeedURL: f.FeedURL, FeedType: f.FeedType, Title: f.Title, CategoryID: f.CategoryID, IntervalMinutes: f.IntervalMinutes})
 	}
 	return out, len(out), nil
 }
@@ -260,5 +276,119 @@ func TestOPMLImportDuplicateSkipped(t *testing.T) {
 	}
 	if !strings.Contains(rec.Body.String(), `"feeds_skipped"`) {
 		t.Fatalf("expected skipped count: %s", rec.Body.String())
+	}
+}
+
+// TestOPMLSettingsRoundtrip: per-feed settings (interval, TLS, hash-only,
+// feed type, webhook binding, rules) survive export → import via the rssam
+// namespace; invalid values and unknown webhooks are reported per feed
+// without blocking the import.
+func TestOPMLSettingsRoundtrip(t *testing.T) {
+	guard, err := ssrf.New(ssrf.Config{LookupHost: publicExampleLookup})
+	if err != nil {
+		t.Fatal(err)
+	}
+	webhooks := newMemWebhookStore()
+	webhooks.webhooks[7] = storage.Webhook{ID: 7, UserID: 1, Name: "Alerts", Enabled: true}
+	webhooks.webhooks[8] = storage.Webhook{ID: 8, UserID: 1, Name: "dup", Enabled: true}
+	webhooks.webhooks[9] = storage.Webhook{ID: 9, UserID: 1, Name: "DUP", Enabled: true}
+
+	newServer := func(feeds *opmlFeedStore) http.Handler {
+		s := New(Dependencies{
+			AuthToken:      "secret",
+			CategoryStore:  newOpmlCategoryStore(),
+			FeedStore:      feeds,
+			WebhookStore:   webhooks,
+			SSRFGuard:      guard,
+			MaxImportFeeds: 500,
+		})
+		mux := http.NewServeMux()
+		mux.HandleFunc("POST /v1/feeds/import", s.handleImportFeeds)
+		mux.HandleFunc("GET /v1/feeds/export", s.handleExportFeeds)
+		return s.wrapAPI(mux)
+	}
+
+	// Source instance: one fully configured feed, one default feed.
+	src := newOpmlFeedStore()
+	retention := 30
+	webhookID := int64(7)
+	if _, err := src.CreateFeed(context.Background(), 1, storage.CreateFeedParams{
+		FeedURL: "https://example.com/tg", FeedType: "telegram", Title: "TG", IntervalMinutes: 5,
+		TLSInsecure: true, FetchViaProxy: true, Crawler: true, StoreHashOnly: true, EntryRetentionDays: &retention,
+		UserAgent: "ua/2", WebhookID: &webhookID, ScraperRules: "div.post", RewriteRules: "rw", BlockedRules: "ads", KeepRules: "go",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := src.CreateFeed(context.Background(), 1, storage.CreateFeedParams{FeedURL: "https://example.com/plain", FeedType: "rss", Title: "Plain", IntervalMinutes: 60}); err != nil {
+		t.Fatal(err)
+	}
+	exportReq := httptest.NewRequest(http.MethodGet, "/v1/feeds/export", nil)
+	exportReq.Header.Set("X-Auth-Token", "secret")
+	exportRec := httptest.NewRecorder()
+	newServer(src).ServeHTTP(exportRec, exportReq)
+	if exportRec.Code != http.StatusOK {
+		t.Fatalf("export status %d", exportRec.Code)
+	}
+	exported := exportRec.Body.String()
+	for _, want := range []string{`rssam:feedType="telegram"`, `rssam:interval="5"`, `rssam:tlsInsecure="true"`, `rssam:hashOnly="true"`, `rssam:retentionDays="30"`, `rssam:webhook="Alerts"`, `rssam:scraperRules="div.post"`} {
+		if !strings.Contains(exported, want) {
+			t.Fatalf("export lacks %s:\n%s", want, exported)
+		}
+	}
+
+	// Target instance: import the export plus two hand-edited outlines.
+	edited := strings.Replace(exported, "</body>", `
+    <outline type="rss" text="Bad" xmlUrl="https://example.com/bad" rssam:interval="999999" rssam:webhook="nope" rssam:feedType="martian" rssam:tlsInsecure="yes-please"/>
+    <outline type="rss" text="Dup" xmlUrl="https://example.com/dup" rssam:webhook="dup"/>
+  </body>`, 1)
+	dst := newOpmlFeedStore()
+	importReq := httptest.NewRequest(http.MethodPost, "/v1/feeds/import", strings.NewReader(edited))
+	importReq.Header.Set("Content-Type", "application/xml")
+	importReq.Header.Set("X-Auth-Token", "secret")
+	importRec := httptest.NewRecorder()
+	newServer(dst).ServeHTTP(importRec, importReq)
+	if importRec.Code != http.StatusOK {
+		t.Fatalf("import status %d body=%s", importRec.Code, importRec.Body.String())
+	}
+	var resp struct {
+		Data importReportDTO `json:"data"`
+	}
+	if err := json.Unmarshal(importRec.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	if resp.Data.FeedsCreated != 4 {
+		t.Fatalf("feeds_created = %d, want 4: %+v", resp.Data.FeedsCreated, resp.Data)
+	}
+
+	byURL := map[string]storage.Feed{}
+	for _, f := range dst.feeds {
+		byURL[f.FeedURL] = f
+	}
+	tg := byURL["https://example.com/tg"]
+	if tg.FeedType != "telegram" || tg.IntervalMinutes != 5 || !tg.TLSInsecure || !tg.FetchViaProxy || !tg.Crawler || !tg.StoreHashOnly ||
+		tg.EntryRetentionDays == nil || *tg.EntryRetentionDays != 30 || tg.UserAgent != "ua/2" ||
+		tg.WebhookID == nil || *tg.WebhookID != 7 || tg.ScraperRules != "div.post" || tg.RewriteRules != "rw" || tg.BlockedRules != "ads" || tg.KeepRules != "go" {
+		t.Fatalf("settings lost on import: %+v", tg)
+	}
+	plain := byURL["https://example.com/plain"]
+	if plain.FeedType != "rss" || plain.IntervalMinutes != 60 || plain.TLSInsecure || plain.WebhookID != nil {
+		t.Fatalf("plain feed changed: %+v", plain)
+	}
+	bad := byURL["https://example.com/bad"]
+	if bad.IntervalMinutes != defaultIntervalMinutes || bad.WebhookID != nil || bad.FeedType != "rss" || bad.TLSInsecure {
+		t.Fatalf("invalid attributes must fall back to defaults: %+v", bad)
+	}
+	if dup := byURL["https://example.com/dup"]; dup.WebhookID != nil {
+		t.Fatalf("ambiguous webhook name must not bind: %+v", dup)
+	}
+
+	reasons := strings.Builder{}
+	for _, e := range resp.Data.Errors {
+		reasons.WriteString(e.FeedURL + ": " + e.Reason + "\n")
+	}
+	for _, want := range []string{"rssam:interval: 999999", `rssam:webhook: no webhook named "nope"`, `rssam:feedType: unknown type "martian"`, "rssam:tlsInsecure: expected true/false", `several webhooks are named "dup"`} {
+		if !strings.Contains(reasons.String(), want) {
+			t.Fatalf("report lacks %q:\n%s", want, reasons.String())
+		}
 	}
 }

@@ -37,11 +37,19 @@ func (s *Server) registerUI(mux *http.ServeMux) {
 		RateLimit:      middleware.PerIPRateLimit(s.loginLimiter),
 		OPMLImport: func(r *http.Request, userID int64, data []byte) ui.ImportReport {
 			rep := s.importOPMLFromBytes(r, userID, data)
-			return ui.ImportReport{
+			out := ui.ImportReport{
 				CategoriesCreated: rep.CategoriesCreated,
 				FeedsCreated:      rep.FeedsCreated,
 				FeedsSkipped:      rep.FeedsSkipped,
 			}
+			for _, e := range rep.Errors {
+				msg := e.Reason
+				if e.FeedURL != "" {
+					msg = e.FeedURL + ": " + msg
+				}
+				out.Errors = append(out.Errors, msg)
+			}
+			return out
 		},
 		OPMLExport: func(w http.ResponseWriter, r *http.Request, userID int64) error {
 			return s.exportOPMLForUser(w, r.Context(), userID)

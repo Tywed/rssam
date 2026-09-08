@@ -303,6 +303,20 @@ func (h *Handler) handleFeedsImport(w http.ResponseWriter, r *http.Request) {
 		data := h.baseData(r, "settings")
 		data.SettingsSection = "feeds"
 		data.FlashMsg = fmt.Sprintf("Импорт: создано %d лент, %d категорий, пропущено %d", report.FeedsCreated, report.CategoriesCreated, report.FeedsSkipped)
+		if n := len(report.Errors); n > 0 {
+			// Per-feed notes (skipped duplicates, invalid rssam:* attributes,
+			// unknown webhook names). Cap the flash so a 500-feed import stays
+			// readable; the full list is in the API response.
+			const maxShown = 10
+			shown := report.Errors
+			if len(shown) > maxShown {
+				shown = shown[:maxShown]
+			}
+			data.FlashErr = fmt.Sprintf("Замечания (%d): %s", n, strings.Join(shown, "; "))
+			if n > maxShown {
+				data.FlashErr += fmt.Sprintf("; … ещё %d", n-maxShown)
+			}
+		}
 		_ = h.loadFeedsListPage(r, &data, p.UserID, "")
 		h.render(w, r, "feeds_list", data)
 		return

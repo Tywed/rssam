@@ -3,6 +3,7 @@ package httpserver
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"mime"
 	"net/http"
@@ -95,12 +96,44 @@ func (s *Server) exportOPMLForUser(w http.ResponseWriter, ctx context.Context, u
 	for _, c := range categories {
 		exportCats = append(exportCats, opml.ExportCategory{ID: c.ID, Title: c.Title})
 	}
+	// Webhook bindings are exported by name: IDs are not portable.
+	webhookNames := map[int64]string{}
+	if s.webhooks != nil {
+		if whs, _, err := s.webhooks.ListWebhooks(ctx, userID, 10000, 0); err == nil {
+			for _, w := range whs {
+				webhookNames[w.ID] = w.Name
+			}
+		}
+	}
 	exportFeeds := make([]opml.ExportFeed, 0, len(feeds))
 	for _, f := range feeds {
+		// ListFeeds is a light projection (no rules/flags/webhook); the
+		// full row is needed for the rssam:* attributes.
+		if full, err := s.feeds.GetFeed(ctx, userID, f.ID); err == nil {
+			f = full
+		}
+		settings := opml.FeedSettings{
+			FeedType:        f.FeedType,
+			IntervalMinutes: f.IntervalMinutes,
+			TLSInsecure:     f.TLSInsecure,
+			FetchViaProxy:   f.FetchViaProxy,
+			Crawler:         f.Crawler,
+			StoreHashOnly:   f.StoreHashOnly,
+			RetentionDays:   f.EntryRetentionDays,
+			UserAgent:       f.UserAgent,
+			ScraperRules:    f.ScraperRules,
+			RewriteRules:    f.RewriteRules,
+			BlockedRules:    f.BlockedRules,
+			KeepRules:       f.KeepRules,
+		}
+		if f.WebhookID != nil {
+			settings.WebhookName = webhookNames[*f.WebhookID]
+		}
 		exportFeeds = append(exportFeeds, opml.ExportFeed{
 			Title:      f.Title,
 			FeedURL:    f.FeedURL,
 			CategoryID: f.CategoryID,
+			Settings:   settings,
 		})
 	}
 
@@ -170,6 +203,26 @@ func (s *Server) importOPML(r *http.Request, doc *opml.Document, userID int64, j
 		key := strings.ToLower(strings.TrimSpace(c.Title))
 		if key != "" {
 			categoryByTitle[key] = c.ID
+		}
+	}
+
+	// rssam:webhook binds by name; ambiguous names (several webhooks with the
+	// same name) are refused rather than guessed.
+	webhookByName := map[string]int64{}
+	ambiguousWebhook := map[string]bool{}
+	if s.webhooks != nil {
+		if whs, _, err := s.webhooks.ListWebhooks(ctx, userID, 10000, 0); err == nil {
+			for _, w := range whs {
+				key := strings.ToLower(strings.TrimSpace(w.Name))
+				if key == "" {
+					continue
+				}
+				if _, dup := webhookByName[key]; dup {
+					ambiguousWebhook[key] = true
+					continue
+				}
+				webhookByName[key] = w.ID
+			}
 		}
 	}
 
@@ -255,13 +308,14 @@ func (s *Server) importOPML(r *http.Request, doc *opml.Document, userID int64, j
 			categoryID = &id
 		}
 
-		feed, err := s.feeds.CreateFeed(ctx, userID, storage.CreateFeedParams{
-			FeedType:        reader.DetectFeedTypeFromURL(feedURL),
-			FeedURL:         feedURL,
-			Title:           strings.TrimSpace(entry.Title),
-			CategoryID:      categoryID,
-			IntervalMinutes: defaultIntervalMinutes,
-		})
+		params, notes := importFeedParams(feedURL, entry, webhookByName, ambiguousWebhook)
+		params.Title = strings.TrimSpace(entry.Title)
+		params.CategoryID = categoryID
+		for _, note := range notes {
+			report.Errors = append(report.Errors, importErrorDTO{FeedURL: feedURL, Title: entry.Title, Reason: note})
+		}
+
+		feed, err := s.feeds.CreateFeed(ctx, userID, params)
 		if err != nil {
 			if errors.Is(err, storage.ErrDuplicateFeedURL) {
 				report.FeedsSkipped++
@@ -287,6 +341,69 @@ func (s *Server) importOPML(r *http.Request, doc *opml.Document, userID int64, j
 	}
 
 	return report
+}
+
+// importFeedParams maps the rssam:* settings of an OPML outline onto
+// CreateFeedParams. Invalid values are reported in notes and replaced by the
+// default (the feed is still imported); the feed type is taken from the
+// attribute only when it is a known type, otherwise detected from the URL.
+func importFeedParams(feedURL string, entry opml.FeedEntry, webhookByName map[string]int64, ambiguous map[string]bool) (storage.CreateFeedParams, []string) {
+	st := entry.Settings
+	notes := append([]string(nil), entry.SettingsErrors...)
+
+	feedType := reader.NormalizeFeedType(st.FeedType)
+	if st.FeedType != "" && feedType == "" {
+		notes = append(notes, fmt.Sprintf("rssam:feedType: unknown type %q, detected from URL", st.FeedType))
+	}
+	if feedType == "" {
+		feedType = reader.DetectFeedTypeFromURL(feedURL)
+	}
+
+	interval := st.IntervalMinutes
+	if interval == 0 {
+		interval = defaultIntervalMinutes
+	} else if interval < storage.MinFeedIntervalMinutes || interval > storage.MaxFeedIntervalMinutes {
+		notes = append(notes, fmt.Sprintf("rssam:interval: %d is outside %d..%d, using %d", interval, storage.MinFeedIntervalMinutes, storage.MaxFeedIntervalMinutes, defaultIntervalMinutes))
+		interval = defaultIntervalMinutes
+	}
+
+	retention := st.RetentionDays
+	if err := storage.ValidateEntryRetentionDays(retention); err != nil {
+		notes = append(notes, "rssam:retentionDays: "+err.Error()+", ignored")
+		retention = nil
+	}
+
+	var webhookID *int64
+	if st.WebhookName != "" {
+		key := strings.ToLower(st.WebhookName)
+		switch {
+		case ambiguous[key]:
+			notes = append(notes, fmt.Sprintf("rssam:webhook: several webhooks are named %q, binding skipped", st.WebhookName))
+		default:
+			if id, ok := webhookByName[key]; ok {
+				webhookID = &id
+			} else {
+				notes = append(notes, fmt.Sprintf("rssam:webhook: no webhook named %q, binding skipped", st.WebhookName))
+			}
+		}
+	}
+
+	return storage.CreateFeedParams{
+		FeedURL:            feedURL,
+		FeedType:           feedType,
+		IntervalMinutes:    interval,
+		ScraperRules:       st.ScraperRules,
+		RewriteRules:       st.RewriteRules,
+		BlockedRules:       st.BlockedRules,
+		KeepRules:          st.KeepRules,
+		FetchViaProxy:      st.FetchViaProxy,
+		TLSInsecure:        st.TLSInsecure,
+		Crawler:            st.Crawler,
+		UserAgent:          st.UserAgent,
+		WebhookID:          webhookID,
+		StoreHashOnly:      st.StoreHashOnly,
+		EntryRetentionDays: retention,
+	}, notes
 }
 
 func validateFeedURL(feedURL string, guard *ssrf.Guard) error {
