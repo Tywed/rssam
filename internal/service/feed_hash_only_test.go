@@ -107,6 +107,9 @@ func (m *memEntryCreate) MarkAllCategoryEntriesRead(context.Context, int64, int6
 	return 0, nil
 }
 func (m *memEntryCreate) MarkAllEntriesRead(context.Context, int64) (int, error) { return 0, nil }
+func (m *memEntryCreate) MarkEntriesRemoved(context.Context, int64, []int64) (int, error) {
+	return 0, nil
+}
 
 type memFilterList struct {
 	filters []storage.Filter

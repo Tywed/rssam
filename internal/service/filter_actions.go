@@ -60,8 +60,9 @@ func (r *FeedRefresher) applyFilterAction(ctx context.Context, userID int64, ent
 		if r.Entries == nil {
 			return
 		}
-		removed := storage.EntryStatusRemoved
-		_, _ = r.Entries.BulkUpdateEntries(ctx, userID, []int64{entry.ID}, storage.BulkEntryUpdate{Status: &removed})
+		if _, err := r.Entries.MarkEntriesRemoved(ctx, userID, []int64{entry.ID}); err != nil && r.Log != nil {
+			r.Log.Warn("filter action delete failed", "entry_id", entry.ID, "err", err)
+		}
 	}
 }
 

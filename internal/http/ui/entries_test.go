@@ -79,6 +79,9 @@ func (s *entryReadStore) MarkAllCategoryEntriesRead(context.Context, int64, int6
 	return 0, nil
 }
 func (s *entryReadStore) MarkAllEntriesRead(context.Context, int64) (int, error) { return 0, nil }
+func (s *entryReadStore) MarkEntriesRemoved(context.Context, int64, []int64) (int, error) {
+	return 0, nil
+}
 
 func loginTestSession(t *testing.T, mux *http.ServeMux) string {
 	t.Helper()

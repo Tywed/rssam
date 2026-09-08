@@ -51,6 +51,9 @@ func (noopEntryStore) UnreadCountsForUser(_ context.Context, _ int64) (map[int64
 func (noopEntryStore) BulkUpdateEntries(_ context.Context, _ int64, _ []int64, _ storage.BulkEntryUpdate) (int, error) {
 	return 0, nil
 }
+func (noopEntryStore) MarkEntriesRemoved(_ context.Context, _ int64, _ []int64) (int, error) {
+	return 0, nil
+}
 func (noopEntryStore) MarkAllFeedEntriesRead(_ context.Context, _, _ int64) (int, error) {
 	return 0, nil
 }

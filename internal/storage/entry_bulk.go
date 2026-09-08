@@ -51,6 +51,26 @@ WHERE user_id = $1 AND id = ANY($2::bigint[]) AND status <> '` + EntryStatusRemo
 	return int(cmd.RowsAffected()), nil
 }
 
+// MarkEntriesRemoved sets status=removed on the user's entries (soft delete
+// used by the filter "delete" action). BulkUpdateEntries deliberately refuses
+// the removed status because it backs the user-facing bulk API; this is the
+// internal counterpart. Already removed rows are left untouched.
+func (s *PostgresStore) MarkEntriesRemoved(ctx context.Context, userID int64, entryIDs []int64) (int, error) {
+	if len(entryIDs) == 0 {
+		return 0, nil
+	}
+	const q = `
+UPDATE entries
+SET status = $3,
+    updated_at = now()
+WHERE user_id = $1 AND id = ANY($2::bigint[]) AND status <> $3`
+	cmd, err := s.db.Exec(ctx, q, userID, entryIDs, EntryStatusRemoved)
+	if err != nil {
+		return 0, fmt.Errorf("mark entries removed: %w", err)
+	}
+	return int(cmd.RowsAffected()), nil
+}
+
 // MarkAllFeedEntriesRead marks all unread entries in a feed as read.
 func (s *PostgresStore) MarkAllFeedEntriesRead(ctx context.Context, userID, feedID int64) (int, error) {
 	if _, err := s.GetFeed(ctx, userID, feedID); err != nil {

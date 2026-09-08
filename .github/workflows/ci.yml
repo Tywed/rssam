@@ -74,8 +74,8 @@ jobs:
           go-version-file: go.mod
       - name: Migrations apply on a clean database
         run: go run ./cmd/rssam -migrate
-      - name: Integration tests
-        run: go test -tags=integration -count=1 ./internal/storage/...
+      - name: Integration tests (storage + e2e pipeline)
+        run: go test -tags=integration -count=1 ./internal/storage/... ./internal/e2e/...
       - name: Fresh-install smoke (admin bootstrap + UI login)
         run: |
           set -eu

@@ -303,6 +303,8 @@ type EntryStore interface {
 	CountUnreadGlobalForUser(ctx context.Context, userID int64) (int, error)
 	UnreadCountsForUser(ctx context.Context, userID int64) (feedCounts map[int64]int, categoryCounts map[int64]int, err error)
 	BulkUpdateEntries(ctx context.Context, userID int64, entryIDs []int64, update BulkEntryUpdate) (int, error)
+	// MarkEntriesRemoved soft-deletes the user's entries (filter "delete" action).
+	MarkEntriesRemoved(ctx context.Context, userID int64, entryIDs []int64) (int, error)
 	MarkAllFeedEntriesRead(ctx context.Context, userID, feedID int64) (int, error)
 	MarkAllCategoryEntriesRead(ctx context.Context, userID, categoryID int64) (int, error)
 	MarkAllEntriesRead(ctx context.Context, userID int64) (int, error)

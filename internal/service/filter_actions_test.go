@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -85,8 +86,12 @@ func (m *memEntryBulk) UnreadCountsForUser(context.Context, int64) (map[int64]in
 }
 func (m *memEntryBulk) BulkUpdateEntries(_ context.Context, _ int64, entryIDs []int64, update storage.BulkEntryUpdate) (int, error) {
 	if update.Status != nil && *update.Status == storage.EntryStatusRemoved {
-		m.removed = append(m.removed, entryIDs...)
+		return 0, fmt.Errorf("invalid entry status: %q", *update.Status)
 	}
+	return len(entryIDs), nil
+}
+func (m *memEntryBulk) MarkEntriesRemoved(_ context.Context, _ int64, entryIDs []int64) (int, error) {
+	m.removed = append(m.removed, entryIDs...)
 	return len(entryIDs), nil
 }
 func (m *memEntryBulk) MarkAllFeedEntriesRead(context.Context, int64, int64) (int, error) {

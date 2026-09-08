@@ -17,7 +17,7 @@ test:
 	go test $(PKGS)
 
 test-integration:
-	@DATABASE_URL=$${DATABASE_URL:?set DATABASE_URL} go test ./internal/storage/... -tags=integration -count=1
+	@DATABASE_URL=$${DATABASE_URL:?set DATABASE_URL} go test ./internal/storage/... ./internal/e2e/... -tags=integration -count=1
 
 coverage:
 	go test $(PKGS) -coverprofile=coverage.out
