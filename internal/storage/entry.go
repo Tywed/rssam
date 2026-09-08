@@ -216,6 +216,10 @@ func (s *PostgresStore) listEntries(ctx context.Context, userID int64, filter Li
 		where = append(where, fmt.Sprintf("status = $%d", argN))
 		args = append(args, *filter.Status)
 		argN++
+	} else {
+		where = append(where, fmt.Sprintf("status <> $%d", argN))
+		args = append(args, EntryStatusRemoved)
+		argN++
 	}
 	if filter.Starred != nil {
 		where = append(where, fmt.Sprintf("starred = $%d", argN))

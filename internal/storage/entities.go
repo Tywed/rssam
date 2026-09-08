@@ -561,6 +561,8 @@ type UpdateWebhookParams struct {
 	ProviderConfig []byte
 }
 
+// ListEntriesFilter selects entries. Removed (soft-deleted or hashed) rows
+// are excluded unless Status asks for them explicitly.
 type ListEntriesFilter struct {
 	FeedID     *int64
 	CategoryID *int64

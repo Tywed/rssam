@@ -2745,7 +2745,8 @@
         "in": "query",
         "schema": {
           "$ref": "#/components/schemas/EntryStatus"
-        }
+        },
+        "description": "Filter by status. Without it, removed entries (soft-deleted or hashed after webhook delivery) are excluded; pass status=removed to list them."
       },
       "entryStarred": {
         "name": "starred",

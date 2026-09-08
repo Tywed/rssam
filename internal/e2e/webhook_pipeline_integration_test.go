@@ -535,7 +535,11 @@ func TestE2E_FilterPipeline_LabelWebhookDelete(t *testing.T) {
 	}
 	feed := env.createFeed(t, "/mixed.xml", nil)
 
-	waitFor(t, "3 entries stored", func() bool { return len(env.feedEntries(t, feed.ID)) == 3 })
+	waitFor(t, "3 entries stored", func() bool {
+		var n int
+		err := env.pool.QueryRow(ctx, `SELECT count(*) FROM entries WHERE feed_id = $1`, feed.ID).Scan(&n)
+		return err == nil && n == 3
+	})
 	waitFor(t, "alert webhook delivered", func() bool {
 		logs := env.webhookLogs(t, wh.ID)
 		return len(logs) == 1 && logs[0].Status == "sent"
@@ -545,11 +549,19 @@ func TestE2E_FilterPipeline_LabelWebhookDelete(t *testing.T) {
 	for _, e := range env.feedEntries(t, feed.ID) {
 		byTitle[e.Title] = e
 	}
-	if byTitle["SPAM buy now"].Status != storage.EntryStatusRemoved {
-		t.Fatalf("spam entry status = %q, want removed", byTitle["SPAM buy now"].Status)
+	if _, ok := byTitle["SPAM buy now"]; ok {
+		t.Fatal("deleted entry must not appear in the default feed listing")
 	}
 	if byTitle["plain news"].Status != storage.EntryStatusUnread || byTitle["ALERT disk full"].Status != storage.EntryStatusUnread {
 		t.Fatalf("non-delete entries changed: plain=%q alert=%q", byTitle["plain news"].Status, byTitle["ALERT disk full"].Status)
+	}
+	removed := storage.EntryStatusRemoved
+	gone, _, err := env.store.ListFeedEntries(ctx, env.user.ID, feed.ID, storage.ListEntriesFilter{Status: &removed, Limit: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(gone) != 1 || gone[0].Title != "SPAM buy now" {
+		t.Fatalf("status=removed listing: %+v", gone)
 	}
 
 	labelled, _, err := env.store.ListEntries(ctx, env.user.ID, storage.ListEntriesFilter{LabelID: &label.ID, Limit: 10})

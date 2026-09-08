@@ -13,7 +13,8 @@ func escapeLikePattern(s string) string {
 	return s
 }
 
-// SearchEntriesFilter controls FTS search over entries.
+// SearchEntriesFilter controls FTS search over entries. Removed rows are
+// excluded unless Status asks for them explicitly.
 type SearchEntriesFilter struct {
 	Query   string
 	FeedID  *int64
@@ -80,6 +81,10 @@ func (s *PostgresStore) SearchEntries(ctx context.Context, userID int64, filter 
 		where = append(where, fmt.Sprintf("status = $%d", argN))
 		args = append(args, *filter.Status)
 		argN++
+	} else {
+		where = append(where, fmt.Sprintf("status <> $%d", argN))
+		args = append(args, EntryStatusRemoved)
+		argN++
 	}
 	if filter.Starred != nil {
 		where = append(where, fmt.Sprintf("starred = $%d", argN))
@@ -87,11 +92,10 @@ func (s *PostgresStore) SearchEntries(ctx context.Context, userID int64, filter 
 		argN++
 	}
 
-	rankExpr := "0"
+	orderBy := entryOrderClause(filter.Sort)
 	if filter.Rank {
-		rankExpr = fmt.Sprintf("CASE WHEN search_vector @@ %s THEN ts_rank_cd(search_vector, %s) ELSE 0 END", tsq, ftsWebsearchExpr(s.ftsLanguage, queryArg))
+		orderBy = fmt.Sprintf("CASE WHEN search_vector @@ %s THEN ts_rank_cd(search_vector, %s) ELSE 0 END DESC, ", tsq, ftsWebsearchExpr(s.ftsLanguage, queryArg)) + orderBy
 	}
-	orderBy := rankExpr + " DESC, " + entryOrderClause(filter.Sort)
 
 	args = append(args, limit, offset)
 
