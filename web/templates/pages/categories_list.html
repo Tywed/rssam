@@ -22,7 +22,7 @@
       {{range .Categories}}
       <tr data-category-id="{{.ID}}"{{if $.IsAdmin}} draggable="true"{{end}}>
         {{if $.IsAdmin}}<td class="cat-drag-handle" title="Перетащите для сортировки" aria-label="Перетащите для сортировки">⋮⋮</td>{{end}}
-        <td><span class="cat-dot" style="background:{{catColor .}}"></span></td>
+        <td data-cat-color="{{.ID}}"><span class="cat-dot"></span></td>
         <td colspan="2">
           {{if $.IsAdmin}}
           <form method="post" action="/ui/categories/{{.ID}}" class="cat-edit-form">
@@ -37,7 +37,7 @@
         </td>
         <td>
           {{if $.IsAdmin}}
-          <form method="post" action="/ui/categories/{{.ID}}/delete" onsubmit="return confirm('Удалить?')">
+          <form method="post" action="/ui/categories/{{.ID}}/delete" data-confirm="Удалить?">
             <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
             <button class="btn btn-sm btn-danger">×</button>
           </form>

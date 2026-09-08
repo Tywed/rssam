@@ -3,7 +3,7 @@
   {{template "settings_nav" .}}
   <div class="settings-content">
     <div class="toolbar">
-      <h1 style="margin:0">Подписки</h1>
+      <h1>Подписки</h1>
       {{if .IsAdmin}}
       <div class="toolbar-actions">
         <a class="btn btn-primary" href="/ui/feeds/new">Добавить</a>
@@ -67,8 +67,8 @@
       <div class="tree-cat collapsed" data-tree-cat="mgmt-{{$cat.ID}}">
         <div class="tree-cat-header">
           <button type="button" class="tree-toggle" aria-expanded="false" aria-label="Развернуть категорию">+</button>
-          <span class="tree-row tree-cat-title tree-cat-label" style="border-left-color: {{catColor $cat}}">
-            <span class="cat-dot" style="background-color: {{catColor $cat}}" aria-hidden="true"></span>
+          <span class="tree-row tree-cat-title tree-cat-label" data-cat-color="{{$cat.ID}}">
+            <span class="cat-dot" aria-hidden="true"></span>
             <span class="tree-label">{{$cat.Title}}</span>
             <span class="tree-count">{{pluralChannels $count}}</span>
           </span>

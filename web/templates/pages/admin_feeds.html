@@ -4,11 +4,11 @@
   <div class="settings-content">
     <div class="toolbar">
       <div>
-        <h1 style="margin:0">Состояние лент</h1>
-        <p class="meta" style="margin:0.35rem 0 0">Мониторинг опроса и проблем</p>
+        <h1>Состояние лент</h1>
+        <p class="meta">Мониторинг опроса и проблем</p>
       </div>
       {{if eq .AdminFeedsFilter "errors"}}
-      <form method="post" action="/ui/admin/feeds/reset-circuits" class="inline-form" onsubmit="return confirm('Сбросить автостоп у всех лент с ошибками? Счётчики ошибок будут обнулены.')">
+      <form method="post" action="/ui/admin/feeds/reset-circuits" class="inline-form" data-confirm="Сбросить автостоп у всех лент с ошибками? Счётчики ошибок будут обнулены.">
         <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
         {{template "admin_feeds_return_fields" .}}
         <button type="submit" class="btn">Сбросить автостоп у всех</button>

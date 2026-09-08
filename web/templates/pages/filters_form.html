@@ -4,14 +4,14 @@
   <div class="settings-content">
     <div class="toolbar toolbar-form">
       <div>
-        <h1 style="margin:0">{{if .Filter.ID}}Фильтр: {{.Filter.Name}}{{else}}Новый фильтр{{end}}</h1>
+        <h1>{{if .Filter.ID}}Фильтр: {{.Filter.Name}}{{else}}Новый фильтр{{end}}</h1>
       </div>
       <div class="form-actions">
         <button type="submit" form="filter-form" class="btn btn-primary">Сохранить</button>
         {{if .Filter.ID}}<a class="btn" href="/ui/filters/{{.Filter.ID}}/test">Тест</a>{{end}}
         <a class="btn" href="/ui/filters">Назад</a>
         {{if .Filter.ID}}
-        <form method="post" action="/ui/filters/{{.Filter.ID}}/delete" class="inline-form" onsubmit="return confirm('Удалить?')">
+        <form method="post" action="/ui/filters/{{.Filter.ID}}/delete" class="inline-form" data-confirm="Удалить?">
           <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
           <button type="submit" class="btn btn-danger">Удалить</button>
         </form>

@@ -21,7 +21,7 @@
         <button type="submit" class="btn btn-primary">Создать</button>
       </form>
       {{if .NewToken}}<div class="flash flash-ok">Новый токен (сохраните): <code>{{.NewToken}}</code></div>{{end}}
-      <table style="margin-top:1rem">
+      <table class="mt-1">
         <thead><tr><th>Имя</th><th>Создан</th><th></th></tr></thead>
         <tbody>
         {{range .APIKeys}}

@@ -4,14 +4,14 @@
   <div class="settings-content">
     <div class="toolbar toolbar-form">
       <div>
-        {{if .Webhook.ID}}<p class="meta" style="margin:0"><a href="/ui/webhooks">← Вебхуки</a></p>{{end}}
-        <h1 style="margin:0.25rem 0 0">{{if .Webhook.ID}}{{webhookLabel .Webhook.Name .Webhook.URL .Webhook.ID}}{{else}}Новый webhook{{end}}</h1>
+        {{if .Webhook.ID}}<p class="meta"><a href="/ui/webhooks">← Вебхуки</a></p>{{end}}
+        <h1>{{if .Webhook.ID}}{{webhookLabel .Webhook.Name .Webhook.URL .Webhook.ID}}{{else}}Новый webhook{{end}}</h1>
       </div>
       <div class="form-actions">
         <button type="submit" form="webhook-form" class="btn btn-primary">Сохранить</button>
         <a class="btn" href="/ui/webhooks">Назад</a>
         {{if .Webhook.ID}}
-        <form method="post" action="/ui/webhooks/{{.Webhook.ID}}/delete" class="inline-form" onsubmit="return confirm('Удалить?')">
+        <form method="post" action="/ui/webhooks/{{.Webhook.ID}}/delete" class="inline-form" data-confirm="Удалить?">
           <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
           <button type="submit" class="btn btn-danger">Удалить</button>
         </form>
@@ -50,7 +50,7 @@
         {{end}}
       </table>
       <p class="meta">Счётчики хранятся отдельно от журнала доставки и не обнуляются при его очистке по сроку хранения.</p>
-      <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:0.75rem">
+      <div class="btn-row">
         {{if or (gt .AdminWebhookDetail.QueueDueCount 0) (gt .AdminWebhookDetail.RetryingCount 0) (gt .AdminWebhookDetail.FailedCount 0)}}
         <form method="post" action="/ui/webhooks/{{.Webhook.ID}}/retry-all">
           <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
@@ -154,7 +154,7 @@
           </select>
           <p class="meta">Применяется, когда все вебхуки по этой записи доставлены (или умерли). Если у нескольких вебхуков разные действия, сильнее побеждает: удалить → хеш → прочитано. «Ничего» на втором вебхуке не отменяет хеш на первом.</p>
         </div>
-        <div class="form-group"><label><input type="checkbox" name="enabled" value="1" {{if or (not .Webhook.ID) .Webhook.Enabled}}checked{{end}}> Включён</label></div>
+        <div class="form-group"><label class="checkbox-label"><input type="checkbox" name="enabled" value="1" {{if or (not .Webhook.ID) .Webhook.Enabled}}checked{{end}}> Включён</label></div>
       </form>
     </div>
   </div>

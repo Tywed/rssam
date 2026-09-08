@@ -10,8 +10,9 @@
   <link rel="icon" href="/ui/static/favicon-96x96.png?v={{.AssetVersion}}" type="image/png" sizes="96x96">
   <link rel="apple-touch-icon" href="/ui/static/apple-touch-icon.png?v={{.AssetVersion}}">
   <link rel="manifest" href="/ui/static/site.webmanifest?v={{.AssetVersion}}">
-  <script>(function(){try{var p=JSON.parse(localStorage.getItem('rssam.prefs')||'{}');if(p.theme==='dark')document.documentElement.setAttribute('data-theme','dark');}catch(e){}})();</script>
+  <script nonce="{{.CSPNonce}}">(function(){try{var p=JSON.parse(localStorage.getItem('rssam.prefs')||'{}');if(p.theme==='dark')document.documentElement.setAttribute('data-theme','dark');}catch(e){}})();</script>
   <link rel="stylesheet" href="/ui/static/app.css?v={{.AssetVersion}}">
+  {{if or .Categories .Labels}}<style nonce="{{.CSPNonce}}">{{range .Categories}}[data-cat-color="{{.ID}}"]{--cat-color:{{catColor .}}}{{end}}{{range .Labels}}[data-label-color="{{.ID}}"]{--label-bg:{{labelBgColor .}};--label-fg:{{labelFgColor .}}}{{end}}</style>{{end}}
   <script src="/ui/static/app.js?v={{.AssetVersion}}" defer></script>
 </head>
 <body class="rssam-app">

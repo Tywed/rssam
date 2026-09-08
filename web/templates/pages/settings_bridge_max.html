@@ -21,7 +21,7 @@
       </div>
       <p class="meta">Слоты — сколько запросов к Max API идёт одновременно. 1 бережёт API, но копит просрочку. Пауза действует, когда все слоты свободны.</p>
       <div class="form-group">
-        <label><input type="checkbox" name="allow_private_api" value="1" {{if .BridgeSettings.Max.AllowPrivateAPI}}checked{{end}}> Разрешить частные адреса API</label>
+        <label class="checkbox-label"><input type="checkbox" name="allow_private_api" value="1" {{if .BridgeSettings.Max.AllowPrivateAPI}}checked{{end}}> Разрешить частные адреса API</label>
       </div>
       <button type="submit" class="btn btn-primary">Сохранить</button>
     </form>

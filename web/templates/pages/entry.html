@@ -6,7 +6,7 @@
     {{if .Entry.PublishedAt}}{{formatTime .Entry.PublishedAt}} · {{end}}
     <a href="{{.Entry.URL}}" target="_blank" rel="noopener">Оригинал</a>
   </div>
-  <div class="toolbar" style="margin-top:1rem">
+  <div class="toolbar mt-1">
     {{if eq .Entry.Status "unread"}}
     <form method="post" action="/ui/entries/{{.Entry.ID}}/read"><input type="hidden" name="csrf_token" value="{{.CSRFToken}}"><button class="btn btn-primary">Прочитано</button></form>
     {{end}}

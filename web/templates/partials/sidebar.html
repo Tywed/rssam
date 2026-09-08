@@ -14,8 +14,8 @@
     {{if .Labels}}
     <div class="tree-section">Метки</div>
     {{range .Labels}}
-    <a href="/ui/labels/{{.ID}}{{entrySortSuffix $.EntrySort}}" class="tree-row tree-special {{if eq $.LabelID .ID}}active{{end}}">
-      <span class="tree-icon label-dot" style="background-color: {{.BgColor}}" aria-hidden="true"></span>
+    <a href="/ui/labels/{{.ID}}{{entrySortSuffix $.EntrySort}}" class="tree-row tree-special {{if eq $.LabelID .ID}}active{{end}}" data-label-color="{{.ID}}">
+      <span class="label-dot" aria-hidden="true"></span>
       <span class="tree-label">{{.Caption}}</span>
       {{with index $.LabelUnreadCounts .ID}}{{if gt . 0}}<span class="tree-badge">{{.}}</span>{{end}}{{end}}
     </a>
@@ -30,8 +30,8 @@
     <div class="tree-cat" data-tree-cat="sidebar-{{$cat.ID}}">
       <div class="tree-cat-header">
         <button type="button" class="tree-toggle" aria-expanded="{{if $lazyExpand}}true{{else if $.SidebarLazyFeeds}}false{{else}}true{{end}}" aria-label="{{if $lazyExpand}}Свернуть категорию{{else if $.SidebarLazyFeeds}}Развернуть категорию{{else}}Свернуть категорию{{end}}">{{if or (not $.SidebarLazyFeeds) $lazyExpand}}−{{else}}+{{end}}</button>
-        <a href="/ui/unread?category_id={{$cat.ID}}{{entrySortSuffix $.EntrySort}}" class="tree-row tree-cat-title {{if eq $.CategoryID $cat.ID}}active{{end}}" style="border-left-color: {{catColor $cat}}">
-          <span class="cat-dot" style="background-color: {{catColor $cat}}" aria-hidden="true"></span>
+        <a href="/ui/unread?category_id={{$cat.ID}}{{entrySortSuffix $.EntrySort}}" class="tree-row tree-cat-title {{if eq $.CategoryID $cat.ID}}active{{end}}" data-cat-color="{{$cat.ID}}">
+          <span class="cat-dot" aria-hidden="true"></span>
           <span class="tree-label">{{$cat.Title}}</span>
           {{if gt $count 0}}<span class="tree-count">{{pluralChannels $count}}</span>{{end}}
           {{with index $.CategoryUnreadCounts $cat.ID}}{{if gt . 0}}<span class="tree-badge">{{.}}</span>{{end}}{{end}}

@@ -41,7 +41,7 @@
       </div>
 
       <div class="form-group" id="feed-tls-insecure-group">
-        <label><input type="checkbox" name="tls_insecure" id="feed-tls-insecure" value="1" {{if .Feed.TLSInsecure}}checked{{end}}> Не проверять сертификат (для сайтов с РФ CA)</label>
+        <label class="checkbox-label"><input type="checkbox" name="tls_insecure" id="feed-tls-insecure" value="1" {{if .Feed.TLSInsecure}}checked{{end}}> Не проверять сертификат (для сайтов с РФ CA)</label>
         <p class="meta">Включайте только для доверенных источников с отечественным центром сертификации (например, admkrai.krasnodar.ru). Действует только для этой ленты.</p>
       </div>
 
@@ -52,14 +52,14 @@
       </div>
 
       <div class="form-group">
-        <label><input type="checkbox" name="store_hash_only" value="1" {{if .Feed.StoreHashOnly}}checked{{end}}> Только хеш до срабатывания фильтра</label>
+        <label class="checkbox-label"><input type="checkbox" name="store_hash_only" value="1" {{if .Feed.StoreHashOnly}}checked{{end}}> Только хеш до срабатывания фильтра</label>
         <p class="meta">Новые записи сохраняются только как хеш для дедупликации; полный текст записывается при совпадении фильтра.</p>
       </div>
 
       <div class="card feed-type-settings" id="feed-settings-telegram" data-feed-type="telegram" {{if .Feed.ID}}{{if ne .Feed.FeedType "telegram"}}hidden{{end}}{{else}}hidden{{end}}>
         <h2>Telegram</h2>
         <div class="form-group">
-          <label><input type="checkbox" name="telegram_use_proxy" value="1" {{if .TgUseProxy}}checked{{end}}> Использовать прокси</label>
+          <label class="checkbox-label"><input type="checkbox" name="telegram_use_proxy" value="1" {{if .TgUseProxy}}checked{{end}}> Использовать прокси</label>
           <p class="meta">Если выключено — прямой HTTP на t.me/s (может не работать без VPN).</p>
         </div>
         <div class="form-group">
@@ -125,7 +125,7 @@
       <a class="btn" href="/ui/feeds">Отмена</a>
     </form>
     {{if .Feed.ID}}
-    <form method="post" action="/ui/feeds/{{.Feed.ID}}/delete" style="margin-top:2rem" onsubmit="return confirm('Удалить ленту?')">
+    <form method="post" action="/ui/feeds/{{.Feed.ID}}/delete" class="mt-2" data-confirm="Удалить ленту?">
       <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
       <button type="submit" class="btn btn-danger">Удалить</button>
     </form>

@@ -28,6 +28,7 @@ type pageData struct {
 	Username                   string
 	IsAdmin                    bool
 	CSRFToken                  string
+	CSPNonce                   string
 	SessionID                  string
 	FlashMsg                   string
 	FlashErr                   string
@@ -225,15 +226,21 @@ func (h *Handler) handleLoginGet(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/ui/unread", http.StatusFound)
 		return
 	}
-	h.render(w, r, "login", pageData{
+	h.render(w, r, "login", h.loginData(r, ""))
+}
+
+func (h *Handler) loginData(r *http.Request, errMsg string) pageData {
+	return pageData{
+		Error:        errMsg,
 		CSRFToken:    h.csrfToken(r),
+		CSPNonce:     middleware.CSPNonce(r.Context()),
 		AssetVersion: assetVersion(),
-	})
+	}
 }
 
 func (h *Handler) handleLoginPost(w http.ResponseWriter, r *http.Request) {
 	if !h.validateCSRF(r) {
-		h.render(w, r, "login", pageData{Error: "Неверный CSRF-токен", CSRFToken: h.csrfToken(r), AssetVersion: assetVersion()})
+		h.render(w, r, "login", h.loginData(r, "Неверный CSRF-токен"))
 		return
 	}
 	username := strings.TrimSpace(r.FormValue("username"))
@@ -246,7 +253,7 @@ func (h *Handler) handleLoginPost(w http.ResponseWriter, r *http.Request) {
 	// unknown username costs the same as a wrong password.
 	ok := auth.VerifyLogin(u.PasswordHash, password)
 	if err != nil || !ok {
-		h.render(w, r, "login", pageData{Error: "Неверные учётные данные", CSRFToken: h.csrfToken(r), AssetVersion: assetVersion()})
+		h.render(w, r, "login", h.loginData(r, "Неверные учётные данные"))
 		return
 	}
 	sid, err := auth.NewSessionID()
@@ -313,6 +320,7 @@ func (h *Handler) baseData(r *http.Request, nav string) pageData {
 		Layout:       true,
 		Nav:          nav,
 		CSRFToken:    h.csrfToken(r),
+		CSPNonce:     middleware.CSPNonce(r.Context()),
 		IsAdmin:      p.IsAdmin,
 		EntrySort:    parseEntrySort(r),
 		AssetVersion: assetVersion(),

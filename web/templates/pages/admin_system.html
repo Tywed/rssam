@@ -25,15 +25,15 @@
     </div>
     {{if .WorkerAdvice.Title}}
     <div class="card">
-      <h2 style="margin-top:0">Воркеры</h2>
-      <div class="capacity-banner capacity-banner-{{.WorkerAdvice.Tone}}" style="margin:0">
+      <h2>Воркеры</h2>
+      <div class="capacity-banner capacity-banner-{{.WorkerAdvice.Tone}}">
         <strong>{{.WorkerAdvice.Title}}</strong>
         <p>{{.WorkerAdvice.Message}}</p>
         <p class="meta">Опрос: {{.WorkerAdvice.PollWorkers}} (совет: {{.WorkerAdvice.SuggestedPollWorkers}}) · Webhook: {{.WorkerAdvice.WebhookWorkers}} · due {{.WorkerAdvice.WebhookDue}}</p>
         {{if .WorkerAdvice.WebhookHint}}<p>{{.WorkerAdvice.WebhookHint}}</p>{{end}}
         <p class="meta">{{.WorkerAdvice.ApplyHint}}</p>
       </div>
-      <form method="post" action="/ui/admin/system/workers" class="needs-restart" style="margin-top:1rem">
+      <form method="post" action="/ui/admin/system/workers" class="needs-restart mt-1">
         <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
         <div class="form-group"><label>WORKER_POOL_SIZE</label><input name="worker_pool_size" type="number" min="1" max="1000" value="{{.WorkerAdvice.PollWorkers}}" required></div>
         <div class="form-group"><label>WEBHOOK_WORKER_POOL_SIZE</label><input name="webhook_worker_pool_size" type="number" min="1" max="1000" value="{{.WorkerAdvice.WebhookWorkers}}" required></div>
@@ -44,7 +44,7 @@
     {{end}}
     {{if .Retention.Configured}}
     <div class="card">
-      <h2 style="margin-top:0">Хранение журналов</h2>
+      <h2>Хранение журналов</h2>
       <p class="meta">Автоочистка удаляет по сроку хранения: удалённые записи, журнал доставки вебхуков, совпадения фильтров, журнал опросов лент, истёкшие сессии и записи лент с собственным сроком хранения. Счётчики отправок вебхуков при этом не обнуляются.</p>
       <form method="post" action="/ui/admin/system/retention" class="needs-restart">
         <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
@@ -57,7 +57,7 @@
         <button type="submit" class="btn btn-primary">Сохранить</button>
       </form>
       {{if .RetentionCleanupAvailable}}
-      <form method="post" action="/ui/admin/system/retention/cleanup" style="margin-top:0.75rem" data-confirm="Запустить очистку по текущим срокам хранения прямо сейчас?">
+      <form method="post" action="/ui/admin/system/retention/cleanup" class="mt-075" data-confirm="Запустить очистку по текущим срокам хранения прямо сейчас?">
         <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
         <button type="submit" class="btn">Очистить сейчас</button>
       </form>
@@ -65,7 +65,7 @@
     </div>
     {{end}}
     <div class="card">
-      <h2 style="margin-top:0">Сервис</h2>
+      <h2>Сервис</h2>
       <p class="meta" id="workers-run-status">{{if .Info.WorkersPaused}}Воркеры остановлены: опрос лент и вебхуки не выполняются. HTTP и UI работают.{{else}}Воркеры работают.{{end}}</p>
       <p>
         <button type="button" class="btn {{if .Info.WorkersPaused}}btn-primary{{else}}btn-danger{{end}}" id="btn-workers-toggle" data-csrf="{{.CSRFToken}}" data-paused="{{if .Info.WorkersPaused}}1{{else}}0{{end}}">{{if .Info.WorkersPaused}}Запустить сервис{{else}}Остановить сервис{{end}}</button>
@@ -79,11 +79,11 @@
       {{end}}
       {{if .Info.CanUpdate}}
       {{if .Info.UpdateAvail}}
-      <p style="margin-top:1rem">
+      <p class="mt-1">
         <button type="button" class="btn btn-primary" id="btn-update" data-csrf="{{.CSRFToken}}" data-version="{{.Info.Latest}}">Обновить до {{.Info.Latest}}</button>
       </p>
       {{else if .Info.Latest}}
-      <p class="meta" style="margin-top:1rem">Установлена актуальная версия ({{.Info.Latest}}).</p>
+      <p class="meta mt-1">Установлена актуальная версия ({{.Info.Latest}}).</p>
       {{end}}
       {{else}}
       <p class="meta">{{.Info.UpdateHint}}</p>
@@ -91,13 +91,13 @@
     </div>
     {{if .Info.ReleaseNotes}}
     <div class="card">
-      <h2 style="margin-top:0">Что нового{{if .Info.Latest}} ({{.Info.Latest}}){{end}}</h2>
+      <h2>Что нового{{if .Info.Latest}} ({{.Info.Latest}}){{end}}</h2>
       <pre class="release-notes">{{.Info.ReleaseNotes}}</pre>
       {{if .Info.ReleaseURL}}<p><a href="{{.Info.ReleaseURL}}" target="_blank" rel="noopener">Release на GitHub</a></p>{{end}}
     </div>
     {{end}}
     <div class="card">
-      <h2 style="margin-top:0">Хранение записей</h2>
+      <h2>Хранение записей</h2>
       <p>Сворачивает уже сохранённые записи лент с режимом «только хеш до фильтра», включая совпадения фильтров (метки). Избранные не трогаются. Текст удаляется безвозвратно. Ленты с полным хранением не затрагиваются.</p>
       <form method="post" action="/ui/admin/system/hash-entries" data-confirm="Хэшировать все записи? Избранные останутся. Записи с метками тоже сворачиваются, текст удалится безвозвратно.">
         <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
@@ -105,7 +105,7 @@
       </form>
     </div>
     <div class="card">
-      <h2 style="margin-top:0">Резервная копия</h2>
+      <h2>Резервная копия</h2>
       <p>Секреты из .env в браузер не выгружаются. Дамп БД:</p>
       <pre class="release-notes">pg_dump --no-owner --no-acl "$DATABASE_URL" &gt; rssam.sql</pre>
       <p><a href="/ui/admin/system/backup.txt">Скачать шпаргалку</a></p>

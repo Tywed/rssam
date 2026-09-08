@@ -9,7 +9,7 @@
     <form method="post" action="/ui/settings/bridges/telegram" class="card">
       <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
       <div class="form-group">
-        <label><input type="checkbox" name="use_proxy" value="1" {{if .BridgeSettings.Telegram.UseProxy}}checked{{end}}> Использовать прокси</label>
+        <label class="checkbox-label"><input type="checkbox" name="use_proxy" value="1" {{if .BridgeSettings.Telegram.UseProxy}}checked{{end}}> Использовать прокси</label>
       </div>
       <div class="form-group"><label>URL прокси-сервиса</label><input name="proxy_service_url" value="{{.BridgeSettings.Telegram.ProxyServiceURL}}" placeholder="http://proxy-service:8787"></div>
       <div class="form-group"><label>Токен сервиса</label><input name="proxy_service_token" type="password" placeholder="{{if .BridgeSettings.Telegram.ProxyServiceTokenSet}}•••• (оставьте пустым, чтобы не менять){{else}}не задан{{end}}"></div>

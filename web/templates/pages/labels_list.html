@@ -18,9 +18,9 @@
       {{range .Labels}}
       <tr>
         <td colspan="2">
-          <form method="post" action="/ui/labels/{{.ID}}" class="label-edit-form">
+          <form method="post" action="/ui/labels/{{.ID}}" class="label-edit-form" data-label-color="{{.ID}}">
             <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
-            <span class="label-preview" style="background:{{labelBgColor .}};color:{{labelFgColor .}}">{{.Caption}}</span>
+            <span class="label-preview">{{.Caption}}</span>
             <input name="caption" value="{{.Caption}}">
             <input type="color" name="bg_color" value="{{labelBgColor .}}" title="Фон">
             <input type="color" name="fg_color" value="{{labelFgColor .}}" title="Текст">
@@ -29,7 +29,7 @@
         </td>
         <td>
           <a class="btn btn-sm" href="/ui/labels/{{.ID}}">Записи</a>
-          <form method="post" action="/ui/labels/{{.ID}}/delete" style="display:inline" onsubmit="return confirm('Удалить метку?')">
+          <form method="post" action="/ui/labels/{{.ID}}/delete" class="inline-form" data-confirm="Удалить метку?">
             <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
             <button class="btn btn-sm btn-danger">×</button>
           </form>
