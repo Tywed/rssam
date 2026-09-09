@@ -113,3 +113,59 @@ func TestIntegration_FeedPollLogRecordListRetention(t *testing.T) {
 		t.Fatalf("poll log rows after feed delete=%d, want 0", n)
 	}
 }
+
+func TestIntegration_FeedPollLogCoalesceAndCap(t *testing.T) {
+	store := testStore(t)
+	ctx := context.Background()
+	owner := newIntegrationUser(t, store, "pollcap")
+	feed, err := store.CreateFeed(ctx, owner.ID, CreateFeedParams{
+		FeedURL: "https://example.com/pollcap.xml", FeedType: "rss", Title: "cap", IntervalMinutes: 60,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	now := time.Now().UTC()
+	ok := RecordFeedPollParams{FeedID: feed.ID, At: now, OK: true, Inserted: 1, Duration: time.Millisecond}
+	if err := store.RecordFeedPoll(ctx, ok); err != nil {
+		t.Fatal(err)
+	}
+	ok.At = now.Add(time.Minute)
+	ok.Inserted = 2
+	if err := store.RecordFeedPoll(ctx, ok); err != nil {
+		t.Fatal(err)
+	}
+	got, err := store.ListFeedPollLog(ctx, feed.ID, 10)
+	if err != nil || len(got) != 1 || got[0].Inserted != 1 || got[0].RepeatCount != 1 {
+		t.Fatalf("consecutive success must skip: %+v err=%v", got, err)
+	}
+
+	fail := RecordFeedPollParams{FeedID: feed.ID, At: now.Add(2 * time.Minute), OK: false, Error: "max: 400", Duration: time.Second}
+	for i := 0; i < 5; i++ {
+		fail.At = now.Add(time.Duration(2+i) * time.Minute)
+		if err := store.RecordFeedPoll(ctx, fail); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, err = store.ListFeedPollLog(ctx, feed.ID, 10)
+	if err != nil || len(got) != 2 {
+		t.Fatalf("len=%d err=%v", len(got), err)
+	}
+	if got[0].OK || got[0].RepeatCount != 5 || got[0].Error != "max: 400" {
+		t.Fatalf("coalesced failure: %+v", got[0])
+	}
+
+	for i := 0; i < MaxFeedPollLogPerFeed+5; i++ {
+		p := RecordFeedPollParams{
+			FeedID: feed.ID, At: now.Add(time.Duration(20+i) * time.Minute),
+			OK: i%2 == 0, Error: fmt.Sprintf("e%d", i), Duration: time.Millisecond,
+		}
+		if err := store.RecordFeedPoll(ctx, p); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, err = store.ListFeedPollLog(ctx, feed.ID, 100)
+	if err != nil || len(got) != MaxFeedPollLogPerFeed {
+		t.Fatalf("cap: len=%d want %d err=%v", len(got), MaxFeedPollLogPerFeed, err)
+	}
+}

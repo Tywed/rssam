@@ -51,8 +51,8 @@ func newAdminFeedDetailHandler(t *testing.T, pollLog storage.FeedPollLogStore) (
 func TestUI_AdminFeedDetailShowsPollLog(t *testing.T) {
 	at := time.Date(2026, 9, 8, 10, 30, 15, 0, time.Local)
 	pl := &uiMemPollLog{rows: []storage.FeedPollLogEntry{
-		{ID: 2, FeedID: 7, At: at, OK: false, Error: "fetch feed: 503 Service Unavailable", DurationMS: 1200},
-		{ID: 1, FeedID: 7, At: at.Add(-time.Hour), OK: true, Inserted: 3, DurationMS: 240},
+		{ID: 2, FeedID: 7, At: at, OK: false, Error: "fetch feed: 503 Service Unavailable", DurationMS: 1200, RepeatCount: 4},
+		{ID: 1, FeedID: 7, At: at.Add(-time.Hour), OK: true, Inserted: 3, DurationMS: 240, RepeatCount: 1},
 	}}
 	mux, sid := newAdminFeedDetailHandler(t, pl)
 
@@ -68,7 +68,7 @@ func TestUI_AdminFeedDetailShowsPollLog(t *testing.T) {
 	}
 	body := rec.Body.String()
 	for _, want := range []string{
-		"Журнал опросов", "08.09.2026 10:30:15", "503 Service Unavailable", "1200 мс",
+		"Журнал опросов", "08.09.2026 10:30:15", "×4", "503 Service Unavailable", "1200 мс",
 		">ок<", ">ошибка<", "<td>3</td>", "240 мс",
 	} {
 		if !strings.Contains(body, want) {
