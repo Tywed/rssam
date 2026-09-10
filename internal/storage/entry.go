@@ -231,24 +231,50 @@ func (s *PostgresStore) listEntries(ctx context.Context, userID int64, filter Li
 		args = append(args, *filter.LabelID)
 		argN++
 	}
-	args = append(args, limit, offset)
-
-	q := `
-SELECT ` + entrySelectColumns + `, count(*) OVER()
-FROM entries`
+	whereSQL := ""
 	if len(where) > 0 {
-		q += "\nWHERE " + strings.Join(where, " AND ")
+		whereSQL = "\nWHERE " + strings.Join(where, " AND ")
 	}
-	q += "\nORDER BY " + entryOrderClause(filter.Sort) + "\nLIMIT $" + fmt.Sprint(argN) + " OFFSET $" + fmt.Sprint(argN+1)
+	fetch := limit
+	if !filter.WithTotal {
+		fetch++
+	}
+	q := "SELECT " + entrySelectColumns + "\nFROM entries" + whereSQL +
+		"\nORDER BY " + entryOrderClause(filter.Sort) +
+		"\nLIMIT $" + fmt.Sprint(argN) + " OFFSET $" + fmt.Sprint(argN+1)
 
-	rows, err := s.db.Query(ctx, q, args...)
+	rows, err := s.db.Query(ctx, q, append(args, fetch, offset)...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("list entries: %w", err)
 	}
-	defer rows.Close()
+	out, err := scanEntries(rows, fetch)
+	if err != nil {
+		return nil, 0, fmt.Errorf("list entries: %w", err)
+	}
+	if !filter.WithTotal {
+		out, total := trimPage(offset, limit, out)
+		return out, total, nil
+	}
+	var total int
+	if err := s.db.QueryRow(ctx, "SELECT count(*) FROM entries"+whereSQL, args...).Scan(&total); err != nil {
+		return nil, 0, fmt.Errorf("count entries: %w", err)
+	}
+	return out, total, nil
+}
 
-	out := make([]Entry, 0, limit)
-	total := 0
+// trimPage handles a page fetched with LIMIT limit+1: the extra row is
+// dropped and its presence adds one to the total so callers can render a
+// "next" link without counting the whole set.
+func trimPage(offset, limit int, page []Entry) ([]Entry, int) {
+	if len(page) > limit {
+		return page[:limit], offset + limit + 1
+	}
+	return page, offset + len(page)
+}
+
+func scanEntries(rows pgx.Rows, capHint int) ([]Entry, error) {
+	defer rows.Close()
+	out := make([]Entry, 0, capHint)
 	for rows.Next() {
 		var e Entry
 		if err := rows.Scan(
@@ -266,16 +292,15 @@ FROM entries`
 			&e.Starred,
 			&e.CreatedAt,
 			&e.UpdatedAt,
-			&total,
 		); err != nil {
-			return nil, 0, fmt.Errorf("scan entries: %w", err)
+			return nil, fmt.Errorf("scan entries: %w", err)
 		}
 		out = append(out, e)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, 0, fmt.Errorf("iterate entries: %w", err)
+		return nil, fmt.Errorf("iterate entries: %w", err)
 	}
-	return out, total, nil
+	return out, nil
 }
 
 func (s *PostgresStore) UpdateFeedRefreshMeta(ctx context.Context, params UpdateFeedRefreshMetaParams) error {

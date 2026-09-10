@@ -73,14 +73,15 @@ func (s *Server) handleListEntries(w http.ResponseWriter, r *http.Request) {
 	var total int
 	if searchQuery != "" {
 		entries, total, err = s.entries.SearchEntries(r.Context(), p.UserID, storage.SearchEntriesFilter{
-			Query:   searchQuery,
-			FeedID:  filter.FeedID,
-			Status:  filter.Status,
-			Starred: filter.Starred,
-			Sort:    filter.Sort,
-			Limit:   filter.Limit,
-			Offset:  filter.Offset,
-			Rank:    true,
+			Query:     searchQuery,
+			FeedID:    filter.FeedID,
+			Status:    filter.Status,
+			Starred:   filter.Starred,
+			Sort:      filter.Sort,
+			Limit:     filter.Limit,
+			Offset:    filter.Offset,
+			Rank:      true,
+			WithTotal: true,
 		})
 		if err != nil {
 			s.log.ErrorContext(r.Context(), "search entries failed", "err", err)
@@ -177,7 +178,7 @@ func (s *Server) handleListFeedEntries(w http.ResponseWriter, r *http.Request) {
 
 func parseEntriesFilter(r *http.Request, limit, offset int, allowFeedID bool) (storage.ListEntriesFilter, string, error) {
 	q := r.URL.Query()
-	filter := storage.ListEntriesFilter{Limit: limit, Offset: offset}
+	filter := storage.ListEntriesFilter{Limit: limit, Offset: offset, WithTotal: true}
 	searchQuery := strings.TrimSpace(q.Get("q"))
 
 	if allowFeedID {

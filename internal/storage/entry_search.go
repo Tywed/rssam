@@ -25,6 +25,8 @@ type SearchEntriesFilter struct {
 	Offset  int
 	// Rank orders by ts_rank when true (default for search).
 	Rank bool
+	// WithTotal counts all matches; see ListEntriesFilter.WithTotal.
+	WithTotal bool
 }
 
 func (s *PostgresStore) SearchEntries(ctx context.Context, userID int64, filter SearchEntriesFilter) ([]Entry, int, error) {
@@ -97,48 +99,30 @@ func (s *PostgresStore) SearchEntries(ctx context.Context, userID int64, filter 
 		orderBy = fmt.Sprintf("CASE WHEN search_vector @@ %s THEN ts_rank_cd(search_vector, %s) ELSE 0 END DESC, ", tsq, ftsWebsearchExpr(s.ftsLanguage, queryArg)) + orderBy
 	}
 
-	args = append(args, limit, offset)
+	whereSQL := "\nWHERE " + strings.Join(where, " AND ")
+	fetch := limit
+	if !filter.WithTotal {
+		fetch++
+	}
+	q := "SELECT " + entrySelectColumns + "\nFROM entries" + whereSQL +
+		"\nORDER BY " + orderBy +
+		"\nLIMIT $" + fmt.Sprint(argN) + " OFFSET $" + fmt.Sprint(argN+1)
 
-	q := `
-SELECT ` + entrySelectColumns + `, count(*) OVER()
-FROM entries
-WHERE ` + strings.Join(where, " AND ") + `
-ORDER BY ` + orderBy + `
-LIMIT $` + fmt.Sprint(argN) + ` OFFSET $` + fmt.Sprint(argN+1)
-
-	rows, err := s.db.Query(ctx, q, args...)
+	rows, err := s.db.Query(ctx, q, append(args, fetch, offset)...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("search entries: %w", err)
 	}
-	defer rows.Close()
-
-	out := make([]Entry, 0, limit)
-	total := 0
-	for rows.Next() {
-		var e Entry
-		if err := rows.Scan(
-			&e.ID,
-			&e.FeedID,
-			&e.Title,
-			&e.URL,
-			&e.Content,
-			&e.OriginalContent,
-			&e.ContentFetched,
-			&e.Author,
-			&e.PublishedAt,
-			&e.Hash,
-			&e.Status,
-			&e.Starred,
-			&e.CreatedAt,
-			&e.UpdatedAt,
-			&total,
-		); err != nil {
-			return nil, 0, fmt.Errorf("scan search entries: %w", err)
-		}
-		out = append(out, e)
+	out, err := scanEntries(rows, fetch)
+	if err != nil {
+		return nil, 0, fmt.Errorf("search entries: %w", err)
 	}
-	if err := rows.Err(); err != nil {
-		return nil, 0, fmt.Errorf("iterate search entries: %w", err)
+	if !filter.WithTotal {
+		out, total := trimPage(offset, limit, out)
+		return out, total, nil
+	}
+	var total int
+	if err := s.db.QueryRow(ctx, "SELECT count(*) FROM entries"+whereSQL, args...).Scan(&total); err != nil {
+		return nil, 0, fmt.Errorf("count search entries: %w", err)
 	}
 	return out, total, nil
 }

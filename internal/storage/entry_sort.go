@@ -17,9 +17,13 @@ func NormalizeEntrySort(s string) string {
 	}
 }
 
+// entrySortExpr must stay textually identical to the expression indexed by
+// migration 0034, otherwise the planner falls back to sorting the whole set.
+const entrySortExpr = "COALESCE(published_at, created_at)"
+
 func entryOrderClause(sort string) string {
 	if NormalizeEntrySort(sort) == EntrySortOldest {
-		return "COALESCE(published_at, created_at) ASC NULLS FIRST, id ASC"
+		return entrySortExpr + " ASC NULLS FIRST, id ASC"
 	}
-	return "COALESCE(published_at, created_at) DESC NULLS LAST, id DESC"
+	return entrySortExpr + " DESC NULLS LAST, id DESC"
 }
