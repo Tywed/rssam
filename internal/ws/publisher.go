@@ -58,6 +58,7 @@ func newEntryPayload(feed storage.Feed, e storage.Entry) map[string]any {
 	return map[string]any{
 		"id":           e.ID,
 		"feed_id":      e.FeedID,
+		"category_id":  feed.CategoryID,
 		"feed_title":   feed.Title,
 		"title":        e.Title,
 		"url":          e.URL,

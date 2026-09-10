@@ -1,8 +1,9 @@
 {{define "body_unread"}}
 <div id="ws-enabled" class="hidden"></div>
 <div class="headlines-toolbar">
-  <h1 class="headlines-title">Непрочитанные</h1>
+  <h1 class="headlines-title">{{.Title}}</h1>
   <div class="headlines-actions">
+    {{template "show_all_switch" .}}
     {{if and (not .FeedID) (not .CategoryID)}}<form method="post" action="/ui/unread/mark-read"><input type="hidden" name="csrf_token" value="{{.CSRFToken}}"><button class="btn btn-sm">Прочитать все</button></form>{{end}}
     {{if .FeedID}}<form method="post" action="/ui/feeds/{{.FeedID}}/mark-read"><input type="hidden" name="csrf_token" value="{{.CSRFToken}}"><button class="btn btn-sm">Прочитать ленту</button></form>{{end}}
     {{if .CategoryID}}<form method="post" action="/ui/categories/{{.CategoryID}}/mark-read"><input type="hidden" name="csrf_token" value="{{.CSRFToken}}"><button class="btn btn-sm">Прочитать категорию</button></form>{{end}}

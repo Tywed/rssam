@@ -81,3 +81,82 @@ func TestUI_EntryListLinksKeepQueryParameters(t *testing.T) {
 		t.Fatalf("page two filter = %+v", last)
 	}
 }
+
+func TestUI_StarredAndShowAllViews(t *testing.T) {
+	entries := &pagingEntries{}
+	h, err := NewHandler(Config{
+		Users:      &uiMemUsers{user: storage.User{ID: 1, Username: "alice", PasswordHash: mustHash(t, "secret")}},
+		Sessions:   &uiMemSessions{sessions: map[string]storage.Session{}},
+		Entries:    entries,
+		Feeds:      &uiMemFeeds{},
+		Categories: &uiMemCategories{},
+		Labels:     &uiMemLabels{labels: []storage.Label{{ID: 5, UserID: 1, Caption: "l"}}},
+		CSRFSecret: "csrf-test",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	mux := http.NewServeMux()
+	h.Register(mux)
+	sid := uiSessionCookie(t, h, mux)
+	get := func(path string) string {
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		req.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: sid})
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("%s: status=%d", path, rec.Code)
+		}
+		return rec.Body.String()
+	}
+	lastFilter := func() storage.ListEntriesFilter { return entries.filters[len(entries.filters)-1] }
+
+	body := get("/ui/starred?sort=oldest")
+	f := lastFilter()
+	if f.Starred == nil || !*f.Starred || f.Status != nil || f.Sort != storage.EntrySortOldest {
+		t.Fatalf("starred filter = %+v", f)
+	}
+	for _, want := range []string{
+		`href="/ui/starred?entry_id=1&amp;sort=oldest"`,
+		`href="/ui/starred?sort=oldest" class="tree-row tree-special active"`,
+		`href="?offset=50&amp;sort=oldest"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("starred: missing %s", want)
+		}
+	}
+
+	body = get("/ui/unread?feed_id=1&all=1")
+	f = lastFilter()
+	if f.Status != nil || f.FeedID == nil || *f.FeedID != 1 {
+		t.Fatalf("all filter = %+v", f)
+	}
+	for _, want := range []string{
+		`<a class="seg-item active" href="?feed_id=1&amp;all=1">Все</a>`,
+		`<a class="seg-item" href="?feed_id=1">Непрочитанные</a>`,
+		`href="/ui/unread?entry_id=1&amp;feed_id=1&amp;all=1"`,
+		`href="?offset=50&amp;all=1&amp;feed_id=1"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("all: missing %s", want)
+		}
+	}
+
+	get("/ui/unread?feed_id=1")
+	if f = lastFilter(); f.Status == nil || *f.Status != storage.EntryStatusUnread {
+		t.Fatalf("default filter = %+v", f)
+	}
+
+	body = get("/ui/labels/5?all=1")
+	f = lastFilter()
+	if f.Status != nil || f.LabelID == nil || *f.LabelID != 5 {
+		t.Fatalf("label all filter = %+v", f)
+	}
+	if !strings.Contains(body, `href="/ui/labels/5?entry_id=1&amp;all=1"`) {
+		t.Error("label rows must link back to the label view")
+	}
+	get("/ui/labels/5")
+	if f = lastFilter(); f.Status == nil || *f.Status != storage.EntryStatusUnread {
+		t.Fatalf("label default filter = %+v", f)
+	}
+}

@@ -15,6 +15,7 @@
       <button type="button" class="btn-icon entry-sort-btn" data-entry-sort="oldest" title="Сначала старые">↑</button>
     </div>
     <button type="button" class="btn-icon auto-read-btn" id="auto-read-toggle" title="Отмечать запись прочитанной при открытии" aria-pressed="false">✓</button>
+    <button type="button" class="btn-icon" id="keys-toggle" title="Горячие клавиши" aria-label="Горячие клавиши">?</button>
     <button type="button" class="btn-icon theme-toggle" id="theme-toggle" title="Светлая/тёмная тема" aria-label="Тема">🌙</button>
     <a href="/ui/settings" class="btn btn-header {{if eq .Nav "settings"}}active{{end}}">⚙ Настройки</a>
     <span class="header-user" title="Пользователь">{{.Username}}</span>
@@ -24,4 +25,17 @@
     </form>
   </div>
 </header>
+<dialog class="keys-dialog" id="keys-dialog">
+  <h2>Горячие клавиши</h2>
+  <dl>
+    <dt><kbd>j</kbd> / <kbd>↓</kbd></dt><dd>следующая запись</dd>
+    <dt><kbd>k</kbd> / <kbd>↑</kbd></dt><dd>предыдущая запись</dd>
+    <dt><kbd>Enter</kbd></dt><dd>открыть выбранную</dd>
+    <dt><kbd>m</kbd></dt><dd>отметить прочитанной</dd>
+    <dt><kbd>n</kbd> / <kbd>→</kbd></dt><dd>следующая лента</dd>
+    <dt><kbd>p</kbd> / <kbd>←</kbd></dt><dd>предыдущая лента</dd>
+    <dt><kbd>?</kbd></dt><dd>эта подсказка</dd>
+  </dl>
+  <form method="dialog"><button class="btn btn-sm">Закрыть</button></form>
+</dialog>
 {{end}}

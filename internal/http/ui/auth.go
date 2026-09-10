@@ -56,6 +56,7 @@ type pageData struct {
 	CategoryID                 int64
 	SearchQuery                string
 	Entries                    []storage.Entry
+	ShowAll                    bool
 	Total                      int
 	Limit                      int
 	Offset                     int

@@ -1,0 +1,6 @@
+{{define "show_all_switch"}}
+<div class="seg" role="group" aria-label="Фильтр записей">
+  <a class="seg-item{{if not .ShowAll}} active{{end}}" href="?{{viewSwitchQuery .Query false}}">Непрочитанные</a>
+  <a class="seg-item{{if .ShowAll}} active{{end}}" href="?{{viewSwitchQuery .Query true}}">Все</a>
+</div>
+{{end}}

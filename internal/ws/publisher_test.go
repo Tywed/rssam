@@ -47,7 +47,8 @@ func TestPublisher_NewEntriesAreTenantScopedAndMinimal(t *testing.T) {
 	other := newAttachedClient(t, hub, 2)
 
 	pub := NewPublisher(nil, hub, stubCounter{})
-	feed := storage.Feed{ID: 10, UserID: 1, Title: "Owner feed"}
+	catID := int64(3)
+	feed := storage.Feed{ID: 10, UserID: 1, Title: "Owner feed", CategoryID: &catID}
 	secret := "SECRET-BODY-MUST-NOT-LEAK"
 	pub.PublishNewEntries(context.Background(), feed, []storage.Entry{{
 		ID: 100, FeedID: 10, Title: "hello", URL: "https://example.com/a", Content: secret, Hash: "deadbeef",
@@ -70,7 +71,7 @@ func TestPublisher_NewEntriesAreTenantScopedAndMinimal(t *testing.T) {
 	if strings.Contains(got[0], secret) || strings.Contains(got[0], "deadbeef") || strings.Contains(got[0], "Content") {
 		t.Fatalf("payload leaks internal fields: %s", got[0])
 	}
-	if !strings.Contains(got[0], `"id":100`) || !strings.Contains(got[0], `"title":"hello"`) || !strings.Contains(got[0], `"feed_title":"Owner feed"`) {
+	if !strings.Contains(got[0], `"id":100`) || !strings.Contains(got[0], `"title":"hello"`) || !strings.Contains(got[0], `"feed_title":"Owner feed"`) || !strings.Contains(got[0], `"category_id":3`) {
 		t.Fatalf("payload missing whitelisted fields: %s", got[0])
 	}
 	joined := strings.Join(got, "\n")

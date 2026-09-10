@@ -1,7 +1,7 @@
 {{define "entry_list"}}
 <ul class="hl-list" id="entry-list">
 {{range .Entries}}
-{{template "entry_row" (dict "Entry" . "CSRFToken" $.CSRFToken "SelectedEntryID" $.SelectedEntryID "Query" $.Query "Nav" $.Nav)}}
+{{template "entry_row" (dict "Entry" . "CSRFToken" $.CSRFToken "SelectedEntryID" $.SelectedEntryID "Query" $.Query "Nav" $.Nav "LabelID" $.LabelID)}}
 {{else}}
 <li class="hl-row hl-empty"><span class="meta">Записей нет</span></li>
 {{end}}

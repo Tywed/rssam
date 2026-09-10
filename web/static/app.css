@@ -70,6 +70,20 @@ a:hover { text-decoration: underline; }
 .entry-sort-btn:last-child { border-right: none; }
 .entry-sort-btn.active { background: var(--accent); color: #fff; }
 .auto-read-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+.seg { display: inline-flex; border: 1px solid var(--border); border-radius: 4px; overflow: hidden; }
+.seg-item {
+  padding: 0.25rem 0.6rem; font-size: 0.8rem; text-decoration: none; color: inherit;
+  border-right: 1px solid var(--border); background: #fff; white-space: nowrap;
+}
+.seg-item:last-child { border-right: none; }
+.seg-item.active { background: var(--accent); color: #fff; }
+.keys-dialog { border: 1px solid var(--border); border-radius: 6px; padding: 1rem 1.25rem; max-width: 22rem; font-size: 0.9rem; }
+.keys-dialog::backdrop { background: rgba(0,0,0,.35); }
+.keys-dialog h2 { margin: 0 0 0.75rem; font-size: 1rem; }
+.keys-dialog dl { display: grid; grid-template-columns: auto 1fr; gap: 0.35rem 0.9rem; margin: 0 0 1rem; }
+.keys-dialog dt { text-align: right; }
+.keys-dialog dd { margin: 0; color: var(--text-muted); }
+.keys-dialog kbd { display: inline-block; padding: 0 0.35rem; border: 1px solid var(--border); border-bottom-width: 2px; border-radius: 3px; background: #fafafa; font: inherit; font-size: 0.8rem; }
 .btn-header { white-space: nowrap; }
 .btn-header.active { background: var(--accent); color: #fff; border-color: var(--accent); }
 .btn-logout {
@@ -719,6 +733,10 @@ html[data-theme="dark"] .tree-row.active { border-color: var(--border); box-shad
 html[data-theme="dark"] .hl-row.active { background: #1a3040; border-left-color: var(--accent); }
 html[data-theme="dark"] .hl-link:hover { background: #2a2a2a; }
 html[data-theme="dark"] .headlines-toolbar { background: #222; }
+html[data-theme="dark"] .seg-item { background: var(--bg-content); }
+html[data-theme="dark"] .seg-item.active { background: var(--accent); color: #fff; }
+html[data-theme="dark"] .keys-dialog { background: var(--bg-content); color: var(--text); border-color: var(--border); }
+html[data-theme="dark"] .keys-dialog kbd { background: #222; }
 html[data-theme="dark"] .settings-nav { background: var(--bg-panel); border-color: var(--border); }
 html[data-theme="dark"] .settings-nav a:hover { background: #2a2a2a; }
 html[data-theme="dark"] .settings-nav a.active { background: var(--bg-content); }

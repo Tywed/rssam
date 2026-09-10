@@ -1,6 +1,6 @@
 {{define "entry_row"}}
 <li class="hl-row {{if eq .Entry.Status "read"}}read{{end}}{{if eq $.SelectedEntryID .Entry.ID}} active{{end}}" id="entry-{{.Entry.ID}}" data-entry-id="{{.Entry.ID}}">
-  <a class="hl-link" href="/ui/{{if eq $.Nav "search"}}search{{else}}unread{{end}}?entry_id={{.Entry.ID}}{{entryListQuery $.Query}}">
+  <a class="hl-link" href="{{listPath $.Nav $.LabelID}}?entry_id={{.Entry.ID}}{{entryListQuery $.Query}}">
     <div class="hl-title">{{if .Entry.Title}}{{.Entry.Title}}{{else}}(без заголовка){{end}}</div>
     <div class="hl-meta">#{{.Entry.FeedID}}{{if .Entry.PublishedAt}} · {{formatTime .Entry.PublishedAt}}{{end}}</div>
   </a>

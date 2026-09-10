@@ -13,10 +13,15 @@ func (h *Handler) handleUnread(w http.ResponseWriter, r *http.Request) {
 	data := h.baseData(r, "unread")
 	limit, offset := parsePage(r)
 
-	st := storage.EntryStatusUnread
-	filter := storage.ListEntriesFilter{Status: &st, Limit: limit, Offset: offset, Sort: data.EntrySort}
-
+	filter := storage.ListEntriesFilter{Limit: limit, Offset: offset, Sort: data.EntrySort}
 	q := make(map[string]string)
+	if r.URL.Query().Get("all") == "1" {
+		data.ShowAll = true
+		q["all"] = "1"
+	} else {
+		st := storage.EntryStatusUnread
+		filter.Status = &st
+	}
 	if v := r.URL.Query().Get("feed_id"); v != "" {
 		if id, err := strconv.ParseInt(v, 10, 64); err == nil && id > 0 {
 			filter.FeedID = &id
@@ -56,8 +61,38 @@ func (h *Handler) handleUnread(w http.ResponseWriter, r *http.Request) {
 	data.Entries = entries
 	data.Total = total
 	data.Title = "Непрочитанные"
+	if data.ShowAll {
+		data.Title = "Все записи"
+	}
 	h.loadSelectedEntry(r, p.UserID, &data)
 	h.render(w, r, "unread", data)
+}
+
+func (h *Handler) handleStarred(w http.ResponseWriter, r *http.Request) {
+	p, _ := principal(r)
+	data := h.baseData(r, "starred")
+	limit, offset := parsePage(r)
+	data.Limit = limit
+	data.Offset = offset
+	data.Query = map[string]string{}
+	appendEntrySortQuery(data.Query, data.EntrySort)
+
+	starred := true
+	entries, total, err := h.cfg.Entries.ListEntries(r.Context(), p.UserID, storage.ListEntriesFilter{
+		Starred: &starred,
+		Limit:   limit,
+		Offset:  offset,
+		Sort:    data.EntrySort,
+	})
+	if err != nil {
+		http.Error(w, "list entries failed", http.StatusInternalServerError)
+		return
+	}
+	data.Entries = entries
+	data.Total = total
+	data.Title = "Избранное"
+	h.loadSelectedEntry(r, p.UserID, &data)
+	h.render(w, r, "starred", data)
 }
 
 func (h *Handler) handleUnreadMarkRead(w http.ResponseWriter, r *http.Request) {

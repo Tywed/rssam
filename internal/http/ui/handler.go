@@ -172,10 +172,12 @@ func parseTemplates() (*template.Template, error) {
 		},
 		"hasPrefix": strings.HasPrefix,
 		"isReaderMode": func(nav string) bool {
-			return nav == "unread" || nav == "search" || nav == "label"
+			return nav == "unread" || nav == "search" || nav == "label" || nav == "starred"
 		},
 		"entryListQuery":  entryListQuery,
 		"entrySortSuffix": entrySortSuffix,
+		"viewSwitchQuery": viewSwitchQuery,
+		"listPath":        listPath,
 		"catColor": func(c storage.Category) template.CSS {
 			color := safeCSSColor(c.Color)
 			if color == "" {
@@ -339,7 +341,7 @@ func querySuffix(q map[string]string) template.URL {
 }
 
 func entryListQuery(q map[string]string) template.URL {
-	return queryPairs(q, []string{"feed_id", "category_id", "q", "sort"})
+	return queryPairs(q, []string{"feed_id", "category_id", "q", "sort", "all"})
 }
 
 func queryPairs(q map[string]string, keys []string) template.URL {
@@ -353,6 +355,37 @@ func queryPairs(q map[string]string, keys []string) template.URL {
 		}
 	}
 	return template.URL(b.String())
+}
+
+// viewSwitchQuery rebuilds the current list query with the all/unread switch
+// flipped and paging reset.
+func viewSwitchQuery(q map[string]string, all bool) template.URL {
+	keys := []string{"feed_id", "category_id", "sort"}
+	if all {
+		keys = append(keys, "all")
+	}
+	next := make(map[string]string, len(q)+1)
+	for k, v := range q {
+		next[k] = v
+	}
+	next["all"] = "1"
+	return template.URL(strings.TrimPrefix(string(queryPairs(next, keys)), "&"))
+}
+
+// listPath is the page an entry row links to, so that opening an entry keeps
+// the user in the label / starred / search view they are reading.
+func listPath(nav string, labelID int64) string {
+	switch nav {
+	case "search":
+		return "/ui/search"
+	case "starred":
+		return "/ui/starred"
+	case "label":
+		if labelID > 0 {
+			return "/ui/labels/" + strconv.FormatInt(labelID, 10)
+		}
+	}
+	return "/ui/unread"
 }
 
 // entrySortSuffix is appended to sidebar links that may or may not already
@@ -384,6 +417,7 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	auth := h.requireAuth
 	mux.Handle("GET /ui/", auth(http.HandlerFunc(h.handleRoot)))
 	mux.Handle("GET /ui/unread", auth(http.HandlerFunc(h.handleUnread)))
+	mux.Handle("GET /ui/starred", auth(http.HandlerFunc(h.handleStarred)))
 	mux.Handle("POST /ui/unread/mark-read", auth(http.HandlerFunc(h.handleUnreadMarkRead)))
 	mux.Handle("GET /ui/search", auth(http.HandlerFunc(h.handleSearch)))
 	mux.Handle("GET /ui/entries/{id}/preview", auth(http.HandlerFunc(h.handleEntryPreview)))

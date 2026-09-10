@@ -104,7 +104,7 @@
 
   function isReaderPage() {
     var path = window.location.pathname || '';
-    return path === '/ui/unread' || path === '/ui/search';
+    return path === '/ui/unread' || path === '/ui/search' || path === '/ui/starred' || path.indexOf('/ui/labels/') === 0;
   }
 
   function syncEntrySortFromURL(prefs) {
@@ -335,11 +335,23 @@
       .then(function (r) { return r.text(); })
       .then(function (html) {
         if (!html) return;
-        row.outerHTML = html;
+        swapRow(row, html);
         var btn = document.querySelector('#entry-preview .article-toolbar form[action$="/read"]');
         if (btn) btn.remove();
       })
       .catch(function () {});
+  }
+
+  // The re-rendered row comes without the list context (feed, label, sort),
+  // so the link it was opened from is kept.
+  function swapRow(el, html) {
+    var oldLink = el.querySelector('.hl-link');
+    var href = oldLink ? oldLink.getAttribute('href') : '';
+    var id = el.id;
+    el.outerHTML = html;
+    var fresh = id ? document.getElementById(id) : null;
+    var link = fresh ? fresh.querySelector('.hl-link') : null;
+    if (link && href) link.setAttribute('href', href);
   }
 
   function initKeyboardNav() {
@@ -374,8 +386,22 @@
           ev.preventDefault();
           window.rssamSelectEntry(row);
         }
+      } else if (ev.key === '?') {
+        ev.preventDefault();
+        toggleKeysDialog();
       }
     });
+  }
+
+  function toggleKeysDialog() {
+    var dlg = document.getElementById('keys-dialog');
+    if (!dlg || typeof dlg.showModal !== 'function') return;
+    if (dlg.open) dlg.close(); else dlg.showModal();
+  }
+
+  function initKeysHelp() {
+    var btn = document.getElementById('keys-toggle');
+    if (btn) btn.addEventListener('click', toggleKeysDialog);
   }
 
   document.addEventListener('submit', function (e) {
@@ -397,7 +423,7 @@
         var target = form.getAttribute('data-hx-target');
         if (target) {
           var el = document.querySelector(target);
-          if (el) el.outerHTML = res.text;
+          if (el) swapRow(el, res.text);
         }
       })
       .catch(function () { form.submit(); });
@@ -443,13 +469,23 @@
         if (msg.event === 'new_entry' && msg.data && msg.data.entry) {
           if (document.getElementById('entry-' + msg.data.entry.id)) return;
           var list = document.getElementById('entry-list');
-          if (!list) return;
+          // Only the top of a newest-first unread list is a correct place for
+          // a fresh entry; other views would show it out of order or filter.
+          if (!list || location.pathname !== '/ui/unread') return;
+          var params = new URLSearchParams(location.search);
+          if (params.get('sort') === 'oldest' || params.get('offset')) return;
+          var wantFeed = params.get('feed_id');
+          if (wantFeed && String(msg.data.entry.feed_id) !== wantFeed) return;
+          var wantCat = params.get('category_id');
+          if (wantCat && String(msg.data.entry.category_id) !== wantCat) return;
+          params.delete('entry_id');
+          params.set('entry_id', msg.data.entry.id);
           var row = document.createElement('li');
           row.className = 'hl-row';
           row.id = 'entry-' + msg.data.entry.id;
           row.setAttribute('data-entry-id', msg.data.entry.id);
           var title = msg.data.entry.title || '(без заголовка)';
-          row.innerHTML = '<a class="hl-link" href="/ui/unread?entry_id=' + msg.data.entry.id + '"><div class="hl-title">' + escapeHtml(title) + '</div></a>';
+          row.innerHTML = '<a class="hl-link" href="/ui/unread?' + params.toString() + '"><div class="hl-title">' + escapeHtml(title) + '</div></a>';
           list.insertBefore(row, list.firstChild);
         }
       } catch (_) {}
@@ -1300,6 +1336,7 @@
     initFeedContextMenu();
     initEntryPreview(prefs);
     initKeyboardNav();
+    initKeysHelp();
     initFeedForm();
     initConfirmForms();
     initWebhookKindForm();
