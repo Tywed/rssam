@@ -13,6 +13,9 @@ import (
 
 // A batch enqueue spreads run_at over EnqueueSpread(n) instead of stacking
 // every job on the same instant; a single feed is not delayed noticeably.
+// The feeds are created already paused in one statement: the e2e package
+// shares the database in CI and its scheduler would otherwise enqueue them
+// first (ListFeedsDue skips manual_paused, EnqueuePollFeedJobs does not care).
 func TestIntegration_EnqueuePollFeedJobsSpread(t *testing.T) {
 	store := testStore(t)
 	ctx := context.Background()
@@ -29,18 +32,25 @@ func TestIntegration_EnqueuePollFeedJobsSpread(t *testing.T) {
 	t.Cleanup(func() { _ = store.DeleteUser(context.Background(), u.ID) })
 
 	const n = 300
+	rows, err := store.db.Query(ctx, `
+INSERT INTO feeds(user_id, feed_url, feed_type, title, interval_minutes, manual_paused)
+SELECT $1, 'https://example.com/spread/' || $2 || '/' || i || '.xml', 'rss', 'spread', 60, TRUE
+FROM generate_series(1, $3) AS i
+RETURNING id`, u.ID, suffix, n)
+	if err != nil {
+		t.Fatalf("create feeds: %v", err)
+	}
 	ids := make([]int64, 0, n)
-	for i := range n {
-		f, err := store.CreateFeed(ctx, u.ID, CreateFeedParams{
-			FeedURL:         fmt.Sprintf("https://example.com/spread/%s/%d.xml", suffix, i),
-			FeedType:        "rss",
-			Title:           "spread",
-			IntervalMinutes: 60,
-		})
-		if err != nil {
-			t.Fatalf("create feed %d: %v", i, err)
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			t.Fatal(err)
 		}
-		ids = append(ids, f.ID)
+		ids = append(ids, id)
+	}
+	rows.Close()
+	if len(ids) != n {
+		t.Fatalf("created %d feeds, want %d", len(ids), n)
 	}
 
 	base := time.Now().UTC().Truncate(time.Millisecond)
