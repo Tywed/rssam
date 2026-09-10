@@ -30,8 +30,15 @@ type APIKey struct {
 	UserID     int64
 	Name       string
 	TokenHash  string
+	Scope      string
+	ExpiresAt  *time.Time
 	LastUsedAt *time.Time
 	CreatedAt  time.Time
+}
+
+// Expired reports whether the key can no longer authenticate at now.
+func (k APIKey) Expired(now time.Time) bool {
+	return k.ExpiresAt != nil && !k.ExpiresAt.After(now)
 }
 
 type APIKeyWithToken struct {
@@ -58,6 +65,8 @@ type CreateAPIKeyParams struct {
 	UserID    int64
 	Name      string
 	TokenHash string
+	Scope     string
+	ExpiresAt *time.Time
 }
 
 type UserStore interface {
@@ -268,11 +277,11 @@ WHERE is_admin AND password_hash <> '' AND id <> $1`, id).Scan(&others)
 
 func (s *PostgresStore) LookupAPIKey(ctx context.Context, tokenHash string) (APIKey, error) {
 	const q = `
-SELECT id, user_id, name, token_hash, last_used_at, created_at
+SELECT id, user_id, name, token_hash, scope, expires_at, last_used_at, created_at
 FROM api_keys
 WHERE token_hash = $1`
 	var k APIKey
-	err := s.db.QueryRow(ctx, q, tokenHash).Scan(&k.ID, &k.UserID, &k.Name, &k.TokenHash, &k.LastUsedAt, &k.CreatedAt)
+	err := s.db.QueryRow(ctx, q, tokenHash).Scan(&k.ID, &k.UserID, &k.Name, &k.TokenHash, &k.Scope, &k.ExpiresAt, &k.LastUsedAt, &k.CreatedAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return APIKey{}, ErrNotFound
@@ -282,8 +291,11 @@ WHERE token_hash = $1`
 	return k, nil
 }
 
+// TouchAPIKeyUsed records use of a key. last_used_at is informational, so
+// it is written at most once per hour per key rather than on every request.
 func (s *PostgresStore) TouchAPIKeyUsed(ctx context.Context, keyID int64) error {
-	_, err := s.db.Exec(ctx, `UPDATE api_keys SET last_used_at = now() WHERE id = $1`, keyID)
+	_, err := s.db.Exec(ctx, `UPDATE api_keys SET last_used_at = now()
+WHERE id = $1 AND (last_used_at IS NULL OR last_used_at < now() - interval '1 hour')`, keyID)
 	if err != nil {
 		return fmt.Errorf("touch api key: %w", err)
 	}
@@ -292,7 +304,7 @@ func (s *PostgresStore) TouchAPIKeyUsed(ctx context.Context, keyID int64) error 
 
 func (s *PostgresStore) ListAPIKeys(ctx context.Context, userID int64) ([]APIKey, error) {
 	const q = `
-SELECT id, user_id, name, token_hash, last_used_at, created_at
+SELECT id, user_id, name, token_hash, scope, expires_at, last_used_at, created_at
 FROM api_keys
 WHERE user_id = $1
 ORDER BY id DESC`
@@ -305,7 +317,7 @@ ORDER BY id DESC`
 	var out []APIKey
 	for rows.Next() {
 		var k APIKey
-		if err := rows.Scan(&k.ID, &k.UserID, &k.Name, &k.TokenHash, &k.LastUsedAt, &k.CreatedAt); err != nil {
+		if err := rows.Scan(&k.ID, &k.UserID, &k.Name, &k.TokenHash, &k.Scope, &k.ExpiresAt, &k.LastUsedAt, &k.CreatedAt); err != nil {
 			return nil, fmt.Errorf("scan api key: %w", err)
 		}
 		out = append(out, k)
@@ -317,13 +329,17 @@ ORDER BY id DESC`
 }
 
 func (s *PostgresStore) CreateAPIKey(ctx context.Context, params CreateAPIKeyParams) (APIKey, error) {
+	scope := params.Scope
+	if scope == "" {
+		scope = "admin"
+	}
 	const q = `
-INSERT INTO api_keys(user_id, name, token_hash)
-VALUES ($1, $2, $3)
-RETURNING id, user_id, name, token_hash, last_used_at, created_at`
+INSERT INTO api_keys(user_id, name, token_hash, scope, expires_at)
+VALUES ($1, $2, $3, $4, $5)
+RETURNING id, user_id, name, token_hash, scope, expires_at, last_used_at, created_at`
 	var k APIKey
-	err := s.db.QueryRow(ctx, q, params.UserID, strings.TrimSpace(params.Name), params.TokenHash).
-		Scan(&k.ID, &k.UserID, &k.Name, &k.TokenHash, &k.LastUsedAt, &k.CreatedAt)
+	err := s.db.QueryRow(ctx, q, params.UserID, strings.TrimSpace(params.Name), params.TokenHash, scope, params.ExpiresAt).
+		Scan(&k.ID, &k.UserID, &k.Name, &k.TokenHash, &k.Scope, &k.ExpiresAt, &k.LastUsedAt, &k.CreatedAt)
 	if err != nil {
 		return APIKey{}, fmt.Errorf("create api key: %w", err)
 	}

@@ -3,7 +3,7 @@
   "info": {
     "title": "rssam API",
     "version": "1.0.0",
-    "description": "REST API of the rssam RSS aggregator.\n\n**Authentication.** Every `/v1` endpoint takes `X-Auth-Token: <token>` where the token is either a personal API key (`POST /v1/me/api-keys`) or the global `AUTH_TOKEN` (maps to user id 1). A browser session cookie is also accepted, but state-changing requests authenticated only by the cookie must pass the same-origin check (`Sec-Fetch-Site`/`Origin`), otherwise 403.\n\n**Envelope.** Successful JSON responses are `{\"data\": ..., \"total\": n}`; errors are `{\"error_message\": \"...\"}`. Lists take `limit`/`offset`; `total` is the full row count.\n\n**Ownership.** Objects are scoped to the calling user; reading another user's object yields 404. Endpoints marked \"Requires an admin principal\" return 403 for non-admins.\n\n**Request id.** Every response carries `X-Request-Id` (echoed from the request when a proxy set it, generated otherwise); quote it when reporting 5xx errors.\n\n**Limits.** Request bodies are capped (MAX_REQUEST_BODY_BYTES, default 1 MiB) → 413; per-IP rate limits on authentication failures and sensitive routes → 429."
+    "description": "REST API of the rssam RSS aggregator.\n\n**Authentication.** Every `/v1` endpoint takes `X-Auth-Token: <token>` where the token is either a personal API key (`POST /v1/me/api-keys`, with a `scope` of `read`/`write`/`admin` and an optional expiry) or the global `AUTH_TOKEN` (maps to user id 1, unrestricted; deprecated, to be removed in 0.2.0). A request outside the key's scope is rejected with 403. A browser session cookie is also accepted, but state-changing requests authenticated only by the cookie must pass the same-origin check (`Sec-Fetch-Site`/`Origin`), otherwise 403.\n\n**Envelope.** Successful JSON responses are `{\"data\": ..., \"total\": n}`; errors are `{\"error_message\": \"...\"}`. Lists take `limit`/`offset`; `total` is the full row count.\n\n**Ownership.** Objects are scoped to the calling user; reading another user's object yields 404. Endpoints marked \"Requires an admin principal\" return 403 for non-admins.\n\n**Request id.** Every response carries `X-Request-Id` (echoed from the request when a proxy set it, generated otherwise); quote it when reporting 5xx errors.\n\n**Limits.** Request bodies are capped (MAX_REQUEST_BODY_BYTES, default 1 MiB) → 413; per-IP rate limits on authentication failures and sensitive routes → 429."
   },
   "servers": [
     {
@@ -408,6 +408,9 @@
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
           },
           "404": {
             "$ref": "#/components/responses/NotFound"
@@ -932,6 +935,9 @@
           "401": {
             "$ref": "#/components/responses/Unauthorized"
           },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
           "404": {
             "$ref": "#/components/responses/NotFound"
           },
@@ -1045,6 +1051,9 @@
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
           },
           "404": {
             "$ref": "#/components/responses/NotFound"
@@ -1235,6 +1244,9 @@
           "401": {
             "$ref": "#/components/responses/Unauthorized"
           },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
           "404": {
             "$ref": "#/components/responses/NotFound"
           },
@@ -1340,6 +1352,9 @@
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
           },
           "429": {
             "$ref": "#/components/responses/TooManyRequests"
@@ -2602,6 +2617,9 @@
           "401": {
             "$ref": "#/components/responses/Unauthorized"
           },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
           "429": {
             "$ref": "#/components/responses/TooManyRequests"
           },
@@ -2647,6 +2665,9 @@
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
           },
           "404": {
             "$ref": "#/components/responses/NotFound"
@@ -2807,7 +2828,7 @@
         }
       },
       "Forbidden": {
-        "description": "Admin required, or a cookie-authenticated request that failed the same-origin check.",
+        "description": "Admin required, the API key scope does not allow the request, or a cookie-authenticated request that failed the same-origin check.",
         "content": {
           "application/json": {
             "schema": {
@@ -4139,6 +4160,20 @@
           "name": {
             "type": "string"
           },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "read",
+              "write",
+              "admin"
+            ],
+            "description": "read: safe methods only. write: additionally PUT /v1/entries, PUT /v1/feeds/{feedID}/entries/{entryID} and the mark-all-as-read endpoints. admin: everything the owning user may do. Keys created before 0.1.10 are admin."
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Absent = never expires. An expired key is rejected with 401."
+          },
           "last_used_at": {
             "type": "string",
             "format": "date-time"
@@ -4151,6 +4186,7 @@
         "required": [
           "id",
           "name",
+          "scope",
           "created_at"
         ]
       },
@@ -4160,6 +4196,22 @@
           "name": {
             "type": "string",
             "minLength": 1
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "read",
+              "write",
+              "admin"
+            ],
+            "default": "admin"
+          },
+          "expires_in_days": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 3650,
+            "default": 0,
+            "description": "0 = never."
           }
         },
         "required": [

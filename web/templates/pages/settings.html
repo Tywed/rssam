@@ -26,15 +26,33 @@
       <form method="post" action="/ui/settings/api-keys">
         <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
         <div class="form-group"><label>Имя ключа</label><input name="name" required></div>
+        <div class="form-group"><label>Права</label>
+          <select name="scope">
+            <option value="read">read — только чтение</option>
+            <option value="write">write — чтение + статус прочитано/избранное</option>
+            <option value="admin" selected>admin — всё, что доступно пользователю</option>
+          </select>
+        </div>
+        <div class="form-group"><label>Срок действия</label>
+          <select name="expires_in_days">
+            <option value="0">бессрочно</option>
+            <option value="30">30 дней</option>
+            <option value="90">90 дней</option>
+            <option value="365">1 год</option>
+          </select>
+        </div>
         <button type="submit" class="btn btn-primary">Создать</button>
       </form>
       {{if .NewToken}}<div class="flash flash-ok">Новый токен (сохраните): <code>{{.NewToken}}</code></div>{{end}}
       <table class="mt-1">
-        <thead><tr><th>Имя</th><th>Создан</th><th></th></tr></thead>
+        <thead><tr><th>Имя</th><th>Права</th><th>Истекает</th><th>Использован</th><th>Создан</th><th></th></tr></thead>
         <tbody>
         {{range .APIKeys}}
         <tr>
           <td>{{.Name}}</td>
+          <td><code>{{.Scope}}</code></td>
+          <td class="meta">{{if .ExpiresAt}}{{formatTime .ExpiresAt}}{{else}}—{{end}}</td>
+          <td class="meta">{{if .LastUsedAt}}{{formatTime .LastUsedAt}}{{else}}—{{end}}</td>
           <td class="meta">{{formatTime .CreatedAt}}</td>
           <td><form method="post" action="/ui/settings/api-keys/{{.ID}}/delete"><input type="hidden" name="csrf_token" value="{{$.CSRFToken}}"><button class="btn btn-sm btn-danger">×</button></form></td>
         </tr>

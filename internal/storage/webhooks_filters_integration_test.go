@@ -358,8 +358,35 @@ func TestIntegration_APIKeysLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	keys, err := store.ListAPIKeys(ctx, owner.ID)
-	if err != nil || len(keys) != 1 || keys[0].LastUsedAt == nil {
+	if err != nil || len(keys) != 1 || keys[0].LastUsedAt == nil || keys[0].Scope != "admin" || keys[0].ExpiresAt != nil {
 		t.Fatalf("list keys: %+v err=%v", keys, err)
+	}
+	// last_used_at is refreshed at most once an hour.
+	firstUsed := *keys[0].LastUsedAt
+	if err := store.TouchAPIKeyUsed(ctx, k.ID); err != nil {
+		t.Fatal(err)
+	}
+	if keys, _ = store.ListAPIKeys(ctx, owner.ID); !keys[0].LastUsedAt.Equal(firstUsed) {
+		t.Fatalf("second touch within an hour rewrote last_used_at: %s -> %s", firstUsed, *keys[0].LastUsedAt)
+	}
+
+	exp := time.Now().UTC().Add(time.Hour).Truncate(time.Microsecond)
+	_, hash2, err := auth.NewAPIToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	k2, err := store.CreateAPIKey(ctx, CreateAPIKeyParams{UserID: owner.ID, Name: "ro", TokenHash: hash2, Scope: "read", ExpiresAt: &exp})
+	if err != nil {
+		t.Fatalf("create scoped key: %v", err)
+	}
+	if got, err := store.LookupAPIKey(ctx, hash2); err != nil || got.Scope != "read" || got.ExpiresAt == nil || !got.ExpiresAt.Equal(exp) || got.Expired(time.Now()) || !got.Expired(exp.Add(time.Second)) {
+		t.Fatalf("scoped key roundtrip: %+v err=%v", got, err)
+	}
+	if _, err := store.CreateAPIKey(ctx, CreateAPIKeyParams{UserID: owner.ID, Name: "bad", TokenHash: hash2 + "x", Scope: "root"}); err == nil {
+		t.Fatal("invalid scope must be rejected by the CHECK constraint")
+	}
+	if err := store.DeleteAPIKey(ctx, owner.ID, k2.ID); err != nil {
+		t.Fatal(err)
 	}
 	if keys, _ := store.ListAPIKeys(ctx, other.ID); len(keys) != 0 {
 		t.Fatalf("foreign list keys: %+v", keys)

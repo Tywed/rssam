@@ -36,11 +36,11 @@ func (s *Server) authenticateRequestSource(ctx context.Context, r *http.Request)
 	if s.users != nil {
 		hash := auth.HashToken(token)
 		key, err := s.users.LookupAPIKey(ctx, hash)
-		if err == nil {
+		if err == nil && !key.Expired(time.Now()) {
 			_ = s.users.TouchAPIKeyUsed(ctx, key.ID)
 			u, uerr := s.users.GetUser(ctx, key.UserID)
 			if uerr == nil {
-				return auth.Principal{UserID: u.ID, IsAdmin: u.IsAdmin, Username: u.Username}, true, false
+				return auth.Principal{UserID: u.ID, IsAdmin: u.IsAdmin, Username: u.Username, Scope: key.Scope}, true, false
 			}
 		}
 	}
@@ -122,6 +122,10 @@ func (s *Server) wrapAPI(next http.Handler) http.Handler {
 		// web UI never calls /v1 (it uses /ui/* with form CSRF tokens).
 		if viaCookie && !isSafeMethod(r.Method) && !sameOriginRequest(r) {
 			writeError(w, http.StatusForbidden, "cross-origin request rejected: use an API token")
+			return
+		}
+		if !auth.ScopeAllows(p.Scope, r.Method, r.URL.Path) {
+			writeError(w, http.StatusForbidden, "api key scope "+p.Scope+" does not allow this request")
 			return
 		}
 		r = r.WithContext(auth.WithPrincipal(r.Context(), p))

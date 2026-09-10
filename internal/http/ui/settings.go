@@ -124,6 +124,24 @@ func (h *Handler) handleAPIKeyCreate(w http.ResponseWriter, r *http.Request) {
 	}
 	p, _ := principal(r)
 	name := strings.TrimSpace(r.FormValue("name"))
+	scope := r.FormValue("scope")
+	if scope == "" {
+		scope = auth.ScopeAdmin
+	}
+	if !auth.IsValidScope(scope) {
+		http.Error(w, "invalid scope", http.StatusBadRequest)
+		return
+	}
+	var expiresAt *time.Time
+	if v := r.FormValue("expires_in_days"); v != "" && v != "0" {
+		days, err := strconvAtoi(v)
+		if err != nil || days > 3650 {
+			http.Error(w, "invalid expiry", http.StatusBadRequest)
+			return
+		}
+		t := time.Now().UTC().Add(time.Duration(days) * 24 * time.Hour)
+		expiresAt = &t
+	}
 	raw, hash, err := auth.NewAPIToken()
 	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
@@ -133,6 +151,8 @@ func (h *Handler) handleAPIKeyCreate(w http.ResponseWriter, r *http.Request) {
 		UserID:    p.UserID,
 		Name:      name,
 		TokenHash: hash,
+		Scope:     scope,
+		ExpiresAt: expiresAt,
 	})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)

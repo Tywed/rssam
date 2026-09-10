@@ -13,6 +13,8 @@ type Principal struct {
 	// Username is filled by the session/token authenticators (the user row
 	// was already loaded there) so page rendering does not re-query it.
 	Username string
+	// Scope is the API key scope ("" for sessions and AUTH_TOKEN = unrestricted).
+	Scope string
 }
 
 func WithPrincipal(ctx context.Context, p Principal) context.Context {

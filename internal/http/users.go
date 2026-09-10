@@ -31,12 +31,42 @@ type meUpdateRequest struct {
 type apiKeyDTO struct {
 	ID         int64      `json:"id"`
 	Name       string     `json:"name"`
+	Scope      string     `json:"scope"`
+	ExpiresAt  *time.Time `json:"expires_at,omitempty"`
 	LastUsedAt *time.Time `json:"last_used_at,omitempty"`
 	CreatedAt  time.Time  `json:"created_at"`
 }
 
 type apiKeyCreateRequest struct {
 	Name string `json:"name"`
+	// Scope defaults to admin (full access of the owning user).
+	Scope string `json:"scope"`
+	// ExpiresInDays 0 = never.
+	ExpiresInDays int `json:"expires_in_days"`
+}
+
+const maxAPIKeyLifetimeDays = 3650
+
+func apiKeyExpiry(days int, now time.Time) (*time.Time, bool) {
+	switch {
+	case days == 0:
+		return nil, true
+	case days < 0 || days > maxAPIKeyLifetimeDays:
+		return nil, false
+	}
+	t := now.Add(time.Duration(days) * 24 * time.Hour)
+	return &t, true
+}
+
+func apiKeyToDTO(k storage.APIKey) apiKeyDTO {
+	return apiKeyDTO{
+		ID:         k.ID,
+		Name:       k.Name,
+		Scope:      k.Scope,
+		ExpiresAt:  k.ExpiresAt,
+		LastUsedAt: k.LastUsedAt,
+		CreatedAt:  k.CreatedAt,
+	}
 }
 
 type apiKeyCreateResponse struct {
@@ -298,12 +328,7 @@ func (s *Server) handleListAPIKeys(w http.ResponseWriter, r *http.Request) {
 	}
 	out := make([]apiKeyDTO, 0, len(keys))
 	for _, k := range keys {
-		out = append(out, apiKeyDTO{
-			ID:         k.ID,
-			Name:       k.Name,
-			LastUsedAt: k.LastUsedAt,
-			CreatedAt:  k.CreatedAt,
-		})
+		out = append(out, apiKeyToDTO(k))
 	}
 	writeJSON(w, http.StatusOK, listResponse[[]apiKeyDTO]{Data: out, Total: len(out)})
 }
@@ -322,6 +347,19 @@ func (s *Server) handleCreateAPIKey(w http.ResponseWriter, r *http.Request) {
 	if name == "" {
 		name = "default"
 	}
+	scope := strings.TrimSpace(req.Scope)
+	if scope == "" {
+		scope = auth.ScopeAdmin
+	}
+	if !auth.IsValidScope(scope) {
+		writeError(w, http.StatusBadRequest, "invalid scope: use read, write or admin")
+		return
+	}
+	expiresAt, ok := apiKeyExpiry(req.ExpiresInDays, time.Now().UTC())
+	if !ok {
+		writeError(w, http.StatusBadRequest, "expires_in_days must be between 0 and 3650")
+		return
+	}
 	raw, hash, err := auth.NewAPIToken()
 	if err != nil {
 		s.log.ErrorContext(r.Context(), "generate api key failed", "err", err)
@@ -332,6 +370,8 @@ func (s *Server) handleCreateAPIKey(w http.ResponseWriter, r *http.Request) {
 		UserID:    p.UserID,
 		Name:      name,
 		TokenHash: hash,
+		Scope:     scope,
+		ExpiresAt: expiresAt,
 	})
 	if err != nil {
 		s.log.ErrorContext(r.Context(), "create api key failed", "err", err)
@@ -339,14 +379,7 @@ func (s *Server) handleCreateAPIKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusCreated, listResponse[apiKeyCreateResponse]{
-		Data: apiKeyCreateResponse{
-			apiKeyDTO: apiKeyDTO{
-				ID:        k.ID,
-				Name:      k.Name,
-				CreatedAt: k.CreatedAt,
-			},
-			Token: raw,
-		},
+		Data:  apiKeyCreateResponse{apiKeyDTO: apiKeyToDTO(k), Token: raw},
 		Total: 1,
 	})
 }

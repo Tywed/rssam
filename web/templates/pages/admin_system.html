@@ -4,6 +4,7 @@
   <div class="settings-content">
     <h1>Система</h1>
     {{if .Info.DualWarning}}<div class="flash flash-err">{{.Info.DualWarning}}</div>{{end}}
+    {{if .Info.AuthTokenSet}}<div class="capacity-banner capacity-banner-warn">В <code>.env</code> задан <code>AUTH_TOKEN</code>: он даёт полный доступ от имени пользователя #1, его нельзя ограничить правами или сроком. Создайте API-ключи в «Настройки → API ключи» и уберите <code>AUTH_TOKEN</code>; в 0.2.0 он будет удалён.</div>{{end}}
     <div class="card">
       <table>
         <tr><th>Версия</th><td>{{.Info.Version}}{{if .Info.UpdateAvail}} <span class="ver-badge ver-badge-stale">есть {{.Info.Latest}}</span>{{else if .Info.Latest}} <span class="ver-badge">актуальная</span>{{end}}</td></tr>

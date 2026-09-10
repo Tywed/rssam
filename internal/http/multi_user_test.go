@@ -172,11 +172,17 @@ func (m *memUserStore) ListAPIKeys(_ context.Context, userID int64) ([]storage.A
 func (m *memUserStore) CreateAPIKey(_ context.Context, p storage.CreateAPIKeyParams) (storage.APIKey, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	scope := p.Scope
+	if scope == "" {
+		scope = "admin"
+	}
 	k := storage.APIKey{
 		ID:        m.nextKID,
 		UserID:    p.UserID,
 		Name:      p.Name,
 		TokenHash: p.TokenHash,
+		Scope:     scope,
+		ExpiresAt: p.ExpiresAt,
 		CreatedAt: time.Now().UTC(),
 	}
 	m.nextKID++

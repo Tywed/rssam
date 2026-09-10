@@ -106,6 +106,7 @@ func (s *Server) registerUI(mux *http.ServeMux) {
 	cfg.WebhookWorkerPoolSize = s.webhookWorkerPoolSize
 	cfg.FetchTimeoutSeconds = s.fetchTimeoutSec
 	cfg.EnvFilePath = s.envFilePath
+	cfg.AuthTokenSet = s.authToken != ""
 	cfg.Retention = s.retention
 	cfg.RunRetentionCleanup = s.runRetentionCleanup
 	cfg.DatabaseURL = s.databaseURL

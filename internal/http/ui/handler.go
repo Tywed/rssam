@@ -65,12 +65,14 @@ type Config struct {
 	WebhookWorkerPoolSize int
 	FetchTimeoutSeconds   int
 	EnvFilePath           string
-	DatabaseURL           string
-	GitHubRepo            string
-	PauseWorkers          func()
-	ResumeWorkers         func()
-	WorkersPaused         func() bool
-	Dedup                 storage.EntryDedupStore
+	// AuthTokenSet shows the deprecation banner on the system page.
+	AuthTokenSet  bool
+	DatabaseURL   string
+	GitHubRepo    string
+	PauseWorkers  func()
+	ResumeWorkers func()
+	WorkersPaused func() bool
+	Dedup         storage.EntryDedupStore
 	// Retention holds the retention windows the running process was started
 	// with; shown (and editable via .env) on the admin system page.
 	Retention RetentionSettings
