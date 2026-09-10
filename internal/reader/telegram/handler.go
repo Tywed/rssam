@@ -20,6 +20,7 @@ type Handler struct {
 	proxyClient *proxy.Client
 	httpClient  *http.Client
 	cfg         Config
+	slots       *fetchSlots
 }
 
 func NewHandler(proxyClient *proxy.Client, httpClient *http.Client, cfg Config) *Handler {
@@ -41,7 +42,8 @@ func NewHandler(proxyClient *proxy.Client, httpClient *http.Client, cfg Config) 
 	if proxyClient != nil && cfg.ProxyServiceToken != "" {
 		proxyClient.ServiceToken = cfg.ProxyServiceToken
 	}
-	return &Handler{proxyClient: proxyClient, httpClient: httpClient, cfg: cfg}
+	cfg.ConcurrentSlots = ClampConcurrentSlots(cfg.ConcurrentSlots)
+	return &Handler{proxyClient: proxyClient, httpClient: httpClient, cfg: cfg, slots: newFetchSlots(cfg.ConcurrentSlots)}
 }
 
 // UpdateConfig replaces global Telegram bridge settings at runtime.
@@ -64,6 +66,8 @@ func (h *Handler) UpdateConfig(cfg Config) {
 	if h.proxyClient != nil && cfg.ProxyServiceToken != "" {
 		h.proxyClient.ServiceToken = cfg.ProxyServiceToken
 	}
+	cfg.ConcurrentSlots = ClampConcurrentSlots(cfg.ConcurrentSlots)
+	h.slots.setLimit(cfg.ConcurrentSlots)
 	h.cfg = cfg
 }
 
@@ -97,6 +101,20 @@ func (h *Handler) Fetch(ctx context.Context, feedURL string, override *BridgeOve
 	}
 
 	maxPages := min(max(cfg.MaxPages, 1), 100)
+
+	// Wait for a slot with at most half of the remaining budget so that the
+	// fetch itself still has time; a longer wait defers the poll instead of
+	// turning a slow neighbour into this feed's error.
+	waitCtx := ctx
+	if dl, ok := ctx.Deadline(); ok {
+		var cancel context.CancelFunc
+		waitCtx, cancel = context.WithDeadline(ctx, time.Now().Add(time.Until(dl)/2))
+		defer cancel()
+	}
+	if err := h.slots.acquire(waitCtx); err != nil {
+		return FetchResult{}, &ErrSlotsBusy{Until: time.Now().UTC().Add(30 * time.Second)}
+	}
+	defer h.slots.release()
 
 	pageURL := PreviewURL(username)
 	var all []ParsedMessage

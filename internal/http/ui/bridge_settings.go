@@ -27,6 +27,7 @@ type TelegramBridgeSettings struct {
 	RequestTimeout       time.Duration
 	ProxyRetry           int
 	MaxPages             int
+	ConcurrentSlots      int
 }
 
 type MaxBridgeSettings struct {
@@ -70,6 +71,7 @@ func BridgeSettingsFromRuntime(rt bridgeconfig.Runtime) BridgeSettings {
 			RequestTimeout:       rt.Telegram.RequestTimeout,
 			ProxyRetry:           rt.Telegram.ProxyRetry,
 			MaxPages:             rt.Telegram.MaxPages,
+			ConcurrentSlots:      max(rt.Telegram.ConcurrentSlots, 1),
 		},
 		Max: MaxBridgeSettings{
 			Enabled:           rt.Max.APIBaseURL != "",

@@ -19,6 +19,7 @@ type Config struct {
 	ProxyRequestTimeout   time.Duration
 	ProxyRetry            int
 	MaxPages              int
+	ConcurrentSlots       int
 	UserAgent             string
 	TLSInsecureSkipVerify bool
 }

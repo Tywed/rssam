@@ -156,11 +156,9 @@ type ErrBackoff struct {
 	Until time.Time
 }
 
+// Error carries no timestamp so repeated occurrences coalesce in the poll log.
 func (e *ErrBackoff) Error() string {
-	if e == nil {
-		return "max: backoff"
-	}
-	return fmt.Sprintf("max: retry after %s", e.Until.UTC().Format(time.RFC3339))
+	return "max: rate limited or slot busy, retry later"
 }
 
 func (e *ErrBackoff) RetryAt() time.Time {

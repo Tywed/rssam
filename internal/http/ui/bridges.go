@@ -41,6 +41,7 @@ func (h *Handler) handleSettingsBridgeTelegramSave(w http.ResponseWriter, r *htt
 	tg.RequestTimeout = strings.TrimSpace(r.FormValue("request_timeout"))
 	tg.ProxyRetry = parseIntDefault(r.FormValue("proxy_retry"), tg.ProxyRetry)
 	tg.MaxPages = parseIntDefault(r.FormValue("max_pages"), tg.MaxPages)
+	tg.ConcurrentSlots = min(max(parseIntDefault(r.FormValue("concurrent_slots"), tg.ConcurrentSlots), 1), 32)
 	if tok := strings.TrimSpace(r.FormValue("proxy_service_token")); tok != "" {
 		tg.ProxyServiceToken = tok
 	}

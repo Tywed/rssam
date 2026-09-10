@@ -65,6 +65,7 @@ type Config struct {
 	TelegramProxyRequestTimeout time.Duration
 	TelegramProxyRetry          int
 	TelegramMaxPages            int
+	TelegramConcurrentSlots     int
 
 	VKAccessToken      string
 	VKAPIVersion       string
@@ -189,6 +190,7 @@ func Load() (Config, error) {
 		TelegramProxyRequestTimeout: parseDuration(getEnv("TELEGRAM_PROXY_REQUEST_TIMEOUT", "25s"), 25*time.Second),
 		TelegramProxyRetry:          parseInt(getEnv("TELEGRAM_PROXY_RETRY", "1"), 1),
 		TelegramMaxPages:            parseInt(getEnv("TELEGRAM_MAX_PAGES", "1"), 1),
+		TelegramConcurrentSlots:     parseInt(getEnv("TELEGRAM_CONCURRENT_SLOTS", "4"), 4),
 
 		VKAccessToken:      strings.TrimSpace(os.Getenv("VK_ACCESS_TOKEN")),
 		VKAPIVersion:       getEnv("VK_API_VERSION", "5.199"),
@@ -320,6 +322,9 @@ func (c Config) Validate() error {
 	}
 	if c.TelegramMaxPages < 1 || c.TelegramMaxPages > 100 {
 		errs = append(errs, fmt.Errorf("TELEGRAM_MAX_PAGES must be between 1 and 100, got %d", c.TelegramMaxPages))
+	}
+	if c.TelegramConcurrentSlots < 1 || c.TelegramConcurrentSlots > 32 {
+		errs = append(errs, fmt.Errorf("TELEGRAM_CONCURRENT_SLOTS must be between 1 and 32, got %d", c.TelegramConcurrentSlots))
 	}
 	if c.VKDefaultCount < 1 || c.VKDefaultCount > 100 {
 		errs = append(errs, fmt.Errorf("VK_DEFAULT_COUNT must be between 1 and 100, got %d", c.VKDefaultCount))

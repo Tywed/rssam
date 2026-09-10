@@ -112,6 +112,7 @@ func (m *Manager) apply() {
 			ProxyRequestTimeout:   rt.Telegram.RequestTimeout,
 			ProxyRetry:            rt.Telegram.ProxyRetry,
 			MaxPages:              rt.Telegram.MaxPages,
+			ConcurrentSlots:       rt.Telegram.ConcurrentSlots,
 			UserAgent:             m.env.FetchUserAgent,
 			TLSInsecureSkipVerify: m.env.FetchTLSInsecureSkipVerify,
 		})

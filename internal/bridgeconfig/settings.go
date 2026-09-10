@@ -28,6 +28,7 @@ type TelegramStored struct {
 	RequestTimeout    string `json:"request_timeout"`
 	ProxyRetry        int    `json:"proxy_retry"`
 	MaxPages          int    `json:"max_pages"`
+	ConcurrentSlots   int    `json:"concurrent_slots"`
 }
 
 type MaxStored struct {
@@ -72,6 +73,7 @@ type TelegramRuntime struct {
 	RequestTimeout    time.Duration
 	ProxyRetry        int
 	MaxPages          int
+	ConcurrentSlots   int
 }
 
 type MaxRuntime struct {
@@ -110,6 +112,7 @@ func MergeEnv(cfg config.Config, stored Stored) Runtime {
 			RequestTimeout:    cfg.TelegramProxyRequestTimeout,
 			ProxyRetry:        cfg.TelegramProxyRetry,
 			MaxPages:          cfg.TelegramMaxPages,
+			ConcurrentSlots:   cfg.TelegramConcurrentSlots,
 		},
 		Max: MaxRuntime{
 			APIBaseURL:        cfg.MaxAPIBaseURL,
@@ -167,6 +170,9 @@ func applyTelegramStored(dst *TelegramRuntime, s TelegramStored) {
 	}
 	if s.MaxPages > 0 {
 		dst.MaxPages = s.MaxPages
+	}
+	if s.ConcurrentSlots > 0 {
+		dst.ConcurrentSlots = s.ConcurrentSlots
 	}
 }
 
@@ -234,6 +240,7 @@ func RuntimeToStored(rt Runtime) Stored {
 			RequestTimeout:    rt.Telegram.RequestTimeout.String(),
 			ProxyRetry:        rt.Telegram.ProxyRetry,
 			MaxPages:          rt.Telegram.MaxPages,
+			ConcurrentSlots:   rt.Telegram.ConcurrentSlots,
 		},
 		Max: MaxStored{
 			APIBaseURL:        rt.Max.APIBaseURL,

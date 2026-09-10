@@ -20,18 +20,26 @@ DO UPDATE SET run_at = LEAST(jobs.run_at, EXCLUDED.run_at),
 	return nil
 }
 
+// EnqueueSpread is the run_at jitter for a batch of n poll jobs: 100 ms per
+// feed, at most one minute. It desynchronises feeds that became due together
+// (restart, refresh-all, daily reset) without visibly delaying polls; the
+// offset persists because next_check_at is computed from the actual poll time.
+func EnqueueSpread(n int) time.Duration {
+	return min(time.Duration(n)*100*time.Millisecond, time.Minute)
+}
+
 func (s *PostgresStore) EnqueuePollFeedJobs(ctx context.Context, feedIDs []int64, runAt time.Time) error {
 	if len(feedIDs) == 0 {
 		return nil
 	}
 	const q = `
 INSERT INTO jobs(type, feed_id, run_at)
-SELECT 'poll_feed', x, $2
+SELECT 'poll_feed', x, $2::timestamptz + random() * $3::interval
 FROM unnest($1::bigint[]) AS x
 ON CONFLICT (type, feed_id) WHERE (type = 'poll_feed' AND feed_id IS NOT NULL)
 DO UPDATE SET run_at = LEAST(jobs.run_at, EXCLUDED.run_at),
               updated_at = now()`
-	_, err := s.db.Exec(ctx, q, feedIDs, runAt)
+	_, err := s.db.Exec(ctx, q, feedIDs, runAt, EnqueueSpread(len(feedIDs)))
 	if err != nil {
 		return fmt.Errorf("enqueue poll_feed jobs: %w", err)
 	}
@@ -53,12 +61,12 @@ WHERE manual_paused = FALSE
 	}
 	cmd, err := s.db.Exec(ctx, `
 INSERT INTO jobs(type, feed_id, run_at)
-SELECT 'poll_feed', id, now()
+SELECT 'poll_feed', id, now() + random() * $1::interval
 FROM feeds
 WHERE manual_paused = FALSE
 ON CONFLICT (type, feed_id) WHERE (type = 'poll_feed' AND feed_id IS NOT NULL)
 DO UPDATE SET run_at = LEAST(jobs.run_at, EXCLUDED.run_at),
-              updated_at = now()`)
+              updated_at = now()`, EnqueueSpread(feeds))
 	if err != nil {
 		return 0, 0, fmt.Errorf("enqueue refresh-all poll jobs: %w", err)
 	}

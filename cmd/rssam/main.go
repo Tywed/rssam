@@ -151,6 +151,7 @@ func main() {
 		TelegramProxyRequestTimeout: cfg.TelegramProxyRequestTimeout,
 		TelegramProxyRetry:          cfg.TelegramProxyRetry,
 		TelegramMaxPages:            cfg.TelegramMaxPages,
+		TelegramConcurrentSlots:     cfg.TelegramConcurrentSlots,
 
 		VKAccessToken:      cfg.VKAccessToken,
 		VKAPIVersion:       cfg.VKAPIVersion,

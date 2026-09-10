@@ -50,6 +50,7 @@ type RegistryConfig struct {
 	TelegramProxyRequestTimeout time.Duration
 	TelegramProxyRetry          int
 	TelegramMaxPages            int
+	TelegramConcurrentSlots     int
 
 	VKAccessToken      string
 	VKAPIVersion       string
@@ -101,6 +102,7 @@ func NewRegistry(cfg RegistryConfig) (*RegistryBundle, error) {
 		ProxyRequestTimeout:   cfg.TelegramProxyRequestTimeout,
 		ProxyRetry:            cfg.TelegramProxyRetry,
 		MaxPages:              cfg.TelegramMaxPages,
+		ConcurrentSlots:       cfg.TelegramConcurrentSlots,
 		UserAgent:             cfg.UserAgent,
 		TLSInsecureSkipVerify: cfg.FetchTLSInsecure,
 	})
