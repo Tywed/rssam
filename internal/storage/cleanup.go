@@ -21,6 +21,8 @@ type RetentionCleanupOpts struct {
 	FilterMatchesBefore time.Time
 	// FeedPollLogBefore zero value skips feed_poll_log cleanup.
 	FeedPollLogBefore time.Time
+	// AuditLogBefore zero value skips audit_log cleanup.
+	AuditLogBefore time.Time
 }
 
 // RetentionCleanupResult reports how many rows were deleted per table.
@@ -29,6 +31,7 @@ type RetentionCleanupResult struct {
 	WebhookLogs     int64
 	FilterMatches   int64
 	FeedPollLog     int64
+	AuditLog        int64
 	FeedEntries     int64
 	FeedEntryDedup  int64
 	ExpiredSessions int64
@@ -88,6 +91,20 @@ WHERE id IN (
 			return result, fmt.Errorf("delete feed poll log: %w", err)
 		}
 		result.FeedPollLog = n
+	}
+
+	if !opts.AuditLogBefore.IsZero() {
+		n, err = s.deleteInBatches(ctx, `
+DELETE FROM audit_log
+WHERE id IN (
+  SELECT id FROM audit_log
+  WHERE at < $1
+  LIMIT $2
+)`, opts.AuditLogBefore.UTC(), deleteBatchSize)
+		if err != nil {
+			return result, fmt.Errorf("delete audit log: %w", err)
+		}
+		result.AuditLog = n
 	}
 
 	n, err = s.deleteInBatches(ctx, `

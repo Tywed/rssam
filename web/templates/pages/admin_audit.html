@@ -1,0 +1,45 @@
+{{define "body_admin_audit"}}
+<div class="settings-layout">
+  {{template "settings_nav" .}}
+  <div class="settings-content">
+    <h1>Журнал действий</h1>
+    <form method="get" action="/ui/admin/audit" class="card admin-audit-filter">
+      <div class="form-row">
+        <div class="form-group"><label>Пользователь</label><input name="actor" value="{{.Audit.Actor}}" placeholder="имя"></div>
+        <div class="form-group"><label>Действие</label>
+          <select name="action">
+            <option value="">все</option>
+            {{range .Audit.Actions}}<option value="{{.}}" {{if eq . $.Audit.Action}}selected{{end}}>{{.}}</option>{{end}}
+          </select>
+        </div>
+        <div class="form-group form-group-submit"><button type="submit" class="btn">Показать</button> {{if or .Audit.Actor .Audit.Action}}<a href="/ui/admin/audit" class="btn">Сбросить</a>{{end}}</div>
+      </div>
+    </form>
+    <p class="meta">Всего записей: {{.Audit.Total}}. Хранение — AUDIT_LOG_RETENTION_DAYS на странице «Система».</p>
+    <table>
+      <thead><tr><th>Когда</th><th>Кто</th><th>IP</th><th>Действие</th><th>Объект</th><th>Детали</th></tr></thead>
+      <tbody>
+      {{range .Audit.Rows}}
+      <tr>
+        <td class="meta">{{formatTime .At}}</td>
+        <td>{{if .ActorName}}<a href="{{$.Audit.ActorLink .ActorName}}">{{.ActorName}}</a>{{else}}—{{end}}</td>
+        <td class="meta">{{.IP}}</td>
+        <td><code>{{.Action}}</code></td>
+        <td class="meta">{{if .TargetType}}{{.TargetType}}{{if .TargetID}} #{{.TargetID}}{{end}}{{end}}</td>
+        <td class="meta"><code>{{.DetailsJSON}}</code></td>
+      </tr>
+      {{else}}
+      <tr><td colspan="6" class="meta">Записей нет.</td></tr>
+      {{end}}
+      </tbody>
+    </table>
+    {{if gt .Audit.PageCount 1}}
+    <nav class="admin-feeds-pagination meta" aria-label="Навигация по страницам">
+      {{if gt .Audit.Page 1}}<a href="{{.Audit.PageLink (sub .Audit.Page 1)}}" class="btn btn-sm">← Назад</a>{{end}}
+      <span class="admin-feeds-page-info">Страница {{.Audit.Page}} из {{.Audit.PageCount}}</span>
+      {{if lt .Audit.Page .Audit.PageCount}}<a href="{{.Audit.PageLink (add .Audit.Page 1)}}" class="btn btn-sm">Вперёд →</a>{{end}}
+    </nav>
+    {{end}}
+  </div>
+</div>
+{{end}}

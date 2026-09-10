@@ -200,6 +200,7 @@ func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
+	s.audit.Record(r, storage.AuditUserCreate, "user", u.ID, map[string]any{"username": username, "is_admin": isAdmin})
 	writeJSON(w, http.StatusCreated, listResponse[userDTO]{Data: toUserDTO(u), Total: 1})
 }
 
@@ -234,6 +235,7 @@ func (s *Server) handleDeleteUser(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
+	s.audit.Record(r, storage.AuditUserDelete, "user", id, nil)
 	writeJSON(w, http.StatusOK, listResponse[deletedDTO]{Data: deletedDTO{Deleted: true}, Total: 1})
 }
 
@@ -312,6 +314,7 @@ func (s *Server) handleUpdateMe(w http.ResponseWriter, r *http.Request) {
 			s.log.WarnContext(r.Context(), "revoke sessions after password change failed", "user_id", p.UserID, "err", err)
 		}
 	}
+	s.audit.Record(r, storage.AuditPasswordChange, "user", p.UserID, nil)
 	writeJSON(w, http.StatusOK, listResponse[userDTO]{Data: toUserDTO(u), Total: 1})
 }
 
@@ -378,6 +381,7 @@ func (s *Server) handleCreateAPIKey(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
+	s.audit.Record(r, storage.AuditAPIKeyCreate, "api_key", k.ID, map[string]any{"name": name, "scope": scope, "expires_at": expiresAt})
 	writeJSON(w, http.StatusCreated, listResponse[apiKeyCreateResponse]{
 		Data:  apiKeyCreateResponse{apiKeyDTO: apiKeyToDTO(k), Token: raw},
 		Total: 1,
@@ -403,6 +407,7 @@ func (s *Server) handleDeleteAPIKey(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
+	s.audit.Record(r, storage.AuditAPIKeyDelete, "api_key", keyID, nil)
 	writeJSON(w, http.StatusOK, listResponse[deletedDTO]{Data: deletedDTO{Deleted: true}, Total: 1})
 }
 

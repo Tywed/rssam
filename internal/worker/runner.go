@@ -37,6 +37,7 @@ type Config struct {
 	WebhookLogRetentionDays  int
 	FilterMatchRetentionDays int
 	FeedPollLogRetentionDays int
+	AuditLogRetentionDays    int
 	CleanupInterval          time.Duration
 
 	FeedPollDailyResetEnabled bool

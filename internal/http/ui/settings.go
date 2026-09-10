@@ -81,6 +81,7 @@ func (h *Handler) handleSettingsPassword(w http.ResponseWriter, r *http.Request)
 			h.cfg.Logger.Warn("revoke other sessions after password change failed", "user_id", p.UserID, "err", err)
 		}
 	}
+	h.cfg.Audit.Record(r, storage.AuditPasswordChange, "user", p.UserID, nil)
 	http.Redirect(w, r, "/ui/settings?pw=changed", http.StatusFound)
 }
 
@@ -96,6 +97,7 @@ func (h *Handler) handleSettingsLogoutOthers(w http.ResponseWriter, r *http.Requ
 		http.Error(w, "revoke failed", http.StatusInternalServerError)
 		return
 	}
+	h.cfg.Audit.Record(r, storage.AuditLogoutOthers, "user", p.UserID, nil)
 	http.Redirect(w, r, "/ui/settings?pw=sessions", http.StatusFound)
 }
 
@@ -147,7 +149,7 @@ func (h *Handler) handleAPIKeyCreate(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	_, err = h.cfg.Users.CreateAPIKey(r.Context(), storage.CreateAPIKeyParams{
+	k, err := h.cfg.Users.CreateAPIKey(r.Context(), storage.CreateAPIKeyParams{
 		UserID:    p.UserID,
 		Name:      name,
 		TokenHash: hash,
@@ -158,6 +160,7 @@ func (h *Handler) handleAPIKeyCreate(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	h.cfg.Audit.Record(r, storage.AuditAPIKeyCreate, "api_key", k.ID, map[string]any{"name": name, "scope": scope, "expires_at": expiresAt})
 	http.SetCookie(w, &http.Cookie{
 		Name:     newTokenCookie,
 		Value:    raw,
@@ -185,6 +188,7 @@ func (h *Handler) handleAPIKeyDelete(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
+	h.cfg.Audit.Record(r, storage.AuditAPIKeyDelete, "api_key", id, nil)
 	http.Redirect(w, r, "/ui/settings", http.StatusFound)
 }
 

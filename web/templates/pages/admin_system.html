@@ -21,6 +21,7 @@
         {{if gt .Info.DBSizeBytes 0}}<tr><th>Размер БД</th><td>{{formatBytes .Info.DBSizeBytes}}</td></tr>{{end}}
         {{if gt .Info.TotalEntries 0}}<tr><th>Записей</th><td>{{.Info.TotalEntries}}</td></tr>{{end}}
         {{if ge .Info.TotalUnread 0}}<tr><th>Непрочитанных</th><td>{{.Info.TotalUnread}}</td></tr>{{end}}
+        <tr><th>Журнал действий</th><td><a href="/ui/admin/audit">{{.Info.AuditRows}} записей</a></td></tr>
         {{if .Info.InDocker}}<tr><th>Среда</th><td>Docker (self-update и restart из UI выключены)</td></tr>{{end}}
       </table>
     </div>
@@ -53,6 +54,7 @@
         <div class="form-group"><label>WEBHOOK_LOG_RETENTION_DAYS — журнал доставки вебхуков, дней</label><input name="webhook_log_retention_days" type="number" min="1" max="3650" value="{{.Retention.WebhookLogRetentionDays}}" required></div>
         <div class="form-group"><label>FILTER_MATCH_RETENTION_DAYS — совпадения фильтров, дней (0 — не удалять)</label><input name="filter_match_retention_days" type="number" min="0" max="3650" value="{{.Retention.FilterMatchRetentionDays}}" required></div>
         <div class="form-group"><label>FEED_POLL_LOG_RETENTION_DAYS — журнал опросов лент, дней (0 — не удалять)</label><input name="feed_poll_log_retention_days" type="number" min="0" max="3650" value="{{.Retention.FeedPollLogRetentionDays}}" required></div>
+        <div class="form-group"><label>AUDIT_LOG_RETENTION_DAYS — журнал действий, дней (0 — не удалять)</label><input name="audit_log_retention_days" type="number" min="0" max="3650" value="{{.Retention.AuditLogRetentionDays}}" required></div>
         <div class="form-group"><label>CLEANUP_INTERVAL — период автоочистки (например 24h, 12h, 90m)</label><input name="cleanup_interval" type="text" pattern="[0-9hm]+" value="{{formatCleanupInterval .Retention.CleanupInterval}}" required></div>
         <p class="meta">Сохранение пишет ключи в .env. Чтобы применить — перезапуск.</p>
         <button type="submit" class="btn btn-primary">Сохранить</button>

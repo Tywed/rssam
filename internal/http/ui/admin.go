@@ -49,7 +49,7 @@ func (h *Handler) handleAdminUserCreate(w http.ResponseWriter, r *http.Request) 
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	_, err = h.cfg.Users.CreateUser(r.Context(), storage.CreateUserParams{
+	u, err := h.cfg.Users.CreateUser(r.Context(), storage.CreateUserParams{
 		Username:      username,
 		PasswordHash:  hash,
 		PlainPassword: password,
@@ -59,6 +59,7 @@ func (h *Handler) handleAdminUserCreate(w http.ResponseWriter, r *http.Request) 
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	h.cfg.Audit.Record(r, storage.AuditUserCreate, "user", u.ID, map[string]any{"username": username, "is_admin": isAdmin})
 	http.Redirect(w, r, "/ui/admin/users", http.StatusFound)
 }
 
@@ -88,6 +89,7 @@ func (h *Handler) handleAdminUserDelete(w http.ResponseWriter, r *http.Request) 
 		}
 		return
 	}
+	h.cfg.Audit.Record(r, storage.AuditUserDelete, "user", id, nil)
 	http.Redirect(w, r, "/ui/admin/users", http.StatusFound)
 }
 
@@ -99,6 +101,7 @@ func (h *Handler) handleAdminRefreshAll(w http.ResponseWriter, r *http.Request) 
 	p, _ := principal(r)
 	if h.cfg.RefreshAllFeeds != nil {
 		_ = h.cfg.RefreshAllFeeds(r, p.UserID)
+		h.cfg.Audit.Record(r, storage.AuditFeedsRefreshAll, "", 0, nil)
 	}
 	http.Redirect(w, r, "/ui/admin/users", http.StatusFound)
 }
@@ -115,6 +118,7 @@ type adminSystemInfo struct {
 	DBSizeBytes   int64
 	TotalEntries  int
 	TotalUnread   int
+	AuditRows     int
 	BinaryPath    string
 	EnvFile       string
 	Systemd       string
@@ -189,6 +193,9 @@ func (h *Handler) handleAdminSystem(w http.ResponseWriter, r *http.Request) {
 			data.WorkerAdvice = h.loadWorkerAdvice(r.Context(), summary, jobs)
 		}
 	}
+	if h.cfg.Audit != nil && h.cfg.Audit.Store != nil {
+		info.AuditRows, _ = h.cfg.Audit.Store.CountAuditLog(r.Context())
+	}
 	data.Info = info
 	data.Title = "Система"
 	data.Retention = h.cfg.Retention
@@ -216,6 +223,7 @@ func (h *Handler) handleAdminHashEntries(w http.ResponseWriter, r *http.Request)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	h.cfg.Audit.Record(r, storage.AuditEntriesCollapse, "", 0, map[string]any{"collapsed": n})
 	http.Redirect(w, r, "/ui/admin/system?hashed="+fmt.Sprint(n), http.StatusFound)
 }
 
@@ -238,13 +246,15 @@ func (h *Handler) handleAdminWorkersSave(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	path := h.envPath()
-	if err := envfile.SetKeys(path, map[string]string{
+	keys := map[string]string{
 		"WORKER_POOL_SIZE":         strconv.Itoa(poll),
 		"WEBHOOK_WORKER_POOL_SIZE": strconv.Itoa(hook),
-	}); err != nil {
+	}
+	if err := envfile.SetKeys(path, keys); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	h.cfg.Audit.Record(r, storage.AuditEnvUpdate, "", 0, map[string]any{"keys": keys})
 	http.Redirect(w, r, "/ui/admin/system?saved=1", http.StatusFound)
 }
 
@@ -267,12 +277,14 @@ func (h *Handler) setWorkersPaused(w http.ResponseWriter, r *http.Request, pause
 			return
 		}
 		h.cfg.PauseWorkers()
+		h.cfg.Audit.Record(r, storage.AuditWorkersPause, "", 0, nil)
 	} else {
 		if h.cfg.ResumeWorkers == nil {
 			writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "управление воркерами недоступно"})
 			return
 		}
 		h.cfg.ResumeWorkers()
+		h.cfg.Audit.Record(r, storage.AuditWorkersResume, "", 0, nil)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "paused": paused})
 }
@@ -286,6 +298,7 @@ func (h *Handler) handleAdminRestart(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": err.Error()})
 		return
 	}
+	h.cfg.Audit.Record(r, storage.AuditServiceRestart, "", 0, nil)
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "message": "restart queued"})
 }
 
@@ -315,6 +328,7 @@ func (h *Handler) handleAdminUpdate(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": err.Error()})
 		return
 	}
+	h.cfg.Audit.Record(r, storage.AuditServiceUpdate, "", 0, map[string]any{"version": ver})
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "message": "update started", "version": ver})
 }
 

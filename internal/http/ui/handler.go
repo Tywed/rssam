@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"rssam/internal/audit"
 	"rssam/internal/bridgeconfig"
 	"rssam/internal/filter"
 	"rssam/internal/githubrel"
@@ -58,7 +59,9 @@ type Config struct {
 	AdminFeeds         storage.AdminFeedStore
 	// FeedPollLog is the per-feed poll history shown on the admin feed page
 	// (nil = card hidden).
-	FeedPollLog           storage.FeedPollLogStore
+	FeedPollLog storage.FeedPollLogStore
+	// Audit records admin actions; nil disables the audit page and recording.
+	Audit                 *audit.Recorder
 	AdminWebhooks         storage.AdminWebhookStore
 	WebhookMaxAttempts    int
 	WorkerPoolSize        int
@@ -83,12 +86,14 @@ type Config struct {
 
 // RetentionSettings mirrors the REMOVED_RETENTION_DAYS /
 // WEBHOOK_LOG_RETENTION_DAYS / FILTER_MATCH_RETENTION_DAYS /
-// FEED_POLL_LOG_RETENTION_DAYS / CLEANUP_INTERVAL configuration.
+// FEED_POLL_LOG_RETENTION_DAYS / AUDIT_LOG_RETENTION_DAYS / CLEANUP_INTERVAL
+// configuration.
 type RetentionSettings struct {
 	RemovedRetentionDays     int
 	WebhookLogRetentionDays  int
 	FilterMatchRetentionDays int
 	FeedPollLogRetentionDays int
+	AuditLogRetentionDays    int
 	CleanupInterval          time.Duration
 }
 
@@ -508,6 +513,7 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.Handle("POST /ui/settings/api-keys/{id}/delete", auth(http.HandlerFunc(h.handleAPIKeyDelete)))
 
 	mux.Handle("GET /ui/admin/users", auth(h.requireAdmin(http.HandlerFunc(h.handleAdminUsers))))
+	mux.Handle("GET /ui/admin/audit", auth(h.requireAdmin(http.HandlerFunc(h.handleAdminAudit))))
 	mux.Handle("POST /ui/admin/users", auth(h.requireAdmin(http.HandlerFunc(h.handleAdminUserCreate))))
 	mux.Handle("POST /ui/admin/users/{id}/delete", auth(h.requireAdmin(http.HandlerFunc(h.handleAdminUserDelete))))
 	mux.Handle("POST /ui/admin/feeds/refresh-all", auth(h.requireAdmin(http.HandlerFunc(h.handleAdminRefreshAll))))

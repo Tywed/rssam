@@ -7,6 +7,7 @@ import (
 
 	"rssam/internal/auth"
 	"rssam/internal/bridgeconfig"
+	"rssam/internal/storage"
 )
 
 func (h *Handler) handleSettingsBridges(w http.ResponseWriter, r *http.Request) {
@@ -216,7 +217,11 @@ func (h *Handler) saveBridgeStored(r *http.Request, stored bridgeconfig.Stored) 
 	if h.cfg.SaveBridgeSettings == nil {
 		return nil
 	}
-	return h.cfg.SaveBridgeSettings(r.Context(), stored)
+	if err := h.cfg.SaveBridgeSettings(r.Context(), stored); err != nil {
+		return err
+	}
+	h.cfg.Audit.Record(r, storage.AuditBridgeUpdate, "", 0, map[string]any{"bridge": strings.TrimPrefix(r.URL.Path, "/ui/settings/bridges/")})
+	return nil
 }
 
 func parseIntDefault(raw string, fallback int) int {

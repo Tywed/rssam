@@ -2,6 +2,8 @@ package httpserver
 
 import (
 	"net/http"
+
+	"rssam/internal/storage"
 )
 
 type refreshAllResultDTO struct {
@@ -28,6 +30,7 @@ func (s *Server) handleRefreshAllFeeds(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	s.audit.Record(r, storage.AuditFeedsRefreshAll, "", 0, map[string]any{"feeds": feeds, "queued": queued})
 	writeJSON(w, http.StatusOK, listResponse[refreshAllResultDTO]{
 		Data: refreshAllResultDTO{
 			Feeds:  feeds,

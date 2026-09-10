@@ -22,13 +22,14 @@ func TestParseRetentionForm(t *testing.T) {
 		"webhook_log_retention_days":   "90",
 		"filter_match_retention_days":  "0",
 		"feed_poll_log_retention_days": "14",
+		"audit_log_retention_days":     "180",
 		"cleanup_interval":             "12h30m",
 	}
 	f, err := parseRetentionForm(func(k string) string { return ok[k] })
 	if err != nil {
 		t.Fatalf("valid form: %v", err)
 	}
-	if f.RemovedRetentionDays != 30 || f.WebhookLogRetentionDays != 90 || f.FilterMatchRetentionDays != 0 || f.FeedPollLogRetentionDays != 14 || f.CleanupInterval != 12*time.Hour+30*time.Minute {
+	if f.RemovedRetentionDays != 30 || f.WebhookLogRetentionDays != 90 || f.FilterMatchRetentionDays != 0 || f.FeedPollLogRetentionDays != 14 || f.AuditLogRetentionDays != 180 || f.CleanupInterval != 12*time.Hour+30*time.Minute {
 		t.Fatalf("parsed = %+v", f)
 	}
 
@@ -145,7 +146,7 @@ func TestAdminRetentionSaveWritesEnv(t *testing.T) {
 		t.Fatalf("system page: %d", rec.Code)
 	}
 	body := rec.Body.String()
-	for _, want := range []string{`name="webhook_log_retention_days"`, `value="90"`, `name="cleanup_interval"`, `value="24h"`, `name="feed_poll_log_retention_days"`, `value="14"`, "Хранение журналов"} {
+	for _, want := range []string{`name="webhook_log_retention_days"`, `value="90"`, `name="cleanup_interval"`, `value="24h"`, `name="feed_poll_log_retention_days"`, `value="14"`, `name="audit_log_retention_days"`, "Хранение журналов"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("system page lacks %q", want)
 		}
@@ -160,6 +161,7 @@ func TestAdminRetentionSaveWritesEnv(t *testing.T) {
 		"webhook_log_retention_days":   {"45"},
 		"filter_match_retention_days":  {"0"},
 		"feed_poll_log_retention_days": {"7"},
+		"audit_log_retention_days":     {"90"},
 		"cleanup_interval":             {"6h"},
 	})
 	if rec.Code != http.StatusFound || rec.Header().Get("Location") != "/ui/admin/system?saved=1" {
@@ -170,7 +172,7 @@ func TestAdminRetentionSaveWritesEnv(t *testing.T) {
 		t.Fatal(err)
 	}
 	env := string(raw)
-	for _, want := range []string{"LISTEN_ADDR=:8080", "REMOVED_RETENTION_DAYS=14", "WEBHOOK_LOG_RETENTION_DAYS=45", "FILTER_MATCH_RETENTION_DAYS=0", "FEED_POLL_LOG_RETENTION_DAYS=7", "CLEANUP_INTERVAL=6h"} {
+	for _, want := range []string{"LISTEN_ADDR=:8080", "REMOVED_RETENTION_DAYS=14", "WEBHOOK_LOG_RETENTION_DAYS=45", "FILTER_MATCH_RETENTION_DAYS=0", "FEED_POLL_LOG_RETENTION_DAYS=7", "AUDIT_LOG_RETENTION_DAYS=90", "CLEANUP_INTERVAL=6h"} {
 		if !strings.Contains(env, want) {
 			t.Fatalf(".env lacks %q:\n%s", want, env)
 		}
@@ -186,6 +188,7 @@ func TestAdminRetentionSaveWritesEnv(t *testing.T) {
 		"webhook_log_retention_days":   {"45"},
 		"filter_match_retention_days":  {"0"},
 		"feed_poll_log_retention_days": {"7"},
+		"audit_log_retention_days":     {"90"},
 		"cleanup_interval":             {"6h"},
 	})
 	if rec.Code != http.StatusBadRequest {
@@ -202,6 +205,7 @@ func TestAdminRetentionSaveWritesEnv(t *testing.T) {
 		"webhook_log_retention_days":   {"45"},
 		"filter_match_retention_days":  {"0"},
 		"feed_poll_log_retention_days": {"7"},
+		"audit_log_retention_days":     {"90"},
 		"cleanup_interval":             {"6h"},
 	})
 	if rec.Code != http.StatusForbidden {

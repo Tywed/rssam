@@ -84,6 +84,7 @@ type Config struct {
 	WebhookLogRetentionDays  int
 	FilterMatchRetentionDays int
 	FeedPollLogRetentionDays int
+	AuditLogRetentionDays    int
 	CleanupInterval          time.Duration
 
 	WorkerPoolSize        int
@@ -209,6 +210,7 @@ func Load() (Config, error) {
 		WebhookLogRetentionDays:  parseInt(getEnv("WEBHOOK_LOG_RETENTION_DAYS", "90"), 90),
 		FilterMatchRetentionDays: parseIntAllowZero(getEnv("FILTER_MATCH_RETENTION_DAYS", "90"), 90),
 		FeedPollLogRetentionDays: parseIntAllowZero(getEnv("FEED_POLL_LOG_RETENTION_DAYS", "14"), 14),
+		AuditLogRetentionDays:    parseIntAllowZero(getEnv("AUDIT_LOG_RETENTION_DAYS", "180"), 180),
 		CleanupInterval:          parseDuration(getEnv("CLEANUP_INTERVAL", "24h"), 24*time.Hour),
 
 		WorkerPoolSize:   parseInt(getEnv("WORKER_POOL_SIZE", "10"), 10),
@@ -361,6 +363,9 @@ func (c Config) Validate() error {
 	}
 	if c.FeedPollLogRetentionDays < 0 || c.FeedPollLogRetentionDays > 3650 {
 		errs = append(errs, fmt.Errorf("FEED_POLL_LOG_RETENTION_DAYS must be between 0 and 3650 (0 disables), got %d", c.FeedPollLogRetentionDays))
+	}
+	if c.AuditLogRetentionDays < 0 || c.AuditLogRetentionDays > 3650 {
+		errs = append(errs, fmt.Errorf("AUDIT_LOG_RETENTION_DAYS must be between 0 and 3650 (0 disables), got %d", c.AuditLogRetentionDays))
 	}
 	if c.SessionMaxAge < 5*time.Minute || c.SessionMaxAge > 365*24*time.Hour {
 		errs = append(errs, fmt.Errorf("SESSION_MAX_AGE must be between 5m and 8760h, got %s", c.SessionMaxAge))

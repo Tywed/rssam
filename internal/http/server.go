@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"time"
 
+	"rssam/internal/audit"
 	"rssam/internal/bridgeconfig"
 	"rssam/internal/filter"
 	"rssam/internal/http/middleware"
@@ -108,6 +109,9 @@ type Dependencies struct {
 	// FeedPollLogStore records poll history for manual refreshes triggered
 	// over HTTP/UI (nil = derived from DB when available).
 	FeedPollLogStore storage.FeedPollLogStore
+	// AuditLogStore receives the admin audit trail (nil = derived from DB
+	// when available, otherwise auditing is off).
+	AuditLogStore storage.AuditLogStore
 
 	WorkerControl WorkerControl
 }
@@ -140,6 +144,7 @@ type Server struct {
 
 	refresher      *service.FeedRefresher
 	feedPollLog    storage.FeedPollLogStore
+	audit          *audit.Recorder
 	contentFetcher *service.ContentFetcher
 	ssrfGuard      *ssrf.Guard
 
@@ -285,6 +290,10 @@ func New(dep Dependencies) *Server {
 	if pollLog == nil && dep.DB != nil {
 		pollLog = storage.NewPostgresStore(dep.DB)
 	}
+	auditStore := dep.AuditLogStore
+	if auditStore == nil && dep.DB != nil {
+		auditStore = storage.NewPostgresStore(dep.DB)
+	}
 	refresher := &service.FeedRefresher{
 		Feeds:                   feedStore,
 		Entries:                 entryStore,
@@ -355,6 +364,7 @@ func New(dep Dependencies) *Server {
 		metricsToken:       dep.MetricsToken,
 		refresher:          refresher,
 		feedPollLog:        pollLog,
+		audit:              &audit.Recorder{Store: auditStore, Log: log},
 		contentFetcher:     contentFetcher,
 		ssrfGuard:          guard,
 		webhookHTTPClient:  webhookClient,

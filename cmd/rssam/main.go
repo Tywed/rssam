@@ -256,6 +256,7 @@ func main() {
 			WebhookLogRetentionDays:  cfg.WebhookLogRetentionDays,
 			FilterMatchRetentionDays: cfg.FilterMatchRetentionDays,
 			FeedPollLogRetentionDays: cfg.FeedPollLogRetentionDays,
+			AuditLogRetentionDays:    cfg.AuditLogRetentionDays,
 			CleanupInterval:          cfg.CleanupInterval,
 
 			FeedPollDailyResetEnabled: cfg.FeedPollDailyResetEnabled,
@@ -339,6 +340,7 @@ func main() {
 			WebhookLogRetentionDays:  cfg.WebhookLogRetentionDays,
 			FilterMatchRetentionDays: cfg.FilterMatchRetentionDays,
 			FeedPollLogRetentionDays: cfg.FeedPollLogRetentionDays,
+			AuditLogRetentionDays:    cfg.AuditLogRetentionDays,
 			CleanupInterval:          cfg.CleanupInterval,
 		},
 		RunRetentionCleanup: w.RetentionCleanupNow,

@@ -103,6 +103,7 @@ type pageData struct {
 	Users                      []storage.User
 	CurrentUserID              int64
 	Info                       adminSystemInfo
+	Audit                      adminAuditView
 	Error                      string
 	SettingsSection            string
 	BridgeSection              string

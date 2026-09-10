@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"rssam/internal/envfile"
+	"rssam/internal/storage"
 )
 
 // Retention limits mirror internal/config validation.
@@ -23,12 +24,13 @@ type retentionForm struct {
 	WebhookLogRetentionDays  int
 	FilterMatchRetentionDays int
 	FeedPollLogRetentionDays int
+	AuditLogRetentionDays    int
 	CleanupInterval          time.Duration
 }
 
 // parseRetentionForm validates the retention form values. Rules match
-// internal/config: removed/webhook-log retention 1–3650 days, filter-match and
-// feed-poll-log retention 0–3650 (0 disables), cleanup interval 1m–168h (a Go duration such
+// internal/config: removed/webhook-log retention 1–3650 days, filter-match,
+// feed-poll-log and audit-log retention 0–3650 (0 disables), cleanup interval 1m–168h (a Go duration such
 // as "24h", "12h30m" or "90m"; a bare number is treated as hours).
 func parseRetentionForm(get func(string) string) (retentionForm, error) {
 	var f retentionForm
@@ -45,6 +47,9 @@ func parseRetentionForm(get func(string) string) (retentionForm, error) {
 	}
 	if f.FeedPollLogRetentionDays, err = parseRetentionDays(get("feed_poll_log_retention_days"), 0); err != nil {
 		return f, fmt.Errorf("FEED_POLL_LOG_RETENTION_DAYS: %w", err)
+	}
+	if f.AuditLogRetentionDays, err = parseRetentionDays(get("audit_log_retention_days"), 0); err != nil {
+		return f, fmt.Errorf("AUDIT_LOG_RETENTION_DAYS: %w", err)
 	}
 	if f.CleanupInterval, err = parseCleanupInterval(get("cleanup_interval")); err != nil {
 		return f, fmt.Errorf("CLEANUP_INTERVAL: %w", err)
@@ -115,16 +120,19 @@ func (h *Handler) handleAdminRetentionSave(w http.ResponseWriter, r *http.Reques
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	if err := envfile.SetKeys(h.envPath(), map[string]string{
+	keys := map[string]string{
 		"REMOVED_RETENTION_DAYS":       strconv.Itoa(f.RemovedRetentionDays),
 		"WEBHOOK_LOG_RETENTION_DAYS":   strconv.Itoa(f.WebhookLogRetentionDays),
 		"FILTER_MATCH_RETENTION_DAYS":  strconv.Itoa(f.FilterMatchRetentionDays),
 		"FEED_POLL_LOG_RETENTION_DAYS": strconv.Itoa(f.FeedPollLogRetentionDays),
+		"AUDIT_LOG_RETENTION_DAYS":     strconv.Itoa(f.AuditLogRetentionDays),
 		"CLEANUP_INTERVAL":             formatCleanupInterval(f.CleanupInterval),
-	}); err != nil {
+	}
+	if err := envfile.SetKeys(h.envPath(), keys); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	h.cfg.Audit.Record(r, storage.AuditEnvUpdate, "", 0, map[string]any{"keys": keys})
 	http.Redirect(w, r, "/ui/admin/system?saved=1", http.StatusFound)
 }
 
@@ -144,6 +152,7 @@ func (h *Handler) handleAdminRetentionCleanupNow(w http.ResponseWriter, r *http.
 		http.Error(w, "retention cleanup failed: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
-	total := res.RemovedEntries + res.WebhookLogs + res.FilterMatches + res.FeedPollLog + res.FeedEntries + res.FeedEntryDedup + res.ExpiredSessions
+	total := res.RemovedEntries + res.WebhookLogs + res.FilterMatches + res.FeedPollLog + res.AuditLog + res.FeedEntries + res.FeedEntryDedup + res.ExpiredSessions
+	h.cfg.Audit.Record(r, storage.AuditRetentionCleanup, "", 0, map[string]any{"deleted": total})
 	http.Redirect(w, r, "/ui/admin/system?cleaned="+strconv.FormatInt(total, 10), http.StatusFound)
 }
