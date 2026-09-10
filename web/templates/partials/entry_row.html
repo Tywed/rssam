@@ -1,5 +1,6 @@
 {{define "entry_row"}}
 <li class="hl-row {{if eq .Entry.Status "read"}}read{{end}}{{if eq $.SelectedEntryID .Entry.ID}} active{{end}}" id="entry-{{.Entry.ID}}" data-entry-id="{{.Entry.ID}}">
+  <label class="hl-check" title="Выбрать"><input type="checkbox" name="entry_ids" value="{{.Entry.ID}}" form="bulk-form"></label>
   <a class="hl-link" href="{{listPath $.Nav $.LabelID}}?entry_id={{.Entry.ID}}{{entryListQuery $.Query}}">
     <div class="hl-title">{{if .Entry.Title}}{{.Entry.Title}}{{else}}(без заголовка){{end}}</div>
     <div class="hl-meta">#{{.Entry.FeedID}}{{if .Entry.PublishedAt}} · {{formatTime .Entry.PublishedAt}}{{end}}</div>

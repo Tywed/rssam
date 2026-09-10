@@ -1,4 +1,15 @@
 {{define "entry_list"}}
+<form method="post" action="/ui/entries/bulk" id="bulk-form" class="bulk-bar hidden">
+  <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+  <span class="bulk-count" id="bulk-count"></span>
+  <button type="submit" class="btn btn-sm" name="action" value="read">Прочитать</button>
+  <button type="submit" class="btn btn-sm" name="action" value="unread">Не прочитано</button>
+  <button type="submit" class="btn btn-sm" name="action" value="star" title="В избранное">★</button>
+  <button type="submit" class="btn btn-sm" name="action" value="unstar" title="Убрать из избранного">☆</button>
+  <button type="button" class="btn btn-sm" id="bulk-above" title="Добавить к выбору все записи выше первой выбранной">Всё выше</button>
+  <button type="button" class="btn btn-sm" id="bulk-all">Вся страница</button>
+  <button type="button" class="btn btn-sm" id="bulk-clear">Снять</button>
+</form>
 <ul class="hl-list" id="entry-list">
 {{range .Entries}}
 {{template "entry_row" (dict "Entry" . "CSRFToken" $.CSRFToken "SelectedEntryID" $.SelectedEntryID "Query" $.Query "Nav" $.Nav "LabelID" $.LabelID)}}

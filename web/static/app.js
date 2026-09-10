@@ -347,11 +347,19 @@
   function swapRow(el, html) {
     var oldLink = el.querySelector('.hl-link');
     var href = oldLink ? oldLink.getAttribute('href') : '';
+    var oldBox = el.querySelector('.hl-check input');
+    var checked = !!(oldBox && oldBox.checked);
     var id = el.id;
     el.outerHTML = html;
     var fresh = id ? document.getElementById(id) : null;
-    var link = fresh ? fresh.querySelector('.hl-link') : null;
+    if (!fresh) return;
+    var link = fresh.querySelector('.hl-link');
     if (link && href) link.setAttribute('href', href);
+    var box = fresh.querySelector('.hl-check input');
+    if (box && checked) {
+      box.checked = true;
+      fresh.classList.add('selected');
+    }
   }
 
   function initKeyboardNav() {
@@ -386,11 +394,55 @@
           ev.preventDefault();
           window.rssamSelectEntry(row);
         }
+      } else if (ev.key === 'x') {
+        var sel = document.querySelector('#entry-list .hl-row.active .hl-check input');
+        if (sel) {
+          ev.preventDefault();
+          sel.checked = !sel.checked;
+          sel.dispatchEvent(new Event('change', { bubbles: true }));
+        }
       } else if (ev.key === '?') {
         ev.preventDefault();
         toggleKeysDialog();
       }
     });
+  }
+
+  function initBulkSelect() {
+    var form = document.getElementById('bulk-form');
+    var list = document.getElementById('entry-list');
+    if (!form || !list) return;
+    var count = document.getElementById('bulk-count');
+
+    function boxes() {
+      return Array.from(list.querySelectorAll('.hl-check input'));
+    }
+    function refresh() {
+      var n = 0;
+      boxes().forEach(function (b) {
+        b.closest('.hl-row').classList.toggle('selected', b.checked);
+        if (b.checked) n++;
+      });
+      form.classList.toggle('hidden', n === 0);
+      if (count) count.textContent = 'Выбрано: ' + n;
+    }
+    function setAll(value) {
+      boxes().forEach(function (b) { b.checked = value; });
+      refresh();
+    }
+    list.addEventListener('change', function (ev) {
+      if (ev.target && ev.target.matches('.hl-check input')) refresh();
+    });
+    document.getElementById('bulk-all').addEventListener('click', function () { setAll(true); });
+    document.getElementById('bulk-clear').addEventListener('click', function () { setAll(false); });
+    document.getElementById('bulk-above').addEventListener('click', function () {
+      var all = boxes();
+      var first = all.findIndex(function (b) { return b.checked; });
+      if (first < 0) return;
+      for (var i = 0; i < first; i++) all[i].checked = true;
+      refresh();
+    });
+    refresh();
   }
 
   function toggleKeysDialog() {
@@ -1337,6 +1389,7 @@
     initEntryPreview(prefs);
     initKeyboardNav();
     initKeysHelp();
+    initBulkSelect();
     initFeedForm();
     initConfirmForms();
     initWebhookKindForm();

@@ -241,6 +241,58 @@ func (h *Handler) handleEntryStar(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, refererOr(r, "/ui/unread?entry_id="+strconv.FormatInt(id, 10)), http.StatusFound)
 }
 
+const maxBulkEntryIDs = 1000
+
+// handleEntriesBulk backs the selection bar above the entry list: the same
+// store call as PUT /v1/entries, with the form-encoded ids of the checked rows.
+func (h *Handler) handleEntriesBulk(w http.ResponseWriter, r *http.Request) {
+	if !h.validateCSRF(r) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	p, _ := principal(r)
+	raw := r.Form["entry_ids"]
+	if len(raw) == 0 || len(raw) > maxBulkEntryIDs {
+		http.Error(w, "entry_ids required", http.StatusBadRequest)
+		return
+	}
+	ids := make([]int64, 0, len(raw))
+	for _, v := range raw {
+		id, err := strconvAtoi(v)
+		if err != nil || id <= 0 {
+			http.Error(w, "invalid entry id", http.StatusBadRequest)
+			return
+		}
+		ids = append(ids, int64(id))
+	}
+	var update storage.BulkEntryUpdate
+	switch r.FormValue("action") {
+	case "read":
+		st := storage.EntryStatusRead
+		update.Status = &st
+	case "unread":
+		st := storage.EntryStatusUnread
+		update.Status = &st
+	case "star":
+		on := true
+		update.Starred = &on
+	case "unstar":
+		off := false
+		update.Starred = &off
+	default:
+		http.Error(w, "unknown action", http.StatusBadRequest)
+		return
+	}
+	if _, err := h.cfg.Entries.BulkUpdateEntries(r.Context(), p.UserID, ids, update); err != nil {
+		http.Error(w, "update failed", http.StatusInternalServerError)
+		return
+	}
+	if update.Status != nil {
+		h.invalidateUnread(p.UserID)
+	}
+	http.Redirect(w, r, refererOr(r, "/ui/unread"), http.StatusFound)
+}
+
 func stringsTrim(s string) string {
 	i, j := 0, len(s)
 	for i < j && (s[i] == ' ' || s[i] == '\t') {

@@ -422,6 +422,7 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.Handle("GET /ui/search", auth(http.HandlerFunc(h.handleSearch)))
 	mux.Handle("GET /ui/entries/{id}/preview", auth(http.HandlerFunc(h.handleEntryPreview)))
 	mux.Handle("GET /ui/entries/{id}", auth(http.HandlerFunc(h.handleEntryGet)))
+	mux.Handle("POST /ui/entries/bulk", auth(http.HandlerFunc(h.handleEntriesBulk)))
 	mux.Handle("POST /ui/entries/{id}/read", auth(http.HandlerFunc(h.handleEntryRead)))
 	mux.Handle("POST /ui/entries/{id}/star", auth(http.HandlerFunc(h.handleEntryStar)))
 
