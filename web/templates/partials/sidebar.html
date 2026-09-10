@@ -1,7 +1,7 @@
 {{define "sidebar"}}
 <nav class="feeds-tree{{if .SidebarLazyFeeds}} feeds-tree-lazy{{end}}"{{if .SidebarLazyFeeds}} data-lazy-feeds="true" data-entry-sort="{{.EntrySort}}"{{if .SidebarExpandCategoryID}} data-expand-category="{{.SidebarExpandCategoryID}}"{{end}}{{if .SidebarExpandUncategorized}} data-expand-uncategorized="true"{{end}}{{end}}>
   <div class="feeds-tree-scroll">
-    <a href="/ui/unread{{entrySortSuffix .EntrySort}}" class="tree-row tree-special {{if eq .Nav "unread"}}active{{end}}">
+    <a href="/ui/unread{{entrySortSuffix .EntrySort false}}" class="tree-row tree-special {{if eq .Nav "unread"}}active{{end}}">
       <span class="tree-icon">📰</span>
       <span class="tree-label">Непрочитанные</span>
       <span class="tree-badge{{if le .UnreadCount 0}} hidden{{end}}" data-unread-global>{{.UnreadCount}}</span>
@@ -14,7 +14,7 @@
     {{if .Labels}}
     <div class="tree-section">Метки</div>
     {{range .Labels}}
-    <a href="/ui/labels/{{.ID}}{{entrySortSuffix $.EntrySort}}" class="tree-row tree-special {{if eq $.LabelID .ID}}active{{end}}" data-label-color="{{.ID}}">
+    <a href="/ui/labels/{{.ID}}{{entrySortSuffix $.EntrySort false}}" class="tree-row tree-special {{if eq $.LabelID .ID}}active{{end}}" data-label-color="{{.ID}}">
       <span class="label-dot" aria-hidden="true"></span>
       <span class="tree-label">{{.Caption}}</span>
       {{with index $.LabelUnreadCounts .ID}}{{if gt . 0}}<span class="tree-badge">{{.}}</span>{{end}}{{end}}
@@ -30,7 +30,7 @@
     <div class="tree-cat" data-tree-cat="sidebar-{{$cat.ID}}">
       <div class="tree-cat-header">
         <button type="button" class="tree-toggle" aria-expanded="{{if $lazyExpand}}true{{else if $.SidebarLazyFeeds}}false{{else}}true{{end}}" aria-label="{{if $lazyExpand}}Свернуть категорию{{else if $.SidebarLazyFeeds}}Развернуть категорию{{else}}Свернуть категорию{{end}}">{{if or (not $.SidebarLazyFeeds) $lazyExpand}}−{{else}}+{{end}}</button>
-        <a href="/ui/unread?category_id={{$cat.ID}}{{entrySortSuffix $.EntrySort}}" class="tree-row tree-cat-title {{if eq $.CategoryID $cat.ID}}active{{end}}" data-cat-color="{{$cat.ID}}">
+        <a href="/ui/unread?category_id={{$cat.ID}}{{entrySortSuffix $.EntrySort true}}" class="tree-row tree-cat-title {{if eq $.CategoryID $cat.ID}}active{{end}}" data-cat-color="{{$cat.ID}}">
           <span class="cat-dot" aria-hidden="true"></span>
           <span class="tree-label">{{$cat.Title}}</span>
           {{if gt $count 0}}<span class="tree-count">{{pluralChannels $count}}</span>{{end}}
@@ -40,7 +40,7 @@
       <div class="tree-cat-feeds"{{if $.SidebarLazyFeeds}} data-lazy-url="/ui/sidebar/categories/{{$cat.ID}}/feeds"{{end}}{{if $lazyExpand}} data-loaded="pending"{{end}}>
         {{if not $.SidebarLazyFeeds}}
         {{range $.Feeds}}{{if feedInCategory . $cat.ID}}
-        <a href="/ui/unread?feed_id={{.ID}}{{entrySortSuffix $.EntrySort}}" class="tree-row tree-feed {{if eq $.FeedID .ID}}active{{end}}{{if feedHasError .}} feed-error{{end}}" data-feed-id="{{.ID}}">
+        <a href="/ui/unread?feed_id={{.ID}}{{entrySortSuffix $.EntrySort true}}" class="tree-row tree-feed {{if eq $.FeedID .ID}}active{{end}}{{if feedHasError .}} feed-error{{end}}" data-feed-id="{{.ID}}">
           <span class="tree-icon">{{if feedHasError .}}⚠{{else}}▸{{end}}</span>
           <span class="tree-label">{{.Title}}</span>
           {{with index $.FeedUnreadCounts .ID}}{{if gt . 0}}<span class="tree-badge">{{.}}</span>{{end}}{{end}}
@@ -64,7 +64,7 @@
       <div class="tree-cat-feeds"{{if .SidebarLazyFeeds}} data-lazy-url="/ui/sidebar/uncategorized/feeds"{{end}}{{if $lazyUncatExpand}} data-loaded="pending"{{end}}>
         {{if not .SidebarLazyFeeds}}
         {{range .Feeds}}{{if not .CategoryID}}
-        <a href="/ui/unread?feed_id={{.ID}}{{entrySortSuffix $.EntrySort}}" class="tree-row tree-feed {{if eq $.FeedID .ID}}active{{end}}{{if feedHasError .}} feed-error{{end}}" data-feed-id="{{.ID}}">
+        <a href="/ui/unread?feed_id={{.ID}}{{entrySortSuffix $.EntrySort true}}" class="tree-row tree-feed {{if eq $.FeedID .ID}}active{{end}}{{if feedHasError .}} feed-error{{end}}" data-feed-id="{{.ID}}">
           <span class="tree-icon">{{if feedHasError .}}⚠{{else}}▸{{end}}</span>
           <span class="tree-label">{{.Title}}</span>
           {{with index $.FeedUnreadCounts .ID}}{{if gt . 0}}<span class="tree-badge">{{.}}</span>{{end}}{{end}}
@@ -76,7 +76,7 @@
     {{else if not .SidebarLazyFeeds}}
     <div class="tree-section">Без категории</div>
     {{range .Feeds}}{{if not .CategoryID}}
-    <a href="/ui/unread?feed_id={{.ID}}{{entrySortSuffix $.EntrySort}}" class="tree-row tree-feed {{if eq $.FeedID .ID}}active{{end}}{{if feedHasError .}} feed-error{{end}}" data-feed-id="{{.ID}}">
+    <a href="/ui/unread?feed_id={{.ID}}{{entrySortSuffix $.EntrySort true}}" class="tree-row tree-feed {{if eq $.FeedID .ID}}active{{end}}{{if feedHasError .}} feed-error{{end}}" data-feed-id="{{.ID}}">
       <span class="tree-icon">{{if feedHasError .}}⚠{{else}}▸{{end}}</span>
       <span class="tree-label">{{.Title}}</span>
       {{with index $.FeedUnreadCounts .ID}}{{if gt . 0}}<span class="tree-badge">{{.}}</span>{{end}}{{end}}

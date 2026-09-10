@@ -7,7 +7,9 @@ import (
 	"io/fs"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -321,44 +323,48 @@ func dict(values ...any) (map[string]any, error) {
 	return m, nil
 }
 
-func querySuffix(q map[string]string) string {
-	if len(q) == 0 {
-		return ""
-	}
-	var b strings.Builder
+// querySuffix renders "&k=v…" for the pagination links. The result is
+// template.URL because html/template would otherwise percent-encode the
+// separators inside href and the server would see "offset=50&feed_id=1" as
+// one value.
+func querySuffix(q map[string]string) template.URL {
+	keys := make([]string, 0, len(q))
 	for k, v := range q {
-		if v == "" {
-			continue
+		if v != "" {
+			keys = append(keys, k)
 		}
-		b.WriteString("&")
-		b.WriteString(k)
-		b.WriteString("=")
-		b.WriteString(v)
 	}
-	return b.String()
+	sort.Strings(keys)
+	return queryPairs(q, keys)
 }
 
-func entryListQuery(q map[string]string) string {
-	if len(q) == 0 {
-		return ""
-	}
+func entryListQuery(q map[string]string) template.URL {
+	return queryPairs(q, []string{"feed_id", "category_id", "q", "sort"})
+}
+
+func queryPairs(q map[string]string, keys []string) template.URL {
 	var b strings.Builder
-	for _, k := range []string{"feed_id", "category_id", "q", "sort"} {
+	for _, k := range keys {
 		if v := q[k]; v != "" {
 			b.WriteString("&")
-			b.WriteString(k)
+			b.WriteString(url.QueryEscape(k))
 			b.WriteString("=")
-			b.WriteString(v)
+			b.WriteString(url.QueryEscape(v))
 		}
 	}
-	return b.String()
+	return template.URL(b.String())
 }
 
-func entrySortSuffix(sort string) string {
+// entrySortSuffix is appended to sidebar links that may or may not already
+// carry a query string.
+func entrySortSuffix(sort string, hasQuery bool) template.URL {
 	if storage.NormalizeEntrySort(sort) != storage.EntrySortOldest {
 		return ""
 	}
-	return "&sort=oldest"
+	if hasQuery {
+		return "&sort=oldest"
+	}
+	return "?sort=oldest"
 }
 
 func (h *Handler) Register(mux *http.ServeMux) {

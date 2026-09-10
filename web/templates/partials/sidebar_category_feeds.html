@@ -1,6 +1,6 @@
 {{define "sidebar_category_feeds"}}
 {{range .Feeds}}
-<a href="/ui/unread?feed_id={{.ID}}{{entrySortSuffix $.EntrySort}}" class="tree-row tree-feed {{if eq $.FeedID .ID}}active{{end}}{{if feedHasError .}} feed-error{{end}}" data-feed-id="{{.ID}}">
+<a href="/ui/unread?feed_id={{.ID}}{{entrySortSuffix $.EntrySort true}}" class="tree-row tree-feed {{if eq $.FeedID .ID}}active{{end}}{{if feedHasError .}} feed-error{{end}}" data-feed-id="{{.ID}}">
   <span class="tree-icon">{{if feedHasError .}}⚠{{else}}▸{{end}}</span>
   <span class="tree-label">{{.Title}}</span>
   {{with index $.FeedUnreadCounts .ID}}{{if gt . 0}}<span class="tree-badge">{{.}}</span>{{end}}{{end}}
