@@ -123,3 +123,63 @@ func TestUI_SidebarCategoryFeedsPartial(t *testing.T) {
 		t.Fatal("last page should not include load-more button")
 	}
 }
+
+// Label unread badges come from the same 3 s snapshot as feed/category
+// badges; the per-label entry total (a full join over entry_labels) is only
+// computed for the labels settings page.
+func TestUI_SidebarLabelCountsCached(t *testing.T) {
+	labels := &uiMemLabels{
+		labels:      []storage.Label{{ID: 7, UserID: 1, Caption: "Росгвардия"}},
+		unread:      map[int64]int{7: 42},
+		entryCounts: map[int64]int{7: 1000},
+	}
+	h, err := NewHandler(Config{
+		Users: &uiMemUsers{user: storage.User{
+			ID: 1, Username: "alice", PasswordHash: mustHash(t, "secret"), IsAdmin: true,
+		}},
+		Sessions:   &uiMemSessions{sessions: map[string]storage.Session{}},
+		Entries:    uiMemEntries{},
+		Labels:     labels,
+		CSRFSecret: "csrf-test",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	mux := http.NewServeMux()
+	h.Register(mux)
+	sid := uiSessionCookie(t, h, mux)
+	get := func(path string) string {
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		req.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: sid})
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("%s: status=%d", path, rec.Code)
+		}
+		return rec.Body.String()
+	}
+
+	body := get("/ui/unread")
+	if !strings.Contains(body, `<span class="tree-badge">42</span>`) {
+		t.Fatal("label unread badge missing from sidebar")
+	}
+	get("/ui/unread")
+	get("/ui/search")
+	if labels.unreadCalls != 1 {
+		t.Fatalf("UnreadCountsByLabel called %d times across 3 page loads, want 1 (cached)", labels.unreadCalls)
+	}
+	if labels.entriesCalls != 0 {
+		t.Fatalf("EntryCountsByLabel called %d times on reader pages, want 0", labels.entriesCalls)
+	}
+
+	h.invalidateUnread(1)
+	get("/ui/unread")
+	if labels.unreadCalls != 2 {
+		t.Fatalf("UnreadCountsByLabel after invalidate = %d calls, want 2", labels.unreadCalls)
+	}
+
+	body = get("/ui/labels")
+	if labels.entriesCalls != 1 || !strings.Contains(body, `<td class="meta">1000</td>`) {
+		t.Fatalf("labels page: entriesCalls=%d, total cell present=%v", labels.entriesCalls, strings.Contains(body, "1000"))
+	}
+}

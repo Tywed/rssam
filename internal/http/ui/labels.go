@@ -21,6 +21,9 @@ func (h *Handler) handleLabelsList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	data.Labels = labels
+	if counts, err := h.cfg.Labels.EntryCountsByLabel(r.Context(), p.UserID); err == nil {
+		data.LabelEntryCounts = counts
+	}
 	data.Title = "Метки"
 	h.render(w, r, "labels_list", data)
 }

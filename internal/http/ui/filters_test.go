@@ -15,7 +15,11 @@ import (
 )
 
 type uiMemLabels struct {
-	labels []storage.Label
+	labels       []storage.Label
+	unread       map[int64]int
+	entryCounts  map[int64]int
+	unreadCalls  int
+	entriesCalls int
 }
 
 func (m *uiMemLabels) ListLabels(_ context.Context, _ int64, limit, offset int) ([]storage.Label, int, error) {
@@ -44,10 +48,18 @@ func (m *uiMemLabels) AssignEntryLabel(context.Context, int64, int64) error {
 	return nil
 }
 func (m *uiMemLabels) EntryCountsByLabel(context.Context, int64) (map[int64]int, error) {
-	return map[int64]int{}, nil
+	m.entriesCalls++
+	if m.entryCounts == nil {
+		return map[int64]int{}, nil
+	}
+	return m.entryCounts, nil
 }
 func (m *uiMemLabels) UnreadCountsByLabel(context.Context, int64) (map[int64]int, error) {
-	return map[int64]int{}, nil
+	m.unreadCalls++
+	if m.unread == nil {
+		return map[int64]int{}, nil
+	}
+	return m.unread, nil
 }
 
 type uiMemFilters struct{}

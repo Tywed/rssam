@@ -17,7 +17,7 @@
       <tbody>
       {{range .Labels}}
       <tr>
-        <td colspan="2">
+        <td>
           <form method="post" action="/ui/labels/{{.ID}}" class="label-edit-form" data-label-color="{{.ID}}">
             <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
             <span class="label-preview">{{.Caption}}</span>
@@ -27,6 +27,7 @@
             <button class="btn btn-sm">Сохранить</button>
           </form>
         </td>
+        <td class="meta">{{index $.LabelEntryCounts .ID}}</td>
         <td>
           <a class="btn btn-sm" href="/ui/labels/{{.ID}}">Записи</a>
           <form method="post" action="/ui/labels/{{.ID}}/delete" class="inline-form" data-confirm="Удалить метку?">

@@ -9,10 +9,11 @@ import (
 const unreadCountsTTL = 3 * time.Second
 
 type unreadCountsSnap struct {
-	exp   time.Time
-	feeds map[int64]int
-	cats  map[int64]int
-	total int
+	exp    time.Time
+	feeds  map[int64]int
+	cats   map[int64]int
+	labels map[int64]int
+	total  int
 }
 
 type unreadCountsCache struct {
@@ -41,7 +42,7 @@ func (c *unreadCountsCache) get(userID int64) (unreadCountsSnap, bool) {
 	return s, true
 }
 
-func (c *unreadCountsCache) put(userID int64, feeds, cats map[int64]int, total int) {
+func (c *unreadCountsCache) put(userID int64, snap unreadCountsSnap) {
 	if c == nil {
 		return
 	}
@@ -50,12 +51,8 @@ func (c *unreadCountsCache) put(userID int64, feeds, cats map[int64]int, total i
 	if c.items == nil {
 		c.items = make(map[int64]unreadCountsSnap)
 	}
-	c.items[userID] = unreadCountsSnap{
-		exp:   time.Now().Add(unreadCountsTTL),
-		feeds: feeds,
-		cats:  cats,
-		total: total,
-	}
+	snap.exp = time.Now().Add(unreadCountsTTL)
+	c.items[userID] = snap
 }
 
 func (c *unreadCountsCache) invalidate(userID int64) {
@@ -67,22 +64,29 @@ func (c *unreadCountsCache) invalidate(userID int64) {
 	delete(c.items, userID)
 }
 
-func (h *Handler) unreadCounts(ctx context.Context, userID int64) (feeds, cats map[int64]int, total int, err error) {
+func (h *Handler) unreadCounts(ctx context.Context, userID int64) (unreadCountsSnap, error) {
 	if snap, ok := h.unreadCache.get(userID); ok {
-		return snap.feeds, snap.cats, snap.total, nil
+		return snap, nil
 	}
+	var snap unreadCountsSnap
 	if h.cfg.Entries == nil {
-		return nil, nil, 0, nil
+		return snap, nil
 	}
-	feeds, cats, err = h.cfg.Entries.UnreadCountsForUser(ctx, userID)
+	feeds, cats, err := h.cfg.Entries.UnreadCountsForUser(ctx, userID)
 	if err != nil {
-		return nil, nil, 0, err
+		return snap, err
 	}
+	snap.feeds, snap.cats = feeds, cats
 	for _, n := range feeds {
-		total += n
+		snap.total += n
 	}
-	h.unreadCache.put(userID, feeds, cats, total)
-	return feeds, cats, total, nil
+	if h.cfg.Labels != nil {
+		if labels, err := h.cfg.Labels.UnreadCountsByLabel(ctx, userID); err == nil {
+			snap.labels = labels
+		}
+	}
+	h.unreadCache.put(userID, snap)
+	return snap, nil
 }
 
 func (h *Handler) invalidateUnread(userID int64) {

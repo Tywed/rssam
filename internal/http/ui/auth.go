@@ -370,21 +370,16 @@ func (h *Handler) baseData(r *http.Request, nav string) pageData {
 		cats, _, _ := h.cfg.Categories.ListCategories(r.Context(), p.UserID, storage.NoLimit, 0)
 		data.Categories = cats
 	}
-	if h.cfg.Entries != nil {
-		if feedCounts, catCounts, total, err := h.unreadCounts(r.Context(), p.UserID); err == nil {
-			data.UnreadCount = total
-			data.FeedUnreadCounts = feedCounts
-			data.CategoryUnreadCounts = catCounts
-		}
-	}
 	if h.cfg.Labels != nil {
 		labels, _, _ := h.cfg.Labels.ListLabels(r.Context(), p.UserID, 500, 0)
 		data.Labels = labels
-		if counts, err := h.cfg.Labels.UnreadCountsByLabel(r.Context(), p.UserID); err == nil {
-			data.LabelUnreadCounts = counts
-		}
-		if counts, err := h.cfg.Labels.EntryCountsByLabel(r.Context(), p.UserID); err == nil {
-			data.LabelEntryCounts = counts
+	}
+	if h.cfg.Entries != nil {
+		if snap, err := h.unreadCounts(r.Context(), p.UserID); err == nil {
+			data.UnreadCount = snap.total
+			data.FeedUnreadCounts = snap.feeds
+			data.CategoryUnreadCounts = snap.cats
+			data.LabelUnreadCounts = snap.labels
 		}
 	}
 	return data

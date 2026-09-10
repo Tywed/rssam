@@ -66,8 +66,8 @@ func (h *Handler) renderSidebarCategoryFeeds(w http.ResponseWriter, r *http.Requ
 		}
 	}
 	if h.cfg.Entries != nil {
-		if feedCounts, _, _, err := h.unreadCounts(r.Context(), userID); err == nil {
-			data.FeedUnreadCounts = feedCounts
+		if snap, err := h.unreadCounts(r.Context(), userID); err == nil {
+			data.FeedUnreadCounts = snap.feeds
 		}
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
