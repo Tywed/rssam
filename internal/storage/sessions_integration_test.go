@@ -86,14 +86,14 @@ func TestIntegration_TouchSessionRefreshesExpiry(t *testing.T) {
 		t.Fatal(err)
 	}
 	sess, _ := store.LookupSession(ctx, "t-"+suffix)
-	if !SessionNeedsTouch(sess.ExpiresAt, now) {
+	if !SessionNeedsTouch(sess.ExpiresAt, now, DefaultSessionTTL) {
 		t.Fatal("2h-old session must need a touch")
 	}
 	if err := store.TouchSession(ctx, "t-"+suffix, now.Add(DefaultSessionTTL)); err != nil {
 		t.Fatal(err)
 	}
 	sess, _ = store.LookupSession(ctx, "t-"+suffix)
-	if SessionNeedsTouch(sess.ExpiresAt, now) {
+	if SessionNeedsTouch(sess.ExpiresAt, now, DefaultSessionTTL) {
 		t.Fatal("freshly touched session must not need another touch")
 	}
 }

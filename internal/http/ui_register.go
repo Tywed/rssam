@@ -33,6 +33,7 @@ func (s *Server) registerUI(mux *http.ServeMux) {
 		SSRFGuard:      s.ssrfGuard,
 		CSRFSecret:     s.csrfSecret,
 		HSTSEnabled:    s.hstsEnabled,
+		SessionMaxAge:  s.sessionMaxAge,
 		MaxImportFeeds: s.maxImportFeeds,
 		RateLimit:      middleware.PerIPRateLimit(s.loginLimiter),
 		OPMLImport: func(r *http.Request, userID int64, data []byte) ui.ImportReport {

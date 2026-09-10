@@ -1,8 +1,10 @@
 package ui
 
 import (
+	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"rssam/internal/auth"
 	"rssam/internal/http/middleware"
@@ -20,12 +22,16 @@ func (h *Handler) handleSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	data.APIKeys = keys
 	data.Title = "Настройки"
+	data.SessionMaxAge = formatSessionAge(h.sessionTTL())
 	if c, err := r.Cookie(newTokenCookie); err == nil && strings.TrimSpace(c.Value) != "" {
 		data.NewToken = strings.TrimSpace(c.Value)
 		http.SetCookie(w, &http.Cookie{Name: newTokenCookie, Value: "", Path: "/ui/settings", MaxAge: -1, HttpOnly: true})
 	}
-	if r.URL.Query().Get("pw") == "changed" {
+	switch r.URL.Query().Get("pw") {
+	case "changed":
 		data.FlashMsg = "Пароль изменён. Остальные сессии завершены."
+	case "sessions":
+		data.FlashMsg = "Остальные сессии завершены."
 	}
 	h.render(w, r, "settings", data)
 }
@@ -76,6 +82,21 @@ func (h *Handler) handleSettingsPassword(w http.ResponseWriter, r *http.Request)
 		}
 	}
 	http.Redirect(w, r, "/ui/settings?pw=changed", http.StatusFound)
+}
+
+// handleSettingsLogoutOthers revokes every other session of the current
+// user; the current one stays so the page can confirm the action.
+func (h *Handler) handleSettingsLogoutOthers(w http.ResponseWriter, r *http.Request) {
+	if !h.validateCSRF(r) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	p, _ := principal(r)
+	if err := h.cfg.Sessions.DeleteUserSessionsExcept(r.Context(), p.UserID, auth.SessionIDFromRequest(r)); err != nil {
+		http.Error(w, "revoke failed", http.StatusInternalServerError)
+		return
+	}
+	http.Redirect(w, r, "/ui/settings?pw=sessions", http.StatusFound)
 }
 
 func (h *Handler) renderSettingsError(w http.ResponseWriter, r *http.Request, msg string) {
@@ -145,4 +166,11 @@ func (h *Handler) handleAPIKeyDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.Redirect(w, r, "/ui/settings", http.StatusFound)
+}
+
+func formatSessionAge(d time.Duration) string {
+	if d >= 24*time.Hour && d%(24*time.Hour) == 0 {
+		return fmt.Sprintf("%d дн", d/(24*time.Hour))
+	}
+	return formatDuration(d)
 }

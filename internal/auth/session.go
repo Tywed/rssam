@@ -15,9 +15,13 @@ type SessionCookieConfig struct {
 }
 
 func DefaultSessionCookieConfig(secure bool) SessionCookieConfig {
+	return SessionCookieConfigFor(secure, 30*24*time.Hour)
+}
+
+func SessionCookieConfigFor(secure bool, maxAge time.Duration) SessionCookieConfig {
 	return SessionCookieConfig{
 		Secure:   secure,
-		MaxAge:   int((30 * 24 * time.Hour).Seconds()),
+		MaxAge:   int(maxAge.Seconds()),
 		SameSite: http.SameSiteStrictMode,
 	}
 }

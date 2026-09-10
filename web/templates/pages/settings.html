@@ -14,6 +14,14 @@
       </form>
     </div>
     <div class="card">
+      <h2>Сессии</h2>
+      <p class="meta">Сессия живёт {{.SessionMaxAge}} с последнего запроса (<code>SESSION_MAX_AGE</code>). Смена пароля завершает остальные сессии автоматически.</p>
+      <form method="post" action="/ui/settings/sessions/logout-others" data-confirm="Завершить все сессии, кроме текущей?">
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+        <button type="submit" class="btn">Выйти на всех остальных устройствах</button>
+      </form>
+    </div>
+    <div class="card">
       <h2>API ключи</h2>
       <form method="post" action="/ui/settings/api-keys">
         <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">

@@ -4,6 +4,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestLoad_RequiresDatabaseURL(t *testing.T) {
@@ -289,5 +290,25 @@ func TestLoad_RefusesPlaceholderAuthToken(t *testing.T) {
 	t.Setenv("AUTH_TOKEN", "s3cret-real-token")
 	if _, err := Load(); err != nil {
 		t.Fatalf("real token is fine: %v", err)
+	}
+}
+
+func TestLoad_SessionMaxAge(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://u:p@localhost:5432/db?sslmode=disable")
+	t.Setenv("SESSION_MAX_AGE", "")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.SessionMaxAge != 30*24*time.Hour {
+		t.Fatalf("default SessionMaxAge=%s", cfg.SessionMaxAge)
+	}
+	t.Setenv("SESSION_MAX_AGE", "12h")
+	if cfg, err = Load(); err != nil || cfg.SessionMaxAge != 12*time.Hour {
+		t.Fatalf("SessionMaxAge=%s err=%v", cfg.SessionMaxAge, err)
+	}
+	t.Setenv("SESSION_MAX_AGE", "1m")
+	if _, err = Load(); err == nil || !strings.Contains(err.Error(), "SESSION_MAX_AGE") {
+		t.Fatalf("1m must be rejected, got %v", err)
 	}
 }

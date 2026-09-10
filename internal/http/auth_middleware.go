@@ -92,8 +92,8 @@ func (s *Server) authenticateSession(ctx context.Context, r *http.Request) (auth
 		return auth.Principal{}, false
 	}
 	now := time.Now().UTC()
-	if storage.SessionNeedsTouch(sess.ExpiresAt, now) {
-		_ = s.sessions.TouchSession(ctx, sessionID, now.Add(storage.DefaultSessionTTL))
+	if ttl := s.sessionTTL(); storage.SessionNeedsTouch(sess.ExpiresAt, now, ttl) {
+		_ = s.sessions.TouchSession(ctx, sessionID, now.Add(ttl))
 	}
 	return auth.Principal{UserID: u.ID, IsAdmin: u.IsAdmin, Username: u.Username}, true
 }
@@ -143,4 +143,11 @@ func (s *Server) allowBootstrapCreateUser(ctx context.Context) bool {
 func (s *Server) hasValidAuthToken(r *http.Request) bool {
 	p, ok := s.authenticateRequest(r.Context(), r)
 	return ok && p.UserID > 0
+}
+
+func (s *Server) sessionTTL() time.Duration {
+	if s.sessionMaxAge > 0 {
+		return s.sessionMaxAge
+	}
+	return storage.DefaultSessionTTL
 }

@@ -73,6 +73,7 @@ type Dependencies struct {
 	CSRFSecret string
 
 	HSTSEnabled         bool
+	SessionMaxAge       time.Duration
 	RateLimitEnabled    bool
 	RateLimitRPS        float64
 	RateLimitBurst      int
@@ -152,6 +153,7 @@ type Server struct {
 	maxRequestBodyBytes   int64
 	compressEnabled       bool
 	hstsEnabled           bool
+	sessionMaxAge         time.Duration
 	maxImportFeeds        int
 	importJobs            *importJobManager
 	uiEnabled             bool
@@ -365,6 +367,7 @@ func New(dep Dependencies) *Server {
 		maxRequestBodyBytes:   maxBody,
 		compressEnabled:       dep.CompressEnabled,
 		hstsEnabled:           dep.HSTSEnabled,
+		sessionMaxAge:         dep.SessionMaxAge,
 		maxImportFeeds:        dep.MaxImportFeeds,
 		importJobs:            newImportJobManager(),
 		uiEnabled:             dep.UIEnabled,

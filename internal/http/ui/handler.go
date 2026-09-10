@@ -44,6 +44,7 @@ type Config struct {
 	SSRFGuard          *ssrf.Guard
 	CSRFSecret         string
 	HSTSEnabled        bool
+	SessionMaxAge      time.Duration
 	MaxImportFeeds     int
 	RateLimit          func(http.Handler) http.Handler
 	OPMLImport         func(r *http.Request, userID int64, data []byte) ImportReport
@@ -500,6 +501,7 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.Handle("GET /ui/settings/telegram", auth(h.requireAdmin(http.HandlerFunc(h.handleSettingsTelegramRedirect))))
 	mux.Handle("GET /ui/settings", auth(http.HandlerFunc(h.handleSettings)))
 	mux.Handle("POST /ui/settings/password", auth(http.HandlerFunc(h.handleSettingsPassword)))
+	mux.Handle("POST /ui/settings/sessions/logout-others", auth(http.HandlerFunc(h.handleSettingsLogoutOthers)))
 	mux.Handle("POST /ui/settings/api-keys", auth(http.HandlerFunc(h.handleAPIKeyCreate)))
 	mux.Handle("POST /ui/settings/api-keys/{id}/delete", auth(http.HandlerFunc(h.handleAPIKeyDelete)))
 

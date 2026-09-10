@@ -18,9 +18,13 @@ const DefaultSessionTTL = 30 * 24 * time.Hour
 const SessionTouchInterval = time.Hour
 
 // SessionNeedsTouch reports whether a session whose current expiry is
-// expiresAt should be refreshed at now.
-func SessionNeedsTouch(expiresAt, now time.Time) bool {
-	return expiresAt.Before(now.Add(DefaultSessionTTL - SessionTouchInterval))
+// expiresAt should be refreshed at now, given the configured sliding ttl.
+func SessionNeedsTouch(expiresAt, now time.Time, ttl time.Duration) bool {
+	slack := SessionTouchInterval
+	if ttl <= 2*slack {
+		slack = ttl / 2
+	}
+	return expiresAt.Before(now.Add(ttl - slack))
 }
 
 type Session struct {

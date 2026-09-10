@@ -31,6 +31,7 @@ type pageData struct {
 	CSPNonce                   string
 	SessionID                  string
 	FlashMsg                   string
+	SessionMaxAge              string
 	FlashErr                   string
 	UnreadCount                int
 	FeedUnreadCounts           map[int64]int
@@ -141,7 +142,14 @@ const (
 )
 
 func (h *Handler) sessionCookieCfg(r *http.Request) auth.SessionCookieConfig {
-	return auth.DefaultSessionCookieConfig(middleware.RequestIsSecure(r, h.cfg.HSTSEnabled))
+	return auth.SessionCookieConfigFor(middleware.RequestIsSecure(r, h.cfg.HSTSEnabled), h.sessionTTL())
+}
+
+func (h *Handler) sessionTTL() time.Duration {
+	if h.cfg.SessionMaxAge > 0 {
+		return h.cfg.SessionMaxAge
+	}
+	return storage.DefaultSessionTTL
 }
 
 func (h *Handler) csrfToken(r *http.Request) string {
@@ -212,8 +220,8 @@ func (h *Handler) authenticate(r *http.Request) (auth.Principal, string, bool) {
 		return auth.Principal{}, "", false
 	}
 	now := time.Now().UTC()
-	if storage.SessionNeedsTouch(sess.ExpiresAt, now) {
-		_ = h.cfg.Sessions.TouchSession(r.Context(), sid, now.Add(storage.DefaultSessionTTL))
+	if ttl := h.sessionTTL(); storage.SessionNeedsTouch(sess.ExpiresAt, now, ttl) {
+		_ = h.cfg.Sessions.TouchSession(r.Context(), sid, now.Add(ttl))
 	}
 	return auth.Principal{UserID: u.ID, IsAdmin: u.IsAdmin, Username: u.Username}, sid, true
 }
@@ -262,7 +270,7 @@ func (h *Handler) handleLoginPost(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	expires := time.Now().UTC().Add(storage.DefaultSessionTTL)
+	expires := time.Now().UTC().Add(h.sessionTTL())
 	if _, err := h.cfg.Sessions.CreateSession(r.Context(), u.ID, sid, expires); err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return

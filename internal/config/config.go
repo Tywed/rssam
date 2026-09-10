@@ -114,7 +114,10 @@ type Config struct {
 	StoreEntriesMode string
 
 	// Hardening / HTTP
-	HSTSEnabled      bool
+	HSTSEnabled bool
+	// SessionMaxAge is the sliding lifetime of a UI session (cookie and
+	// sessions.expires_at); each request past SessionTouchInterval extends it.
+	SessionMaxAge    time.Duration
 	TrustedProxies   []string
 	RateLimitEnabled bool
 	RateLimitRPS     float64
@@ -229,6 +232,7 @@ func Load() (Config, error) {
 		StoreEntriesMode: parseStoreEntriesMode(),
 
 		HSTSEnabled:         parseBool(os.Getenv("HSTS")),
+		SessionMaxAge:       parseDuration(getEnv("SESSION_MAX_AGE", "720h"), 30*24*time.Hour),
 		TrustedProxies:      parseTrustedProxies(),
 		RateLimitEnabled:    parseBoolDefault(os.Getenv("RATE_LIMIT_ENABLED"), true),
 		RateLimitRPS:        parseFloat(getEnv("RATE_LIMIT_RPS", "10"), 10),
@@ -352,6 +356,9 @@ func (c Config) Validate() error {
 	}
 	if c.FeedPollLogRetentionDays < 0 || c.FeedPollLogRetentionDays > 3650 {
 		errs = append(errs, fmt.Errorf("FEED_POLL_LOG_RETENTION_DAYS must be between 0 and 3650 (0 disables), got %d", c.FeedPollLogRetentionDays))
+	}
+	if c.SessionMaxAge < 5*time.Minute || c.SessionMaxAge > 365*24*time.Hour {
+		errs = append(errs, fmt.Errorf("SESSION_MAX_AGE must be between 5m and 8760h, got %s", c.SessionMaxAge))
 	}
 	if c.CleanupInterval <= 0 || c.CleanupInterval > 7*24*time.Hour {
 		errs = append(errs, fmt.Errorf("CLEANUP_INTERVAL must be between 1ms and 168h, got %s", c.CleanupInterval))

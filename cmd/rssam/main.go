@@ -310,6 +310,7 @@ func main() {
 		WSPingInterval:         cfg.WSPingInterval,
 
 		HSTSEnabled:             cfg.HSTSEnabled,
+		SessionMaxAge:           cfg.SessionMaxAge,
 		RateLimitEnabled:        cfg.RateLimitEnabled,
 		RateLimitRPS:            cfg.RateLimitRPS,
 		RateLimitBurst:          cfg.RateLimitBurst,
