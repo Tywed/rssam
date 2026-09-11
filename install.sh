@@ -12,15 +12,17 @@ ACTION=install
 TARGET_VER=""
 WITH_PG=0
 REMOVE_ENV=0
+WITH_BACKUP=1
 
 usage() {
   cat <<EOF
-Usage: install.sh [install|update|remove] [VERSION] [--quiet] [--with-postgres] [--remove-env]
+Usage: install.sh [install|update|remove] [VERSION] [--quiet] [--with-postgres] [--remove-env] [--no-backup]
   install           install binary, unit, sudoers (default)
   update [vX.Y.Z]   replace binary from GitHub Release
   remove            stop unit, remove binary (keep .env and DB)
   --quiet           non-interactive
   --with-postgres   create role/db rssam if missing (needs peer/sudo postgres)
+  --no-backup       do not install the daily backup timer (rssam-backup.timer)
   --help
 EOF
 }
@@ -30,6 +32,7 @@ while [ $# -gt 0 ]; do
     --quiet|-q) QUIET=1 ;;
     --with-postgres) WITH_PG=1 ;;
     --remove-env) REMOVE_ENV=1 ;;
+    --no-backup) WITH_BACKUP=0 ;;
     --help|-h) usage; exit 0 ;;
     --update) ACTION=update ;;
     --remove) ACTION=remove ;;
@@ -171,6 +174,37 @@ install_helper() {
   chmod 755 /usr/local/sbin/rssam-update
 }
 
+# Backup script and a daily timer. The script is fetched from the repository
+# at the installed tag when install.sh itself was piped from curl, so the
+# backup tooling always matches the release.
+install_backup() {
+  [ "$WITH_BACKUP" -eq 1 ] || return 0
+  ver=$1
+  mkdir -p /usr/local/sbin "$PREFIX/backups"
+  chown rssam:rssam "$PREFIX/backups"
+  chmod 700 "$PREFIX/backups"
+  base="https://raw.githubusercontent.com/${REPO}/${ver}/deploy"
+  for f in rssam-backup.sh rssam-backup.service rssam-backup.timer; do
+    if [ -f "$SCRIPT_DIR/deploy/$f" ]; then
+      cp "$SCRIPT_DIR/deploy/$f" "/tmp/$f"
+    elif ! fetch "$base/$f" "/tmp/$f"; then
+      log "warning: could not fetch $f; backup timer not installed"
+      rm -f /tmp/rssam-backup.sh /tmp/rssam-backup.service /tmp/rssam-backup.timer
+      return 0
+    fi
+  done
+  install -m 755 /tmp/rssam-backup.sh /usr/local/sbin/rssam-backup
+  install -m 644 /tmp/rssam-backup.service /etc/systemd/system/rssam-backup.service
+  install -m 644 /tmp/rssam-backup.timer /etc/systemd/system/rssam-backup.timer
+  rm -f /tmp/rssam-backup.sh /tmp/rssam-backup.service /tmp/rssam-backup.timer
+  systemctl daemon-reload
+  if command -v pg_dump >/dev/null 2>&1; then
+    systemctl enable --now rssam-backup.timer
+  else
+    log "warning: pg_dump not found; install postgresql-client and run: systemctl enable --now rssam-backup.timer"
+  fi
+}
+
 # Map uname -m to the GOARCH used in release asset names.
 release_arch() {
   case "$(uname -m)" in
@@ -236,6 +270,7 @@ do_install() {
   install_unit
   install_sudoers
   install_helper
+  install_backup "$ver"
   systemctl enable rssam
   systemctl restart rssam
   sleep 1
@@ -255,6 +290,9 @@ do_update() {
   log "downloading $ver"
   download_release "$ver"
   log "installed binary $ver"
+  if [ -x /usr/local/sbin/rssam-backup ]; then
+    install_backup "$ver"
+  fi
   log "restarting rssam"
   systemctl restart rssam
   n=0
@@ -273,9 +311,10 @@ do_remove() {
   need_root
   systemctl stop rssam 2>/dev/null || true
   systemctl disable rssam 2>/dev/null || true
-  rm -f /etc/systemd/system/rssam.service
+  systemctl disable --now rssam-backup.timer 2>/dev/null || true
+  rm -f /etc/systemd/system/rssam.service /etc/systemd/system/rssam-backup.service /etc/systemd/system/rssam-backup.timer
   systemctl daemon-reload
-  rm -f "$BIN_DIR/rssam" /usr/local/sbin/rssam-update /etc/sudoers.d/rssam
+  rm -f "$BIN_DIR/rssam" /usr/local/sbin/rssam-update /usr/local/sbin/rssam-backup /etc/sudoers.d/rssam
   if [ "$REMOVE_ENV" -eq 1 ]; then
     rm -f "$ENV_FILE"
   elif [ "$QUIET" -eq 0 ]; then

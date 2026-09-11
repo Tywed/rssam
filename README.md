@@ -37,6 +37,7 @@ curl -fsSL https://raw.githubusercontent.com/Tywed/rssam/main/install.sh | sudo 
 | Бинарь | `/opt/rssam/bin/rssam` |
 | Конфиг | `/opt/rssam/.env` |
 | Логи update | `/opt/rssam/log/update.log` |
+| Бэкапы | `/opt/rssam/backups/` (ежедневно, см. ниже) |
 | Health | `GET /healthz` → `ok` (не `/health`) |
 
 Не запускайте второй экземпляр rssam на той же `DATABASE_URL`: два poller’а делят очередь `jobs`.
@@ -50,6 +51,7 @@ Self-update и restart из веб-UI в **Docker не работают** — о
 ./install.sh v0.1.0                  # конкретная версия
 ./install.sh --quiet
 ./install.sh --with-postgres         # создать роль/БД rssam, если нет
+./install.sh --no-backup             # без ежедневного бэкапа
 ./install.sh update                  # или: install.sh --update
 ./install.sh remove                  # БД и .env по умолчанию сохраняются
 ```
@@ -61,6 +63,20 @@ curl -fsSL https://raw.githubusercontent.com/Tywed/rssam/main/install.sh | sudo 
 ```
 
 Из UI (admin → Система): перезапуск и обновление, если установлены sudoers из installer.
+
+## Резервное копирование
+
+Installer ставит `/usr/local/sbin/rssam-backup` и таймер `rssam-backup.timer` (ежедневно в 03:30, `--no-backup` — не ставить). Бэкап — пара файлов в `/opt/rssam/backups/`: `rssam-<дата>.dump` (`pg_dump -Fc`, сжатый, без очереди `jobs` и `sessions` — они пересоздаются) и копия `.env` (в нём `CSRF_SECRET` и токены). Хранятся последние 7 (`RSSAM_BACKUP_KEEP`).
+
+```bash
+sudo rssam-backup backup                       # вручную
+sudo rssam-backup list
+sudo rssam-backup restore /opt/rssam/backups/rssam-20260911_033000.dump
+```
+
+`restore` останавливает сервис, накатывает дамп в одной транзакции поверх текущей базы (`--clean`, при ошибке база остаётся как была) и запускает сервис обратно. Если дамп старше бинаря, недостающие миграции применятся при старте (`RUN_MIGRATIONS=true`). Копируйте `backups/` на другой диск — иначе это не резервная копия. Нужен `postgresql-client` (`pg_dump`/`pg_restore`) той же или более новой major‑версии, чем сервер.
+
+Без systemd: `DATABASE_URL=... deploy/rssam-backup.sh backup` (в Docker — с хоста или из контейнера с `postgresql-client`).
 
 ## Сборка из исходников
 
