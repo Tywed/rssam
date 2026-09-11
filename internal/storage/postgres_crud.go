@@ -203,63 +203,52 @@ RETURNING id, user_id, feed_url, feed_type, title, category_id, interval_minutes
 }
 
 func (s *PostgresStore) GetFeed(ctx context.Context, userID int64, id int64) (Feed, error) {
-	const q = `
-SELECT id, user_id, feed_url, feed_type, title, category_id, interval_minutes, etag, last_modified, last_checked_at, last_error,
-       parsing_error_count, poll_paused, manual_paused, store_hash_only, entry_retention_days, next_check_at,
-       bridge_state, scraper_rules, rewrite_rules, blocked_rules, keep_rules, fetch_via_proxy, tls_insecure, crawler, user_agent,
-       webhook_id, icon_url, icon_data, created_at, updated_at
-FROM feeds
-WHERE id = $1 AND user_id = $2`
+	q := `SELECT ` + feedColumns + `, icon_data FROM feeds WHERE id = $1 AND user_id = $2`
 	return s.scanFeed(s.db.QueryRow(ctx, q, id, userID))
 }
 
 func (s *PostgresStore) GetFeedByID(ctx context.Context, id int64) (Feed, error) {
-	const q = `
-SELECT id, user_id, feed_url, feed_type, title, category_id, interval_minutes, etag, last_modified, last_checked_at, last_error,
+	q := `SELECT ` + feedColumns + `, icon_data FROM feeds WHERE id = $1`
+	return s.scanFeed(s.db.QueryRow(ctx, q, id))
+}
+
+// feedColumns is every feeds column except icon_data, which is a blob of up
+// to 512 KiB served only by the icon endpoint through GetFeed. Every list
+// selects this set so that a Feed from a list is as complete as one from
+// GetFeed (rules, flags, poll state, bridge state).
+const feedColumns = `id, user_id, feed_url, feed_type, title, category_id, interval_minutes, etag, last_modified, last_checked_at, last_error,
        parsing_error_count, poll_paused, manual_paused, store_hash_only, entry_retention_days, next_check_at,
        bridge_state, scraper_rules, rewrite_rules, blocked_rules, keep_rules, fetch_via_proxy, tls_insecure, crawler, user_agent,
-       webhook_id, icon_url, icon_data, created_at, updated_at
-FROM feeds
-WHERE id = $1`
-	return s.scanFeed(s.db.QueryRow(ctx, q, id))
+       webhook_id, icon_url, created_at, updated_at`
+
+func feedScanTargets(f *Feed) []any {
+	return []any{
+		&f.ID, &f.UserID, &f.FeedURL, &f.FeedType, &f.Title, &f.CategoryID, &f.IntervalMinutes, &f.ETag, &f.LastModified, &f.LastCheckedAt, &f.LastError,
+		&f.ParsingErrorCount, &f.PollPaused, &f.ManualPaused, &f.StoreHashOnly, &f.EntryRetentionDays, &f.NextCheckAt,
+		&f.BridgeState, &f.ScraperRules, &f.RewriteRules, &f.BlockedRules, &f.KeepRules, &f.FetchViaProxy, &f.TLSInsecure, &f.Crawler, &f.UserAgent,
+		&f.WebhookID, &f.IconURL, &f.CreatedAt, &f.UpdatedAt,
+	}
+}
+
+func scanFeedRows(rows pgx.Rows, extra ...any) ([]Feed, error) {
+	defer rows.Close()
+	out := make([]Feed, 0)
+	for rows.Next() {
+		var f Feed
+		if err := rows.Scan(append(feedScanTargets(&f), extra...)...); err != nil {
+			return nil, fmt.Errorf("scan feed: %w", err)
+		}
+		out = append(out, f)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate feeds: %w", err)
+	}
+	return out, nil
 }
 
 func (s *PostgresStore) scanFeed(row pgx.Row) (Feed, error) {
 	var f Feed
-	err := row.Scan(
-		&f.ID,
-		&f.UserID,
-		&f.FeedURL,
-		&f.FeedType,
-		&f.Title,
-		&f.CategoryID,
-		&f.IntervalMinutes,
-		&f.ETag,
-		&f.LastModified,
-		&f.LastCheckedAt,
-		&f.LastError,
-		&f.ParsingErrorCount,
-		&f.PollPaused,
-		&f.ManualPaused,
-		&f.StoreHashOnly,
-		&f.EntryRetentionDays,
-		&f.NextCheckAt,
-		&f.BridgeState,
-		&f.ScraperRules,
-		&f.RewriteRules,
-		&f.BlockedRules,
-		&f.KeepRules,
-		&f.FetchViaProxy,
-		&f.TLSInsecure,
-		&f.Crawler,
-		&f.UserAgent,
-		&f.WebhookID,
-		&f.IconURL,
-		&f.IconData,
-		&f.CreatedAt,
-		&f.UpdatedAt,
-	)
-	if err != nil {
+	if err := row.Scan(append(feedScanTargets(&f), &f.IconData)...); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return Feed{}, ErrNotFound
 		}
@@ -269,11 +258,7 @@ func (s *PostgresStore) scanFeed(row pgx.Row) (Feed, error) {
 }
 
 func (s *PostgresStore) ListFeeds(ctx context.Context, userID int64, limit, offset int) ([]Feed, int, error) {
-	base := `
-SELECT id, user_id, feed_url, feed_type, title, category_id, interval_minutes, next_check_at, created_at, updated_at, count(*) OVER()
-FROM feeds
-WHERE user_id = $1
-ORDER BY id DESC`
+	base := `SELECT ` + feedColumns + `, count(*) OVER() FROM feeds WHERE user_id = $1 ORDER BY id DESC`
 	var (
 		rows pgx.Rows
 		err  error
@@ -289,22 +274,10 @@ ORDER BY id DESC`
 	if err != nil {
 		return nil, 0, fmt.Errorf("list feeds: %w", err)
 	}
-	defer rows.Close()
-
-	out := make([]Feed, 0)
-	if limit > 0 {
-		out = make([]Feed, 0, limit)
-	}
-	total := 0
-	for rows.Next() {
-		var f Feed
-		if err := rows.Scan(&f.ID, &f.UserID, &f.FeedURL, &f.FeedType, &f.Title, &f.CategoryID, &f.IntervalMinutes, &f.NextCheckAt, &f.CreatedAt, &f.UpdatedAt, &total); err != nil {
-			return nil, 0, fmt.Errorf("scan feeds: %w", err)
-		}
-		out = append(out, f)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, 0, fmt.Errorf("iterate feeds: %w", err)
+	var total int
+	out, err := scanFeedRows(rows, &total)
+	if err != nil {
+		return nil, 0, fmt.Errorf("list feeds: %w", err)
 	}
 	return out, total, nil
 }
@@ -332,13 +305,7 @@ func (s *PostgresStore) ListFeedsByCategoryPaginated(ctx context.Context, userID
 		return nil, 0, fmt.Errorf("count feeds by category: %w", err)
 	}
 
-	cols := `
-SELECT id, user_id, feed_url, feed_type, title, category_id, interval_minutes,
-       last_error, parsing_error_count, poll_paused, manual_paused,
-       next_check_at, created_at, updated_at
-FROM feeds
-WHERE ` + where + `
-ORDER BY title ASC, id ASC`
+	cols := `SELECT ` + feedColumns + ` FROM feeds WHERE ` + where + ` ORDER BY title ASC, id ASC`
 
 	var (
 		rows pgx.Rows
@@ -355,22 +322,9 @@ ORDER BY title ASC, id ASC`
 	if err != nil {
 		return nil, 0, fmt.Errorf("list feeds by category: %w", err)
 	}
-	defer rows.Close()
-
-	out := make([]Feed, 0)
-	for rows.Next() {
-		var f Feed
-		if err := rows.Scan(
-			&f.ID, &f.UserID, &f.FeedURL, &f.FeedType, &f.Title, &f.CategoryID, &f.IntervalMinutes,
-			&f.LastError, &f.ParsingErrorCount, &f.PollPaused, &f.ManualPaused,
-			&f.NextCheckAt, &f.CreatedAt, &f.UpdatedAt,
-		); err != nil {
-			return nil, 0, fmt.Errorf("scan feeds by category: %w", err)
-		}
-		out = append(out, f)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, 0, fmt.Errorf("iterate feeds by category: %w", err)
+	out, err := scanFeedRows(rows)
+	if err != nil {
+		return nil, 0, fmt.Errorf("list feeds by category: %w", err)
 	}
 	return out, total, nil
 }
@@ -382,27 +336,13 @@ func (s *PostgresStore) ListAllFeeds(ctx context.Context, limit int) ([]Feed, er
 	if limit > 10000 {
 		limit = 10000
 	}
-	const q = `
-SELECT id, user_id, feed_url, feed_type, title, category_id, interval_minutes, next_check_at, created_at, updated_at
-FROM feeds
-ORDER BY id ASC
-LIMIT $1`
-	rows, err := s.db.Query(ctx, q, limit)
+	rows, err := s.db.Query(ctx, `SELECT `+feedColumns+` FROM feeds ORDER BY id ASC LIMIT $1`, limit)
 	if err != nil {
 		return nil, fmt.Errorf("list all feeds: %w", err)
 	}
-	defer rows.Close()
-
-	out := make([]Feed, 0, limit)
-	for rows.Next() {
-		var f Feed
-		if err := rows.Scan(&f.ID, &f.UserID, &f.FeedURL, &f.FeedType, &f.Title, &f.CategoryID, &f.IntervalMinutes, &f.NextCheckAt, &f.CreatedAt, &f.UpdatedAt); err != nil {
-			return nil, fmt.Errorf("scan all feeds: %w", err)
-		}
-		out = append(out, f)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate all feeds: %w", err)
+	out, err := scanFeedRows(rows)
+	if err != nil {
+		return nil, fmt.Errorf("list all feeds: %w", err)
 	}
 	return out, nil
 }

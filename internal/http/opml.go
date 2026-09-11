@@ -107,11 +107,6 @@ func (s *Server) exportOPMLForUser(w http.ResponseWriter, ctx context.Context, u
 	}
 	exportFeeds := make([]opml.ExportFeed, 0, len(feeds))
 	for _, f := range feeds {
-		// ListFeeds is a light projection (no rules/flags/webhook); the
-		// full row is needed for the rssam:* attributes.
-		if full, err := s.feeds.GetFeed(ctx, userID, f.ID); err == nil {
-			f = full
-		}
 		settings := opml.FeedSettings{
 			FeedType:        f.FeedType,
 			IntervalMinutes: f.IntervalMinutes,

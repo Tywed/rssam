@@ -125,14 +125,12 @@ func (s *opmlFeedStore) ListAllFeeds(_ context.Context, _ int) ([]storage.Feed, 
 	return nil, nil
 }
 
-// ListFeeds mirrors the PostgreSQL projection (id/url/type/title/category/
-// interval only) so tests exercise the GetFeed round-trip the export needs.
 func (s *opmlFeedStore) ListFeeds(_ context.Context, _ int64, _, _ int) ([]storage.Feed, int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	out := make([]storage.Feed, 0, len(s.feeds))
 	for _, f := range s.feeds {
-		out = append(out, storage.Feed{ID: f.ID, UserID: f.UserID, FeedURL: f.FeedURL, FeedType: f.FeedType, Title: f.Title, CategoryID: f.CategoryID, IntervalMinutes: f.IntervalMinutes})
+		out = append(out, f)
 	}
 	return out, len(out), nil
 }
