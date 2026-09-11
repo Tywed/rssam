@@ -202,13 +202,24 @@ func (g *Guard) resolveHost(ctx context.Context, hostname string) ([]net.IP, err
 	if err := g.checkBlockedHost(hostname); err != nil {
 		return nil, err
 	}
-
-	if ip := net.ParseIP(hostname); ip != nil {
-		if !g.isAllowedHost(hostname) {
-			if err := g.validateIP(ip); err != nil {
-				return nil, err
-			}
+	ips, err := g.lookupIPs(ctx, hostname)
+	if err != nil {
+		return nil, err
+	}
+	if g.isAllowedHost(hostname) {
+		return ips, nil
+	}
+	for _, ip := range ips {
+		if err := g.validateIP(ip); err != nil {
+			return nil, err
 		}
+	}
+	return ips, nil
+}
+
+// lookupIPs resolves without policy checks.
+func (g *Guard) lookupIPs(ctx context.Context, hostname string) ([]net.IP, error) {
+	if ip := net.ParseIP(hostname); ip != nil {
 		return []net.IP{ip}, nil
 	}
 
@@ -226,20 +237,11 @@ func (g *Guard) resolveHost(ctx context.Context, hostname string) ([]net.IP, err
 		return nil, fmt.Errorf("ssrf: no addresses for host")
 	}
 
-	hostAllowed := g.isAllowedHost(hostname)
-
 	ips := make([]net.IP, 0, len(addrs))
 	for _, addr := range addrs {
-		ip := net.ParseIP(addr)
-		if ip == nil {
-			continue
+		if ip := net.ParseIP(addr); ip != nil {
+			ips = append(ips, ip)
 		}
-		if !hostAllowed {
-			if err := g.validateIP(ip); err != nil {
-				return nil, err
-			}
-		}
-		ips = append(ips, ip)
 	}
 	if len(ips) == 0 {
 		return nil, fmt.Errorf("ssrf: no valid addresses for host")

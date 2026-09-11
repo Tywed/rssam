@@ -6,6 +6,9 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/url"
+	"os"
+	"strings"
 	"time"
 )
 
@@ -36,7 +39,7 @@ func (g *Guard) httpClient(timeout time.Duration, tlsInsecureSkipVerify bool) *h
 	g.clientsMu.Unlock()
 
 	transport := &http.Transport{
-		Proxy: http.ProxyFromEnvironment,
+		Proxy: g.proxyFromEnvironment,
 		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
 			return g.dialContext(ctx, network, addr)
 		},
@@ -63,13 +66,55 @@ func (g *Guard) httpClient(timeout time.Duration, tlsInsecureSkipVerify bool) *h
 	return c
 }
 
+// proxyFromEnvironment honours HTTP(S)_PROXY/NO_PROXY like the default
+// transport, with one difference: when a proxy applies, the transport dials
+// the proxy instead of the target, so dialContext never sees the target
+// address. The target is therefore validated here — a proxied request to a
+// private address is refused the same way a direct one is. The proxy's own
+// address is exempt from the private-network check: it is operator
+// configuration, not feed input.
+func (g *Guard) proxyFromEnvironment(req *http.Request) (*url.URL, error) {
+	proxyURL, err := http.ProxyFromEnvironment(req)
+	if err != nil || proxyURL == nil {
+		return proxyURL, err
+	}
+	if _, err := g.resolveHost(req.Context(), req.URL.Hostname()); err != nil {
+		return nil, err
+	}
+	return proxyURL, nil
+}
+
+// proxyHosts are the hostnames of HTTP(S)_PROXY, read once: connections to
+// them are made on the operator's behalf, not the feed's.
+var proxyHosts = func() map[string]struct{} {
+	out := map[string]struct{}{}
+	for _, key := range []string{"HTTP_PROXY", "http_proxy", "HTTPS_PROXY", "https_proxy"} {
+		v := os.Getenv(key)
+		if v == "" {
+			continue
+		}
+		if !strings.Contains(v, "://") {
+			v = "http://" + v
+		}
+		if u, err := url.Parse(v); err == nil && u.Hostname() != "" {
+			out[strings.ToLower(u.Hostname())] = struct{}{}
+		}
+	}
+	return out
+}()
+
 func (g *Guard) dialContext(ctx context.Context, network, addr string) (net.Conn, error) {
 	host, port, err := net.SplitHostPort(addr)
 	if err != nil {
 		return nil, fmt.Errorf("ssrf dial: %w", err)
 	}
 
-	ips, err := g.resolveHost(ctx, host)
+	var ips []net.IP
+	if _, isProxy := proxyHosts[strings.ToLower(host)]; isProxy {
+		ips, err = g.lookupIPs(ctx, host)
+	} else {
+		ips, err = g.resolveHost(ctx, host)
+	}
 	if err != nil {
 		return nil, err
 	}
