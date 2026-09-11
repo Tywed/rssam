@@ -46,6 +46,39 @@ func TestSanitizeHTML_VideoKeptWithHTTPSourcesOnly(t *testing.T) {
 	}
 }
 
+func TestSanitizeHTML_LinksAndImages(t *testing.T) {
+	in := `<p><a href="https://ex.com/a?utm_source=x&amp;id=1&amp;fbclid=z">l</a> <a href="/rel">r</a> ` +
+		`<img src="https://ex.com/i.jpg?utm_campaign=c" width="600"> <img src="https://ex.com/j.jpg" loading="eager"> ` +
+		`<img src="https://px.example/b.gif" width="1" height="1"> <img src="https://ex.com/z.gif" height="0"> ` +
+		`<img src="https://stats.wordpress.com/b.gif?host=ex.com"> <img src="https://feeds.feedburner.com/~r/Foo/~4/abc"></p>`
+	got := SanitizeHTML(in)
+	for _, want := range []string{
+		`<a href="https://ex.com/a?id=1" rel="nofollow noreferrer noopener" target="_blank">l</a>`,
+		`<a href="/rel" rel="nofollow noreferrer">r</a>`,
+		`<img src="https://ex.com/i.jpg" width="600" loading="lazy">`,
+		`<img src="https://ex.com/j.jpg" loading="eager">`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %q in %q", want, got)
+		}
+	}
+	for _, bad := range []string{"utm_", "fbclid", "px.example", "z.gif", "stats.wordpress.com", "feedburner"} {
+		if strings.Contains(got, bad) {
+			t.Errorf("%q leaked through: %q", bad, got)
+		}
+	}
+	if again := SanitizeHTML(got); again != got {
+		t.Fatalf("not idempotent:\n%s\n%s", got, again)
+	}
+}
+
+func TestSanitizeHTML_ImageAttrsEscaped(t *testing.T) {
+	got := SanitizeHTML(`<img src="https://ex.com/i.jpg?a=%22%3E%3Cscript%3E" alt="a (b) c">`)
+	if got != `<img src="https://ex.com/i.jpg?a=%22%3E%3Cscript%3E" alt="a (b) c" loading="lazy">` {
+		t.Fatalf("got %q", got)
+	}
+}
+
 // Every handler's output goes through the registry, so content produced by a
 // bridge (Telegram HTML is copied verbatim from t.me) is sanitized the same
 // way as RSS descriptions.
