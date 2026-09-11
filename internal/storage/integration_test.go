@@ -24,9 +24,11 @@ import (
 	"rssam/internal/migrations"
 )
 
+func testDSN() string { return strings.TrimSpace(os.Getenv("DATABASE_URL")) }
+
 func testStore(t *testing.T) *PostgresStore {
 	t.Helper()
-	dsn := strings.TrimSpace(os.Getenv("DATABASE_URL"))
+	dsn := testDSN()
 	if dsn == "" {
 		t.Skip("DATABASE_URL not set; skipping integration test")
 	}
