@@ -1065,7 +1065,7 @@
             "$ref": "#/components/responses/InternalError"
           },
           "502": {
-            "description": "Feed fetch or parse failed.",
+            "description": "Feed fetch or parse failed. A source answering 410 Gone also pauses the feed (manual_paused) so it is not polled again.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1075,7 +1075,23 @@
             }
           },
           "503": {
-            "$ref": "#/components/responses/ServiceUnavailable"
+            "description": "Refresher not configured, or the source answered 429/503 with Retry-After: the delay in seconds is echoed in the `Retry-After` response header and the feed is not counted as failing.",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "description": "Seconds until the source accepts a request again."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }

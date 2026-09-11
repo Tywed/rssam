@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -340,6 +341,11 @@ func (s *Server) handleRefreshFeed(w http.ResponseWriter, r *http.Request) {
 		}
 		if errors.Is(err, service.ErrFetchFeed) {
 			writeError(w, http.StatusBadGateway, "feed fetch failed")
+			return
+		}
+		if at, ok := reader.RetryAt(err); ok {
+			w.Header().Set("Retry-After", strconv.Itoa(max(1, int(time.Until(at).Seconds()))))
+			writeError(w, http.StatusServiceUnavailable, "source rate limited, retry later")
 			return
 		}
 		s.log.ErrorContext(r.Context(), "refresh feed failed", "err", err)

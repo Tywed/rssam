@@ -23,6 +23,110 @@ type FetchResult struct {
 	ETag         string
 	LastModified string
 	NotModified  bool
+	// MinNextCheck is the earliest time the source wants to be asked again
+	// (Cache-Control max-age, Expires or RSS <ttl>); zero when it said nothing.
+	MinNextCheck time.Time
+}
+
+// ErrFeedGone is returned for HTTP 410: the source removed the feed for
+// good, so retrying only costs both sides traffic.
+var ErrFeedGone = errors.New("feed gone (410)")
+
+// rateLimitedError carries Retry-After from a 429/503 response.
+type rateLimitedError struct {
+	status int
+	until  time.Time
+}
+
+// Error carries no timestamp so identical rate-limit rows coalesce in the
+// poll log.
+func (e *rateLimitedError) Error() string {
+	return fmt.Sprintf("rate limited by source (status %d, Retry-After honoured)", e.status)
+}
+
+func (e *rateLimitedError) RetryAt() time.Time { return e.until }
+
+// maxServerDelay caps what a source may ask for through Retry-After,
+// max-age, Expires or <ttl>: a misconfigured header must not park a feed for
+// a week.
+const maxServerDelay = 24 * time.Hour
+
+// parseRetryAfter reads Retry-After as delay seconds or an HTTP date.
+// Zero when absent or unparsable.
+func parseRetryAfter(h string, now time.Time) time.Time {
+	h = strings.TrimSpace(h)
+	if h == "" {
+		return time.Time{}
+	}
+	if secs, err := strconv.Atoi(h); err == nil {
+		if secs <= 0 {
+			return time.Time{}
+		}
+		return now.Add(min(time.Duration(secs)*time.Second, maxServerDelay))
+	}
+	if t, err := http.ParseTime(h); err == nil && t.After(now) {
+		return now.Add(min(t.Sub(now), maxServerDelay))
+	}
+	return time.Time{}
+}
+
+// cacheFreshUntil derives the earliest sensible next poll from response
+// caching headers: Cache-Control max-age (s-maxage preferred) wins over
+// Expires. Anything under a minute is noise and ignored.
+func cacheFreshUntil(h http.Header, now time.Time) time.Time {
+	var d time.Duration
+	for directive := range strings.SplitSeq(h.Get("Cache-Control"), ",") {
+		k, v, ok := strings.Cut(strings.TrimSpace(directive), "=")
+		if !ok {
+			continue
+		}
+		k = strings.ToLower(k)
+		if k != "max-age" && k != "s-maxage" {
+			continue
+		}
+		secs, err := strconv.Atoi(strings.Trim(v, `"`))
+		if err != nil || secs <= 0 {
+			continue
+		}
+		if k == "s-maxage" {
+			d = time.Duration(secs) * time.Second
+			break
+		}
+		if d == 0 {
+			d = time.Duration(secs) * time.Second
+		}
+	}
+	if d == 0 {
+		if exp := strings.TrimSpace(h.Get("Expires")); exp != "" {
+			if t, err := http.ParseTime(exp); err == nil && t.After(now) {
+				d = t.Sub(now)
+			}
+		}
+	}
+	if d < time.Minute {
+		return time.Time{}
+	}
+	return now.Add(min(d, maxServerDelay))
+}
+
+// feedTTL reads RSS 2.0 <ttl> (minutes). gofeed keeps it only on the
+// RSS-specific feed, which the translator does not surface, so it is parsed
+// out of the raw XML before the body is handed to gofeed.
+func feedTTL(head []byte, now time.Time) time.Time {
+	i := strings.Index(string(head), "<ttl>")
+	if i < 0 {
+		return time.Time{}
+	}
+	rest := head[i+len("<ttl>"):]
+	j := strings.Index(string(rest), "</ttl>")
+	if j < 0 || j > 10 {
+		return time.Time{}
+	}
+	mins, err := strconv.Atoi(strings.TrimSpace(string(rest[:j])))
+	if err != nil || mins <= 0 {
+		return time.Time{}
+	}
+	return now.Add(min(time.Duration(mins)*time.Minute, maxServerDelay))
 }
 
 // MaxFeedBodyBytes caps how much of a feed document is read, so one hostile
@@ -101,18 +205,32 @@ func (f *RSSFetcher) Fetch(ctx context.Context, feedURL, etag, lastModified stri
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode == http.StatusNotModified {
+	now := time.Now().UTC()
+	switch resp.StatusCode {
+	case http.StatusNotModified:
 		return FetchResult{
 			NotModified:  true,
 			ETag:         resp.Header.Get("ETag"),
 			LastModified: resp.Header.Get("Last-Modified"),
+			MinNextCheck: cacheFreshUntil(resp.Header, now),
 		}, nil
-	}
-	if resp.StatusCode != http.StatusOK {
+	case http.StatusTooManyRequests, http.StatusServiceUnavailable:
+		if until := parseRetryAfter(resp.Header.Get("Retry-After"), now); !until.IsZero() {
+			return FetchResult{}, &rateLimitedError{status: resp.StatusCode, until: until}
+		}
+		return FetchResult{}, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+	case http.StatusGone:
+		return FetchResult{}, ErrFeedGone
+	case http.StatusOK:
+	default:
 		return FetchResult{}, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
 	}
 
-	parsed, err := parseLimitedFeed(f.parser, resp.Body)
+	// <ttl> sits in <channel> before the items; 4 KB of head is plenty.
+	head := make([]byte, 4096)
+	n, _ := io.ReadFull(resp.Body, head)
+	head = head[:n]
+	parsed, err := parseLimitedFeed(f.parser, io.MultiReader(strings.NewReader(string(head)), resp.Body))
 	if err != nil {
 		return FetchResult{}, fmt.Errorf("parse feed: %w", err)
 	}
@@ -122,11 +240,16 @@ func (f *RSSFetcher) Fetch(ctx context.Context, feedURL, etag, lastModified stri
 		out = append(out, normalizeItem(it))
 	}
 
+	minNext := cacheFreshUntil(resp.Header, now)
+	if ttl := feedTTL(head, now); ttl.After(minNext) {
+		minNext = ttl
+	}
 	return FetchResult{
 		Entries:      out,
 		ETag:         resp.Header.Get("ETag"),
 		LastModified: resp.Header.Get("Last-Modified"),
 		NotModified:  false,
+		MinNextCheck: minNext,
 	}, nil
 }
 

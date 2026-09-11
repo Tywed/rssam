@@ -54,6 +54,10 @@ func (s *statusFeedStore) SetFeedNextCheckAt(_ context.Context, _ int64, next ti
 	s.feed.NextCheckAt = &next
 	return nil
 }
+func (s *statusFeedStore) SetFeedManualPaused(_ context.Context, _ int64, paused bool) error {
+	s.feed.ManualPaused = paused
+	return nil
+}
 func (s *statusFeedStore) ResetFeedPollCircuit(_ context.Context, _ int64) error {
 	s.circuit++
 	s.feed.ParsingErrorCount = 0
@@ -213,5 +217,55 @@ func TestRefreshLoadedFeed_NoPollLogConfigured(t *testing.T) {
 	r.Realtime = nil
 	if _, err := r.RefreshLoadedFeed(context.Background(), feed); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestRefreshLoadedFeed_GoneFeedIsPausedForGood(t *testing.T) {
+	feed := storage.Feed{ID: 10, UserID: 1, FeedURL: "https://example.com/f.xml", IntervalMinutes: 10}
+	r, fs, pl, pub := newStatusRefresher(&stubHandler{err: reader.ErrFeedGone}, feed)
+
+	_, err := r.RefreshLoadedFeed(context.Background(), feed)
+	if !errors.Is(err, ErrFetchFeed) {
+		t.Fatalf("err=%v", err)
+	}
+	if !fs.feed.ManualPaused || fs.failures != 1 {
+		t.Fatalf("feed must be manually paused after 410: paused=%v failures=%d", fs.feed.ManualPaused, fs.failures)
+	}
+	if len(pub.feeds) != 1 || !pub.feeds[0].ManualPaused || pub.feeds[0].LastError == "" {
+		t.Fatalf("published %+v", pub.feeds)
+	}
+	if len(pl.rows) != 1 || pl.rows[0].OK {
+		t.Fatalf("poll log %+v", pl.rows)
+	}
+}
+
+func TestRefreshLoadedFeed_SourceFreshnessPostponesNextCheck(t *testing.T) {
+	feed := storage.Feed{ID: 11, UserID: 1, FeedURL: "https://example.com/f.xml", IntervalMinutes: 15}
+	h := &stubHandler{res: reader.FetchResponse{MinNextCheck: time.Now().Add(2 * time.Hour)}}
+	r, fs, _, _ := newStatusRefresher(h, feed)
+	if _, err := r.RefreshLoadedFeed(context.Background(), feed); err != nil {
+		t.Fatal(err)
+	}
+	if d := time.Until(fs.next); d < 2*time.Hour-5*time.Second || d > 2*time.Hour+5*time.Second {
+		t.Fatalf("next_check_at delay=%s, want ~2h (source max-age)", d)
+	}
+
+	// A hint shorter than the feed interval does not bring the poll forward.
+	h.res.MinNextCheck = time.Now().Add(time.Minute)
+	if _, err := r.RefreshLoadedFeed(context.Background(), feed); err != nil {
+		t.Fatal(err)
+	}
+	if d := time.Until(fs.next); d < 15*time.Minute-5*time.Second {
+		t.Fatalf("next_check_at delay=%s, want ~15m", d)
+	}
+
+	// And never beyond MaxPollInterval.
+	r.MaxPollInterval = time.Hour
+	h.res.MinNextCheck = time.Now().Add(6 * time.Hour)
+	if _, err := r.RefreshLoadedFeed(context.Background(), feed); err != nil {
+		t.Fatal(err)
+	}
+	if d := time.Until(fs.next); d > time.Hour+5*time.Second {
+		t.Fatalf("next_check_at delay=%s, want ≤1h", d)
 	}
 }

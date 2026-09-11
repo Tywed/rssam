@@ -36,6 +36,8 @@ type FetchResponse struct {
 	LastModified string
 	NotModified  bool
 	BridgeState  BridgeState
+	// MinNextCheck: see FetchResult.MinNextCheck.
+	MinNextCheck time.Time
 }
 
 // Handler fetches entries from a single source type.

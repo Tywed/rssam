@@ -239,6 +239,17 @@ func (r *FeedRefresher) refreshLoaded(ctx context.Context, feed storage.Feed, ma
 			return 0, fetchErr
 		}
 		after := r.recordFailure(ctx, feed, now, fetchErr, bridgeStateJSON(res.BridgeState))
+		if errors.Is(fetchErr, reader.ErrFeedGone) {
+			// 410 is final: park the feed the same way an admin would, so
+			// neither the backoff nor the daily reset polls it again. The
+			// error text stays visible on the feed until someone deletes it
+			// or changes the URL.
+			if err := r.Feeds.SetFeedManualPaused(ctx, feedID, true); err != nil {
+				r.logger().Error("pause gone feed failed", "feed_id", feedID, "err", err)
+			} else {
+				after.ManualPaused = true
+			}
+		}
 		err := fmt.Errorf("%w: %w", ErrFetchFeed, fetchErr)
 		r.recordPoll(ctx, feedID, now, started, 0, err)
 		if r.Realtime != nil {
@@ -285,6 +296,15 @@ func (r *FeedRefresher) refreshLoaded(ctx context.Context, feed storage.Feed, ma
 
 	min, max := r.pollBounds()
 	next := storage.FeedNextCheckAt(now, feed.IntervalMinutes, min, max)
+	// The source's own freshness hint (max-age/Expires/<ttl>) only ever
+	// postpones a poll, never brings it forward, and stays inside the
+	// configured maximum.
+	if res.MinNextCheck.After(next) {
+		next = res.MinNextCheck
+		if limit := now.Add(max); next.After(limit) {
+			next = limit
+		}
+	}
 	if err := r.Feeds.UpdateFeedRefreshMeta(ctx, storage.UpdateFeedRefreshMetaParams{
 		ID:            feedID,
 		ETag:          etag,
