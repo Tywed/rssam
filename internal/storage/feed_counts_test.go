@@ -107,7 +107,7 @@ func TestIntegration_CountFeedStatuses(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.RecordFeedPollFailure(ctx, f2.ID, "timeout", 2, f2.CreatedAt); err != nil {
+	if err := store.RecordFeedPollFailure(ctx, RecordFeedPollFailureParams{ID: f2.ID, Error: "timeout", Threshold: 2, CheckedAt: f2.CreatedAt, NextCheckAt: f2.CreatedAt}); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.SetFeedManualPaused(ctx, f1.ID, true); err != nil {

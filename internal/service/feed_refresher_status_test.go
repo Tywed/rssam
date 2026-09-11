@@ -25,13 +25,15 @@ type statusFeedStore struct {
 func (s *statusFeedStore) GetFeedByID(_ context.Context, _ int64) (storage.Feed, error) {
 	return s.feed, nil
 }
-func (s *statusFeedStore) RecordFeedPollFailure(_ context.Context, _ int64, msg string, threshold int, at time.Time) error {
+func (s *statusFeedStore) RecordFeedPollFailure(_ context.Context, p storage.RecordFeedPollFailureParams) error {
 	s.failures++
-	s.threshold = threshold
+	s.threshold = p.Threshold
 	s.feed.ParsingErrorCount++
-	s.feed.PollPaused = s.feed.ParsingErrorCount >= threshold
-	s.feed.LastError = msg
-	s.feed.LastCheckedAt = &at
+	s.feed.PollPaused = s.feed.ParsingErrorCount >= p.Threshold
+	s.feed.LastError = p.Error
+	s.feed.LastCheckedAt = &p.CheckedAt
+	s.next = p.NextCheckAt
+	s.feed.NextCheckAt = &p.NextCheckAt
 	return nil
 }
 func (s *statusFeedStore) UpdateFeedRefreshMeta(_ context.Context, p storage.UpdateFeedRefreshMetaParams) error {
@@ -41,6 +43,10 @@ func (s *statusFeedStore) UpdateFeedRefreshMeta(_ context.Context, p storage.Upd
 		s.feed.PollPaused = false
 	}
 	s.feed.LastError = p.LastError
+	if p.NextCheckAt != nil {
+		s.next = *p.NextCheckAt
+		s.feed.NextCheckAt = p.NextCheckAt
+	}
 	return nil
 }
 func (s *statusFeedStore) SetFeedNextCheckAt(_ context.Context, _ int64, next time.Time) error {

@@ -3,11 +3,14 @@ package storage
 import (
 	"context"
 	"fmt"
-	"time"
 )
 
-// RecordFeedPollFailure increments consecutive error count and may pause background polling.
-func (s *PostgresStore) RecordFeedPollFailure(ctx context.Context, feedID int64, errMsg string, threshold int, checkedAt time.Time) error {
+// RecordFeedPollFailure persists everything a failed poll changes on the feed
+// row in one UPDATE: consecutive error count (and circuit-breaker pause once
+// it reaches Threshold), last error, check time, error-backoff next check and
+// bridge state.
+func (s *PostgresStore) RecordFeedPollFailure(ctx context.Context, params RecordFeedPollFailureParams) error {
+	threshold := params.Threshold
 	if threshold <= 0 {
 		threshold = 10
 	}
@@ -17,9 +20,11 @@ SET parsing_error_count = parsing_error_count + 1,
     poll_paused = (parsing_error_count + 1 >= $3),
     last_error = $2,
     last_checked_at = $4,
+    next_check_at = $5,
+    bridge_state = COALESCE($6::jsonb, bridge_state),
     updated_at = now()
 WHERE id = $1`
-	cmd, err := s.db.Exec(ctx, q, feedID, errMsg, threshold, checkedAt)
+	cmd, err := s.db.Exec(ctx, q, params.ID, params.Error, threshold, params.CheckedAt, params.NextCheckAt, params.BridgeState)
 	if err != nil {
 		return fmt.Errorf("record feed poll failure: %w", err)
 	}

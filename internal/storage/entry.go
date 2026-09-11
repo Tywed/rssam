@@ -322,9 +322,10 @@ SET etag = $2,
     bridge_state = COALESCE($6::jsonb, bridge_state),
     parsing_error_count = CASE WHEN $5 = '' THEN 0 ELSE parsing_error_count END,
     poll_paused = CASE WHEN $5 = '' THEN FALSE ELSE poll_paused END,
+    next_check_at = COALESCE($7, next_check_at),
     updated_at = now()
 WHERE id = $1`
-	cmd, err := s.db.Exec(ctx, q, params.ID, params.ETag, params.LastModified, params.LastCheckedAt, params.LastError, bridgeState)
+	cmd, err := s.db.Exec(ctx, q, params.ID, params.ETag, params.LastModified, params.LastCheckedAt, params.LastError, bridgeState, params.NextCheckAt)
 	if err != nil {
 		return fmt.Errorf("update feed refresh meta: %w", err)
 	}

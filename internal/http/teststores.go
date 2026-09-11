@@ -117,7 +117,7 @@ func (noopFeedStore) UpdateFeedIcon(_ context.Context, _, _ int64, _ string, _ [
 func (noopFeedStore) SetFeedNextCheckAt(_ context.Context, _ int64, _ time.Time) error {
 	return nil
 }
-func (noopFeedStore) RecordFeedPollFailure(_ context.Context, _ int64, _ string, _ int, _ time.Time) error {
+func (noopFeedStore) RecordFeedPollFailure(_ context.Context, _ storage.RecordFeedPollFailureParams) error {
 	return nil
 }
 func (noopFeedStore) ResetFeedPollCircuit(_ context.Context, _ int64) error { return nil }

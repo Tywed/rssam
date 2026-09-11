@@ -188,7 +188,7 @@ func (m *uiMemFeeds) UpdateFeedIcon(context.Context, int64, int64, string, []byt
 	return nil
 }
 func (m *uiMemFeeds) SetFeedNextCheckAt(context.Context, int64, time.Time) error { return nil }
-func (m *uiMemFeeds) RecordFeedPollFailure(context.Context, int64, string, int, time.Time) error {
+func (m *uiMemFeeds) RecordFeedPollFailure(context.Context, storage.RecordFeedPollFailureParams) error {
 	return nil
 }
 func (m *uiMemFeeds) ResetFeedPollCircuit(_ context.Context, id int64) error {

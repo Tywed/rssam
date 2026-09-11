@@ -96,19 +96,6 @@ func (r *FeedRefresher) logger() *slog.Logger {
 // errors are logged, not swallowed: a dead database would otherwise silently
 // stop feeds from being paused/marked.
 func (r *FeedRefresher) recordFailure(ctx context.Context, feed storage.Feed, now time.Time, cause error, bridgeState []byte) storage.Feed {
-	if err := r.Feeds.RecordFeedPollFailure(ctx, feed.ID, cause.Error(), r.circuitThreshold(), now); err != nil {
-		r.logger().Error("record feed poll failure failed", "feed_id", feed.ID, "err", err)
-	}
-	if err := r.Feeds.UpdateFeedRefreshMeta(ctx, storage.UpdateFeedRefreshMetaParams{
-		ID:            feed.ID,
-		ETag:          feed.ETag,
-		LastModified:  feed.LastModified,
-		LastCheckedAt: now,
-		LastError:     cause.Error(),
-		BridgeState:   bridgeState,
-	}); err != nil {
-		r.logger().Error("update feed refresh meta failed", "feed_id", feed.ID, "err", err)
-	}
 	after := feed
 	after.ParsingErrorCount = feed.ParsingErrorCount + 1
 	after.PollPaused = feed.PollPaused || after.ParsingErrorCount >= r.circuitThreshold()
@@ -117,10 +104,17 @@ func (r *FeedRefresher) recordFailure(ctx context.Context, feed storage.Feed, no
 	// Same backoff the worker applies to the job: base interval × 2^errors.
 	min, max := r.pollBounds()
 	next := storage.FeedNextCheckAfterError(now, feed.IntervalMinutes, after.ParsingErrorCount, min, max)
-	if err := r.Feeds.SetFeedNextCheckAt(ctx, feed.ID, next); err != nil {
-		r.logger().Warn("set next_check_at after failure failed", "feed_id", feed.ID, "err", err)
-	}
 	after.NextCheckAt = &next
+	if err := r.Feeds.RecordFeedPollFailure(ctx, storage.RecordFeedPollFailureParams{
+		ID:          feed.ID,
+		Error:       cause.Error(),
+		Threshold:   r.circuitThreshold(),
+		CheckedAt:   now,
+		NextCheckAt: next,
+		BridgeState: bridgeState,
+	}); err != nil {
+		r.logger().Error("record feed poll failure failed", "feed_id", feed.ID, "err", err)
+	}
 	return after
 }
 
@@ -289,17 +283,18 @@ func (r *FeedRefresher) refreshLoaded(ctx context.Context, feed storage.Feed, ma
 		lastMod = feed.LastModified
 	}
 
-	_ = r.Feeds.UpdateFeedRefreshMeta(ctx, storage.UpdateFeedRefreshMetaParams{
+	min, max := r.pollBounds()
+	next := storage.FeedNextCheckAt(now, feed.IntervalMinutes, min, max)
+	if err := r.Feeds.UpdateFeedRefreshMeta(ctx, storage.UpdateFeedRefreshMetaParams{
 		ID:            feedID,
 		ETag:          etag,
 		LastModified:  lastMod,
 		LastCheckedAt: now,
 		LastError:     "",
 		BridgeState:   bridgeStateJSON(res.BridgeState),
-	})
-	next, err := r.scheduleNextCheck(ctx, feedID, feed.IntervalMinutes, now)
-	if err != nil {
-		r.logger().Warn("set next_check_at after success failed", "feed_id", feedID, "err", err)
+		NextCheckAt:   &next,
+	}); err != nil {
+		r.logger().Error("update feed refresh meta failed", "feed_id", feedID, "err", err)
 	}
 	r.recordPoll(ctx, feedID, now, started, inserted, nil)
 	if r.Realtime != nil {

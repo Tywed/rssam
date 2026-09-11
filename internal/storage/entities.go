@@ -246,7 +246,7 @@ type FeedStore interface {
 	UpdateFeedRefreshMeta(ctx context.Context, params UpdateFeedRefreshMetaParams) error
 	UpdateFeedIcon(ctx context.Context, userID, feedID int64, iconURL string, iconData []byte) error
 	SetFeedNextCheckAt(ctx context.Context, feedID int64, nextCheckAt time.Time) error
-	RecordFeedPollFailure(ctx context.Context, feedID int64, errMsg string, threshold int, checkedAt time.Time) error
+	RecordFeedPollFailure(ctx context.Context, params RecordFeedPollFailureParams) error
 	ResetFeedPollCircuit(ctx context.Context, feedID int64) error
 	ResetErrorFeedPollCircuits(ctx context.Context) (int64, error)
 	SetFeedManualPaused(ctx context.Context, feedID int64, paused bool) error
@@ -421,6 +421,18 @@ type UpdateFeedRefreshMetaParams struct {
 	LastCheckedAt time.Time
 	LastError     string
 	BridgeState   []byte
+	// NextCheckAt, when set, is written in the same UPDATE (one row version
+	// per poll instead of two).
+	NextCheckAt *time.Time
+}
+
+type RecordFeedPollFailureParams struct {
+	ID          int64
+	Error       string
+	Threshold   int
+	CheckedAt   time.Time
+	NextCheckAt time.Time
+	BridgeState []byte
 }
 
 type CreateEntryParams struct {
