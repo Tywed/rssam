@@ -68,12 +68,17 @@ func (s *PostgresStore) CreateEntries(ctx context.Context, feedID int64, entries
 		byHash[e.Hash] = e
 	}
 
+	// feed_entry_dedup holds the hashes of rows that were collapsed or
+	// deleted by retention; without this filter every such item would come
+	// back as a fresh unread entry on the next poll. Same rule as
+	// FilterKnownEntryHashes on the hash-only path.
 	vecExpr := ftsVectorExprPlaceholders(s.ftsLanguage, "x.title", "x.content")
 	q := `
 INSERT INTO entries(feed_id, user_id, title, url, content, author, published_at, hash, status, search_vector)
 SELECT $1, $2, x.title, x.url, x.content, NULLIF(x.author, ''), x.published_at, x.hash, x.status, ` + vecExpr + `
 FROM unnest($3::text[], $4::text[], $5::text[], $6::text[], $7::timestamptz[], $8::text[], $9::text[])
   AS x(title, url, content, author, published_at, hash, status)
+WHERE NOT EXISTS (SELECT 1 FROM feed_entry_dedup d WHERE d.feed_id = $1 AND d.hash = x.hash)
 ON CONFLICT (feed_id, hash) DO NOTHING
 RETURNING id, feed_id, title, url, author, published_at, hash, status, starred, created_at, updated_at`
 

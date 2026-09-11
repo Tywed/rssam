@@ -113,4 +113,18 @@ UPDATE feed_entry_dedup SET first_seen_at = $3 WHERE feed_id = $1 AND hash = $2`
 	if dedupCount != 1 {
 		t.Fatalf("dedup rows=%d want 1", dedupCount)
 	}
+
+	// A hash recorded in feed_entry_dedup (collapsed or retention-deleted
+	// row) must not be re-inserted by the full-storage path either.
+	n, inserted, err = store.CreateEntries(ctx, feed.ID, []CreateEntryParams{{
+		Title: "Collapsed comes back", URL: "https://example.com/collapsed-" + suffix, Hash: "dedup-new-" + suffix,
+	}, {
+		Title: "Fresh", URL: "https://example.com/fresh-" + suffix, Hash: "fresh-" + suffix,
+	}})
+	if err != nil {
+		t.Fatalf("create entries after dedup: %v", err)
+	}
+	if n != 1 || len(inserted) != 1 || inserted[0].Hash != "fresh-"+suffix {
+		t.Fatalf("known dedup hash was re-inserted: n=%d inserted=%+v", n, inserted)
+	}
 }
