@@ -172,3 +172,13 @@ func withTx(ctx context.Context, db *pgxpool.Pool, fn func(pgx.Tx) error) error 
 	}
 	return tx.Commit(ctx)
 }
+
+// Source returns the SQL of one embedded migration; tests replay data
+// migrations against rows created after they were applied.
+func Source(name string) (string, error) {
+	body, err := fs.ReadFile(embedded, name)
+	if err != nil {
+		return "", fmt.Errorf("read migration %s: %w", name, err)
+	}
+	return string(body), nil
+}

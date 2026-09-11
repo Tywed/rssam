@@ -289,7 +289,7 @@ rssam webhook POST
 | `since_id` + cron | не нужен — rssam сам опрашивает ленты |
 | Отдельный state Max/TG | два webhook в rssam или маршрутизация в приёмнике |
 | `build_max_text()` | `feed.Title` + `entry.Title` + `entry.URL` (+ `filter.Name`) |
-| UTM-очистка ссылок | `rewrite_rules` на ленте в rssam или в приёмнике |
+| UTM-очистка ссылок | rssam убирает `utm_*`, `yclid`, `fbclid` и подобные параметры сам (0.1.11); остальное — `rewrite_rules` на ленте или в приёмнике |
 
 ### Идемпотентность на стороне приёмника
 
