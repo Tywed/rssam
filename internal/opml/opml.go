@@ -36,6 +36,7 @@ type Outline struct {
 	RssamFetchViaProxy string `xml:"https://github.com/Tywed/rssam/opml fetchViaProxy,attr"`
 	RssamCrawler       string `xml:"https://github.com/Tywed/rssam/opml crawler,attr"`
 	RssamHashOnly      string `xml:"https://github.com/Tywed/rssam/opml hashOnly,attr"`
+	RssamAdaptive      string `xml:"https://github.com/Tywed/rssam/opml adaptiveInterval,attr"`
 	RssamRetentionDays string `xml:"https://github.com/Tywed/rssam/opml retentionDays,attr"`
 	RssamUserAgent     string `xml:"https://github.com/Tywed/rssam/opml userAgent,attr"`
 	RssamWebhook       string `xml:"https://github.com/Tywed/rssam/opml webhook,attr"`
@@ -48,14 +49,15 @@ type Outline struct {
 // FeedSettings are the rssam-specific per-feed settings carried in OPML.
 // Zero values mean "not specified": the importer keeps its defaults.
 type FeedSettings struct {
-	FeedType        string
-	IntervalMinutes int // 0 = not specified
-	TLSInsecure     bool
-	FetchViaProxy   bool
-	Crawler         bool
-	StoreHashOnly   bool
-	RetentionDays   *int // nil = not specified
-	UserAgent       string
+	FeedType         string
+	IntervalMinutes  int // 0 = not specified
+	TLSInsecure      bool
+	FetchViaProxy    bool
+	Crawler          bool
+	StoreHashOnly    bool
+	AdaptiveInterval bool
+	RetentionDays    *int // nil = not specified
+	UserAgent        string
 	// WebhookName is the name of the webhook the feed was bound to. Webhook
 	// IDs are not portable between instances, so the binding is restored by
 	// name on import (and skipped with a report entry when there is no match).
@@ -220,6 +222,7 @@ func settingsFromOutline(o Outline) (FeedSettings, []string) {
 	boolAttr("fetchViaProxy", o.RssamFetchViaProxy, &fs.FetchViaProxy)
 	boolAttr("crawler", o.RssamCrawler, &fs.Crawler)
 	boolAttr("hashOnly", o.RssamHashOnly, &fs.StoreHashOnly)
+	boolAttr("adaptiveInterval", o.RssamAdaptive, &fs.AdaptiveInterval)
 	fs.UserAgent = strings.TrimSpace(o.RssamUserAgent)
 	fs.WebhookName = strings.TrimSpace(o.RssamWebhook)
 	fs.ScraperRules = strings.TrimSpace(o.RssamScraperRules)
@@ -352,6 +355,9 @@ func writeSettingsAttrs(b *bytes.Buffer, s FeedSettings) {
 	}
 	if s.StoreHashOnly {
 		attr("hashOnly", "true")
+	}
+	if s.AdaptiveInterval {
+		attr("adaptiveInterval", "true")
 	}
 	if s.RetentionDays != nil && *s.RetentionDays > 0 {
 		attr("retentionDays", strconv.Itoa(*s.RetentionDays))

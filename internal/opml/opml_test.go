@@ -93,19 +93,20 @@ func TestSettingsRoundtrip(t *testing.T) {
 				Title:   "Telegram",
 				FeedURL: "https://t.me/s/golang",
 				Settings: FeedSettings{
-					FeedType:        "telegram",
-					IntervalMinutes: 15,
-					TLSInsecure:     true,
-					FetchViaProxy:   true,
-					Crawler:         true,
-					StoreHashOnly:   true,
-					RetentionDays:   &retention,
-					UserAgent:       "custom-ua/1.0",
-					WebhookName:     `alerts "prod" & staging`,
-					ScraperRules:    "article",
-					RewriteRules:    "rewrite-rule(\"a\",\"b\")",
-					BlockedRules:    "spam|ads\nline two",
-					KeepRules:       "go",
+					FeedType:         "telegram",
+					IntervalMinutes:  15,
+					TLSInsecure:      true,
+					FetchViaProxy:    true,
+					Crawler:          true,
+					StoreHashOnly:    true,
+					AdaptiveInterval: true,
+					RetentionDays:    &retention,
+					UserAgent:        "custom-ua/1.0",
+					WebhookName:      `alerts "prod" & staging`,
+					ScraperRules:     "article",
+					RewriteRules:     "rewrite-rule(\"a\",\"b\")",
+					BlockedRules:     "spam|ads\nline two",
+					KeepRules:        "go",
 				},
 			},
 			{Title: "Plain", FeedURL: "https://example.com/rss", Settings: FeedSettings{FeedType: "rss", IntervalMinutes: 0}},
@@ -140,7 +141,7 @@ func TestSettingsRoundtrip(t *testing.T) {
 	}
 	want := in.Feeds[0].Settings
 	if got.Settings.FeedType != want.FeedType || got.Settings.IntervalMinutes != want.IntervalMinutes ||
-		!got.Settings.TLSInsecure || !got.Settings.FetchViaProxy || !got.Settings.Crawler || !got.Settings.StoreHashOnly ||
+		!got.Settings.TLSInsecure || !got.Settings.FetchViaProxy || !got.Settings.Crawler || !got.Settings.StoreHashOnly || !got.Settings.AdaptiveInterval ||
 		got.Settings.RetentionDays == nil || *got.Settings.RetentionDays != retention ||
 		got.Settings.UserAgent != want.UserAgent || got.Settings.WebhookName != want.WebhookName ||
 		got.Settings.ScraperRules != want.ScraperRules || got.Settings.RewriteRules != want.RewriteRules ||

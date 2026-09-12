@@ -162,6 +162,46 @@ func (h *Handler) handleCategoryBulkHashOnly(w http.ResponseWriter, r *http.Requ
 	h.renderFeedsListFlash(w, r, flash)
 }
 
+func (h *Handler) handleCategoryBulkAdaptive(w http.ResponseWriter, r *http.Request) {
+	if !h.validateCSRF(r) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	p, _ := principal(r)
+	categoryID, err := parseCategoryPathID(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	_ = r.ParseForm()
+	var enabled bool
+	switch strings.TrimSpace(r.FormValue("action")) {
+	case "enable":
+		enabled = true
+	case "disable":
+		enabled = false
+	default:
+		http.Error(w, "invalid action", http.StatusBadRequest)
+		return
+	}
+	_, count, err := h.cfg.Feeds.BulkUpdateFeedsByCategory(r.Context(), p.UserID, categoryID, storage.BulkFeedUpdate{
+		AdaptiveInterval: &enabled,
+	})
+	if err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			http.NotFound(w, r)
+			return
+		}
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	label := "выключен"
+	if enabled {
+		label = "включён"
+	}
+	h.renderFeedsListFlash(w, r, fmt.Sprintf("Адаптивный интервал %s для %d лент", label, count))
+}
+
 func (h *Handler) handleCategoryBulkHashEntries(w http.ResponseWriter, r *http.Request) {
 	if !h.validateCSRF(r) {
 		http.Error(w, "forbidden", http.StatusForbidden)

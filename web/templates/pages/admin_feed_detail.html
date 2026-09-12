@@ -52,7 +52,7 @@
         <tr><th>URL</th><td>{{.AdminFeedDetail.Feed.FeedURL}}</td></tr>
         <tr><th>Тип</th><td>{{feedTypeLabel .AdminFeedDetail.Feed.FeedType}}</td></tr>
         {{if .AdminFeedDetail.OwnerName}}<tr><th>Владелец</th><td>{{.AdminFeedDetail.OwnerName}}</td></tr>{{end}}
-        <tr><th>Интервал</th><td>{{.AdminFeedDetail.Feed.IntervalMinutes}} мин</td></tr>
+        <tr><th>Интервал</th><td>{{.AdminFeedDetail.Feed.IntervalMinutes}} мин{{if .AdminFeedDetail.Feed.AdaptiveInterval}} (адаптивный){{end}}</td></tr>
         <tr><th>Последний опрос</th><td>{{formatTime .AdminFeedDetail.Feed.LastCheckedAt}}</td></tr>
         <tr><th>Следующий опрос</th><td>{{formatTime .AdminFeedDetail.Feed.NextCheckAt}}</td></tr>
         <tr><th>Последняя запись</th><td>{{if .AdminFeedDetail.Feed.LastEntryAt}}{{formatTime .AdminFeedDetail.Feed.LastEntryAt}}{{else}}—{{end}}</td></tr>

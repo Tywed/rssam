@@ -175,19 +175,19 @@ func (s *PostgresStore) CreateFeed(ctx context.Context, userID int64, params Cre
 		feedType = "rss"
 	}
 	const q = `
-INSERT INTO feeds(user_id, feed_url, feed_type, title, category_id, interval_minutes, scraper_rules, rewrite_rules, blocked_rules, keep_rules, fetch_via_proxy, tls_insecure, crawler, user_agent, webhook_id, store_hash_only, entry_retention_days, bridge_state)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, COALESCE($18::jsonb, '{}'::jsonb))
-RETURNING id, user_id, feed_url, feed_type, title, category_id, interval_minutes, scraper_rules, rewrite_rules, blocked_rules, keep_rules, fetch_via_proxy, tls_insecure, crawler, user_agent, webhook_id, store_hash_only, entry_retention_days, created_at, updated_at`
+INSERT INTO feeds(user_id, feed_url, feed_type, title, category_id, interval_minutes, scraper_rules, rewrite_rules, blocked_rules, keep_rules, fetch_via_proxy, tls_insecure, crawler, user_agent, webhook_id, store_hash_only, entry_retention_days, bridge_state, adaptive_interval)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, COALESCE($18::jsonb, '{}'::jsonb), $19)
+RETURNING id, user_id, feed_url, feed_type, title, category_id, interval_minutes, scraper_rules, rewrite_rules, blocked_rules, keep_rules, fetch_via_proxy, tls_insecure, crawler, user_agent, webhook_id, store_hash_only, entry_retention_days, adaptive_interval, created_at, updated_at`
 	var f Feed
 	err := s.db.QueryRow(ctx, q,
 		userID,
 		params.FeedURL, feedType, params.Title, params.CategoryID, params.IntervalMinutes,
 		params.ScraperRules, params.RewriteRules, params.BlockedRules, params.KeepRules,
-		params.FetchViaProxy, params.TLSInsecure, params.Crawler, params.UserAgent, params.WebhookID, params.StoreHashOnly, params.EntryRetentionDays, nullableJSON(params.BridgeState),
+		params.FetchViaProxy, params.TLSInsecure, params.Crawler, params.UserAgent, params.WebhookID, params.StoreHashOnly, params.EntryRetentionDays, nullableJSON(params.BridgeState), params.AdaptiveInterval,
 	).Scan(
 		&f.ID, &f.UserID, &f.FeedURL, &f.FeedType, &f.Title, &f.CategoryID, &f.IntervalMinutes,
 		&f.ScraperRules, &f.RewriteRules, &f.BlockedRules, &f.KeepRules,
-		&f.FetchViaProxy, &f.TLSInsecure, &f.Crawler, &f.UserAgent, &f.WebhookID, &f.StoreHashOnly, &f.EntryRetentionDays,
+		&f.FetchViaProxy, &f.TLSInsecure, &f.Crawler, &f.UserAgent, &f.WebhookID, &f.StoreHashOnly, &f.EntryRetentionDays, &f.AdaptiveInterval,
 		&f.CreatedAt, &f.UpdatedAt,
 	)
 	if err != nil {
@@ -217,14 +217,14 @@ func (s *PostgresStore) GetFeedByID(ctx context.Context, id int64) (Feed, error)
 // selects this set so that a Feed from a list is as complete as one from
 // GetFeed (rules, flags, poll state, bridge state).
 const feedColumns = `id, user_id, feed_url, feed_type, title, category_id, interval_minutes, etag, last_modified, last_checked_at, last_error,
-       parsing_error_count, poll_paused, manual_paused, store_hash_only, entry_retention_days, next_check_at,
+       parsing_error_count, poll_paused, manual_paused, store_hash_only, entry_retention_days, adaptive_interval, next_check_at,
        bridge_state, scraper_rules, rewrite_rules, blocked_rules, keep_rules, fetch_via_proxy, tls_insecure, crawler, user_agent,
        webhook_id, icon_url, last_entry_at, created_at, updated_at`
 
 func feedScanTargets(f *Feed) []any {
 	return []any{
 		&f.ID, &f.UserID, &f.FeedURL, &f.FeedType, &f.Title, &f.CategoryID, &f.IntervalMinutes, &f.ETag, &f.LastModified, &f.LastCheckedAt, &f.LastError,
-		&f.ParsingErrorCount, &f.PollPaused, &f.ManualPaused, &f.StoreHashOnly, &f.EntryRetentionDays, &f.NextCheckAt,
+		&f.ParsingErrorCount, &f.PollPaused, &f.ManualPaused, &f.StoreHashOnly, &f.EntryRetentionDays, &f.AdaptiveInterval, &f.NextCheckAt,
 		&f.BridgeState, &f.ScraperRules, &f.RewriteRules, &f.BlockedRules, &f.KeepRules, &f.FetchViaProxy, &f.TLSInsecure, &f.Crawler, &f.UserAgent,
 		&f.WebhookID, &f.IconURL, &f.LastEntryAt, &f.CreatedAt, &f.UpdatedAt,
 	}
@@ -360,18 +360,19 @@ SET feed_url = $3, title = $4, category_id = $5, interval_minutes = $6,
     store_hash_only = $16,
     entry_retention_days = $17,
     bridge_state = COALESCE($18::jsonb, bridge_state),
+    adaptive_interval = $19,
     updated_at = now()
 WHERE id = $1 AND user_id = $2
-RETURNING id, user_id, feed_url, title, category_id, interval_minutes, scraper_rules, rewrite_rules, blocked_rules, keep_rules, fetch_via_proxy, tls_insecure, crawler, user_agent, webhook_id, store_hash_only, entry_retention_days, created_at, updated_at`
+RETURNING id, user_id, feed_url, title, category_id, interval_minutes, scraper_rules, rewrite_rules, blocked_rules, keep_rules, fetch_via_proxy, tls_insecure, crawler, user_agent, webhook_id, store_hash_only, entry_retention_days, adaptive_interval, created_at, updated_at`
 	var f Feed
 	err := s.db.QueryRow(ctx, q,
 		params.ID, userID, params.FeedURL, params.Title, params.CategoryID, params.IntervalMinutes,
 		params.ScraperRules, params.RewriteRules, params.BlockedRules, params.KeepRules,
-		params.FetchViaProxy, params.TLSInsecure, params.Crawler, params.UserAgent, params.WebhookID, params.StoreHashOnly, params.EntryRetentionDays, nullableJSON(params.BridgeState),
+		params.FetchViaProxy, params.TLSInsecure, params.Crawler, params.UserAgent, params.WebhookID, params.StoreHashOnly, params.EntryRetentionDays, nullableJSON(params.BridgeState), params.AdaptiveInterval,
 	).Scan(
 		&f.ID, &f.UserID, &f.FeedURL, &f.Title, &f.CategoryID, &f.IntervalMinutes,
 		&f.ScraperRules, &f.RewriteRules, &f.BlockedRules, &f.KeepRules,
-		&f.FetchViaProxy, &f.TLSInsecure, &f.Crawler, &f.UserAgent, &f.WebhookID, &f.StoreHashOnly, &f.EntryRetentionDays,
+		&f.FetchViaProxy, &f.TLSInsecure, &f.Crawler, &f.UserAgent, &f.WebhookID, &f.StoreHashOnly, &f.EntryRetentionDays, &f.AdaptiveInterval,
 		&f.CreatedAt, &f.UpdatedAt,
 	)
 	if err != nil {

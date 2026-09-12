@@ -105,7 +105,7 @@ LIMIT $1`
 
 const adminFeedSelectCols = `
   f.id, f.user_id, f.feed_url, f.feed_type, f.title, f.category_id, f.interval_minutes,
-  f.etag, f.last_modified, f.last_checked_at, f.last_error, f.parsing_error_count, f.poll_paused, f.manual_paused, f.store_hash_only, f.next_check_at,
+  f.etag, f.last_modified, f.last_checked_at, f.last_error, f.parsing_error_count, f.poll_paused, f.manual_paused, f.store_hash_only, f.adaptive_interval, f.next_check_at,
   f.bridge_state, f.scraper_rules, f.rewrite_rules, f.blocked_rules, f.keep_rules,
   f.fetch_via_proxy, f.tls_insecure, f.crawler, f.user_agent, f.webhook_id, f.icon_url, f.icon_data, f.last_entry_at,
   f.created_at, f.updated_at,
@@ -206,6 +206,7 @@ func scanAdminFeedRow(rows pgx.Rows) (AdminFeedRow, error) {
 		&row.PollPaused,
 		&row.ManualPaused,
 		&row.StoreHashOnly,
+		&row.AdaptiveInterval,
 		&row.NextCheckAt,
 		&row.BridgeState,
 		&row.ScraperRules,

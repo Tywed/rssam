@@ -51,19 +51,22 @@ type Feed struct {
 	ManualPaused       bool
 	StoreHashOnly      bool
 	EntryRetentionDays *int
-	NextCheckAt        *time.Time
-	BridgeState        []byte
-	ScraperRules       string
-	RewriteRules       string
-	BlockedRules       string
-	KeepRules          string
-	FetchViaProxy      bool
-	TLSInsecure        bool
-	Crawler            bool
-	UserAgent          string
-	WebhookID          *int64
-	IconURL            string
-	IconData           []byte
+	// AdaptiveInterval stretches the poll interval up to the configured
+	// maximum according to how often the feed actually publishes.
+	AdaptiveInterval bool
+	NextCheckAt      *time.Time
+	BridgeState      []byte
+	ScraperRules     string
+	RewriteRules     string
+	BlockedRules     string
+	KeepRules        string
+	FetchViaProxy    bool
+	TLSInsecure      bool
+	Crawler          bool
+	UserAgent        string
+	WebhookID        *int64
+	IconURL          string
+	IconData         []byte
 	// LastEntryAt is when the feed last yielded a new entry (or dedup hash).
 	LastEntryAt *time.Time
 	CreatedAt   time.Time
@@ -267,6 +270,12 @@ type JobStore interface {
 	RescheduleJob(ctx context.Context, jobID int64, lockedBy string, runAt time.Time, lastError string) error
 }
 
+// FeedActivityStore answers "how many items did this feed deliver lately"
+// for adaptive polling.
+type FeedActivityStore interface {
+	CountFeedItemsSince(ctx context.Context, feedID int64, since time.Time) (int, error)
+}
+
 type EntryDedupStore interface {
 	FilterKnownEntryHashes(ctx context.Context, feedID int64, hashes []string) (map[string]struct{}, error)
 	RecordFeedEntryDedup(ctx context.Context, feedID int64, items []FeedEntryDedupParams) (int, error)
@@ -393,6 +402,7 @@ type CreateFeedParams struct {
 	WebhookID          *int64
 	StoreHashOnly      bool
 	EntryRetentionDays *int
+	AdaptiveInterval   bool
 	BridgeState        []byte
 }
 
@@ -413,6 +423,7 @@ type UpdateFeedParams struct {
 	WebhookID          *int64
 	StoreHashOnly      bool
 	EntryRetentionDays *int
+	AdaptiveInterval   bool
 	BridgeState        []byte
 }
 
@@ -469,6 +480,7 @@ type BulkFeedUpdate struct {
 	WebhookSet       bool
 	WebhookID        *int64
 	StoreHashOnly    *bool
+	AdaptiveInterval *bool
 	ManualPaused     *bool
 	MoveCategory     bool
 	MoveToCategoryID *int64

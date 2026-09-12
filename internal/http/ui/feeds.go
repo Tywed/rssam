@@ -213,6 +213,7 @@ func (h *Handler) handleFeedUpdate(w http.ResponseWriter, r *http.Request) {
 		TLSInsecure:        params.TLSInsecure,
 		StoreHashOnly:      params.StoreHashOnly,
 		EntryRetentionDays: params.EntryRetentionDays,
+		AdaptiveInterval:   params.AdaptiveInterval,
 		WebhookID:          params.WebhookID,
 		BridgeState:        bridgeState,
 	})
@@ -369,6 +370,7 @@ func feedParamsFromForm(r *http.Request) (storage.CreateFeedParams, error) {
 		TLSInsecure:        r.FormValue("tls_insecure") == "1",
 		StoreHashOnly:      r.FormValue("store_hash_only") == "1",
 		EntryRetentionDays: retention,
+		AdaptiveInterval:   r.FormValue("adaptive_interval") == "1",
 		WebhookID:          parseFeedWebhookID(r.FormValue("webhook_id")),
 	}, nil
 }

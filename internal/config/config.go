@@ -95,7 +95,10 @@ type Config struct {
 	SchedulerTick         time.Duration
 	MinPollInterval       time.Duration
 	MaxPollInterval       time.Duration
-	WorkerInstanceID      string
+	// AdaptiveMaxInterval caps the stretched interval of feeds with
+	// adaptive_interval enabled (also bounded by MaxPollInterval).
+	AdaptiveMaxInterval time.Duration
+	WorkerInstanceID    string
 
 	MaxFilterRulesPerFilter int
 	MaxRegexLength          int
@@ -217,11 +220,12 @@ func Load() (Config, error) {
 		AuditLogRetentionDays:    parseIntAllowZero(getEnv("AUDIT_LOG_RETENTION_DAYS", "180"), 180),
 		CleanupInterval:          parseDuration(getEnv("CLEANUP_INTERVAL", "24h"), 24*time.Hour),
 
-		WorkerPoolSize:   parseInt(getEnv("WORKER_POOL_SIZE", "10"), 10),
-		SchedulerTick:    parseDuration(getEnv("SCHEDULER_TICK", "5s"), 5*time.Second),
-		MinPollInterval:  parseDuration(getEnv("MIN_POLL_INTERVAL", "60s"), 60*time.Second),
-		MaxPollInterval:  parseDuration(getEnv("MAX_POLL_INTERVAL", "24h"), 24*time.Hour),
-		WorkerInstanceID: strings.TrimSpace(os.Getenv("WORKER_INSTANCE_ID")),
+		WorkerPoolSize:      parseInt(getEnv("WORKER_POOL_SIZE", "10"), 10),
+		SchedulerTick:       parseDuration(getEnv("SCHEDULER_TICK", "5s"), 5*time.Second),
+		MinPollInterval:     parseDuration(getEnv("MIN_POLL_INTERVAL", "60s"), 60*time.Second),
+		MaxPollInterval:     parseDuration(getEnv("MAX_POLL_INTERVAL", "24h"), 24*time.Hour),
+		AdaptiveMaxInterval: parseDuration(getEnv("ADAPTIVE_MAX_INTERVAL", "6h"), 6*time.Hour),
+		WorkerInstanceID:    strings.TrimSpace(os.Getenv("WORKER_INSTANCE_ID")),
 
 		MaxFilterRulesPerFilter: parseInt(getEnv("MAX_FILTER_RULES_PER_FILTER", "50"), 50),
 		MaxRegexLength:          parseInt(getEnv("MAX_REGEX_LENGTH", "2048"), 2048),
@@ -397,6 +401,9 @@ func (c Config) Validate() error {
 	}
 	if c.MinPollInterval > 0 && c.MaxPollInterval > 0 && c.MinPollInterval > c.MaxPollInterval {
 		errs = append(errs, fmt.Errorf("MIN_POLL_INTERVAL must be <= MAX_POLL_INTERVAL (got %s > %s)", c.MinPollInterval, c.MaxPollInterval))
+	}
+	if c.AdaptiveMaxInterval <= 0 {
+		errs = append(errs, fmt.Errorf("ADAPTIVE_MAX_INTERVAL must be positive, got %s", c.AdaptiveMaxInterval))
 	}
 	if c.MaxFilterRulesPerFilter <= 0 || c.MaxFilterRulesPerFilter > 10000 {
 		errs = append(errs, fmt.Errorf("MAX_FILTER_RULES_PER_FILTER must be between 1 and 10000, got %d", c.MaxFilterRulesPerFilter))

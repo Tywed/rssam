@@ -215,6 +215,8 @@ func main() {
 		CircuitBreakerThreshold: cfg.FeedCircuitBreakerThreshold,
 		MinPollInterval:         cfg.MinPollInterval,
 		MaxPollInterval:         cfg.MaxPollInterval,
+		AdaptiveMaxInterval:     cfg.AdaptiveMaxInterval,
+		Activity:                pgStore,
 	}
 
 	filterEngine := filter.New(filter.Config{
@@ -329,6 +331,8 @@ func main() {
 		CSRFSecret:              csrfSecret(cfg),
 		MinPollInterval:         cfg.MinPollInterval,
 		MaxPollInterval:         cfg.MaxPollInterval,
+		AdaptiveMaxInterval:     cfg.AdaptiveMaxInterval,
+		FeedActivityStore:       pgStore,
 		FeedSilentDays:          cfg.FeedSilentDays,
 		DedupStore:              pgStore,
 		QueryMatcher:            pgStore,

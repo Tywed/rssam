@@ -35,6 +35,21 @@
         <button type="submit" class="btn btn-sm">Выкл</button>
       </form>
     </div>
+    <div class="cat-action-row cat-action-buttons">
+      <span class="cat-action-label">Адаптивный интервал</span>
+      <form method="post" action="/ui/categories/{{.CategoryID}}/feeds/bulk-adaptive">
+        <input type="hidden" name="csrf_token" value="{{.Root.CSRFToken}}">
+        <input type="hidden" name="filter" value="{{.Root.FeedsFilter}}">
+        <input type="hidden" name="action" value="enable">
+        <button type="submit" class="btn btn-sm">Вкл</button>
+      </form>
+      <form method="post" action="/ui/categories/{{.CategoryID}}/feeds/bulk-adaptive">
+        <input type="hidden" name="csrf_token" value="{{.Root.CSRFToken}}">
+        <input type="hidden" name="filter" value="{{.Root.FeedsFilter}}">
+        <input type="hidden" name="action" value="disable">
+        <button type="submit" class="btn btn-sm">Выкл</button>
+      </form>
+    </div>
     <form method="post" action="/ui/categories/{{.CategoryID}}/feeds/bulk-hash-entries" class="cat-action-row" data-confirm="Свернуть записи категории в хеши? Избранные останутся. Текст остальных удалится.">
       <input type="hidden" name="csrf_token" value="{{.Root.CSRFToken}}">
       <input type="hidden" name="filter" value="{{.Root.FeedsFilter}}">

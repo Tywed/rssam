@@ -23,6 +23,9 @@ func validateBulkFeedUpdate(update BulkFeedUpdate) error {
 	if update.StoreHashOnly != nil {
 		n++
 	}
+	if update.AdaptiveInterval != nil {
+		n++
+	}
 	if update.ManualPaused != nil {
 		n++
 	}
@@ -97,6 +100,11 @@ func (s *PostgresStore) BulkUpdateFeedsByCategory(ctx context.Context, userID, c
 	if update.StoreHashOnly != nil {
 		setParts = append(setParts, fmt.Sprintf("store_hash_only = $%d", argN))
 		args = append(args, *update.StoreHashOnly)
+		argN++
+	}
+	if update.AdaptiveInterval != nil {
+		setParts = append(setParts, fmt.Sprintf("adaptive_interval = $%d", argN))
+		args = append(args, *update.AdaptiveInterval)
 		argN++
 	}
 	if update.ManualPaused != nil {

@@ -43,3 +43,22 @@ func feedBasePollInterval(intervalMinutes int, min, max time.Duration) time.Dura
 	base := time.Duration(intervalMinutes) * time.Minute
 	return clampPollDuration(base, min, max)
 }
+
+// AdaptivePollWindow is the look-back used to estimate a feed's publishing rate.
+const AdaptivePollWindow = 7 * 24 * time.Hour
+
+// AdaptivePollInterval stretches base towards max for feeds that publish
+// rarely: the interval is half the average gap between items over the last
+// week (so a new item waits at most ~half a gap on average), never below
+// base and never above max. A feed with no items in the window sits at max;
+// max <= base disables the stretch.
+func AdaptivePollInterval(base time.Duration, weeklyItems int, max time.Duration) time.Duration {
+	if max <= base {
+		return base
+	}
+	if weeklyItems <= 0 {
+		return max
+	}
+	d := time.Duration(int64(AdaptivePollWindow) / int64(weeklyItems) / 2)
+	return clampPollDuration(d, base, max)
+}

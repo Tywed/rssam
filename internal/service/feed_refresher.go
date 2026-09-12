@@ -49,6 +49,10 @@ type FeedRefresher struct {
 
 	MinPollInterval time.Duration
 	MaxPollInterval time.Duration
+	// AdaptiveMaxInterval caps adaptive_interval feeds; Activity supplies the
+	// weekly item count (nil = adaptive polling off).
+	AdaptiveMaxInterval time.Duration
+	Activity            storage.FeedActivityStore
 
 	filterCacheOnce sync.Once
 	filterCache     *enabledFilterCache
@@ -302,6 +306,9 @@ func (r *FeedRefresher) refreshLoaded(ctx context.Context, feed storage.Feed, ma
 
 	min, max := r.pollBounds()
 	next := storage.FeedNextCheckAt(now, feed.IntervalMinutes, min, max)
+	if adaptive := r.adaptiveNextCheck(ctx, feed, now, min, max); adaptive.After(next) {
+		next = adaptive
+	}
 	// The source's own freshness hint (max-age/Expires/<ttl>) only ever
 	// postpones a poll, never brings it forward, and stays inside the
 	// configured maximum.
@@ -404,6 +411,29 @@ func (r *FeedRefresher) applyFiltersBestEffort(ctx context.Context, feed storage
 			_ = r.WebhookLogs.EnqueueWebhookLogs(ctx, []int64{*feed.WebhookID}, e.ID)
 		}
 	}
+}
+
+// adaptiveNextCheck returns the stretched next poll time for feeds with
+// adaptive_interval, or the zero time when the feature does not apply. The
+// weekly item count is one indexed read; on error the base interval stands.
+func (r *FeedRefresher) adaptiveNextCheck(ctx context.Context, feed storage.Feed, now time.Time, min, max time.Duration) time.Time {
+	if !feed.AdaptiveInterval || r.Activity == nil || r.AdaptiveMaxInterval <= 0 {
+		return time.Time{}
+	}
+	ceiling := r.AdaptiveMaxInterval
+	if ceiling > max {
+		ceiling = max
+	}
+	base := storage.FeedNextCheckAt(now, feed.IntervalMinutes, min, max).Sub(now)
+	if ceiling <= base {
+		return time.Time{}
+	}
+	items, err := r.Activity.CountFeedItemsSince(ctx, feed.ID, now.Add(-storage.AdaptivePollWindow))
+	if err != nil {
+		r.logger().Warn("count feed items failed; adaptive interval skipped", "feed_id", feed.ID, "err", err)
+		return time.Time{}
+	}
+	return now.Add(storage.AdaptivePollInterval(base, items, ceiling))
 }
 
 // queryHitsBestEffort runs one SQL for all `query` rules of the batch; on

@@ -108,18 +108,19 @@ func (s *Server) exportOPMLForUser(w http.ResponseWriter, ctx context.Context, u
 	exportFeeds := make([]opml.ExportFeed, 0, len(feeds))
 	for _, f := range feeds {
 		settings := opml.FeedSettings{
-			FeedType:        f.FeedType,
-			IntervalMinutes: f.IntervalMinutes,
-			TLSInsecure:     f.TLSInsecure,
-			FetchViaProxy:   f.FetchViaProxy,
-			Crawler:         f.Crawler,
-			StoreHashOnly:   f.StoreHashOnly,
-			RetentionDays:   f.EntryRetentionDays,
-			UserAgent:       f.UserAgent,
-			ScraperRules:    f.ScraperRules,
-			RewriteRules:    f.RewriteRules,
-			BlockedRules:    f.BlockedRules,
-			KeepRules:       f.KeepRules,
+			FeedType:         f.FeedType,
+			IntervalMinutes:  f.IntervalMinutes,
+			TLSInsecure:      f.TLSInsecure,
+			FetchViaProxy:    f.FetchViaProxy,
+			Crawler:          f.Crawler,
+			StoreHashOnly:    f.StoreHashOnly,
+			AdaptiveInterval: f.AdaptiveInterval,
+			RetentionDays:    f.EntryRetentionDays,
+			UserAgent:        f.UserAgent,
+			ScraperRules:     f.ScraperRules,
+			RewriteRules:     f.RewriteRules,
+			BlockedRules:     f.BlockedRules,
+			KeepRules:        f.KeepRules,
 		}
 		if f.WebhookID != nil {
 			settings.WebhookName = webhookNames[*f.WebhookID]
@@ -398,6 +399,7 @@ func importFeedParams(feedURL string, entry opml.FeedEntry, webhookByName map[st
 		WebhookID:          webhookID,
 		StoreHashOnly:      st.StoreHashOnly,
 		EntryRetentionDays: retention,
+		AdaptiveInterval:   st.AdaptiveInterval,
 	}, notes
 }
 

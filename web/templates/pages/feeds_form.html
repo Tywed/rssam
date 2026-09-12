@@ -28,6 +28,8 @@
         </select>
       </div>
       <div class="form-group"><label>Интервал (мин)</label><input name="interval_minutes" type="number" value="{{if .Feed.IntervalMinutes}}{{.Feed.IntervalMinutes}}{{else}}60{{end}}" min="1" max="10080">
+        <label class="checkbox-label"><input type="checkbox" name="adaptive_interval" value="1" {{if .Feed.AdaptiveInterval}}checked{{end}}> Адаптивный интервал</label>
+        <p class="meta">Для редко обновляемых источников интервал растягивается от указанного до <code>ADAPTIVE_MAX_INTERVAL</code> (по умолчанию 6 ч): половина среднего промежутка между записями за неделю. Чем реже пишет лента — тем реже опрос.</p>
         <p class="meta">Минимум 1 мин, максимум 10080 мин (7 суток).</p>
       </div>
 

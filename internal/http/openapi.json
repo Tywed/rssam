@@ -3027,6 +3027,10 @@
           "store_hash_only": {
             "type": "boolean"
           },
+          "adaptive_interval": {
+            "type": "boolean",
+            "description": "Stretch the poll interval up to ADAPTIVE_MAX_INTERVAL when the feed publishes rarely."
+          },
           "entry_retention_days": {
             "type": "integer"
           },
@@ -3091,6 +3095,10 @@
           },
           "store_hash_only": {
             "type": "boolean"
+          },
+          "adaptive_interval": {
+            "type": "boolean",
+            "description": "Stretch the poll interval up to ADAPTIVE_MAX_INTERVAL when the feed publishes rarely."
           },
           "entry_retention_days": {
             "type": "integer",

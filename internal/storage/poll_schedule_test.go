@@ -44,3 +44,35 @@ func TestFeedErrorPollDelay_ClampedToMax(t *testing.T) {
 		t.Fatalf("got %s, want max %s", got, max)
 	}
 }
+
+func TestAdaptivePollInterval(t *testing.T) {
+	base := 15 * time.Minute
+	max := 12 * time.Hour
+	cases := []struct {
+		items int
+		want  time.Duration
+	}{
+		{0, max},                // silent week → ceiling
+		{1, max},                // 1/week → gap 7d, half 3.5d → ceiling
+		{14, max},               // 2/day → gap 12h, half 6h
+		{168, 30 * time.Minute}, // 1/hour → half 30m
+		{336, base},             // 2/hour → 15m = base
+		{100000, base},          // firehose → floor
+	}
+	for _, tc := range cases {
+		got := AdaptivePollInterval(base, tc.items, max)
+		want := tc.want
+		if tc.items == 14 {
+			want = 6 * time.Hour
+		}
+		if got != want {
+			t.Errorf("items=%d: got %s want %s", tc.items, got, want)
+		}
+	}
+	if got := AdaptivePollInterval(time.Hour, 0, time.Hour); got != time.Hour {
+		t.Errorf("max<=base must return base, got %s", got)
+	}
+	if got := AdaptivePollInterval(time.Hour, 3, 30*time.Minute); got != time.Hour {
+		t.Errorf("max<base must return base, got %s", got)
+	}
+}

@@ -34,6 +34,7 @@ type feedDTO struct {
 	UserAgent          string `json:"user_agent,omitempty"`
 	StoreHashOnly      bool   `json:"store_hash_only,omitempty"`
 	EntryRetentionDays *int   `json:"entry_retention_days,omitempty"`
+	AdaptiveInterval   bool   `json:"adaptive_interval,omitempty"`
 	// LastEntryAt: when the feed last delivered a new item (entry or hash).
 	LastEntryAt *time.Time `json:"last_entry_at,omitempty"`
 }
@@ -53,6 +54,7 @@ type feedWriteRequest struct {
 	UserAgent          string `json:"user_agent"`
 	StoreHashOnly      bool   `json:"store_hash_only,omitempty"`
 	EntryRetentionDays *int   `json:"entry_retention_days,omitempty"`
+	AdaptiveInterval   bool   `json:"adaptive_interval,omitempty"`
 }
 
 const defaultIntervalMinutes = 60
@@ -191,6 +193,7 @@ func (s *Server) handleUpdateFeed(w http.ResponseWriter, r *http.Request) {
 		UserAgent:          params.UserAgent,
 		StoreHashOnly:      params.StoreHashOnly,
 		EntryRetentionDays: params.EntryRetentionDays,
+		AdaptiveInterval:   params.AdaptiveInterval,
 	})
 	if err != nil {
 		switch {
@@ -272,6 +275,7 @@ func validateFeedWriteRequest(req feedWriteRequest, guard *ssrf.Guard) (storage.
 		UserAgent:          strings.TrimSpace(req.UserAgent),
 		StoreHashOnly:      req.StoreHashOnly,
 		EntryRetentionDays: req.EntryRetentionDays,
+		AdaptiveInterval:   req.AdaptiveInterval,
 	}, nil
 }
 
@@ -297,6 +301,7 @@ func toFeedDTO(f storage.Feed) feedDTO {
 		UserAgent:          f.UserAgent,
 		StoreHashOnly:      f.StoreHashOnly,
 		EntryRetentionDays: f.EntryRetentionDays,
+		AdaptiveInterval:   f.AdaptiveInterval,
 		LastEntryAt:        f.LastEntryAt,
 	}
 }

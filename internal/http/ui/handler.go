@@ -464,6 +464,7 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.Handle("POST /ui/categories/{categoryID}/feeds/bulk-interval", auth(h.requireAdmin(http.HandlerFunc(h.handleCategoryBulkInterval))))
 	mux.Handle("POST /ui/categories/{categoryID}/feeds/bulk-webhook", auth(h.requireAdmin(http.HandlerFunc(h.handleCategoryBulkWebhook))))
 	mux.Handle("POST /ui/categories/{categoryID}/feeds/bulk-hash-only", auth(h.requireAdmin(http.HandlerFunc(h.handleCategoryBulkHashOnly))))
+	mux.Handle("POST /ui/categories/{categoryID}/feeds/bulk-adaptive", auth(h.requireAdmin(http.HandlerFunc(h.handleCategoryBulkAdaptive))))
 	mux.Handle("POST /ui/categories/{categoryID}/feeds/bulk-hash-entries", auth(h.requireAdmin(http.HandlerFunc(h.handleCategoryBulkHashEntries))))
 	mux.Handle("POST /ui/categories/{categoryID}/feeds/bulk-refresh", auth(h.requireAdmin(http.HandlerFunc(h.handleCategoryBulkRefresh))))
 	mux.Handle("POST /ui/categories/{categoryID}/feeds/bulk-pause", auth(h.requireAdmin(http.HandlerFunc(h.handleCategoryBulkPause))))

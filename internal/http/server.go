@@ -100,10 +100,14 @@ type Dependencies struct {
 	BridgeManager   *bridgeconfig.Manager
 	RefreshAll      refreshAllEnqueuer
 
-	MinPollInterval  time.Duration
-	MaxPollInterval  time.Duration
-	FeedSilentDays   int
-	StoreEntriesMode string
+	MinPollInterval time.Duration
+	MaxPollInterval time.Duration
+	// AdaptiveMaxInterval + FeedActivityStore: adaptive polling for manual
+	// refreshes (same rule as the worker).
+	AdaptiveMaxInterval time.Duration
+	FeedActivityStore   storage.FeedActivityStore
+	FeedSilentDays      int
+	StoreEntriesMode    string
 
 	DedupStore              storage.EntryDedupStore
 	QueryMatcher            filter.QueryMatcher
@@ -319,6 +323,8 @@ func New(dep Dependencies) *Server {
 		CircuitBreakerThreshold: dep.CircuitBreakerThreshold,
 		MinPollInterval:         dep.MinPollInterval,
 		MaxPollInterval:         dep.MaxPollInterval,
+		AdaptiveMaxInterval:     dep.AdaptiveMaxInterval,
+		Activity:                dep.FeedActivityStore,
 	}
 	if dep.WSEnabled {
 		refresher.Realtime = ws.NewPublisher(log, wsHub, entryStore)
