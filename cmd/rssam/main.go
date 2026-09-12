@@ -225,6 +225,7 @@ func main() {
 	refresher.Filters = pgStore
 	refresher.Matches = pgStore
 	refresher.Engine = filterEngine
+	refresher.Queries = pgStore
 	refresher.Labels = pgStore
 	refresher.Webhooks = pgStore
 	refresher.WebhookLogs = pgStore
@@ -330,6 +331,7 @@ func main() {
 		MaxPollInterval:         cfg.MaxPollInterval,
 		FeedSilentDays:          cfg.FeedSilentDays,
 		DedupStore:              pgStore,
+		QueryMatcher:            pgStore,
 		FeedPollLogStore:        pgStore,
 		StoreEntriesMode:        cfg.StoreEntriesMode,
 		CircuitBreakerThreshold: cfg.FeedCircuitBreakerThreshold,

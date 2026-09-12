@@ -233,9 +233,17 @@ func (h *Handler) handleFilterTest(w http.ResponseWriter, r *http.Request) {
 	}
 	if h.cfg.FilterEngine != nil && h.cfg.Entries != nil {
 		entries, _, _ := h.cfg.Entries.ListEntries(r.Context(), p.UserID, storage.ListEntriesFilter{Limit: limit, Offset: 0})
+		items := make([]storage.QueryMatchItem, len(entries))
+		for i, e := range entries {
+			items[i] = filter.QueryItemFromEntry(e)
+		}
+		queryHits, _ := filter.QueryHits(r.Context(), h.cfg.QueryMatcher, []storage.Filter{f}, items)
 		var preview []storage.FilterMatchWithEntry
-		for _, e := range entries {
+		for i, e := range entries {
 			matchCtx := filter.MatchContext{FeedID: e.FeedID}
+			if queryHits != nil {
+				matchCtx.QueryHits = queryHits[i]
+			}
 			matches, matchErr := h.cfg.FilterEngine.MatchEntryWithContext(e, matchCtx, []storage.Filter{f})
 			if matchErr != nil || len(matches) == 0 {
 				continue

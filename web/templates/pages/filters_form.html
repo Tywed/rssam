@@ -40,7 +40,7 @@
 
         <h2>Правила</h2>
         <table class="filter-rules-table" id="rules-table">
-          <thead><tr><th>Поле</th><th>Regex (RE2)</th><th>НЕ</th><th></th></tr></thead>
+          <thead><tr><th>Поле</th><th>Regex (RE2) / поисковый запрос</th><th>НЕ</th><th></th></tr></thead>
           <tbody>
           {{range .Filter.Rules}}
           <tr>
@@ -50,6 +50,7 @@
               <option value="both" {{if eq .Field "both"}}selected{{end}}>Заголовок или содержимое</option>
               <option value="author" {{if eq .Field "author"}}selected{{end}}>Автор</option>
               <option value="url" {{if eq .Field "url"}}selected{{end}}>URL</option>
+              <option value="query" {{if eq .Field "query"}}selected{{end}}>Поисковый запрос (FTS)</option>
             </select></td>
             <td><input name="rule_pattern" value="{{.Pattern}}" required></td>
             <td class="cell-center"><input type="checkbox" name="rule_negate" value="1" {{if .Negate}}checked{{end}}></td>
@@ -57,7 +58,7 @@
           </tr>
           {{else}}
           <tr>
-            <td><select name="rule_field"><option value="title">Заголовок</option><option value="content">Содержимое</option><option value="both">Заголовок или содержимое</option><option value="author">Автор</option><option value="url">URL</option></select></td>
+            <td><select name="rule_field"><option value="title">Заголовок</option><option value="content">Содержимое</option><option value="both">Заголовок или содержимое</option><option value="author">Автор</option><option value="url">URL</option><option value="query">Поисковый запрос (FTS)</option></select></td>
             <td><input name="rule_pattern" placeholder="regex"></td>
             <td class="cell-center"><input type="checkbox" name="rule_negate" value="1"></td>
             <td class="cell-actions"><button type="button" class="btn btn-sm btn-danger rule-remove">×</button></td>
@@ -66,6 +67,7 @@
           </tbody>
         </table>
         <button type="button" class="btn btn-sm" id="add-rule">+ Правило</button>
+        <p class="meta">Поле «Поисковый запрос» — как поиск в шапке: морфология, <code>"точная фраза"</code>, <code>-исключить слово</code>, <code>нефть or газ</code>; проверяется по заголовку и содержимому.</p>
 
         <h2>Область лент</h2>
         <div class="form-group">

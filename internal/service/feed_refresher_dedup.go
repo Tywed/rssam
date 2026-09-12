@@ -57,6 +57,8 @@ func (r *FeedRefresher) processEntriesDedupOnly(
 	matchCtx := filter.MatchContext{FeedID: feedID, CategoryID: feed.CategoryID}
 
 	var toDedup []storage.FeedEntryDedupParams
+	freshParams := make([]storage.CreateEntryParams, 0, len(entries))
+	freshEntries := make([]storage.Entry, 0, len(entries))
 	for _, p := range entries {
 		if p.Hash == "" {
 			continue
@@ -65,12 +67,24 @@ func (r *FeedRefresher) processEntriesDedupOnly(
 			continue
 		}
 		known[p.Hash] = struct{}{}
-		fresh++
+		freshParams = append(freshParams, p)
+		freshEntries = append(freshEntries, entryFromCreateParams(feedID, p))
+	}
+	fresh = len(freshEntries)
+	var queryHits []map[string]bool
+	if r.Engine != nil && len(filters) > 0 {
+		queryHits = r.queryHitsBestEffort(ctx, feedID, filters, freshEntries)
+	}
 
+	for i, e := range freshEntries {
+		p := freshParams[i]
 		var matches []filter.Match
 		if r.Engine != nil && len(filters) > 0 {
 			var matchErr error
-			matches, matchErr = r.Engine.MatchEntryWithContext(entryFromCreateParams(feedID, p), matchCtx, filters)
+			if queryHits != nil {
+				matchCtx.QueryHits = queryHits[i]
+			}
+			matches, matchErr = r.Engine.MatchEntryWithContext(e, matchCtx, filters)
 			if matchErr != nil {
 				continue
 			}

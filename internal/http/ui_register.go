@@ -28,6 +28,7 @@ func (s *Server) registerUI(mux *http.ServeMux) {
 		Webhooks:       s.webhooks,
 		WebhookLogs:    s.webhookLogs,
 		FilterEngine:   s.filterEngine,
+		QueryMatcher:   s.queryMatcher,
 		Refresher:      s.refresher,
 		ContentFetcher: s.contentFetcher,
 		SSRFGuard:      s.ssrfGuard,

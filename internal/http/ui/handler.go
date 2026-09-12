@@ -40,6 +40,7 @@ type Config struct {
 	Webhooks           storage.WebhookStore
 	WebhookLogs        storage.WebhookLogStore
 	FilterEngine       *filter.Engine
+	QueryMatcher       filter.QueryMatcher
 	Refresher          *service.FeedRefresher
 	ContentFetcher     *service.ContentFetcher
 	SSRFGuard          *ssrf.Guard

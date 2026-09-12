@@ -322,11 +322,23 @@ func (s *Server) handleTestFilter(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusInternalServerError, "internal server error")
 			return
 		}
+		items := make([]storage.QueryMatchItem, len(entries))
+		for i, e := range entries {
+			items[i] = filter.QueryItemFromEntry(e)
+		}
+		queryHits, err := filter.QueryHits(r.Context(), s.queryMatcher, []storage.Filter{filterObj}, items)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
 		resp := filterTestResponse{Results: make([]filterTestMatchRow, 0, len(entries))}
-		for _, e := range entries {
+		for i, e := range entries {
 			matchCtx := filter.MatchContext{FeedID: e.FeedID}
 			if req.FeedID != nil {
 				matchCtx.FeedID = *req.FeedID
+			}
+			if queryHits != nil {
+				matchCtx.QueryHits = queryHits[i]
 			}
 			matches, err := s.filterEngine.MatchEntryWithContextStrict(e, matchCtx, []storage.Filter{filterObj})
 			row := filterTestMatchRow{EntryID: e.ID, Title: e.Title, Match: len(matches) > 0}
@@ -366,6 +378,14 @@ func (s *Server) handleTestFilter(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	queryHits, err := filter.QueryHits(r.Context(), s.queryMatcher, []storage.Filter{filterObj}, []storage.QueryMatchItem{filter.QueryItemFromEntry(entry)})
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if queryHits != nil {
+		matchCtx.QueryHits = queryHits[0]
+	}
 	matches, err := s.filterEngine.MatchEntryWithContextStrict(entry, matchCtx, []storage.Filter{filterObj})
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())

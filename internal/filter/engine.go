@@ -40,6 +40,7 @@ type compiledFilter struct {
 	feedScope    string
 	scopeItems   []storage.FilterScopeItem
 	rules        []compiledRule
+	hasQuery     bool
 }
 
 type compiledRule struct {
@@ -55,6 +56,9 @@ type compiledRule struct {
 type MatchContext struct {
 	FeedID     int64
 	CategoryID *int64
+	// QueryHits holds the result of the batched SQL evaluation of `query`
+	// rules for this entry (pattern → matched); see Engine.QueryHits.
+	QueryHits map[string]bool
 }
 
 type MatchResult struct {
@@ -151,7 +155,10 @@ func (e *Engine) matchEntry(entry storage.Entry, ctx MatchContext, filters []sto
 		if !matchesFeedScope(cf, ctx) {
 			continue
 		}
-		mr, err := e.matchCompiledSafe(entry, cf)
+		if strict && cf.hasQuery && ctx.QueryHits == nil {
+			return nil, ErrQueryRulesUnsupported
+		}
+		mr, err := e.matchCompiledSafe(entry, ctx, cf)
 		if err != nil {
 			if strict {
 				return nil, err
@@ -275,9 +282,15 @@ func compileFilter(f storage.Filter, maxRegexLen int, compileTimeout time.Durati
 		if op == "" {
 			op = "and"
 		}
-		re, err := compileRegexp(pat, compileTimeout)
-		if err != nil {
-			return nil, fmt.Errorf("compile regex: %w", err)
+		var re *regexp.Regexp
+		if field == FieldQuery {
+			cf.hasQuery = true
+		} else {
+			var err error
+			re, err = compileRegexp(pat, compileTimeout)
+			if err != nil {
+				return nil, fmt.Errorf("compile regex: %w", err)
+			}
 		}
 		cf.rules = append(cf.rules, compiledRule{
 			ruleID:   r.ID,
@@ -296,11 +309,11 @@ func compileRegexp(pat string, _ time.Duration) (*regexp.Regexp, error) {
 	return regexp.Compile(pat)
 }
 
-func (e *Engine) matchCompiledSafe(entry storage.Entry, f *compiledFilter) (MatchResult, error) {
-	return matchCompiled(entry, f), nil
+func (e *Engine) matchCompiledSafe(entry storage.Entry, ctx MatchContext, f *compiledFilter) (MatchResult, error) {
+	return matchCompiled(entry, ctx, f), nil
 }
 
-func matchCompiled(entry storage.Entry, f *compiledFilter) MatchResult {
+func matchCompiled(entry storage.Entry, ctx MatchContext, f *compiledFilter) MatchResult {
 	if len(f.rules) == 0 {
 		return MatchResult{FilterID: f.filterID, Matched: false}
 	}
@@ -310,7 +323,7 @@ func matchCompiled(entry storage.Entry, f *compiledFilter) MatchResult {
 	info := make([]RuleMatchInfo, 0, len(f.rules))
 
 	for _, r := range f.rules {
-		ok := ruleMatches(entry, r)
+		ok := ruleMatches(entry, ctx, r)
 		if !initialized {
 			agg = ok
 			initialized = true
@@ -339,9 +352,11 @@ func matchCompiled(entry storage.Entry, f *compiledFilter) MatchResult {
 	return MatchResult{FilterID: f.filterID, Matched: matched, Rules: info}
 }
 
-func ruleMatches(entry storage.Entry, r compiledRule) bool {
+func ruleMatches(entry storage.Entry, ctx MatchContext, r compiledRule) bool {
 	var ok bool
-	if r.field == "both" {
+	if r.field == FieldQuery {
+		ok = ctx.QueryHits[r.pattern]
+	} else if r.field == "both" {
 		ok = r.re.MatchString(clipMatchField(entry.Title)) || r.re.MatchString(clipMatchField(entry.Content))
 	} else {
 		ok = r.re.MatchString(fieldValue(entry, r.field))
@@ -385,7 +400,7 @@ func clipMatchField(s string) string {
 
 func isAllowedField(f string) bool {
 	switch f {
-	case "title", "content", "both", "author", "url", "tags":
+	case "title", "content", "both", "author", "url", "tags", FieldQuery:
 		return true
 	default:
 		return false

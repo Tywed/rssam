@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -213,4 +214,75 @@ func itoa(id int64) string {
 		b[i], b[j] = b[j], b[i]
 	}
 	return string(b)
+}
+
+type stubQueryMatcher struct{ hit bool }
+
+func (m stubQueryMatcher) MatchEntryQueries(_ context.Context, items []storage.QueryMatchItem, queries []string) ([][]bool, error) {
+	out := make([][]bool, len(items))
+	for i := range items {
+		out[i] = make([]bool, len(queries))
+		for j := range queries {
+			out[i][j] = m.hit
+		}
+	}
+	return out, nil
+}
+
+func TestFiltersAPI_QueryRule(t *testing.T) {
+	run := func(t *testing.T, matcher filter.QueryMatcher) (int, string) {
+		t.Helper()
+		fs := newMemFilterStore()
+		s := New(Dependencies{
+			AuthToken:        "secret",
+			FilterStore:      fs,
+			FilterMatchStore: &noopMatchStore{},
+			FilterEngine:     filter.New(filter.Config{MaxRulesPerFilter: 50, MaxRegexLength: 2048}),
+			QueryMatcher:     matcher,
+		})
+		api := http.NewServeMux()
+		api.HandleFunc("POST /v1/filters", s.handleCreateFilter)
+		api.HandleFunc("POST /v1/filters/{id}/test", s.handleTestFilter)
+		mux := http.NewServeMux()
+		mux.Handle("/v1/", s.wrapAPI(api))
+
+		createReq := httptest.NewRequest(http.MethodPost, "/v1/filters", bytes.NewBufferString(`{
+		  "name":"oil",
+		  "enabled":true,
+		  "rules":[{"field":"query","pattern":"\"курс рубля\" -прогноз (","op":"and"}]
+		}`))
+		createReq.Header.Set("X-Auth-Token", "secret")
+		createReq.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, createReq)
+		if rec.Code != http.StatusCreated {
+			t.Fatalf("query pattern is not a regex and must be accepted: %d %s", rec.Code, rec.Body.String())
+		}
+		var created struct {
+			Data struct {
+				ID int64 `json:"id"`
+			} `json:"data"`
+		}
+		_ = json.NewDecoder(rec.Body).Decode(&created)
+
+		testReq := httptest.NewRequest(http.MethodPost, "/v1/filters/"+itoa(created.Data.ID)+"/test", bytes.NewBufferString(`{"entry":{"title":"x","content":"курс рубля"}}`))
+		testReq.Header.Set("X-Auth-Token", "secret")
+		testReq.Header.Set("Content-Type", "application/json")
+		rec2 := httptest.NewRecorder()
+		mux.ServeHTTP(rec2, testReq)
+		return rec2.Code, rec2.Body.String()
+	}
+
+	code, body := run(t, stubQueryMatcher{hit: true})
+	if code != http.StatusOK || !strings.Contains(body, `"match":true`) {
+		t.Fatalf("with matcher: %d %s", code, body)
+	}
+	code, body = run(t, stubQueryMatcher{hit: false})
+	if code != http.StatusOK || !strings.Contains(body, `"match":false`) {
+		t.Fatalf("with matcher miss: %d %s", code, body)
+	}
+	code, body = run(t, nil)
+	if code != http.StatusBadRequest || !strings.Contains(body, "full-text") {
+		t.Fatalf("without matcher strict test must fail loudly: %d %s", code, body)
+	}
 }

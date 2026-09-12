@@ -106,6 +106,7 @@ type Dependencies struct {
 	StoreEntriesMode string
 
 	DedupStore              storage.EntryDedupStore
+	QueryMatcher            filter.QueryMatcher
 	CircuitBreakerThreshold int
 	// FeedPollLogStore records poll history for manual refreshes triggered
 	// over HTTP/UI (nil = derived from DB when available).
@@ -138,6 +139,7 @@ type Server struct {
 	users         storage.UserStore
 	sessions      storage.SessionStore
 	filterEngine  *filter.Engine
+	queryMatcher  filter.QueryMatcher
 	authToken     string
 	adminUsername string
 	adminPassword string
@@ -296,6 +298,10 @@ func New(dep Dependencies) *Server {
 	if auditStore == nil && dep.DB != nil {
 		auditStore = storage.NewPostgresStore(dep.DB)
 	}
+	queryMatcher := dep.QueryMatcher
+	if queryMatcher == nil && dep.DB != nil {
+		queryMatcher = storage.NewPostgresStore(dep.DB)
+	}
 	refresher := &service.FeedRefresher{
 		Feeds:                   feedStore,
 		Entries:                 entryStore,
@@ -306,6 +312,7 @@ func New(dep Dependencies) *Server {
 		Matches:                 filterMatchStore,
 		Labels:                  labelStore,
 		Engine:                  dep.FilterEngine,
+		Queries:                 queryMatcher,
 		Webhooks:                webhookStore,
 		WebhookLogs:             webhookLogStore,
 		StoreEntriesMode:        dep.StoreEntriesMode,
@@ -360,6 +367,7 @@ func New(dep Dependencies) *Server {
 		users:              userStore,
 		sessions:           sessionStore,
 		filterEngine:       dep.FilterEngine,
+		queryMatcher:       queryMatcher,
 		authToken:          dep.AuthToken,
 		adminUsername:      dep.AdminUsername,
 		adminPassword:      dep.AdminPassword,

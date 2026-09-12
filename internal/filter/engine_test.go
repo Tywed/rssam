@@ -1,6 +1,7 @@
 package filter
 
 import (
+	"context"
 	"regexp"
 	"strings"
 	"testing"
@@ -319,4 +320,95 @@ func TestEngine_ValidateRules(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestEngine_QueryField(t *testing.T) {
+	eng := New(Config{MaxRulesPerFilter: 50, MaxRegexLength: 2048})
+	now := time.Now().UTC()
+	f := storage.Filter{
+		ID:        7,
+		UpdatedAt: now,
+		Rules: []storage.FilterRule{
+			{ID: 1, Field: "query", Pattern: `"курс рубля" -прогноз`, Op: "and"},
+			{ID: 2, Field: "title", Pattern: "(?i)цб", Op: "and"},
+		},
+	}
+	entry := storage.Entry{Title: "ЦБ прокомментировал", Content: "курс рубля"}
+
+	if _, err := eng.MatchEntryStrict(entry, []storage.Filter{f}); err != ErrQueryRulesUnsupported {
+		t.Fatalf("strict mode without QueryHits: want ErrQueryRulesUnsupported, got %v", err)
+	}
+	matches, err := eng.MatchEntry(entry, []storage.Filter{f})
+	if err != nil || len(matches) != 0 {
+		t.Fatalf("lenient mode without QueryHits must not match: %v %v", matches, err)
+	}
+
+	hit := MatchContext{QueryHits: map[string]bool{`"курс рубля" -прогноз`: true}}
+	matches, err = eng.MatchEntryWithContextStrict(entry, hit, []storage.Filter{f})
+	if err != nil || len(matches) != 1 {
+		t.Fatalf("query hit + regex hit: want 1 match, got %v %v", matches, err)
+	}
+	if !strings.Contains(string(matches[0].Details), `"field":"query"`) {
+		t.Fatalf("details must record the query rule: %s", matches[0].Details)
+	}
+	miss := MatchContext{QueryHits: map[string]bool{`"курс рубля" -прогноз`: false}}
+	matches, err = eng.MatchEntryWithContextStrict(entry, miss, []storage.Filter{f})
+	if err != nil || len(matches) != 0 {
+		t.Fatalf("query miss must fail AND: %v %v", matches, err)
+	}
+
+	neg := storage.Filter{ID: 8, UpdatedAt: now, Rules: []storage.FilterRule{{ID: 3, Field: "query", Pattern: "спорт", Negate: true}}}
+	matches, err = eng.MatchEntryWithContextStrict(entry, MatchContext{QueryHits: map[string]bool{"спорт": false}}, []storage.Filter{neg})
+	if err != nil || len(matches) != 1 {
+		t.Fatalf("negated query miss must match: %v %v", matches, err)
+	}
+
+	if err := eng.ValidateRules([]storage.CreateFilterRuleParams{{Field: "query", Pattern: "(unbalanced"}}); err != nil {
+		t.Fatalf("query patterns are not regexes and must not be compiled: %v", err)
+	}
+}
+
+func TestQueryPatternsAndHits(t *testing.T) {
+	filters := []storage.Filter{
+		{ID: 1, Rules: []storage.FilterRule{{Field: "title", Pattern: "x"}, {Field: "query", Pattern: " нефть "}}},
+		{ID: 2, Rules: []storage.FilterRule{{Field: "Query", Pattern: "нефть"}, {Field: "query", Pattern: "газ or уголь"}, {Field: "query", Pattern: "  "}}},
+	}
+	got := QueryPatterns(filters)
+	if len(got) != 2 || got[0] != "нефть" || got[1] != "газ or уголь" {
+		t.Fatalf("QueryPatterns = %q", got)
+	}
+	if QueryPatterns([]storage.Filter{{Rules: []storage.FilterRule{{Field: "title", Pattern: "x"}}}}) != nil {
+		t.Fatal("no query rules must yield nil")
+	}
+
+	items := []storage.QueryMatchItem{{Title: "a"}, {Title: "b"}}
+	hits, err := QueryHits(context.Background(), nil, filters[:0], items)
+	if err != nil || hits != nil {
+		t.Fatalf("no query rules: want nil,nil got %v %v", hits, err)
+	}
+	if _, err := QueryHits(context.Background(), nil, filters, items); err != ErrQueryRulesUnsupported {
+		t.Fatalf("nil matcher with query rules: got %v", err)
+	}
+	m := &stubQueryMatcher{rows: [][]bool{{true, false}, {false, true}}}
+	hits, err = QueryHits(context.Background(), m, filters, items)
+	if err != nil || len(hits) != 2 {
+		t.Fatalf("QueryHits: %v %v", hits, err)
+	}
+	if !hits[0]["нефть"] || hits[0]["газ or уголь"] || hits[1]["нефть"] || !hits[1]["газ or уголь"] {
+		t.Fatalf("hits mapping wrong: %v", hits)
+	}
+	if m.gotQueries[0] != "нефть" || len(m.gotItems) != 2 {
+		t.Fatalf("matcher call: %v %v", m.gotQueries, m.gotItems)
+	}
+}
+
+type stubQueryMatcher struct {
+	rows       [][]bool
+	gotItems   []storage.QueryMatchItem
+	gotQueries []string
+}
+
+func (m *stubQueryMatcher) MatchEntryQueries(_ context.Context, items []storage.QueryMatchItem, queries []string) ([][]bool, error) {
+	m.gotItems, m.gotQueries = items, queries
+	return m.rows, nil
 }

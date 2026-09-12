@@ -26,6 +26,8 @@ type FeedRefresher struct {
 	Matches storage.FilterMatchStore
 	Labels  storage.LabelStore
 	Engine  *filter.Engine
+	// Queries evaluates `query` rules in SQL (nil = such rules never match).
+	Queries filter.QueryMatcher
 
 	Webhooks    storage.WebhookStore
 	WebhookLogs storage.WebhookLogStore
@@ -368,9 +370,13 @@ func (r *FeedRefresher) applyFiltersBestEffort(ctx context.Context, feed storage
 		}
 	}
 	matchCtx := filter.MatchContext{FeedID: feed.ID, CategoryID: feed.CategoryID}
+	queryHits := r.queryHitsBestEffort(ctx, feed.ID, filters, entries)
 	now := time.Now().UTC()
-	for _, e := range entries {
+	for i, e := range entries {
 		start := time.Now()
+		if queryHits != nil {
+			matchCtx.QueryHits = queryHits[i]
+		}
 		matches, err := r.Engine.MatchEntryWithContext(e, matchCtx, filters)
 		metrics.FilterProcessingDuration.Observe(time.Since(start).Seconds())
 		if err != nil {
@@ -398,6 +404,21 @@ func (r *FeedRefresher) applyFiltersBestEffort(ctx context.Context, feed storage
 			_ = r.WebhookLogs.EnqueueWebhookLogs(ctx, []int64{*feed.WebhookID}, e.ID)
 		}
 	}
+}
+
+// queryHitsBestEffort runs one SQL for all `query` rules of the batch; on
+// failure those rules are treated as non-matching (regex rules still apply)
+// and the error is logged once per poll rather than per entry.
+func (r *FeedRefresher) queryHitsBestEffort(ctx context.Context, feedID int64, filters []storage.Filter, entries []storage.Entry) []map[string]bool {
+	items := make([]storage.QueryMatchItem, len(entries))
+	for i, e := range entries {
+		items[i] = filter.QueryItemFromEntry(e)
+	}
+	hits, err := filter.QueryHits(ctx, r.Queries, filters, items)
+	if err != nil && r.Log != nil {
+		r.Log.Warn("query rules skipped for this refresh", "feed_id", feedID, "err", err)
+	}
+	return hits
 }
 
 func (r *FeedRefresher) enqueueFeedWebhooksBestEffort(ctx context.Context, feed storage.Feed, entries []storage.Entry) {
