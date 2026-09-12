@@ -2810,7 +2810,7 @@
         "schema": {
           "type": "string"
         },
-        "description": "Full-text search over title and content."
+        "description": "Full-text search over title and content. Supports websearch syntax: \"quoted phrase\", -excluded word, `or` between terms. Plain words also match as substrings."
       },
       "feedIDQuery": {
         "name": "feed_id",

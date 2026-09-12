@@ -3,7 +3,7 @@
   <h1 class="headlines-title">Поиск{{if .SearchQuery}}: {{.SearchQuery}}{{end}}</h1>
 </div>
 {{if not .SearchQuery}}
-<div class="search-hint">Введите запрос в поле поиска в шапке и нажмите Enter.</div>
+<div class="search-hint">Введите запрос в поле поиска в шапке и нажмите Enter. Синтаксис: <code>"точная фраза"</code>, <code>-исключить слово</code>, <code>нефть or газ</code>.</div>
 {{else if not .Entries}}
 <div class="search-hint">Ничего не найдено по запросу «{{.SearchQuery}}».</div>
 {{end}}

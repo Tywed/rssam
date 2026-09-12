@@ -33,7 +33,28 @@ func TestFTSVectorExpr_allowlisted(t *testing.T) {
 
 func TestFTSWebsearchExpr_allowlisted(t *testing.T) {
 	expr := ftsWebsearchExpr("russian", "$1")
-	if expr != "plainto_tsquery('russian', $1)" {
+	if expr != "websearch_to_tsquery('russian', $1)" {
 		t.Fatalf("unexpected expr: %s", expr)
+	}
+}
+
+func TestHasSearchOperators(t *testing.T) {
+	cases := map[string]bool{
+		"газпром":          false,
+		"северный поток":   false,
+		"a-b":              false,
+		"-":                false,
+		"orange":           false,
+		"corridor":         false,
+		`"северный поток"`: true,
+		"газпром -акции":   true,
+		"нефть or газ":     true,
+		"нефть OR газ":     true,
+		"a -b":             true,
+	}
+	for q, want := range cases {
+		if got := HasSearchOperators(q); got != want {
+			t.Errorf("HasSearchOperators(%q) = %v, want %v", q, got, want)
+		}
 	}
 }

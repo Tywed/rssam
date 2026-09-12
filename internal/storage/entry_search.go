@@ -59,17 +59,20 @@ func (s *PostgresStore) SearchEntries(ctx context.Context, userID int64, filter 
 	args = append(args, query)
 	argN++
 
-	likeArg := fmt.Sprintf("$%d", argN)
-	likePattern := "%" + escapeLikePattern(query) + "%"
-	// FTS + ILIKE: plainto_tsquery does not error on quotes/operators;
-	// ILIKE covers substrings that the stemmer misses (especially Cyrillic with simple config).
-	where = append(where, fmt.Sprintf(`(
+	if HasSearchOperators(query) {
+		where = append(where, "search_vector @@ "+tsq)
+	} else {
+		likeArg := fmt.Sprintf("$%d", argN)
+		likePattern := "%" + escapeLikePattern(query) + "%"
+		// ILIKE covers substrings that the stemmer misses (especially Cyrillic with simple config).
+		where = append(where, fmt.Sprintf(`(
   search_vector @@ %s
   OR title ILIKE %s ESCAPE '\'
   OR coalesce(content, '') ILIKE %s ESCAPE '\'
 )`, tsq, likeArg, likeArg))
-	args = append(args, likePattern)
-	argN++
+		args = append(args, likePattern)
+		argN++
+	}
 
 	if filter.FeedID != nil {
 		where = append(where, fmt.Sprintf("feed_id = $%d", argN))
