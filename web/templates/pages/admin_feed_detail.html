@@ -55,6 +55,7 @@
         <tr><th>Интервал</th><td>{{.AdminFeedDetail.Feed.IntervalMinutes}} мин</td></tr>
         <tr><th>Последний опрос</th><td>{{formatTime .AdminFeedDetail.Feed.LastCheckedAt}}</td></tr>
         <tr><th>Следующий опрос</th><td>{{formatTime .AdminFeedDetail.Feed.NextCheckAt}}</td></tr>
+        <tr><th>Последняя запись</th><td>{{if .AdminFeedDetail.Feed.LastEntryAt}}{{formatTime .AdminFeedDetail.Feed.LastEntryAt}}{{else}}—{{end}}</td></tr>
         <tr><th>Ошибок подряд</th><td>{{.AdminFeedDetail.Feed.ParsingErrorCount}}</td></tr>
         <tr><th>Автостоп (circuit)</th><td>{{if .AdminFeedDetail.Feed.PollPaused}}да{{else}}нет{{end}}</td></tr>
         <tr><th>Ручная пауза</th><td>{{if .AdminFeedDetail.Feed.ManualPaused}}да{{else}}нет{{end}}</td></tr>

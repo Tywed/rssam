@@ -192,6 +192,40 @@ func TestRefreshLoadedFeed_SuccessPublishesClearedStateAndLogsPoll(t *testing.T)
 	if len(pl.rows) != 1 || !pl.rows[0].OK || pl.rows[0].Inserted != 2 || pl.rows[0].Error != "" {
 		t.Fatalf("poll log rows = %+v", pl.rows)
 	}
+	if fs.meta.NewEntries != 2 {
+		t.Fatalf("meta.NewEntries=%d, want 2 (stamps last_entry_at)", fs.meta.NewEntries)
+	}
+
+	// Second poll with the same items: nothing new, last_entry_at untouched.
+	r.Entries = &memEntryCreate{empty: true}
+	if _, err := r.RefreshLoadedFeed(context.Background(), feed); err != nil {
+		t.Fatal(err)
+	}
+	if fs.meta.NewEntries != 0 {
+		t.Fatalf("meta.NewEntries=%d after a poll without new items", fs.meta.NewEntries)
+	}
+}
+
+func TestRefreshLoadedFeed_HashOnlyFeedStampsLastEntry(t *testing.T) {
+	feed := storage.Feed{ID: 9, UserID: 1, FeedURL: "https://example.com/h.xml", IntervalMinutes: 15, StoreHashOnly: true}
+	h := &stubHandler{res: reader.FetchResponse{Entries: []storage.CreateEntryParams{
+		{Title: "a", URL: "https://example.com/a", Hash: "a"},
+	}}}
+	r, fs, _, _ := newStatusRefresher(h, feed)
+
+	inserted, err := r.RefreshLoadedFeed(context.Background(), feed)
+	if err != nil || inserted != 0 {
+		t.Fatalf("inserted=%d err=%v (no filter matched, only a hash was stored)", inserted, err)
+	}
+	if fs.meta.NewEntries != 1 {
+		t.Fatalf("meta.NewEntries=%d, want 1: a new hash is a sign of life too", fs.meta.NewEntries)
+	}
+	if _, err := r.RefreshLoadedFeed(context.Background(), feed); err != nil {
+		t.Fatal(err)
+	}
+	if fs.meta.NewEntries != 0 {
+		t.Fatalf("meta.NewEntries=%d on a repeat poll", fs.meta.NewEntries)
+	}
 }
 
 func TestRefreshLoadedFeed_RetryAfterIsLoggedButNotAnError(t *testing.T) {

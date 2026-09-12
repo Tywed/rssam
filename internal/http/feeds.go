@@ -34,6 +34,8 @@ type feedDTO struct {
 	UserAgent          string `json:"user_agent,omitempty"`
 	StoreHashOnly      bool   `json:"store_hash_only,omitempty"`
 	EntryRetentionDays *int   `json:"entry_retention_days,omitempty"`
+	// LastEntryAt: when the feed last delivered a new item (entry or hash).
+	LastEntryAt *time.Time `json:"last_entry_at,omitempty"`
 }
 
 type feedWriteRequest struct {
@@ -295,6 +297,7 @@ func toFeedDTO(f storage.Feed) feedDTO {
 		UserAgent:          f.UserAgent,
 		StoreHashOnly:      f.StoreHashOnly,
 		EntryRetentionDays: f.EntryRetentionDays,
+		LastEntryAt:        f.LastEntryAt,
 	}
 }
 

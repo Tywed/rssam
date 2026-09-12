@@ -25,6 +25,9 @@ type AdminFeedSummary struct {
 	ErrorCount   int
 	PausedCount  int
 	WaitingCount int
+	// SilentCount: active feeds (not paused, no error) whose last new item is
+	// older than SilentAfter; 0 when SilentAfter is zero.
+	SilentCount  int
 	TotalEntries int
 	TotalUnread  int
 }
@@ -54,13 +57,15 @@ type AdminFeedsListParams struct {
 	Order   string
 	Limit   int
 	Offset  int
+	// SilentAfter is needed for Status "silent" (see adminFeedsSilentWhere).
+	SilentAfter time.Duration
 }
 
 // AdminFeedStore provides admin-only feed monitoring queries.
 type AdminFeedStore interface {
 	ListAdminFeeds(ctx context.Context, limit int) ([]AdminFeedRow, error)
 	ListAdminFeedsPage(ctx context.Context, params AdminFeedsListParams) ([]AdminFeedRow, int, error)
-	AdminFeedSummary(ctx context.Context) (AdminFeedSummary, error)
+	AdminFeedSummary(ctx context.Context, silentAfter time.Duration) (AdminFeedSummary, error)
 	PollFeedJobCounts(ctx context.Context) (PollFeedJobCounts, error)
 	OfferedPollsPerMin(ctx context.Context) (float64, error)
 	DueWebhookLogCount(ctx context.Context) (int, error)
@@ -75,17 +80,7 @@ func (s *PostgresStore) ListAdminFeeds(ctx context.Context, limit int) ([]AdminF
 	if limit > 10000 {
 		limit = 10000
 	}
-	const q = `
-SELECT
-  f.id, f.user_id, f.feed_url, f.feed_type, f.title, f.category_id, f.interval_minutes,
-  f.etag, f.last_modified, f.last_checked_at, f.last_error, f.parsing_error_count, f.poll_paused, f.manual_paused, f.store_hash_only, f.next_check_at,
-  f.bridge_state, f.scraper_rules, f.rewrite_rules, f.blocked_rules, f.keep_rules,
-  f.fetch_via_proxy, f.tls_insecure, f.crawler, f.user_agent, f.webhook_id, f.icon_url, f.icon_data,
-  f.created_at, f.updated_at,
-  COALESCE((SELECT COUNT(*)::int FROM entries e WHERE e.feed_id = f.id), 0),
-  COALESCE((SELECT COUNT(*)::int FROM entries e WHERE e.feed_id = f.id AND e.status = 'unread'), 0),
-  EXISTS(SELECT 1 FROM jobs j WHERE j.type = 'poll_feed' AND j.feed_id = f.id)
-FROM feeds f
+	q := `SELECT` + adminFeedSelectCols + adminFeedFromJoins + `
 ORDER BY f.title ASC, f.id ASC
 LIMIT $1`
 	rows, err := s.db.Query(ctx, q, limit)
@@ -96,42 +91,8 @@ LIMIT $1`
 
 	out := make([]AdminFeedRow, 0, limit)
 	for rows.Next() {
-		var row AdminFeedRow
-		if err := rows.Scan(
-			&row.ID,
-			&row.UserID,
-			&row.FeedURL,
-			&row.FeedType,
-			&row.Title,
-			&row.CategoryID,
-			&row.IntervalMinutes,
-			&row.ETag,
-			&row.LastModified,
-			&row.LastCheckedAt,
-			&row.LastError,
-			&row.ParsingErrorCount,
-			&row.PollPaused,
-			&row.ManualPaused,
-			&row.StoreHashOnly,
-			&row.NextCheckAt,
-			&row.BridgeState,
-			&row.ScraperRules,
-			&row.RewriteRules,
-			&row.BlockedRules,
-			&row.KeepRules,
-			&row.FetchViaProxy,
-			&row.TLSInsecure,
-			&row.Crawler,
-			&row.UserAgent,
-			&row.WebhookID,
-			&row.IconURL,
-			&row.IconData,
-			&row.CreatedAt,
-			&row.UpdatedAt,
-			&row.EntryCount,
-			&row.UnreadCount,
-			&row.HasQueuedJob,
-		); err != nil {
+		row, err := scanAdminFeedRow(rows)
+		if err != nil {
 			return nil, fmt.Errorf("scan admin feed row: %w", err)
 		}
 		out = append(out, row)
@@ -146,7 +107,7 @@ const adminFeedSelectCols = `
   f.id, f.user_id, f.feed_url, f.feed_type, f.title, f.category_id, f.interval_minutes,
   f.etag, f.last_modified, f.last_checked_at, f.last_error, f.parsing_error_count, f.poll_paused, f.manual_paused, f.store_hash_only, f.next_check_at,
   f.bridge_state, f.scraper_rules, f.rewrite_rules, f.blocked_rules, f.keep_rules,
-  f.fetch_via_proxy, f.tls_insecure, f.crawler, f.user_agent, f.webhook_id, f.icon_url, f.icon_data,
+  f.fetch_via_proxy, f.tls_insecure, f.crawler, f.user_agent, f.webhook_id, f.icon_url, f.icon_data, f.last_entry_at,
   f.created_at, f.updated_at,
   COALESCE((SELECT COUNT(*)::int FROM entries e WHERE e.feed_id = f.id), 0),
   COALESCE((SELECT COUNT(*)::int FROM entries e WHERE e.feed_id = f.id AND e.status = 'unread'), 0),
@@ -155,8 +116,22 @@ const adminFeedSelectCols = `
 const adminFeedFromJoins = `
 FROM feeds f`
 
-func adminFeedsStatusWhere(status string) string {
+// adminFeedsSilentWhere: a feed that polls fine but has not produced a new
+// item (entry or dedup hash) for silentAfter. Feeds younger than that count
+// from creation. Paused/erroring feeds are reported by their own filters.
+func adminFeedsSilentWhere(silentAfter time.Duration) string {
+	return fmt.Sprintf(`(f.poll_paused = FALSE AND f.manual_paused = FALSE
+  AND COALESCE(NULLIF(f.last_error, ''), '') = '' AND f.parsing_error_count = 0
+  AND COALESCE(f.last_entry_at, f.created_at) < now() - interval '%d seconds')`, int64(silentAfter/time.Second))
+}
+
+func adminFeedsStatusWhere(status string, silentAfter time.Duration) string {
 	switch status {
+	case "silent":
+		if silentAfter <= 0 {
+			return "FALSE"
+		}
+		return adminFeedsSilentWhere(silentAfter)
 	case "paused":
 		return `(f.poll_paused = TRUE OR f.manual_paused = TRUE)`
 	case "errors":
@@ -200,6 +175,8 @@ func adminFeedsOrderClause(sortKey, order string) string {
 		return fmt.Sprintf("f.last_checked_at %s %s, f.id ASC", dir, nulls)
 	case "next_check":
 		return fmt.Sprintf("f.next_check_at %s %s, f.id ASC", dir, nulls)
+	case "last_entry":
+		return fmt.Sprintf("f.last_entry_at %s %s, f.id ASC", dir, nulls)
 	case "errors":
 		return fmt.Sprintf("f.parsing_error_count %s, f.id ASC", dir)
 	case "entries":
@@ -242,6 +219,7 @@ func scanAdminFeedRow(rows pgx.Rows) (AdminFeedRow, error) {
 		&row.WebhookID,
 		&row.IconURL,
 		&row.IconData,
+		&row.LastEntryAt,
 		&row.CreatedAt,
 		&row.UpdatedAt,
 		&row.EntryCount,
@@ -265,7 +243,7 @@ func (s *PostgresStore) ListAdminFeedsPage(ctx context.Context, params AdminFeed
 	if status == "" {
 		status = "all"
 	}
-	where := adminFeedsStatusWhere(status)
+	where := adminFeedsStatusWhere(status, params.SilentAfter)
 	orderBy := adminFeedsOrderClause(strings.TrimSpace(params.SortKey), strings.TrimSpace(params.Order))
 
 	countQ := `SELECT COUNT(*)::int ` + adminFeedFromJoins
@@ -303,7 +281,11 @@ func (s *PostgresStore) ListAdminFeedsPage(ctx context.Context, params AdminFeed
 	return out, total, nil
 }
 
-func (s *PostgresStore) AdminFeedSummary(ctx context.Context) (AdminFeedSummary, error) {
+func (s *PostgresStore) AdminFeedSummary(ctx context.Context, silentAfter time.Duration) (AdminFeedSummary, error) {
+	silentSeconds := int64(0)
+	if silentAfter > 0 {
+		silentSeconds = int64(silentAfter / time.Second)
+	}
 	const q = `
 SELECT
   COUNT(*)::int,
@@ -329,16 +311,25 @@ SELECT
         OR EXISTS (SELECT 1 FROM jobs j WHERE j.type = 'poll_feed' AND j.feed_id = feeds.id)
       )
   )::int,
+  COUNT(*) FILTER (
+    WHERE $1::bigint > 0
+      AND poll_paused = FALSE
+      AND manual_paused = FALSE
+      AND COALESCE(NULLIF(last_error, ''), '') = ''
+      AND parsing_error_count = 0
+      AND COALESCE(last_entry_at, created_at) < now() - make_interval(secs => $1::bigint)
+  )::int,
   COALESCE((SELECT GREATEST(reltuples, 0)::bigint FROM pg_class WHERE oid = 'public.entries'::regclass), 0)::int,
   COALESCE((SELECT COUNT(*)::int FROM entries WHERE status = 'unread'), 0)
 FROM feeds`
 	var sum AdminFeedSummary
-	err := s.db.QueryRow(ctx, q).Scan(
+	err := s.db.QueryRow(ctx, q, silentSeconds).Scan(
 		&sum.TotalFeeds,
 		&sum.OKCount,
 		&sum.ErrorCount,
 		&sum.PausedCount,
 		&sum.WaitingCount,
+		&sum.SilentCount,
 		&sum.TotalEntries,
 		&sum.TotalUnread,
 	)

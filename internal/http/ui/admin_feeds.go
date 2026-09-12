@@ -34,6 +34,26 @@ type adminFeedDetailView struct {
 // adminFeedPollLogLimit is how many poll attempts the admin feed page shows.
 const adminFeedPollLogLimit = 30
 
+// silentAfter converts FEED_SILENT_DAYS to the window used by the store.
+func (h *Handler) silentAfter() time.Duration {
+	if h.cfg.FeedSilentDays <= 0 {
+		return 0
+	}
+	return time.Duration(h.cfg.FeedSilentDays) * 24 * time.Hour
+}
+
+// isSilentAdminFeed mirrors adminFeedsSilentWhere for the in-memory path.
+func isSilentAdminFeed(row storage.AdminFeedRow, now time.Time, silentAfter time.Duration) bool {
+	if silentAfter <= 0 || row.ManualPaused || row.PollPaused || row.LastError != "" || row.ParsingErrorCount > 0 {
+		return false
+	}
+	last := row.CreatedAt
+	if row.LastEntryAt != nil {
+		last = *row.LastEntryAt
+	}
+	return last.Before(now.Add(-silentAfter))
+}
+
 func classifyAdminFeedStatus(row storage.AdminFeedRow, now time.Time) string {
 	if row.ManualPaused || row.PollPaused {
 		return "paused"
@@ -103,12 +123,19 @@ func formatBytes(n int64) string {
 	return fmt.Sprintf("%.1f PiB", f/unit)
 }
 
-func filterAdminFeedRows(rows []adminFeedRowView, status string) []adminFeedRowView {
+func filterAdminFeedRows(rows []adminFeedRowView, status string, silentAfter time.Duration) []adminFeedRowView {
 	if status == "" || status == "all" {
 		return rows
 	}
+	now := time.Now()
 	out := make([]adminFeedRowView, 0, len(rows))
 	for _, row := range rows {
+		if status == "silent" {
+			if isSilentAdminFeed(row.AdminFeedRow, now, silentAfter) {
+				out = append(out, row)
+			}
+			continue
+		}
 		if row.Status == status {
 			out = append(out, row)
 		}
@@ -117,7 +144,7 @@ func filterAdminFeedRows(rows []adminFeedRowView, status string) []adminFeedRowV
 }
 
 var adminFeedSortKeys = map[string]struct{}{
-	"name": {}, "id": {}, "status": {}, "last_checked": {}, "next_check": {},
+	"name": {}, "id": {}, "status": {}, "last_checked": {}, "next_check": {}, "last_entry": {},
 	"errors": {}, "entries": {}, "unread": {},
 }
 
@@ -135,7 +162,7 @@ func parseAdminFeedsSort(r *http.Request) (sortKey, order string) {
 
 func parseAdminFeedsStatus(v string) string {
 	switch strings.TrimSpace(v) {
-	case "errors", "paused", "waiting", "ok", "all":
+	case "errors", "paused", "waiting", "ok", "silent", "all":
 		return strings.TrimSpace(v)
 	default:
 		return "all"
@@ -198,6 +225,8 @@ func compareAdminFeedRows(a, b adminFeedRowView, sortKey string) bool {
 		return timePtrBefore(a.LastCheckedAt, b.LastCheckedAt, a.ID, b.ID)
 	case "next_check":
 		return timePtrBefore(a.NextCheckAt, b.NextCheckAt, a.ID, b.ID)
+	case "last_entry":
+		return timePtrBefore(a.LastEntryAt, b.LastEntryAt, a.ID, b.ID)
 	case "errors":
 		if a.ParsingErrorCount != b.ParsingErrorCount {
 			return a.ParsingErrorCount < b.ParsingErrorCount
@@ -247,11 +276,12 @@ func (h *Handler) loadAdminFeedsDashboard(r *http.Request) (pageData, error) {
 	}
 
 	ctx := r.Context()
-	summary, err := h.cfg.AdminFeeds.AdminFeedSummary(ctx)
+	summary, err := h.cfg.AdminFeeds.AdminFeedSummary(ctx, h.silentAfter())
 	if err != nil {
 		return data, err
 	}
 	data.AdminFeedSummary = summary
+	data.FeedSilentDays = h.cfg.FeedSilentDays
 
 	jobs, err := h.cfg.AdminFeeds.PollFeedJobCounts(ctx)
 	if err != nil {
@@ -274,11 +304,12 @@ func (h *Handler) loadAdminFeedsDashboard(r *http.Request) (pageData, error) {
 	sortKey, order := parseAdminFeedsSort(r)
 	limit, offset, page := parseAdminFeedsPage(r)
 	rows, total, err := h.cfg.AdminFeeds.ListAdminFeedsPage(ctx, storage.AdminFeedsListParams{
-		Status:  status,
-		SortKey: sortKey,
-		Order:   order,
-		Limit:   limit,
-		Offset:  offset,
+		Status:      status,
+		SortKey:     sortKey,
+		Order:       order,
+		Limit:       limit,
+		Offset:      offset,
+		SilentAfter: h.silentAfter(),
 	})
 	if err != nil {
 		return data, err

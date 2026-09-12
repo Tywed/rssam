@@ -323,9 +323,10 @@ SET etag = $2,
     parsing_error_count = CASE WHEN $5 = '' THEN 0 ELSE parsing_error_count END,
     poll_paused = CASE WHEN $5 = '' THEN FALSE ELSE poll_paused END,
     next_check_at = COALESCE($7, next_check_at),
+    last_entry_at = CASE WHEN $8 THEN $4 ELSE last_entry_at END,
     updated_at = now()
 WHERE id = $1`
-	cmd, err := s.db.Exec(ctx, q, params.ID, params.ETag, params.LastModified, params.LastCheckedAt, params.LastError, bridgeState, params.NextCheckAt)
+	cmd, err := s.db.Exec(ctx, q, params.ID, params.ETag, params.LastModified, params.LastCheckedAt, params.LastError, bridgeState, params.NextCheckAt, params.NewEntries > 0)
 	if err != nil {
 		return fmt.Errorf("update feed refresh meta: %w", err)
 	}

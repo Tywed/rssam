@@ -102,6 +102,7 @@ type Dependencies struct {
 
 	MinPollInterval  time.Duration
 	MaxPollInterval  time.Duration
+	FeedSilentDays   int
 	StoreEntriesMode string
 
 	DedupStore              storage.EntryDedupStore
@@ -168,6 +169,7 @@ type Server struct {
 	fetchTimeoutSec       int
 	envFilePath           string
 	retention             ui.RetentionSettings
+	feedSilentDays        int
 	runRetentionCleanup   func(ctx context.Context) (storage.RetentionCleanupResult, error)
 	databaseURL           string
 	gitHubRepo            string
@@ -387,6 +389,7 @@ func New(dep Dependencies) *Server {
 		fetchTimeoutSec:       dep.FetchTimeoutSec,
 		envFilePath:           dep.EnvFilePath,
 		retention:             dep.Retention,
+		feedSilentDays:        dep.FeedSilentDays,
 		runRetentionCleanup:   dep.RunRetentionCleanup,
 		databaseURL:           dep.DatabaseURL,
 		gitHubRepo:            dep.GitHubRepo,

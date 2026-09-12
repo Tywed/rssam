@@ -259,15 +259,19 @@ func (r *FeedRefresher) refreshLoaded(ctx context.Context, feed storage.Feed, ma
 	}
 
 	inserted = 0
+	// fresh counts items the feed delivered for the first time, including
+	// hash-only ones that never become entries; it stamps last_entry_at.
+	fresh := 0
 	if !res.NotModified {
 		entries := reader.ApplyFeedRules(res.Entries, feed.BlockedRules, feed.KeepRules)
 		entries = reader.ApplyURLRewriteRules(entries, feed.RewriteRules)
 
 		var insertedEntries []storage.Entry
 		if r.feedUsesHashOnlyStorage(feed) {
-			inserted, insertedEntries, err = r.processEntriesDedupOnly(ctx, feed, entries)
+			inserted, insertedEntries, fresh, err = r.processEntriesDedupOnly(ctx, feed, entries)
 		} else {
 			inserted, insertedEntries, err = r.Entries.CreateEntries(ctx, feedID, entries)
+			fresh = inserted
 		}
 		if err != nil {
 			after := r.recordFailure(ctx, feed, now, err, bridgeStateJSON(res.BridgeState))
@@ -313,6 +317,7 @@ func (r *FeedRefresher) refreshLoaded(ctx context.Context, feed storage.Feed, ma
 		LastError:     "",
 		BridgeState:   bridgeStateJSON(res.BridgeState),
 		NextCheckAt:   &next,
+		NewEntries:    fresh,
 	}); err != nil {
 		r.logger().Error("update feed refresh meta failed", "feed_id", feedID, "err", err)
 	}

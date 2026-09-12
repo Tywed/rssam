@@ -84,8 +84,11 @@ type Config struct {
 	WebhookLogRetentionDays  int
 	FilterMatchRetentionDays int
 	FeedPollLogRetentionDays int
-	AuditLogRetentionDays    int
-	CleanupInterval          time.Duration
+	// FeedSilentDays: an active feed without a new item for this long is
+	// listed as "silent" in the admin dashboard (0 disables).
+	FeedSilentDays        int
+	AuditLogRetentionDays int
+	CleanupInterval       time.Duration
 
 	WorkerPoolSize        int
 	WebhookWorkerPoolSize int
@@ -210,6 +213,7 @@ func Load() (Config, error) {
 		WebhookLogRetentionDays:  parseInt(getEnv("WEBHOOK_LOG_RETENTION_DAYS", "90"), 90),
 		FilterMatchRetentionDays: parseIntAllowZero(getEnv("FILTER_MATCH_RETENTION_DAYS", "90"), 90),
 		FeedPollLogRetentionDays: parseIntAllowZero(getEnv("FEED_POLL_LOG_RETENTION_DAYS", "14"), 14),
+		FeedSilentDays:           parseIntAllowZero(getEnv("FEED_SILENT_DAYS", "7"), 7),
 		AuditLogRetentionDays:    parseIntAllowZero(getEnv("AUDIT_LOG_RETENTION_DAYS", "180"), 180),
 		CleanupInterval:          parseDuration(getEnv("CLEANUP_INTERVAL", "24h"), 24*time.Hour),
 
@@ -360,6 +364,9 @@ func (c Config) Validate() error {
 	}
 	if c.FilterMatchRetentionDays < 0 || c.FilterMatchRetentionDays > 3650 {
 		errs = append(errs, fmt.Errorf("FILTER_MATCH_RETENTION_DAYS must be between 0 and 3650 (0 disables), got %d", c.FilterMatchRetentionDays))
+	}
+	if c.FeedSilentDays < 0 || c.FeedSilentDays > 3650 {
+		errs = append(errs, fmt.Errorf("FEED_SILENT_DAYS must be between 0 and 3650 (0 disables), got %d", c.FeedSilentDays))
 	}
 	if c.FeedPollLogRetentionDays < 0 || c.FeedPollLogRetentionDays > 3650 {
 		errs = append(errs, fmt.Errorf("FEED_POLL_LOG_RETENTION_DAYS must be between 0 and 3650 (0 disables), got %d", c.FeedPollLogRetentionDays))

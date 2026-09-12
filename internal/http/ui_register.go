@@ -109,6 +109,7 @@ func (s *Server) registerUI(mux *http.ServeMux) {
 	cfg.EnvFilePath = s.envFilePath
 	cfg.AuthTokenSet = s.authToken != ""
 	cfg.Retention = s.retention
+	cfg.FeedSilentDays = s.feedSilentDays
 	cfg.RunRetentionCleanup = s.runRetentionCleanup
 	cfg.DatabaseURL = s.databaseURL
 	cfg.GitHubRepo = s.gitHubRepo

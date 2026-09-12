@@ -54,6 +54,12 @@
         <div class="admin-feeds-card-value">{{.AdminFeedSummary.WaitingCount}}</div>
         <div class="admin-feeds-card-label">Ждут обновления</div>
       </a>
+      {{if gt .FeedSilentDays 0}}
+      <a href="{{adminFeedsPageLink "silent" .AdminFeedsSort .AdminFeedsOrder 1}}" class="admin-feeds-card {{if eq .AdminFeedsFilter "silent"}}active{{end}}" title="Опрашиваются без ошибок, но новых записей нет дольше {{.FeedSilentDays}} дн. (FEED_SILENT_DAYS)">
+        <div class="admin-feeds-card-value">{{.AdminFeedSummary.SilentCount}}</div>
+        <div class="admin-feeds-card-label">Молчат &gt; {{.FeedSilentDays}} дн.</div>
+      </a>
+      {{end}}
       <div class="admin-feeds-card">
         <div class="admin-feeds-card-value">{{add .PollFeedJobCounts.Pending .PollFeedJobCounts.Running}}</div>
         <div class="admin-feeds-card-label">В очереди</div>
@@ -70,6 +76,7 @@
             <th><a href="{{adminFeedsSortLink .AdminFeedsFilter .AdminFeedsSort .AdminFeedsOrder "status"}}">Статус{{adminFeedsSortIndicator .AdminFeedsSort .AdminFeedsOrder "status"}}</a></th>
             <th><a href="{{adminFeedsSortLink .AdminFeedsFilter .AdminFeedsSort .AdminFeedsOrder "last_checked"}}">Последний опрос{{adminFeedsSortIndicator .AdminFeedsSort .AdminFeedsOrder "last_checked"}}</a></th>
             <th><a href="{{adminFeedsSortLink .AdminFeedsFilter .AdminFeedsSort .AdminFeedsOrder "next_check"}}">Следующий опрос{{adminFeedsSortIndicator .AdminFeedsSort .AdminFeedsOrder "next_check"}}</a></th>
+            <th><a href="{{adminFeedsSortLink .AdminFeedsFilter .AdminFeedsSort .AdminFeedsOrder "last_entry"}}">Последняя запись{{adminFeedsSortIndicator .AdminFeedsSort .AdminFeedsOrder "last_entry"}}</a></th>
             <th><a href="{{adminFeedsSortLink .AdminFeedsFilter .AdminFeedsSort .AdminFeedsOrder "errors"}}">Ошибок подряд{{adminFeedsSortIndicator .AdminFeedsSort .AdminFeedsOrder "errors"}}</a></th>
             <th>Последняя ошибка</th>
             <th><a href="{{adminFeedsSortLink .AdminFeedsFilter .AdminFeedsSort .AdminFeedsOrder "entries"}}">Записей{{adminFeedsSortIndicator .AdminFeedsSort .AdminFeedsOrder "entries"}}</a></th>
@@ -86,6 +93,7 @@
             <td><span class="feed-status-badge {{adminFeedStatusClass .Status}}">{{adminFeedStatusLabel .Status}}</span></td>
             <td class="meta">{{formatTime .LastCheckedAt}}</td>
             <td class="meta">{{formatTime .NextCheckAt}}</td>
+            <td class="meta">{{if .LastEntryAt}}{{formatTime .LastEntryAt}}{{else}}—{{end}}</td>
             <td>{{if gt .ParsingErrorCount 0}}{{.ParsingErrorCount}}{{else}}—{{end}}</td>
             <td class="meta admin-feeds-error" title="{{.LastError}}">{{if .LastError}}{{truncateStr .LastError 80}}{{else}}—{{end}}</td>
             <td>{{.EntryCount}}</td>
@@ -127,7 +135,7 @@
             </td>
           </tr>
           {{else}}
-          <tr><td colspan="11" class="meta">Нет лент по выбранному фильтру</td></tr>
+          <tr><td colspan="12" class="meta">Нет лент по выбранному фильтру</td></tr>
           {{end}}
         </tbody>
       </table>

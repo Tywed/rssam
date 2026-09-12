@@ -46,11 +46,11 @@ func TestFilterAdminFeedRows(t *testing.T) {
 		{Status: "errors"},
 		{Status: "paused"},
 	}
-	filtered := filterAdminFeedRows(rows, "errors")
+	filtered := filterAdminFeedRows(rows, "errors", 0)
 	if len(filtered) != 1 || filtered[0].Status != "errors" {
 		t.Fatalf("filter errors: %+v", filtered)
 	}
-	if len(filterAdminFeedRows(rows, "all")) != 3 {
+	if len(filterAdminFeedRows(rows, "all", 0)) != 3 {
 		t.Fatal("filter all should keep all rows")
 	}
 }

@@ -79,6 +79,8 @@ type Config struct {
 	// Retention holds the retention windows the running process was started
 	// with; shown (and editable via .env) on the admin system page.
 	Retention RetentionSettings
+	// FeedSilentDays mirrors FEED_SILENT_DAYS (0 = the "silent" card is hidden).
+	FeedSilentDays int
 	// RunRetentionCleanup triggers one cleanup pass immediately (nil = not
 	// available, e.g. workers run in another process).
 	RunRetentionCleanup func(ctx context.Context) (storage.RetentionCleanupResult, error)

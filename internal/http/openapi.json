@@ -3029,6 +3029,11 @@
           },
           "entry_retention_days": {
             "type": "integer"
+          },
+          "last_entry_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the feed last delivered a new item (entry or hash-only record). Absent until the first one."
           }
         },
         "required": [

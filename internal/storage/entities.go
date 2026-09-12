@@ -64,8 +64,10 @@ type Feed struct {
 	WebhookID          *int64
 	IconURL            string
 	IconData           []byte
-	CreatedAt          time.Time
-	UpdatedAt          time.Time
+	// LastEntryAt is when the feed last yielded a new entry (or dedup hash).
+	LastEntryAt *time.Time
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
 }
 
 type Job struct {
@@ -424,6 +426,8 @@ type UpdateFeedRefreshMetaParams struct {
 	// NextCheckAt, when set, is written in the same UPDATE (one row version
 	// per poll instead of two).
 	NextCheckAt *time.Time
+	// NewEntries > 0 stamps last_entry_at = LastCheckedAt in the same UPDATE.
+	NewEntries int
 }
 
 type RecordFeedPollFailureParams struct {

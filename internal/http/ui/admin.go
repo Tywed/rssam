@@ -182,7 +182,7 @@ func (h *Handler) handleAdminSystem(w http.ResponseWriter, r *http.Request) {
 		if size, err := h.cfg.AdminFeeds.EstimateDatabaseSize(r.Context()); err == nil {
 			info.DBSizeBytes = size
 		}
-		summary, err := h.cfg.AdminFeeds.AdminFeedSummary(r.Context())
+		summary, err := h.cfg.AdminFeeds.AdminFeedSummary(r.Context(), 0)
 		if err == nil {
 			info.TotalEntries = summary.TotalEntries
 			info.TotalUnread = summary.TotalUnread

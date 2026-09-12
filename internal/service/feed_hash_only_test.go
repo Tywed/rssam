@@ -44,9 +44,14 @@ func (m *memDedupStore) CollapseEntriesToHashes(context.Context, storage.Collaps
 
 type memEntryCreate struct {
 	created []storage.CreateEntryParams
+	// empty makes every insert a no-op, as ON CONFLICT DO NOTHING would.
+	empty bool
 }
 
 func (m *memEntryCreate) CreateEntries(_ context.Context, _ int64, entries []storage.CreateEntryParams) (int, []storage.Entry, error) {
+	if m.empty {
+		return 0, nil, nil
+	}
 	m.created = append(m.created, entries...)
 	out := make([]storage.Entry, 0, len(entries))
 	for i, e := range entries {
@@ -150,15 +155,15 @@ func TestFeedRefresherPerFeedHashOnly(t *testing.T) {
 	}
 	feed := storage.Feed{ID: 1, UserID: 1, StoreHashOnly: true}
 
-	inserted, created, err := r.processEntriesDedupOnly(context.Background(), feed, []storage.CreateEntryParams{
+	inserted, created, fresh, err := r.processEntriesDedupOnly(context.Background(), feed, []storage.CreateEntryParams{
 		{Title: "skip me", Hash: "h1", URL: "https://example.com/1"},
 		{Title: "match item", Hash: "h2", URL: "https://example.com/2", Content: "body"},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if inserted != 1 || len(created) != 1 {
-		t.Fatalf("inserted=%d created=%d, want 1/1", inserted, len(created))
+	if inserted != 1 || len(created) != 1 || fresh != 2 {
+		t.Fatalf("inserted=%d created=%d fresh=%d, want 1/1/2", inserted, len(created), fresh)
 	}
 	if len(dedup.recorded) != 1 || dedup.recorded[0].Hash != "h1" {
 		t.Fatalf("dedup recorded=%+v", dedup.recorded)

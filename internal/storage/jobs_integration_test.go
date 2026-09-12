@@ -294,7 +294,7 @@ func TestIntegration_AdminFeedDashboard(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	sum, err := store.AdminFeedSummary(ctx)
+	sum, err := store.AdminFeedSummary(ctx, 0)
 	if err != nil {
 		t.Fatal(err)
 	}

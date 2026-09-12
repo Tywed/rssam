@@ -219,14 +219,14 @@ func (s *PostgresStore) GetFeedByID(ctx context.Context, id int64) (Feed, error)
 const feedColumns = `id, user_id, feed_url, feed_type, title, category_id, interval_minutes, etag, last_modified, last_checked_at, last_error,
        parsing_error_count, poll_paused, manual_paused, store_hash_only, entry_retention_days, next_check_at,
        bridge_state, scraper_rules, rewrite_rules, blocked_rules, keep_rules, fetch_via_proxy, tls_insecure, crawler, user_agent,
-       webhook_id, icon_url, created_at, updated_at`
+       webhook_id, icon_url, last_entry_at, created_at, updated_at`
 
 func feedScanTargets(f *Feed) []any {
 	return []any{
 		&f.ID, &f.UserID, &f.FeedURL, &f.FeedType, &f.Title, &f.CategoryID, &f.IntervalMinutes, &f.ETag, &f.LastModified, &f.LastCheckedAt, &f.LastError,
 		&f.ParsingErrorCount, &f.PollPaused, &f.ManualPaused, &f.StoreHashOnly, &f.EntryRetentionDays, &f.NextCheckAt,
 		&f.BridgeState, &f.ScraperRules, &f.RewriteRules, &f.BlockedRules, &f.KeepRules, &f.FetchViaProxy, &f.TLSInsecure, &f.Crawler, &f.UserAgent,
-		&f.WebhookID, &f.IconURL, &f.CreatedAt, &f.UpdatedAt,
+		&f.WebhookID, &f.IconURL, &f.LastEntryAt, &f.CreatedAt, &f.UpdatedAt,
 	}
 }
 

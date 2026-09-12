@@ -328,6 +328,7 @@ func main() {
 		CSRFSecret:              csrfSecret(cfg),
 		MinPollInterval:         cfg.MinPollInterval,
 		MaxPollInterval:         cfg.MaxPollInterval,
+		FeedSilentDays:          cfg.FeedSilentDays,
 		DedupStore:              pgStore,
 		FeedPollLogStore:        pgStore,
 		StoreEntriesMode:        cfg.StoreEntriesMode,

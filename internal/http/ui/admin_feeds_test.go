@@ -35,7 +35,7 @@ func (m *uiMemAdminFeeds) ListAdminFeedsPage(_ context.Context, params storage.A
 	if status == "" {
 		status = "all"
 	}
-	filtered := filterAdminFeedRows(views, status)
+	filtered := filterAdminFeedRows(views, status, params.SilentAfter)
 	sortKey := params.SortKey
 	if sortKey == "" {
 		sortKey = "name"
@@ -62,7 +62,7 @@ func (m *uiMemAdminFeeds) ListAdminFeedsPage(_ context.Context, params storage.A
 	}
 	return out, total, nil
 }
-func (m *uiMemAdminFeeds) AdminFeedSummary(context.Context) (storage.AdminFeedSummary, error) {
+func (m *uiMemAdminFeeds) AdminFeedSummary(context.Context, time.Duration) (storage.AdminFeedSummary, error) {
 	return m.summary, nil
 }
 func (m *uiMemAdminFeeds) PollFeedJobCounts(context.Context) (storage.PollFeedJobCounts, error) {
@@ -322,5 +322,90 @@ func TestClassifyAdminFeedStatus(t *testing.T) {
 	}
 	if got := classifyAdminFeedStatus(storage.AdminFeedRow{NextCheckAt: &future}, now); got != "ok" {
 		t.Fatalf("ok: got %q", got)
+	}
+}
+
+func TestIsSilentAdminFeed(t *testing.T) {
+	now := time.Now()
+	old := now.Add(-10 * 24 * time.Hour)
+	recent := now.Add(-time.Hour)
+	week := 7 * 24 * time.Hour
+	cases := []struct {
+		name string
+		row  storage.AdminFeedRow
+		want bool
+	}{
+		{"old entry", storage.AdminFeedRow{Feed: storage.Feed{LastEntryAt: &old, CreatedAt: old}}, true},
+		{"never delivered, created long ago", storage.AdminFeedRow{Feed: storage.Feed{CreatedAt: old}}, true},
+		{"never delivered, created recently", storage.AdminFeedRow{Feed: storage.Feed{CreatedAt: recent}}, false},
+		{"recent entry", storage.AdminFeedRow{Feed: storage.Feed{LastEntryAt: &recent, CreatedAt: old}}, false},
+		{"paused", storage.AdminFeedRow{Feed: storage.Feed{LastEntryAt: &old, CreatedAt: old, ManualPaused: true}}, false},
+		{"erroring", storage.AdminFeedRow{Feed: storage.Feed{LastEntryAt: &old, CreatedAt: old, LastError: "x"}}, false},
+	}
+	for _, tc := range cases {
+		if got := isSilentAdminFeed(tc.row, now, week); got != tc.want {
+			t.Errorf("%s: got %v want %v", tc.name, got, tc.want)
+		}
+	}
+	if isSilentAdminFeed(cases[0].row, now, 0) {
+		t.Error("window 0 must disable the check")
+	}
+}
+
+func TestUI_AdminFeedsSilentCard(t *testing.T) {
+	now := time.Now()
+	next := now.Add(time.Hour)
+	old := now.Add(-30 * 24 * time.Hour)
+	newHandler := func(silentDays int) *http.ServeMux {
+		h, err := NewHandler(Config{
+			Users:      &uiMemUsers{user: storage.User{ID: 1, Username: "alice", PasswordHash: mustHash(t, "secret"), IsAdmin: true}},
+			Sessions:   &uiMemSessions{sessions: map[string]storage.Session{}},
+			Entries:    uiMemEntries{},
+			Feeds:      &uiMemFeeds{},
+			Categories: &uiMemCategories{},
+			AdminFeeds: &uiMemAdminFeeds{
+				summary: storage.AdminFeedSummary{TotalFeeds: 2, OKCount: 2, SilentCount: 1},
+				rows: []storage.AdminFeedRow{
+					{Feed: storage.Feed{ID: 1, Title: "Quiet", FeedType: "rss", NextCheckAt: &next, LastEntryAt: &old, CreatedAt: old}},
+					{Feed: storage.Feed{ID: 2, Title: "Lively", FeedType: "rss", NextCheckAt: &next, LastEntryAt: &now, CreatedAt: old}},
+				},
+			},
+			CSRFSecret:     "csrf-test",
+			FeedSilentDays: silentDays,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		mux := http.NewServeMux()
+		h.Register(mux)
+		return mux
+	}
+	get := func(mux *http.ServeMux, path string) string {
+		sid := uiSessionCookie(t, nil, mux)
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		req.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: sid})
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("%s: status=%d", path, rec.Code)
+		}
+		return rec.Body.String()
+	}
+
+	mux := newHandler(7)
+	body := get(mux, "/ui/admin/feeds")
+	for _, want := range []string{"Молчат &gt; 7 дн.", "/ui/admin/feeds?status=silent", "Последняя запись", `sort=last_entry`} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("missing %q", want)
+		}
+	}
+	body = get(mux, "/ui/admin/feeds?status=silent")
+	if !strings.Contains(body, "Quiet") || strings.Contains(body, "Lively") {
+		t.Fatal("silent filter must list only the quiet feed")
+	}
+
+	body = get(newHandler(0), "/ui/admin/feeds")
+	if strings.Contains(body, "status=silent") {
+		t.Fatal("FEED_SILENT_DAYS=0 must hide the card")
 	}
 }

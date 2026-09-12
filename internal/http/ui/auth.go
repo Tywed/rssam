@@ -119,6 +119,7 @@ type pageData struct {
 	AdminFeedsPageCount        int
 	AdminFeedsTotal            int
 	AdminFeedSummary           storage.AdminFeedSummary
+	FeedSilentDays             int
 	AdminFeedRows              []adminFeedRowView
 	AdminFeedDetail            adminFeedDetailView
 	PollFeedJobCounts          storage.PollFeedJobCounts
