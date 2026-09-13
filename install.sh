@@ -198,6 +198,10 @@ install_backup() {
   install -m 644 /tmp/rssam-backup.timer /etc/systemd/system/rssam-backup.timer
   rm -f /tmp/rssam-backup.sh /tmp/rssam-backup.service /tmp/rssam-backup.timer
   systemctl daemon-reload
+  # Let rssam watch the dumps (system alert "backup stale").
+  if [ -f "$ENV_FILE" ] && ! grep -q '^BACKUP_DIR=' "$ENV_FILE"; then
+    printf 'BACKUP_DIR=%s/backups\n' "$PREFIX" >>"$ENV_FILE"
+  fi
   if command -v pg_dump >/dev/null 2>&1; then
     systemctl enable --now rssam-backup.timer
   else

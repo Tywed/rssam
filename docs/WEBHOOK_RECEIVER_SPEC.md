@@ -17,6 +17,13 @@ rssam ставит доставку в очередь в двух случаях
 
 Одна пара `(webhook_id, entry_id)` доставляется **не более одного раза** (идемпотентность на стороне rssam).
 
+Ещё два типа событий включаются в настройках webhook и описаны в §3.1:
+
+| Настройка | `event_type` | Что приходит |
+|-----------|--------------|--------------|
+| `digest_minutes > 0` | `digest` | Все записи окна одним запросом (вместо `entry_matched`/`new_entry` по одной) |
+| `system_alerts` | `system_alert` | Уведомления о состоянии инстанса (ленты остановлены/молчат, вебхук не доставляется, есть обновление, бэкап устарел) |
+
 ---
 
 ## 2. HTTP-запрос
@@ -80,7 +87,7 @@ rssam ставит доставку в очередь в двух случаях
 | Поле | Тип | Всегда | Описание |
 |------|-----|--------|----------|
 | `event_version` | int | да | Версия схемы, сейчас `1` |
-| `event_type` | string | да | `entry_matched` или `new_entry` |
+| `event_type` | string | да | `entry_matched` или `new_entry` (`digest`, `system_alert` — см. §3.1) |
 | `entry` | object | да | Запись RSS |
 | `feed` | object | да | Лента: `ID`, `Title` (название из rssam) |
 | `filter` | object | только `entry_matched` | Сработавший фильтр (без rules/actions в delivery) |
@@ -133,6 +140,42 @@ rssam ставит доставку в очередь в двух случаях
 | `UpdatedAt` | string | RFC3339 |
 
 Поля `Rules`, `Actions`, `ScopeItems` в webhook **не заполняются** (пустые массивы).
+
+### 3.1. `digest` и `system_alert`
+
+`digest` (webhook с `digest_minutes > 0`): записи, поставленные в очередь за окно, уходят одним запросом в конце окна (окна отсчитываются от полуночи по `TZ` сервера: `60` — начало каждого часа, `1440` — полночь). Подпись, retry и `on_success_entry` — как у обычной доставки; неуспех откладывает всю пачку целиком.
+
+```json
+{
+  "event_version": 1,
+  "event_type": "digest",
+  "count": 2,
+  "items": [
+    {"entry": {"ID": 101, "FeedID": 7, "Title": "…", "URL": "…", "Author": null, "PublishedAt": "…", "CreatedAt": "…"}, "feed": {"ID": 7, "Title": "Лента"}},
+    {"entry": {"ID": 102, "FeedID": 7, "Title": "…", "URL": "…", "Author": null, "PublishedAt": "…", "CreatedAt": "…"}, "feed": {"ID": 7, "Title": "Лента"}}
+  ],
+  "sent_at": "2026-01-15T10:00:00Z"
+}
+```
+
+В `items[].entry` нет `Content`/`OriginalContent` (в дайджесте только заголовки и ссылки); `filter` и `match_details` отсутствуют. `body_template` для дайджеста выполняется один раз с `{{.items}}` (список объектов с полями `entry`/`feed`), `{{.count}}` и `{{.payload}}`:
+
+```
+{"text":"{{.count}} новых:{{range .items}}\n• {{.entry.Title}} — {{.entry.URL}}{{end}}"}
+```
+
+`system_alert` (webhook с `system_alerts`): без записи, без `body_template`. Поле `alert` — одно из `feeds_paused`, `feeds_silent`, `webhooks_failing`, `update`, `backup_stale`; `text` — готовый русский текст; `details` — id затронутых объектов или параметры (`feed_ids`, `webhook_ids`, `latest`/`current`, `dir`/`age_hours`). Каждая проблема сообщается один раз при появлении; повтор — только после того, как она исчезла и появилась снова.
+
+```json
+{
+  "event_version": 1,
+  "event_type": "system_alert",
+  "alert": "feeds_paused",
+  "text": "Ленты остановлены (ошибки)\n• #3 Broken — unexpected status code: 500",
+  "details": {"feed_ids": [3]},
+  "sent_at": "2026-01-15T10:00:41Z"
+}
+```
 
 ### Пример: feed-level (`new_entry`)
 
