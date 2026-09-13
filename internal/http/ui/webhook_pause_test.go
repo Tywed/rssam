@@ -14,7 +14,9 @@ import (
 )
 
 type uiMemWebhooks struct {
-	items map[int64]storage.Webhook
+	items   map[int64]storage.Webhook
+	created []storage.CreateWebhookParams
+	updated []storage.UpdateWebhookParams
 }
 
 func (m *uiMemWebhooks) ListWebhooks(context.Context, int64, int, int) ([]storage.Webhook, int, error) {
@@ -33,7 +35,8 @@ func (m *uiMemWebhooks) ListEnabledWebhooks(context.Context, int64, int) ([]stor
 	}
 	return out, nil
 }
-func (m *uiMemWebhooks) CreateWebhook(context.Context, storage.CreateWebhookParams) (storage.Webhook, error) {
+func (m *uiMemWebhooks) CreateWebhook(_ context.Context, p storage.CreateWebhookParams) (storage.Webhook, error) {
+	m.created = append(m.created, p)
 	return storage.Webhook{}, nil
 }
 func (m *uiMemWebhooks) GetWebhook(_ context.Context, _ int64, id int64) (storage.Webhook, error) {
@@ -43,7 +46,8 @@ func (m *uiMemWebhooks) GetWebhook(_ context.Context, _ int64, id int64) (storag
 	}
 	return w, nil
 }
-func (m *uiMemWebhooks) UpdateWebhook(context.Context, storage.UpdateWebhookParams) (storage.Webhook, error) {
+func (m *uiMemWebhooks) UpdateWebhook(_ context.Context, p storage.UpdateWebhookParams) (storage.Webhook, error) {
+	m.updated = append(m.updated, p)
 	return storage.Webhook{}, nil
 }
 func (m *uiMemWebhooks) SetWebhookEnabled(_ context.Context, _ int64, id int64, enabled bool) error {
@@ -129,5 +133,60 @@ func TestWebhookPauseUnpause(t *testing.T) {
 func TestAdminWebhookStatusLabelPaused(t *testing.T) {
 	if got := adminWebhookStatusLabel("disabled"); got != "На паузе" {
 		t.Fatalf("got %q", got)
+	}
+}
+
+func TestWebhookFormSystemAlertsAndDigest(t *testing.T) {
+	whs := &uiMemWebhooks{items: map[int64]storage.Webhook{
+		1: {ID: 1, UserID: 1, Name: "ops", URL: "https://example.com/hook", Enabled: true, SystemAlerts: true, DigestMinutes: 1440},
+	}}
+	h, err := NewHandler(Config{
+		Users: &uiMemUsers{user: storage.User{
+			ID: 1, Username: "alice", PasswordHash: mustHash(t, "secret"), IsAdmin: true,
+		}},
+		Sessions:   &uiMemSessions{sessions: map[string]storage.Session{}},
+		Entries:    uiMemEntries{},
+		Feeds:      &uiMemFeeds{},
+		Categories: &uiMemCategories{},
+		Webhooks:   whs,
+		CSRFSecret: "csrf-test",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	mux := http.NewServeMux()
+	h.Register(mux)
+	sid := uiSessionCookie(t, nil, mux)
+	token := auth.CSRFToken("csrf-test", sid)
+
+	get := httptest.NewRequest(http.MethodGet, "/ui/webhooks/1", nil)
+	get.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: sid})
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, get)
+	body := rec.Body.String()
+	if rec.Code != http.StatusOK || !strings.Contains(body, `name="system_alerts" value="1" checked`) || !strings.Contains(body, `name="digest_minutes" type="number" min="0" max="1440" value="1440"`) {
+		t.Fatalf("form: %d\n%s", rec.Code, body)
+	}
+
+	post := func(path string, form url.Values) *httptest.ResponseRecorder {
+		form.Set("csrf_token", token)
+		req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: sid})
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, req)
+		return rec
+	}
+	rec = post("/ui/webhooks", url.Values{"name": {"new"}, "url": {"https://example.com/n"}, "kind": {"http"}, "enabled": {"1"}, "system_alerts": {"1"}, "digest_minutes": {"60"}})
+	if rec.Code != http.StatusFound || len(whs.created) != 1 || !whs.created[0].SystemAlerts || whs.created[0].DigestMinutes != 60 {
+		t.Fatalf("create: %d %+v", rec.Code, whs.created)
+	}
+	rec = post("/ui/webhooks/1", url.Values{"name": {"ops"}, "url": {"https://example.com/hook"}, "kind": {"http"}, "enabled": {"1"}, "digest_minutes": {"0"}})
+	if rec.Code != http.StatusFound || len(whs.updated) != 1 || whs.updated[0].SystemAlerts || whs.updated[0].DigestMinutes != 0 {
+		t.Fatalf("update: %d %+v", rec.Code, whs.updated)
+	}
+	rec = post("/ui/webhooks/1", url.Values{"name": {"ops"}, "url": {"https://example.com/hook"}, "kind": {"http"}, "digest_minutes": {"abc"}})
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("bad digest_minutes: %d", rec.Code)
 	}
 }

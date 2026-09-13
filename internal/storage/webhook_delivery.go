@@ -27,7 +27,7 @@ type WebhookDeliveryContext struct {
 func (s *PostgresStore) LoadWebhookDeliveryContext(ctx context.Context, logID int64) (WebhookDeliveryContext, error) {
 	const q = `
 SELECT
-  w.id, w.user_id, w.filter_id, w.name, w.url, w.method, w.headers, w.body_template, w.secret, w.enabled, w.on_success_entry, w.kind, w.provider_config, w.created_at, w.updated_at,
+  w.id, w.user_id, w.filter_id, w.name, w.url, w.method, w.headers, w.body_template, w.secret, w.enabled, w.on_success_entry, w.kind, w.provider_config, w.system_alerts, w.digest_minutes, w.created_at, w.updated_at,
   e.id, e.feed_id, e.title, e.url, e.content, e.author, e.published_at, e.hash, e.status, e.created_at, e.updated_at,
   fd.id, fd.title,
   f.id, f.user_id, f.name, f.enabled, f.created_at, f.updated_at,
@@ -71,6 +71,8 @@ WHERE wl.id = $1`
 		&out.Webhook.OnSuccessEntry,
 		&out.Webhook.Kind,
 		&out.Webhook.ProviderConfig,
+		&out.Webhook.SystemAlerts,
+		&out.Webhook.DigestMinutes,
 		&out.Webhook.CreatedAt,
 		&out.Webhook.UpdatedAt,
 		&out.Entry.ID,

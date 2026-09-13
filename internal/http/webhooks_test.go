@@ -59,7 +59,13 @@ func (m *memWebhookStore) CreateWebhook(_ context.Context, p storage.CreateWebho
 	if kind != storage.WebhookKindHTTP {
 		secret = ""
 	}
+	digest, err := storage.NormalizeDigestMinutes(p.DigestMinutes)
+	if err != nil {
+		return storage.Webhook{}, err
+	}
 	w := storage.Webhook{
+		SystemAlerts:   p.SystemAlerts,
+		DigestMinutes:  digest,
 		ID:             id,
 		UserID:         p.UserID,
 		FilterID:       p.FilterID,
@@ -197,7 +203,9 @@ func TestWebhooksAPI_CreateAndTest_Smoke(t *testing.T) {
 	  "headers":{"X-Foo":"bar"},
 	  "secret":"shh",
 	  "enabled":true,
-	  "on_success_entry":"mark_read"
+	  "on_success_entry":"mark_read",
+	  "system_alerts":true,
+	  "digest_minutes":60
 	}`))
 	createReq.Header.Set("X-Auth-Token", "secret")
 	createReq.Header.Set("Content-Type", "application/json")
@@ -211,6 +219,8 @@ func TestWebhooksAPI_CreateAndTest_Smoke(t *testing.T) {
 			ID             int64  `json:"id"`
 			Name           string `json:"name"`
 			OnSuccessEntry string `json:"on_success_entry"`
+			SystemAlerts   bool   `json:"system_alerts"`
+			DigestMinutes  int    `json:"digest_minutes"`
 		} `json:"data"`
 	}
 	if err := json.NewDecoder(rec.Body).Decode(&createResp); err != nil {
@@ -218,6 +228,17 @@ func TestWebhooksAPI_CreateAndTest_Smoke(t *testing.T) {
 	}
 	if createResp.Data.ID == 0 {
 		t.Fatalf("expected id in response")
+	}
+	if !createResp.Data.SystemAlerts || createResp.Data.DigestMinutes != 60 {
+		t.Fatalf("system_alerts/digest_minutes not round-tripped: %+v", createResp.Data)
+	}
+	badReq := httptest.NewRequest(http.MethodPost, "/v1/webhooks", bytes.NewBufferString(`{"url":"`+receiver.URL+`","digest_minutes":100000}`))
+	badReq.Header.Set("X-Auth-Token", "secret")
+	badReq.Header.Set("Content-Type", "application/json")
+	badRec := httptest.NewRecorder()
+	mux.ServeHTTP(badRec, badReq)
+	if badRec.Code != http.StatusBadRequest || !strings.Contains(badRec.Body.String(), "digest_minutes") {
+		t.Fatalf("digest_minutes out of range: %d %s", badRec.Code, badRec.Body.String())
 	}
 	if createResp.Data.OnSuccessEntry != "mark_read" {
 		t.Fatalf("on_success_entry: %q", createResp.Data.OnSuccessEntry)

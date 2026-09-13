@@ -38,7 +38,7 @@ func claimOwnWebhookLogs(t *testing.T, store *PostgresStore, webhookID int64, wa
 //   - the counters survive RunRetentionCleanup purging webhook_logs;
 //   - ResetWebhookStats clears them (tenant-scoped) and leaves the logs alone.
 func TestIntegration_WebhookStatsPersistAcrossLogRetention(t *testing.T) {
-	store := testStore(t)
+	store := isolatedStore(t)
 	ctx := context.Background()
 	owner := newIntegrationUser(t, store, "whstats")
 	other := newIntegrationUser(t, store, "whstats_other")
@@ -211,7 +211,7 @@ func TestIntegration_WebhookStatsPersistAcrossLogRetention(t *testing.T) {
 // because the webhook is paused ("webhook is disabled", retry scheduled) must
 // not pollute the webhook's error counters.
 func TestIntegration_WebhookStatsDisabledParkDoesNotCount(t *testing.T) {
-	store := testStore(t)
+	store := isolatedStore(t)
 	ctx := context.Background()
 	owner := newIntegrationUser(t, store, "whpark")
 	_, entries := newIntegrationFeedWithEntries(t, store, owner.ID, 1)

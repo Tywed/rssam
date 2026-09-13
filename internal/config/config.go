@@ -86,7 +86,12 @@ type Config struct {
 	FeedPollLogRetentionDays int
 	// FeedSilentDays: an active feed without a new item for this long is
 	// listed as "silent" in the admin dashboard (0 disables).
-	FeedSilentDays        int
+	FeedSilentDays int
+	// BackupDir is where rssam-backup.sh writes dumps; a system-alert
+	// webhook is told when the newest dump is older than BackupMaxAge
+	// ("" disables the check).
+	BackupDir             string
+	BackupMaxAge          time.Duration
 	AuditLogRetentionDays int
 	CleanupInterval       time.Duration
 
@@ -217,6 +222,8 @@ func Load() (Config, error) {
 		FilterMatchRetentionDays: parseIntAllowZero(getEnv("FILTER_MATCH_RETENTION_DAYS", "90"), 90),
 		FeedPollLogRetentionDays: parseIntAllowZero(getEnv("FEED_POLL_LOG_RETENTION_DAYS", "14"), 14),
 		FeedSilentDays:           parseIntAllowZero(getEnv("FEED_SILENT_DAYS", "7"), 7),
+		BackupDir:                strings.TrimSpace(os.Getenv("BACKUP_DIR")),
+		BackupMaxAge:             parseDuration(getEnv("BACKUP_MAX_AGE", "36h"), 36*time.Hour),
 		AuditLogRetentionDays:    parseIntAllowZero(getEnv("AUDIT_LOG_RETENTION_DAYS", "180"), 180),
 		CleanupInterval:          parseDuration(getEnv("CLEANUP_INTERVAL", "24h"), 24*time.Hour),
 
@@ -371,6 +378,9 @@ func (c Config) Validate() error {
 	}
 	if c.FeedSilentDays < 0 || c.FeedSilentDays > 3650 {
 		errs = append(errs, fmt.Errorf("FEED_SILENT_DAYS must be between 0 and 3650 (0 disables), got %d", c.FeedSilentDays))
+	}
+	if c.BackupMaxAge < time.Hour {
+		errs = append(errs, fmt.Errorf("BACKUP_MAX_AGE must be at least 1h, got %s", c.BackupMaxAge))
 	}
 	if c.FeedPollLogRetentionDays < 0 || c.FeedPollLogRetentionDays > 3650 {
 		errs = append(errs, fmt.Errorf("FEED_POLL_LOG_RETENTION_DAYS must be between 0 and 3650 (0 disables), got %d", c.FeedPollLogRetentionDays))

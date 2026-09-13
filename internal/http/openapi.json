@@ -3951,6 +3951,16 @@
           "on_success_entry": {
             "$ref": "#/components/schemas/WebhookOnSuccess"
           },
+          "system_alerts": {
+            "type": "boolean",
+            "description": "Also receive instance notifications (feed auto-paused, silent feeds, failing webhook, update available, stale backup). Default false."
+          },
+          "digest_minutes": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1440,
+            "description": "0 = one message per entry; otherwise entries are batched into one message per window (windows aligned to local midnight). HTTP payload event_type \"digest\" with items[]."
+          },
           "telegram": {
             "$ref": "#/components/schemas/TelegramConfig"
           },
@@ -4030,6 +4040,16 @@
           },
           "on_success_entry": {
             "$ref": "#/components/schemas/WebhookOnSuccess"
+          },
+          "system_alerts": {
+            "type": "boolean",
+            "description": "Also receive instance notifications (feed auto-paused, silent feeds, failing webhook, update available, stale backup). Default false."
+          },
+          "digest_minutes": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1440,
+            "description": "0 = one message per entry; otherwise entries are batched into one message per window (windows aligned to local midnight). HTTP payload event_type \"digest\" with items[]."
           },
           "telegram": {
             "$ref": "#/components/schemas/TelegramConfig"

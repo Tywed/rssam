@@ -18,7 +18,7 @@ import (
 // webhook of the entry finished and the strongest action wins
 // (delete > hash > mark_read).
 func TestIntegration_WebhookOnSuccessEntry_ResolvesAcrossWebhooks(t *testing.T) {
-	store := testStore(t)
+	store := isolatedStore(t)
 	ctx := context.Background()
 	owner := newIntegrationUser(t, store, "onsucc")
 	_, entries := newIntegrationFeedWithEntries(t, store, owner.ID, 3)
@@ -201,7 +201,7 @@ func TestIntegration_WebhookLogRetention_OnlyOldRowsPurged(t *testing.T) {
 // BulkUpdateEntries refuses status=removed by contract (regression: the
 // action silently did nothing).
 func TestIntegration_MarkEntriesRemoved_TenantScopedSoftDelete(t *testing.T) {
-	store := testStore(t)
+	store := isolatedStore(t)
 	ctx := context.Background()
 	owner := newIntegrationUser(t, store, "rm_owner")
 	other := newIntegrationUser(t, store, "rm_other")

@@ -25,6 +25,9 @@ const (
 	AuditFeedsRefreshAll  = "feeds.refresh_all"
 	AuditEntriesCollapse  = "entries.collapse"
 	AuditRetentionCleanup = "retention.cleanup"
+	// AuditSystemAlert is written by the worker (no actor) for every system
+	// alert message sent, so the alert history lives in the audit log.
+	AuditSystemAlert = "system.alert"
 )
 
 // AuditActions lists every action in display order (filter dropdown).
@@ -34,6 +37,7 @@ var AuditActions = []string{
 	AuditEnvUpdate, AuditBridgeUpdate,
 	AuditWorkersPause, AuditWorkersResume, AuditServiceRestart, AuditServiceUpdate,
 	AuditFeedsRefreshAll, AuditEntriesCollapse, AuditRetentionCleanup,
+	AuditSystemAlert,
 }
 
 type AuditEvent struct {

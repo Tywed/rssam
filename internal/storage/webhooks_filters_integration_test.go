@@ -64,7 +64,7 @@ func newIntegrationFeedWithEntries(t *testing.T, store *PostgresStore, userID in
 }
 
 func TestIntegration_WebhookLogsOwnershipAndRetry(t *testing.T) {
-	store := testStore(t)
+	store := isolatedStore(t)
 	ctx := context.Background()
 	owner := newIntegrationUser(t, store, "wh_owner")
 	other := newIntegrationUser(t, store, "wh_other")

@@ -151,10 +151,18 @@ func renderChatTemplate(bodyTemplate string, feed WebhookFeed, entry Entry, filt
 	return string(b), nil
 }
 
-func RenderWebhookBodyTemplate(bodyTemplate string, feed WebhookFeed, entry Entry, filter *Filter, payloadJSON []byte) ([]byte, error) {
+func parseBodyTemplate(bodyTemplate string) (*template.Template, error) {
 	tmpl, err := template.New("webhook_body").Option("missingkey=error").Parse(bodyTemplate)
 	if err != nil {
 		return nil, fmt.Errorf("invalid body_template: %w", err)
+	}
+	return tmpl, nil
+}
+
+func RenderWebhookBodyTemplate(bodyTemplate string, feed WebhookFeed, entry Entry, filter *Filter, payloadJSON []byte) ([]byte, error) {
+	tmpl, err := parseBodyTemplate(bodyTemplate)
+	if err != nil {
+		return nil, err
 	}
 	data := map[string]any{
 		"entry":  entry,

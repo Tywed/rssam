@@ -12,7 +12,7 @@ const (
 	WebhookOnSuccessMarkRead = "mark_read"
 )
 
-const webhookSQLColumns = `id, user_id, filter_id, name, url, method, headers, body_template, secret, enabled, on_success_entry, kind, provider_config, created_at, updated_at`
+const webhookSQLColumns = `id, user_id, filter_id, name, url, method, headers, body_template, secret, enabled, on_success_entry, kind, provider_config, system_alerts, digest_minutes, created_at, updated_at`
 
 const webhookNameMaxLen = 80
 
@@ -39,6 +39,8 @@ func webhookScanDest(w *Webhook) []any {
 		&w.OnSuccessEntry,
 		&w.Kind,
 		&w.ProviderConfig,
+		&w.SystemAlerts,
+		&w.DigestMinutes,
 		&w.CreatedAt,
 		&w.UpdatedAt,
 	}
@@ -86,4 +88,15 @@ func MergeOnSuccessActions(actions []string) string {
 		return WebhookOnSuccessMarkRead
 	}
 	return WebhookOnSuccessNone
+}
+
+// WebhookDigestMaxMinutes bounds digest_minutes (one day).
+const WebhookDigestMaxMinutes = 1440
+
+// NormalizeDigestMinutes validates digest_minutes: 0 (off) or 1..1440.
+func NormalizeDigestMinutes(n int) (int, error) {
+	if n < 0 || n > WebhookDigestMaxMinutes {
+		return 0, fmt.Errorf("digest_minutes must be between 0 and %d", WebhookDigestMaxMinutes)
+	}
+	return n, nil
 }

@@ -207,6 +207,8 @@ func (h *Handler) handleWebhookUpdate(w http.ResponseWriter, r *http.Request) {
 		OnSuccessEntry: params.OnSuccessEntry,
 		Kind:           params.Kind,
 		ProviderConfig: params.ProviderConfig,
+		SystemAlerts:   params.SystemAlerts,
+		DigestMinutes:  params.DigestMinutes,
 	})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -448,6 +450,14 @@ func webhookParamsFromForm(r *http.Request) (storage.CreateWebhookParams, error)
 		Enabled:        r.FormValue("enabled") == "1",
 		OnSuccessEntry: r.FormValue("on_success_entry"),
 		Kind:           kind,
+		SystemAlerts:   r.FormValue("system_alerts") == "1",
+	}
+	if v := strings.TrimSpace(r.FormValue("digest_minutes")); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil {
+			return storage.CreateWebhookParams{}, errors.New("digest_minutes: целое число минут")
+		}
+		params.DigestMinutes = n
 	}
 	kindNorm, err := storage.NormalizeWebhookKind(kind)
 	if err != nil {

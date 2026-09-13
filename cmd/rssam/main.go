@@ -15,6 +15,7 @@ import (
 	"rssam/internal/config"
 	"rssam/internal/envfile"
 	"rssam/internal/filter"
+	"rssam/internal/githubrel"
 	httpserver "rssam/internal/http"
 	"rssam/internal/http/middleware"
 	"rssam/internal/http/ui"
@@ -205,6 +206,10 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Release check for system alerts: one GitHub request per hour at most.
+	releases := githubrel.New(strings.TrimSpace(os.Getenv("GITHUB_REPO")))
+	releases.TTL = time.Hour
+
 	refresher := &service.FeedRefresher{
 		Feeds:                   pgStore,
 		Entries:                 pgStore,
@@ -268,6 +273,20 @@ func main() {
 		},
 		WebhookHTTPClient: webhookClient,
 		SSRFGuard:         ssrfGuard,
+		SystemAlerts: worker.SystemAlertsConfig{
+			SilentAfter:    time.Duration(cfg.FeedSilentDays) * 24 * time.Hour,
+			BackupDir:      cfg.BackupDir,
+			BackupMaxAge:   cfg.BackupMaxAge,
+			CurrentVersion: version.Version,
+			Compare:        version.CompareSemver,
+			LatestRelease: func() string {
+				rel, err := releases.Latest()
+				if err != nil {
+					return ""
+				}
+				return rel.Tag
+			},
+		},
 	}
 	go func() {
 		if err := w.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {

@@ -80,7 +80,7 @@ type AdminWebhookStore interface {
 func (s *PostgresStore) ListAdminWebhooks(ctx context.Context, userID int64) ([]AdminWebhookRow, error) {
 	const q = `
 SELECT
-  w.id, w.user_id, w.filter_id, w.name, w.url, w.method, w.headers, w.body_template, w.secret, w.enabled, w.on_success_entry, w.kind, w.provider_config, w.created_at, w.updated_at,
+  w.id, w.user_id, w.filter_id, w.name, w.url, w.method, w.headers, w.body_template, w.secret, w.enabled, w.on_success_entry, w.kind, w.provider_config, w.system_alerts, w.digest_minutes, w.created_at, w.updated_at,
   w.sent_total::int,
   COALESCE(stats.sent_24h, 0),
   w.failed_total::int,
@@ -144,6 +144,8 @@ ORDER BY w.id DESC`
 			&row.OnSuccessEntry,
 			&row.Kind,
 			&row.ProviderConfig,
+			&row.SystemAlerts,
+			&row.DigestMinutes,
 			&row.CreatedAt,
 			&row.UpdatedAt,
 			&row.SentCount,

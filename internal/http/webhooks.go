@@ -30,6 +30,8 @@ type webhookDTO struct {
 	BodyTemplate   string                          `json:"body_template"`
 	Enabled        bool                            `json:"enabled"`
 	OnSuccessEntry string                          `json:"on_success_entry"`
+	SystemAlerts   bool                            `json:"system_alerts"`
+	DigestMinutes  int                             `json:"digest_minutes"`
 	Telegram       *storage.TelegramProviderConfig `json:"telegram,omitempty"`
 	Max            *storage.MaxProviderConfig      `json:"max,omitempty"`
 	CreatedAt      time.Time                       `json:"created_at"`
@@ -47,6 +49,8 @@ type webhookWriteRequest struct {
 	Secret         *string                         `json:"secret"`
 	Enabled        *bool                           `json:"enabled"`
 	OnSuccessEntry *string                         `json:"on_success_entry"`
+	SystemAlerts   *bool                           `json:"system_alerts"`
+	DigestMinutes  *int                            `json:"digest_minutes"`
 	Telegram       *storage.TelegramProviderConfig `json:"telegram"`
 	Max            *storage.MaxProviderConfig      `json:"max"`
 }
@@ -69,6 +73,8 @@ func toWebhookDTO(w storage.Webhook) webhookDTO {
 		BodyTemplate:   w.BodyTemplate,
 		Enabled:        w.Enabled,
 		OnSuccessEntry: w.OnSuccessEntry,
+		SystemAlerts:   w.SystemAlerts,
+		DigestMinutes:  w.DigestMinutes,
 		CreatedAt:      w.CreatedAt,
 		UpdatedAt:      w.UpdatedAt,
 	}
@@ -205,6 +211,8 @@ func (s *Server) handleCreateWebhook(w http.ResponseWriter, r *http.Request) {
 		OnSuccessEntry: onSuccess,
 		Kind:           kind,
 		ProviderConfig: cfg,
+		SystemAlerts:   req.SystemAlerts != nil && *req.SystemAlerts,
+		DigestMinutes:  derefInt(req.DigestMinutes),
 	})
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
@@ -311,6 +319,8 @@ func (s *Server) handleUpdateWebhook(w http.ResponseWriter, r *http.Request) {
 		OnSuccessEntry: onSuccess,
 		Kind:           kind,
 		ProviderConfig: cfg,
+		SystemAlerts:   req.SystemAlerts != nil && *req.SystemAlerts,
+		DigestMinutes:  derefInt(req.DigestMinutes),
 	})
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
@@ -622,4 +632,11 @@ func (s *Server) handleRetryWebhookLog(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, listResponse[map[string]bool]{Data: map[string]bool{"retried": true}, Total: 1})
+}
+
+func derefInt(p *int) int {
+	if p == nil {
+		return 0
+	}
+	return *p
 }

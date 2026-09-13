@@ -58,7 +58,7 @@ func (r *Runner) webhookDispatchLoop(ctx context.Context, out chan<- storage.Web
 			if len(logs) == 0 {
 				continue
 			}
-			for _, l := range logs {
+			for _, l := range r.groupDigestLogs(ctx, logs) {
 				select {
 				case out <- l:
 				case <-ctx.Done():
@@ -75,6 +75,10 @@ func (r *Runner) webhookWorkerLoop(ctx context.Context, in <-chan storage.Webhoo
 		case <-ctx.Done():
 			return
 		case l := <-in:
+			if l.DigestMinutes > 0 {
+				r.processWebhookDigest(ctx, l)
+				continue
+			}
 			r.processWebhookLog(ctx, l)
 		}
 	}

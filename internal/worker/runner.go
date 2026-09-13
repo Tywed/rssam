@@ -67,6 +67,8 @@ type Runner struct {
 	WebhookHTTPClient *http.Client
 	SSRFGuard         *ssrf.Guard
 	WebhookDelivery   webhookDeliveryStore
+	WebhookDigest     webhookDigestStore
+	SystemAlerts      SystemAlertsConfig
 	paused            atomic.Bool
 }
 
@@ -139,6 +141,7 @@ func (r *Runner) Run(ctx context.Context) error {
 
 	// Daily reset of feed error backoff / circuit breaker (optional, timezone-aware).
 	go r.dailyFeedResetLoop(ctx)
+	go r.systemAlertsLoop(ctx)
 
 	// Dispatcher: claim jobs and feed to the worker pool.
 	go r.dispatchLoop(ctx, jobsCh)

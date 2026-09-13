@@ -108,11 +108,15 @@ func (s *PostgresStore) CreateWebhook(ctx context.Context, params CreateWebhookP
 	if kind != WebhookKindHTTP {
 		secret = ""
 	}
+	digest, err := NormalizeDigestMinutes(params.DigestMinutes)
+	if err != nil {
+		return Webhook{}, err
+	}
 
 	var out Webhook
 	q := `
-INSERT INTO webhooks(user_id, filter_id, name, url, method, headers, body_template, secret, enabled, on_success_entry, kind, provider_config)
-VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, $10, $11, $12::jsonb)
+INSERT INTO webhooks(user_id, filter_id, name, url, method, headers, body_template, secret, enabled, on_success_entry, kind, provider_config, system_alerts, digest_minutes)
+VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, $10, $11, $12::jsonb, $13, $14)
 RETURNING ` + webhookSQLColumns
 	if err := s.db.QueryRow(ctx, q,
 		params.UserID,
@@ -127,6 +131,8 @@ RETURNING ` + webhookSQLColumns
 		onSuccess,
 		kind,
 		cfg,
+		params.SystemAlerts,
+		digest,
 	).Scan(webhookScanDest(&out)...); err != nil {
 		return Webhook{}, fmt.Errorf("create webhook: %w", err)
 	}
@@ -162,6 +168,10 @@ func (s *PostgresStore) UpdateWebhook(ctx context.Context, params UpdateWebhookP
 		return Webhook{}, errors.New("headers must be valid JSON object")
 	}
 	onSuccess, err := NormalizeWebhookOnSuccess(params.OnSuccessEntry)
+	if err != nil {
+		return Webhook{}, err
+	}
+	digest, err := NormalizeDigestMinutes(params.DigestMinutes)
 	if err != nil {
 		return Webhook{}, err
 	}
@@ -222,6 +232,8 @@ SET filter_id = $2,
     on_success_entry = $10,
     kind = $11,
     provider_config = $12::jsonb,
+    system_alerts = $14,
+    digest_minutes = $15,
     updated_at = now()
 WHERE id = $1 AND user_id = $13
 RETURNING ` + webhookSQLColumns
@@ -239,6 +251,8 @@ RETURNING ` + webhookSQLColumns
 			kind,
 			cfg,
 			params.UserID,
+			params.SystemAlerts,
+			digest,
 		).Scan(webhookScanDest(&out)...); err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
 				return ErrNotFound
@@ -287,18 +301,29 @@ func (s *PostgresStore) EnqueueWebhookLogs(ctx context.Context, webhookIDs []int
 	if entryID <= 0 || len(webhookIDs) == 0 {
 		return nil
 	}
+	// A digest webhook's rows become due at the end of the current window
+	// (windows are aligned to local midnight, like poll hours); everything
+	// else is due immediately.
 	const q = `
 INSERT INTO webhook_logs(webhook_id, entry_id, status, attempt, next_retry_at)
-SELECT x.webhook_id, $2, 'pending', 0, now()
-FROM unnest($1::bigint[]) AS x(webhook_id)
+SELECT w.id, $2, 'pending', 0,
+  CASE WHEN w.digest_minutes > 0
+       THEN date_bin(make_interval(mins => w.digest_minutes), now(), $3::timestamptz) + make_interval(mins => w.digest_minutes)
+       ELSE now() END
+FROM webhooks w
+WHERE w.id = ANY($1::bigint[])
 ON CONFLICT (webhook_id, entry_id) DO NOTHING`
-	_, err := s.db.Exec(ctx, q, webhookIDs, entryID)
+	_, err := s.db.Exec(ctx, q, webhookIDs, entryID, DigestWindowOrigin(time.Now()))
 	if err != nil {
 		return fmt.Errorf("enqueue webhook logs: %w", err)
 	}
 	return nil
 }
 
+// Every pending/failed row carries next_retry_at (enqueue, retry schedule,
+// digest window, manual retry; migration 0043 backfills), so the claim is a
+// plain range on webhook_logs_status_next_retry_at_idx: rows parked for a
+// digest window are never read until they are due.
 func (s *PostgresStore) ClaimDueWebhookLogs(ctx context.Context, limit int) ([]WebhookLog, error) {
 	if limit <= 0 {
 		return nil, nil
@@ -308,17 +333,26 @@ WITH due AS (
   SELECT id
   FROM webhook_logs
   WHERE status IN ('pending','failed')
-    AND (next_retry_at IS NULL OR next_retry_at <= now())
-  ORDER BY COALESCE(next_retry_at, created_at) ASC, id ASC
+    AND next_retry_at <= now()
+  ORDER BY next_retry_at ASC, id ASC
   LIMIT $1
   FOR UPDATE SKIP LOCKED
 )
 UPDATE webhook_logs
 SET next_retry_at = now() + interval '30 seconds',
     updated_at = now()
-FROM due
-WHERE webhook_logs.id = due.id
-RETURNING
+FROM due, webhooks w
+WHERE webhook_logs.id = due.id AND w.id = webhook_logs.webhook_id
+RETURNING ` + claimedWebhookLogCols + `, w.digest_minutes`
+	rows, err := s.db.Query(ctx, q, limit)
+	if err != nil {
+		return nil, fmt.Errorf("claim due webhook logs: %w", err)
+	}
+	defer rows.Close()
+	return scanClaimedWebhookLogs(rows, limit, true)
+}
+
+const claimedWebhookLogCols = `
   webhook_logs.id,
   webhook_logs.webhook_id,
   webhook_logs.entry_id,
@@ -330,16 +364,12 @@ RETURNING
   webhook_logs.response_snippet,
   webhook_logs.created_at,
   webhook_logs.updated_at`
-	rows, err := s.db.Query(ctx, q, limit)
-	if err != nil {
-		return nil, fmt.Errorf("claim due webhook logs: %w", err)
-	}
-	defer rows.Close()
 
-	out := make([]WebhookLog, 0, limit)
+func scanClaimedWebhookLogs(rows pgx.Rows, capHint int, withDigest bool) ([]WebhookLog, error) {
+	out := make([]WebhookLog, 0, capHint)
 	for rows.Next() {
 		var l WebhookLog
-		if err := rows.Scan(
+		dest := []any{
 			&l.ID,
 			&l.WebhookID,
 			&l.EntryID,
@@ -351,7 +381,11 @@ RETURNING
 			&l.ResponseSnippet,
 			&l.CreatedAt,
 			&l.UpdatedAt,
-		); err != nil {
+		}
+		if withDigest {
+			dest = append(dest, &l.DigestMinutes)
+		}
+		if err := rows.Scan(dest...); err != nil {
 			return nil, fmt.Errorf("scan claimed webhook log: %w", err)
 		}
 		out = append(out, l)

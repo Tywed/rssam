@@ -210,8 +210,13 @@ type Webhook struct {
 	OnSuccessEntry string
 	Kind           string
 	ProviderConfig []byte
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
+	// SystemAlerts: the webhook also receives instance notifications.
+	SystemAlerts bool
+	// DigestMinutes > 0: entry deliveries are batched into one message per
+	// window of this length (0 = one message per entry).
+	DigestMinutes int
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
 }
 
 type WebhookLog struct {
@@ -226,6 +231,11 @@ type WebhookLog struct {
 	ResponseSnippet *string
 	CreatedAt       time.Time
 	UpdatedAt       time.Time
+	// DigestMinutes is the owning webhook's digest window, filled only by
+	// ClaimDueWebhookLogs so the dispatcher can group digest rows; Peers are
+	// the log ids travelling in the same digest message (carrier row only).
+	DigestMinutes int
+	Peers         []int64
 }
 
 type CategoryStore interface {
@@ -577,6 +587,8 @@ type CreateWebhookParams struct {
 	OnSuccessEntry string
 	Kind           string
 	ProviderConfig []byte
+	SystemAlerts   bool
+	DigestMinutes  int
 }
 
 type UpdateWebhookParams struct {
@@ -593,6 +605,8 @@ type UpdateWebhookParams struct {
 	OnSuccessEntry string
 	Kind           string
 	ProviderConfig []byte
+	SystemAlerts   bool
+	DigestMinutes  int
 }
 
 // ListEntriesFilter selects entries. Removed (soft-deleted or hashed) rows
