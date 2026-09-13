@@ -441,6 +441,9 @@ type UpdateFeedRefreshMetaParams struct {
 	NextCheckAt *time.Time
 	// NewEntries > 0 stamps last_entry_at = LastCheckedAt in the same UPDATE.
 	NewEntries int
+	// NewFeedURL, when non-empty, replaces feed_url (source moved for good)
+	// unless the user already has a feed at that address.
+	NewFeedURL string
 }
 
 type RecordFeedPollFailureParams struct {

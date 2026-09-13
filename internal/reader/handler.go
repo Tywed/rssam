@@ -38,6 +38,8 @@ type FetchResponse struct {
 	BridgeState  BridgeState
 	// MinNextCheck: see FetchResult.MinNextCheck.
 	MinNextCheck time.Time
+	// NewURL: see FetchResult.NewURL.
+	NewURL string
 }
 
 // Handler fetches entries from a single source type.

@@ -595,7 +595,9 @@
       statusEl.hidden = false;
       if (badgeEl) badgeEl.textContent = (data && data.feed_type_label) || feedType || '';
       if (hintEl) {
-        if (data && data.valid && data.title) {
+        if (data && data.valid && data.feed_url) {
+          hintEl.textContent = 'Найдена лента: ' + data.feed_url + (data.title ? ' — ' + data.title : '');
+        } else if (data && data.valid && data.title) {
           hintEl.textContent = 'Предложенное название: ' + data.title;
         } else if (data && data.valid) {
           hintEl.textContent = 'Тип определён по URL';
@@ -670,6 +672,11 @@
         .then(function (r) { return r.json(); })
         .then(function (data) {
           if (reqID !== lastReq) return;
+          if (data && data.valid && data.feed_url && urlInput.value.trim() === url) {
+            // The typed address was a site page or a moved feed: store the
+            // real feed URL so the poller never repeats the discovery.
+            urlInput.value = data.feed_url;
+          }
           showFeedType(data.feed_type || 'rss', data);
         })
         .catch(function () {

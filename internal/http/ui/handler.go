@@ -33,29 +33,31 @@ type Config struct {
 	Sessions   storage.SessionStore
 	Categories storage.CategoryStore
 	// CategoryPollHours stores the per-category polling window (nil = field hidden).
-	CategoryPollHours  storage.CategoryPollHoursStore
-	Feeds              storage.FeedStore
-	Entries            storage.EntryStore
-	Filters            storage.FilterStore
-	FilterMatches      storage.FilterMatchStore
-	Labels             storage.LabelStore
-	Webhooks           storage.WebhookStore
-	WebhookLogs        storage.WebhookLogStore
-	FilterEngine       *filter.Engine
-	QueryMatcher       filter.QueryMatcher
-	Refresher          *service.FeedRefresher
-	ContentFetcher     *service.ContentFetcher
-	SSRFGuard          *ssrf.Guard
-	CSRFSecret         string
-	HSTSEnabled        bool
-	SessionMaxAge      time.Duration
-	MaxImportFeeds     int
-	RateLimit          func(http.Handler) http.Handler
-	OPMLImport         func(r *http.Request, userID int64, data []byte) ImportReport
-	OPMLExport         func(w http.ResponseWriter, r *http.Request, userID int64) error
-	RefreshAllFeeds    func(r *http.Request, userID int64) error
-	TestWebhook        func(r *http.Request, userID, webhookID int64) (WebhookTestResult, error)
-	ResolveFeedTitle   func(ctx context.Context, feedURL, feedType string, tlsInsecure bool) (string, error)
+	CategoryPollHours storage.CategoryPollHoursStore
+	Feeds             storage.FeedStore
+	Entries           storage.EntryStore
+	Filters           storage.FilterStore
+	FilterMatches     storage.FilterMatchStore
+	Labels            storage.LabelStore
+	Webhooks          storage.WebhookStore
+	WebhookLogs       storage.WebhookLogStore
+	FilterEngine      *filter.Engine
+	QueryMatcher      filter.QueryMatcher
+	Refresher         *service.FeedRefresher
+	ContentFetcher    *service.ContentFetcher
+	SSRFGuard         *ssrf.Guard
+	CSRFSecret        string
+	HSTSEnabled       bool
+	SessionMaxAge     time.Duration
+	MaxImportFeeds    int
+	RateLimit         func(http.Handler) http.Handler
+	OPMLImport        func(r *http.Request, userID int64, data []byte) ImportReport
+	OPMLExport        func(w http.ResponseWriter, r *http.Request, userID int64) error
+	RefreshAllFeeds   func(r *http.Request, userID int64) error
+	TestWebhook       func(r *http.Request, userID, webhookID int64) (WebhookTestResult, error)
+	// DiscoverFeed resolves a URL (feed, HTML page or redirect) to the feed
+	// address and title; nil disables server-side checks on the feed form.
+	DiscoverFeed       func(ctx context.Context, feedURL, feedType string, tlsInsecure bool) (reader.Discovery, error)
 	GetBridgeSettings  func() BridgeSettings
 	GetBridgeStored    func() bridgeconfig.Stored
 	SaveBridgeSettings func(ctx context.Context, stored bridgeconfig.Stored) error

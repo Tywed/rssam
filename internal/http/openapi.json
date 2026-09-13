@@ -3063,10 +3063,12 @@
         "properties": {
           "feed_url": {
             "type": "string",
-            "format": "uri"
+            "format": "uri",
+            "description": "Feed address. On create with an empty title an HTML page is accepted too: the server follows <link rel=\"alternate\"> (or well-known /feed, /rss.xml … paths) and permanent redirects, and stores the resolved feed URL."
           },
           "title": {
-            "type": "string"
+            "type": "string",
+            "description": "Empty = discovered from the feed."
           },
           "category_id": {
             "type": "integer",

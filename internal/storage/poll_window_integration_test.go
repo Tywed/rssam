@@ -86,3 +86,38 @@ func TestIntegration_CategoryPollHours(t *testing.T) {
 		t.Fatalf("missing category: err=%v", err)
 	}
 }
+
+func TestIntegration_UpdateFeedRefreshMeta_NewFeedURL(t *testing.T) {
+	store := isolatedStore(t)
+	ctx := context.Background()
+	owner := newIntegrationUser(t, store, "moved")
+	feed := newFeedForUser(t, store, owner.ID, "moved", 30)
+	taken := newFeedForUser(t, store, owner.ID, "taken", 30)
+
+	now := time.Now().UTC()
+	base := UpdateFeedRefreshMetaParams{ID: feed.ID, LastCheckedAt: now}
+
+	// Destination already used by another feed of the same user: URL kept.
+	p := base
+	p.NewFeedURL = taken.FeedURL
+	if err := store.UpdateFeedRefreshMeta(ctx, p); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := store.GetFeedByID(ctx, feed.ID); got.FeedURL != feed.FeedURL {
+		t.Fatalf("conflicting destination must not be applied: %q", got.FeedURL)
+	}
+	// Free destination: URL follows the redirect; empty leaves it alone.
+	p.NewFeedURL = feed.FeedURL + "?moved=1"
+	if err := store.UpdateFeedRefreshMeta(ctx, p); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := store.GetFeedByID(ctx, feed.ID); got.FeedURL != feed.FeedURL+"?moved=1" {
+		t.Fatalf("feed_url=%q", got.FeedURL)
+	}
+	if err := store.UpdateFeedRefreshMeta(ctx, base); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := store.GetFeedByID(ctx, feed.ID); got.FeedURL != feed.FeedURL+"?moved=1" {
+		t.Fatalf("empty NewFeedURL must keep the url: %q", got.FeedURL)
+	}
+}

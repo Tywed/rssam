@@ -324,9 +324,11 @@ SET etag = $2,
     poll_paused = CASE WHEN $5 = '' THEN FALSE ELSE poll_paused END,
     next_check_at = COALESCE($7, next_check_at),
     last_entry_at = CASE WHEN $8 THEN $4 ELSE last_entry_at END,
+    feed_url = CASE WHEN $9 <> '' AND NOT EXISTS (SELECT 1 FROM feeds o WHERE o.user_id = feeds.user_id AND o.feed_url = $9)
+               THEN $9 ELSE feed_url END,
     updated_at = now()
 WHERE id = $1`
-	cmd, err := s.db.Exec(ctx, q, params.ID, params.ETag, params.LastModified, params.LastCheckedAt, params.LastError, bridgeState, params.NextCheckAt, params.NewEntries > 0)
+	cmd, err := s.db.Exec(ctx, q, params.ID, params.ETag, params.LastModified, params.LastCheckedAt, params.LastError, bridgeState, params.NextCheckAt, params.NewEntries > 0, params.NewFeedURL)
 	if err != nil {
 		return fmt.Errorf("update feed refresh meta: %w", err)
 	}

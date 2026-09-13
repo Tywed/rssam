@@ -26,6 +26,9 @@ type FetchResult struct {
 	// MinNextCheck is the earliest time the source wants to be asked again
 	// (Cache-Control max-age, Expires or RSS <ttl>); zero when it said nothing.
 	MinNextCheck time.Time
+	// NewURL is set when every redirect hop was permanent (301/308): the
+	// feed has moved and the stored URL can follow.
+	NewURL string
 }
 
 // ErrFeedGone is returned for HTTP 410: the source removed the feed for
@@ -199,6 +202,7 @@ func (f *RSSFetcher) Fetch(ctx context.Context, feedURL, etag, lastModified stri
 	if err != nil {
 		return FetchResult{}, err
 	}
+	redirects := trackPermanentRedirects(client)
 	resp, err := client.Do(req)
 	if err != nil {
 		return FetchResult{}, fmt.Errorf("http request: %w", err)
@@ -250,6 +254,7 @@ func (f *RSSFetcher) Fetch(ctx context.Context, feedURL, etag, lastModified stri
 		LastModified: resp.Header.Get("Last-Modified"),
 		NotModified:  false,
 		MinNextCheck: minNext,
+		NewURL:       redirects.permanentDestination(resp),
 	}, nil
 }
 

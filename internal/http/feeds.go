@@ -104,8 +104,13 @@ func (s *Server) handleCreateFeed(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if params.Title == "" && s.titleResolver != nil {
-		if t, err := s.titleResolver.DiscoverTitle(r.Context(), params.FeedURL, params.FeedType, params.TLSInsecure); err == nil && strings.TrimSpace(t) != "" {
-			params.Title = strings.TrimSpace(t)
+		// One fetch gives both the title and, for a site page or a moved
+		// feed, the address that really serves it.
+		if d, err := s.titleResolver.DiscoverFeed(r.Context(), params.FeedURL, params.FeedType, params.TLSInsecure); err == nil {
+			params.Title = strings.TrimSpace(d.Title)
+			if d.FeedURL != "" && d.FeedURL != params.FeedURL && params.FeedType == reader.FeedTypeRSS && reader.ValidateFeedURL(d.FeedURL, s.ssrfGuard) == nil {
+				params.FeedURL = d.FeedURL
+			}
 		}
 	}
 	if params.Title == "" {

@@ -331,6 +331,10 @@ func (r *FeedRefresher) refreshLoaded(ctx context.Context, feed storage.Feed, ma
 	if hasWindow {
 		next = window.NextOpen(next)
 	}
+	movedTo := movedFeedURL(feed, res.NewURL)
+	if movedTo != "" {
+		r.logger().Info("feed moved permanently", "feed_id", feedID, "from", feed.FeedURL, "to", movedTo)
+	}
 	if err := r.Feeds.UpdateFeedRefreshMeta(ctx, storage.UpdateFeedRefreshMetaParams{
 		ID:            feedID,
 		ETag:          etag,
@@ -340,6 +344,7 @@ func (r *FeedRefresher) refreshLoaded(ctx context.Context, feed storage.Feed, ma
 		BridgeState:   bridgeStateJSON(res.BridgeState),
 		NextCheckAt:   &next,
 		NewEntries:    fresh,
+		NewFeedURL:    movedTo,
 	}); err != nil {
 		r.logger().Error("update feed refresh meta failed", "feed_id", feedID, "err", err)
 	}
@@ -355,6 +360,25 @@ func (r *FeedRefresher) refreshLoaded(ctx context.Context, feed storage.Feed, ma
 	}
 
 	return inserted, nil
+}
+
+// movedFeedURL returns the permanent-redirect destination worth storing:
+// different from the current URL and still a plain http(s) feed address (a
+// hop onto a bridge domain would change the feed type under the user).
+func movedFeedURL(feed storage.Feed, newURL string) string {
+	newURL = strings.TrimSpace(newURL)
+	if newURL == "" || newURL == feed.FeedURL {
+		return ""
+	}
+	switch reader.NormalizeFeedType(feed.FeedType) {
+	case "", reader.FeedTypeRSS, reader.FeedTypeAtom, reader.FeedTypeJSON:
+	default:
+		return ""
+	}
+	if reader.DetectFeedTypeFromURL(newURL) != reader.FeedTypeRSS {
+		return ""
+	}
+	return newURL
 }
 
 func bridgeStateJSON(st reader.BridgeState) []byte {

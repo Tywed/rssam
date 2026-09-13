@@ -40,5 +40,6 @@ func (h *RSSHandler) Fetch(ctx context.Context, req FetchRequest) (FetchResponse
 		NotModified:  res.NotModified,
 		BridgeState:  req.BridgeState,
 		MinNextCheck: res.MinNextCheck,
+		NewURL:       res.NewURL,
 	}, nil
 }

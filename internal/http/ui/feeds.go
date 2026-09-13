@@ -112,17 +112,12 @@ func (h *Handler) handleFeedCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	params.FeedType = reader.DetectFeedTypeFromURL(params.FeedURL)
-	if err := validateFeedBeforeCreate(r.Context(), h, params.FeedURL, params.FeedType, params.TLSInsecure); err != nil {
+	if err := resolveFeedBeforeCreate(r.Context(), h, &params); err != nil {
 		h.renderFeedFormError(w, r, params, err.Error())
 		return
 	}
 	if params.FeedType == reader.FeedTypeTelegram {
 		params.BridgeState = bridgeStateFromTelegramForm(r, nil)
-	}
-	if params.Title == "" && h.cfg.ResolveFeedTitle != nil {
-		if t, err := h.cfg.ResolveFeedTitle(r.Context(), params.FeedURL, params.FeedType, params.TLSInsecure); err == nil && strings.TrimSpace(t) != "" {
-			params.Title = strings.TrimSpace(t)
-		}
 	}
 	if params.Title == "" {
 		params.Title = params.FeedURL

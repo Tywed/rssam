@@ -8,6 +8,7 @@ import (
 	"rssam/internal/bridgeconfig"
 	"rssam/internal/http/middleware"
 	"rssam/internal/http/ui"
+	"rssam/internal/reader"
 	"rssam/internal/storage"
 )
 
@@ -67,11 +68,11 @@ func (s *Server) registerUI(mux *http.ServeMux) {
 			}
 			return ui.WebhookTestResult{OK: res.OK, Message: formatWebhookTestMessage(res)}, nil
 		},
-		ResolveFeedTitle: func(ctx context.Context, feedURL, feedType string, tlsInsecure bool) (string, error) {
+		DiscoverFeed: func(ctx context.Context, feedURL, feedType string, tlsInsecure bool) (reader.Discovery, error) {
 			if s.titleResolver == nil {
-				return "", nil
+				return reader.Discovery{FeedURL: feedURL}, nil
 			}
-			return s.titleResolver.DiscoverTitle(ctx, feedURL, feedType, tlsInsecure)
+			return s.titleResolver.DiscoverFeed(ctx, feedURL, feedType, tlsInsecure)
 		},
 		GetBridgeSettings: func() ui.BridgeSettings {
 			if s.bridgeManager == nil {

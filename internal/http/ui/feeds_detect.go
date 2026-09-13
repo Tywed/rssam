@@ -3,6 +3,7 @@ package ui
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -21,11 +22,14 @@ type feedDetectResponse struct {
 	FeedTypeLabel string `json:"feed_type_label"`
 	Valid         bool   `json:"valid"`
 	Title         string `json:"title,omitempty"`
-	Error         string `json:"error,omitempty"`
-	TLSCertError  bool   `json:"tls_cert_error,omitempty"`
-	ChannelID     string `json:"channel_id,omitempty"`
-	SearchQuery   string `json:"search_query,omitempty"`
-	BrandID       string `json:"brand_id,omitempty"`
+	// FeedURL is the address that actually serves the feed when it differs
+	// from the typed one (site page with a feed link, permanent redirect).
+	FeedURL      string `json:"feed_url,omitempty"`
+	Error        string `json:"error,omitempty"`
+	TLSCertError bool   `json:"tls_cert_error,omitempty"`
+	ChannelID    string `json:"channel_id,omitempty"`
+	SearchQuery  string `json:"search_query,omitempty"`
+	BrandID      string `json:"brand_id,omitempty"`
 }
 
 func (h *Handler) handleFeedDetectType(w http.ResponseWriter, r *http.Request) {
@@ -89,10 +93,10 @@ func (h *Handler) handleFeedDetectType(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	if h.cfg.ResolveFeedTitle != nil {
+	if h.cfg.DiscoverFeed != nil {
 		switch ft {
 		case reader.FeedTypeTelegram, reader.FeedTypeRSS:
-			title, err := h.cfg.ResolveFeedTitle(r.Context(), feedURL, ft, tlsInsecure)
+			d, err := h.cfg.DiscoverFeed(r.Context(), feedURL, ft, tlsInsecure)
 			if err != nil {
 				if ft == reader.FeedTypeRSS {
 					resp.Valid = false
@@ -101,8 +105,13 @@ func (h *Handler) handleFeedDetectType(w http.ResponseWriter, r *http.Request) {
 						resp.TLSCertError = true
 					}
 				}
-			} else if strings.TrimSpace(title) != "" {
-				resp.Title = strings.TrimSpace(title)
+			} else {
+				if strings.TrimSpace(d.Title) != "" {
+					resp.Title = strings.TrimSpace(d.Title)
+				}
+				if d.FeedURL != "" && d.FeedURL != feedURL {
+					resp.FeedURL = d.FeedURL
+				}
 			}
 		}
 	}
@@ -122,6 +131,9 @@ func formatRSSDetectError(err error) string {
 		return reader.TLSCertErrorMessage()
 	}
 	msg := err.Error()
+	if errors.Is(err, reader.ErrNoFeedFound) {
+		return "На странице не найдено ссылок на RSS/Atom ленту; укажите адрес ленты вручную"
+	}
 	if strings.Contains(msg, "Failed to detect feed type") || strings.Contains(msg, "parse feed:") {
 		return "Не удалось распознать RSS/Atom ленту по этому URL"
 	}
@@ -153,13 +165,36 @@ func (h *Handler) renderFeedFormError(w http.ResponseWriter, r *http.Request, pa
 	h.render(w, r, "feeds_form", data)
 }
 
-func validateFeedBeforeCreate(ctx context.Context, h *Handler, feedURL, feedType string, tlsInsecure bool) error {
-	if err := reader.ValidateBridgeFeedURL(feedURL, feedType); err != nil {
+// resolveFeedBeforeCreate validates the URL and, for RSS, fetches it once:
+// the same request checks that a feed is reachable, follows the page/redirect
+// to the real feed address and yields a title for an empty title field.
+func resolveFeedBeforeCreate(ctx context.Context, h *Handler, params *storage.CreateFeedParams) error {
+	if err := reader.ValidateBridgeFeedURL(params.FeedURL, params.FeedType); err != nil {
 		return err
 	}
-	if feedType == reader.FeedTypeRSS && h.cfg.ResolveFeedTitle != nil {
-		if _, err := h.cfg.ResolveFeedTitle(ctx, feedURL, feedType, tlsInsecure); err != nil {
+	if h.cfg.DiscoverFeed == nil {
+		return nil
+	}
+	switch params.FeedType {
+	case reader.FeedTypeRSS:
+		d, err := h.cfg.DiscoverFeed(ctx, params.FeedURL, params.FeedType, params.TLSInsecure)
+		if err != nil {
 			return fmt.Errorf("%s", formatRSSDetectError(err))
+		}
+		if d.FeedURL != "" && d.FeedURL != params.FeedURL {
+			if err := reader.ValidateFeedURL(d.FeedURL, h.cfg.SSRFGuard); err != nil {
+				return err
+			}
+			params.FeedURL = d.FeedURL
+		}
+		if params.Title == "" {
+			params.Title = strings.TrimSpace(d.Title)
+		}
+	case reader.FeedTypeTelegram:
+		if params.Title == "" {
+			if d, err := h.cfg.DiscoverFeed(ctx, params.FeedURL, params.FeedType, params.TLSInsecure); err == nil {
+				params.Title = strings.TrimSpace(d.Title)
+			}
 		}
 	}
 	return nil

@@ -44,12 +44,20 @@ func NewTitleResolver(cfg RegistryConfig, tg *telegram.Handler) (*TitleResolver,
 
 // DiscoverTitle returns a human-readable feed title for feedURL.
 func (r *TitleResolver) DiscoverTitle(ctx context.Context, feedURL, feedType string, tlsInsecure bool) (string, error) {
+	d, err := r.DiscoverFeed(ctx, feedURL, feedType, tlsInsecure)
+	return d.Title, err
+}
+
+// DiscoverFeed resolves feedURL to the address that serves the feed (HTML
+// pages are scanned for feed links, permanent redirects are followed) and
+// its title. Bridge URLs are returned unchanged with the bridge's title.
+func (r *TitleResolver) DiscoverFeed(ctx context.Context, feedURL, feedType string, tlsInsecure bool) (Discovery, error) {
 	if r == nil {
-		return "", fmt.Errorf("title resolver not configured")
+		return Discovery{}, fmt.Errorf("title resolver not configured")
 	}
 	feedURL = strings.TrimSpace(feedURL)
 	if feedURL == "" {
-		return "", fmt.Errorf("empty feed url")
+		return Discovery{}, fmt.Errorf("empty feed url")
 	}
 	ft := NormalizeFeedType(feedType)
 	if ft == "" {
@@ -58,13 +66,14 @@ func (r *TitleResolver) DiscoverTitle(ctx context.Context, feedURL, feedType str
 	switch ft {
 	case FeedTypeTelegram:
 		if r.telegram == nil {
-			return "", fmt.Errorf("telegram handler not configured")
+			return Discovery{}, fmt.Errorf("telegram handler not configured")
 		}
-		return r.telegram.DiscoverChannelTitle(ctx, feedURL)
+		title, err := r.telegram.DiscoverChannelTitle(ctx, feedURL)
+		return Discovery{FeedURL: feedURL, Title: title}, err
 	default:
 		if r.rss == nil {
-			return "", fmt.Errorf("rss fetcher not configured")
+			return Discovery{}, fmt.Errorf("rss fetcher not configured")
 		}
-		return r.rss.DiscoverTitle(ctx, feedURL, false, tlsInsecure)
+		return r.rss.Discover(ctx, feedURL, false, tlsInsecure)
 	}
 }
