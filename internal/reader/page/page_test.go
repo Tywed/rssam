@@ -96,6 +96,14 @@ func TestHandler_FetchDetectsChanges(t *testing.T) {
 	if title, err := h.DiscoverTitle(context.Background(), feedURL, false); err != nil || title != "Тарифы" {
 		t.Fatalf("title=%q err=%v", title, err)
 	}
+
+	bad := "page+" + ts.URL + "/tarify#["
+	if _, err := h.Fetch(context.Background(), bad, "", State{}, false); err == nil || !strings.Contains(err.Error(), "invalid CSS selector") {
+		t.Fatalf("invalid selector fetch err=%v", err)
+	}
+	if _, err := h.DiscoverTitle(context.Background(), bad, false); err == nil || !strings.Contains(err.Error(), "invalid CSS selector") {
+		t.Fatalf("invalid selector discover err=%v", err)
+	}
 }
 
 func TestDiffHTML(t *testing.T) {

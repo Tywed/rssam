@@ -16,6 +16,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/PuerkitoBio/goquery"
+	"github.com/andybalholm/cascadia"
 	"golang.org/x/net/html"
 
 	"rssam/internal/ssrf"
@@ -62,6 +63,13 @@ func ParseFeedURL(feedURL string) (Options, bool) {
 	u.Fragment = ""
 	u.RawFragment = ""
 	return Options{PageURL: u.String(), Selector: sel}, true
+}
+
+// CompileSelector reports whether sel is a valid CSS selector. goquery.Find
+// panics on a compile error, so callers must check this first.
+func CompileSelector(sel string) error {
+	_, err := cascadia.Compile(sel)
+	return err
 }
 
 func DetectFeedURL(feedURL string) bool {
@@ -111,6 +119,9 @@ func (h *Handler) Fetch(ctx context.Context, feedURL, userAgent string, st State
 	opts, ok := ParseFeedURL(feedURL)
 	if !ok {
 		return Result{State: st}, fmt.Errorf("page: invalid feed url %q", feedURL)
+	}
+	if err := CompileSelector(opts.Selector); err != nil {
+		return Result{State: st}, fmt.Errorf("page: invalid CSS selector: %w", err)
 	}
 	doc, err := h.fetchDocument(ctx, opts.PageURL, userAgent, tlsInsecure)
 	if err != nil {
@@ -164,6 +175,9 @@ func (h *Handler) DiscoverTitle(ctx context.Context, feedURL string, tlsInsecure
 	opts, ok := ParseFeedURL(feedURL)
 	if !ok {
 		return "", fmt.Errorf("page: invalid feed url %q", feedURL)
+	}
+	if err := CompileSelector(opts.Selector); err != nil {
+		return "", fmt.Errorf("page: invalid CSS selector: %w", err)
 	}
 	doc, err := h.fetchDocument(ctx, opts.PageURL, "", tlsInsecure)
 	if err != nil {

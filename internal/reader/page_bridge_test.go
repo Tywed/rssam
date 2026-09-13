@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"rssam/internal/reader/page"
+	"rssam/internal/ssrf"
 )
 
 func TestPageBridge_RegistryRoundTrip(t *testing.T) {
@@ -25,6 +26,17 @@ func TestPageBridge_RegistryRoundTrip(t *testing.T) {
 	}
 	if err := ValidateFeedURL("page+https://", nil); err == nil {
 		t.Fatal("hostless page url must be rejected")
+	}
+	if err := ValidateFeedURL("page+https://example.com/x#[", nil); err == nil {
+		t.Fatal("invalid CSS selector must be rejected")
+	}
+
+	g, err := ssrf.New(ssrf.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidateFeedURL("page+http://127.0.0.1/#body", g); err == nil {
+		t.Fatal("page URL must pass the inner address through the SSRF guard")
 	}
 
 	res, err := reg.Fetch(context.Background(), FetchRequest{FeedURL: feedURL, FeedType: FeedTypePage})

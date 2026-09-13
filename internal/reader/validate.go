@@ -51,7 +51,21 @@ func ValidateFeedURL(feedURL string, guard *ssrf.Guard) error {
 		if ft == FeedTypeRSS {
 			return fmt.Errorf("feed_url: unrecognized bridge address")
 		}
-		return ValidateBridgeFeedURL(feedURL, ft)
+		if err := ValidateBridgeFeedURL(feedURL, ft); err != nil {
+			return err
+		}
+		if ft == FeedTypePage {
+			opts, _ := page.ParseFeedURL(feedURL)
+			if err := page.CompileSelector(opts.Selector); err != nil {
+				return fmt.Errorf("некорректный CSS-селектор: %w", err)
+			}
+			if guard != nil {
+				if err := guard.ValidateURL(opts.PageURL); err != nil {
+					return err
+				}
+			}
+		}
+		return nil
 	}
 	u, err := url.Parse(feedURL)
 	if err != nil || u.Scheme == "" {
