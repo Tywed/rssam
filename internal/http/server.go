@@ -430,6 +430,7 @@ func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", s.handleHealthz)
 	mux.HandleFunc("/openapi.json", s.handleOpenAPISpec)
+	mux.HandleFunc("/docs", s.handleDocs)
 	mux.Handle("/metrics", s.wrapMetrics(promhttp.Handler()))
 
 	api := http.NewServeMux()

@@ -2,7 +2,7 @@
   "openapi": "3.0.3",
   "info": {
     "title": "rssam API",
-    "version": "1.0.0",
+    "version": "0.0.0-dev",
     "description": "REST API of the rssam RSS aggregator.\n\n**Authentication.** Every `/v1` endpoint takes `X-Auth-Token: <token>` where the token is either a personal API key (`POST /v1/me/api-keys`, with a `scope` of `read`/`write`/`admin` and an optional expiry) or the global `AUTH_TOKEN` (maps to user id 1, unrestricted; deprecated, to be removed in 0.2.0). A request outside the key's scope is rejected with 403. A browser session cookie is also accepted, but state-changing requests authenticated only by the cookie must pass the same-origin check (`Sec-Fetch-Site`/`Origin`), otherwise 403.\n\n**Envelope.** Successful JSON responses are `{\"data\": ..., \"total\": n}`; errors are `{\"error_message\": \"...\"}`. Lists take `limit`/`offset`; `total` is the full row count.\n\n**Ownership.** Objects are scoped to the calling user; reading another user's object yields 404. Endpoints marked \"Requires an admin principal\" return 403 for non-admins.\n\n**Request id.** Every response carries `X-Request-Id` (echoed from the request when a proxy set it, generated otherwise); quote it when reporting 5xx errors.\n\n**Limits.** Request bodies are capped (MAX_REQUEST_BODY_BYTES, default 1 MiB) → 413; per-IP rate limits on authentication failures and sensitive routes → 429."
   },
   "servers": [
@@ -101,6 +101,36 @@
                 }
               }
             }
+          },
+          "304": {
+            "description": "Not modified."
+          }
+        },
+        "description": "Unauthenticated. `info.version` is the version of the running server. Sends a weak `ETag`; `If-None-Match` yields 304."
+      }
+    },
+    "/docs": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "API reference (HTML)",
+        "operationId": "docs",
+        "description": "Unauthenticated, self-contained page that renders `/openapi.json` in the browser: endpoints grouped by tag, parameters, request/response schemas with generated examples, and a path filter. Loads no external resources.",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "HTML page.",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "304": {
+            "description": "Not modified."
           }
         }
       }

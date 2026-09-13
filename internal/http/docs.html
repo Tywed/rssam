@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>rssam API</title>
+<style>
+:root{--bg:#fff;--fg:#1d1d1f;--muted:#6b6b70;--border:#e3e3e6;--panel:#f6f6f8;--accent:#257aa7;--code:#f0f0f3;
+--get:#2b7a3b;--post:#1f5fa8;--put:#b06a00;--delete:#b02a2a;--patch:#6b3fa0}
+@media (prefers-color-scheme:dark){:root{--bg:#141416;--fg:#e6e6ea;--muted:#9a9aa3;--border:#2c2c31;--panel:#1c1c20;--accent:#5fb0dc;--code:#232328}}
+*{box-sizing:border-box}
+html{font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;color:var(--fg);background:var(--bg)}
+body{margin:0;display:grid;grid-template-columns:260px minmax(0,1fr)}
+a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}
+code,pre{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12.5px}
+code{background:var(--code);padding:1px 4px;border-radius:3px}
+pre{background:var(--code);padding:10px 12px;border-radius:6px;overflow:auto;margin:6px 0}
+nav{position:sticky;top:0;height:100vh;overflow:auto;border-right:1px solid var(--border);padding:16px 12px;background:var(--panel)}
+nav h1{font-size:16px;margin:0 0 2px}nav .ver{color:var(--muted);font-size:12px;margin-bottom:10px}
+nav input{width:100%;padding:6px 8px;border:1px solid var(--border);border-radius:4px;background:var(--bg);color:var(--fg);margin-bottom:10px}
+nav h2{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin:14px 0 4px}
+nav ul{list-style:none;margin:0;padding:0}nav li a{display:flex;gap:6px;align-items:baseline;padding:2px 4px;border-radius:3px;color:var(--fg);font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+nav li a:hover{background:var(--code);text-decoration:none}
+nav li.hidden,section.hidden{display:none}
+main{padding:20px 32px 60px;max-width:980px}
+.intro p{margin:6px 0}
+.badge{display:inline-block;min-width:52px;text-align:center;font-weight:700;font-size:11px;padding:2px 6px;border-radius:3px;color:#fff;text-transform:uppercase}
+.badge.get{background:var(--get)}.badge.post{background:var(--post)}.badge.put{background:var(--put)}.badge.delete{background:var(--delete)}.badge.patch{background:var(--patch)}
+nav .badge{min-width:38px;font-size:9.5px;padding:1px 4px}
+h2.tag{font-size:20px;margin:36px 0 4px;padding-top:8px;border-top:1px solid var(--border)}
+h2.tag+p{color:var(--muted);margin:0 0 12px}
+section.op{border:1px solid var(--border);border-radius:6px;margin:12px 0;padding:12px 14px}
+section.op h3{margin:0;font-size:15px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+section.op h3 code{background:none;padding:0;font-size:14px}
+section.op h3 .sum{font-weight:400;color:var(--muted)}
+.lock{font-size:11px;color:var(--muted);border:1px solid var(--border);border-radius:3px;padding:0 5px}
+.admin{font-size:11px;color:var(--delete);border:1px solid var(--delete);border-radius:3px;padding:0 5px}
+.desc{margin:8px 0 4px}
+h4{font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin:14px 0 4px}
+table{border-collapse:collapse;width:100%;font-size:13px}
+td,th{text-align:left;vertical-align:top;padding:4px 8px 4px 0;border-bottom:1px solid var(--border)}
+th{font-weight:600;color:var(--muted);font-size:12px}
+td.name code{font-weight:600}
+.req{color:var(--delete);font-size:11px;margin-left:4px}
+.type{color:var(--muted);font-size:12px}
+details{margin:4px 0}summary{cursor:pointer;color:var(--accent);font-size:13px}
+.resp .code{font-weight:700;width:52px}
+.schemas section{border:1px solid var(--border);border-radius:6px;margin:12px 0;padding:12px 14px}
+.schemas h3{margin:0 0 6px;font-size:15px}
+.enum{color:var(--muted)}
+.enum code{margin-right:3px}
+footer{color:var(--muted);font-size:12px;margin-top:40px;border-top:1px solid var(--border);padding-top:10px}
+.err{color:var(--delete)}
+@media (max-width:820px){body{grid-template-columns:1fr}nav{position:static;height:auto;border-right:0;border-bottom:1px solid var(--border)}main{padding:16px}}
+</style>
+</head>
+<body>
+<nav>
+  <h1>rssam API</h1>
+  <div class="ver" id="ver">загрузка…</div>
+  <input id="q" type="search" placeholder="фильтр по пути" autocomplete="off">
+  <div id="toc"></div>
+  <h2>Ссылки</h2>
+  <ul><li><a href="/openapi.json">openapi.json</a></li><li><a href="#schemas">Схемы</a></li></ul>
+</nav>
+<main>
+  <div class="intro" id="intro"></div>
+  <div id="ops"></div>
+  <h2 class="tag" id="schemas">Схемы</h2>
+  <div class="schemas" id="schemasBody"></div>
+  <footer>Документ формируется из <a href="/openapi.json">/openapi.json</a> в браузере; внешние ресурсы не загружаются.</footer>
+</main>
+<script>
+(function(){
+"use strict";
+var el=function(tag,attrs,children){var e=document.createElement(tag);if(attrs)for(var k in attrs){if(k==="text")e.textContent=attrs[k];else if(k==="class")e.className=attrs[k];else e.setAttribute(k,attrs[k]);}
+  if(children)children.forEach(function(c){if(c==null)return;e.appendChild(typeof c==="string"?document.createTextNode(c):c);});return e;};
+// **bold**, `code`, paragraphs. Descriptions are trusted (they come from the
+// binary), but everything still goes through text nodes.
+function md(s){var wrap=el("div");if(!s)return wrap;s.split(/\n\n+/).forEach(function(par){var p=el("p");var re=/(\*\*[^*]+\*\*|`[^`]+`)/g,last=0,m;
+  while((m=re.exec(par))){if(m.index>last)p.appendChild(document.createTextNode(par.slice(last,m.index)));var t=m[0];
+    p.appendChild(t[0]==="`"?el("code",{text:t.slice(1,-1)}):el("strong",{text:t.slice(2,-2)}));last=re.lastIndex;}
+  if(last<par.length)p.appendChild(document.createTextNode(par.slice(last)));wrap.appendChild(p);});return wrap;}
+var doc;
+function deref(x){var seen=0;while(x&&x.$ref&&seen++<20){var parts=x.$ref.replace(/^#\//,"").split("/");var cur=doc;parts.forEach(function(k){cur=cur&&cur[k];});x=cur;}return x||{};}
+function refName(x){return x&&x.$ref?x.$ref.split("/").pop():null;}
+function typeOf(s){if(!s)return"";var n=refName(s);if(n)return n;s=deref(s);if(s.allOf){return s.allOf.map(typeOf).join(" + ");}
+  if(s.oneOf)return s.oneOf.map(typeOf).join(" | ");
+  var t=s.type||(s.properties?"object":"any");if(t==="array")t=typeOf(s.items)+"[]";if(s.format)t+=" ("+s.format+")";if(s.nullable)t+=" | null";return t;}
+function typeNode(s){var span=el("span",{class:"type"});var n=refName(s);if(n){span.appendChild(el("a",{href:"#schema-"+n,text:n}));return span;}
+  var d=deref(s);if(d.type==="array"&&refName(d.items)){span.appendChild(el("a",{href:"#schema-"+refName(d.items),text:refName(d.items)}));span.appendChild(document.createTextNode("[]"));return span;}
+  span.textContent=typeOf(s);return span;}
+function constraints(s){s=deref(s);var out=[];if(s.enum)out.push("одно из: "+s.enum.map(String).join(", "));if(s.default!==undefined)out.push("по умолчанию "+JSON.stringify(s.default));
+  if(s.minimum!==undefined)out.push("≥ "+s.minimum);if(s.maximum!==undefined)out.push("≤ "+s.maximum);if(s.minLength!==undefined)out.push("мин. длина "+s.minLength);if(s.maxLength!==undefined)out.push("макс. длина "+s.maxLength);if(s.pattern)out.push("шаблон "+s.pattern);return out.join("; ");}
+function propsTable(schema){schema=deref(schema);var rows=[];var required={};
+  function collect(sc){sc=deref(sc);if(sc.allOf){sc.allOf.forEach(collect);return;}(sc.required||[]).forEach(function(r){required[r]=1;});
+    var ps=sc.properties||{};Object.keys(ps).forEach(function(k){rows.push([k,ps[k]]);});
+    if(sc.additionalProperties&&typeof sc.additionalProperties==="object")rows.push(["<любой ключ>",sc.additionalProperties]);}
+  collect(schema);if(!rows.length)return null;
+  var tb=el("tbody");rows.forEach(function(r){var s=deref(r[1]);var c=constraints(r[1]);
+    tb.appendChild(el("tr",null,[el("td",{class:"name"},[el("code",{text:r[0]}),required[r[0]]?el("span",{class:"req",text:"обяз."}):null]),el("td",null,[typeNode(r[1])]),
+      el("td",null,[s.description?md(s.description):null,c?el("div",{class:"enum",text:c}):null])]));});
+  return el("table",null,[el("thead",null,[el("tr",null,[el("th",{text:"Поле"}),el("th",{text:"Тип"}),el("th",{text:"Описание"})])]),tb]);}
+function example(schema,depth){schema=deref(schema);depth=depth||0;if(depth>6)return"…";if(schema.example!==undefined)return schema.example;
+  if(schema.allOf){var o={};schema.allOf.forEach(function(p){var e=example(p,depth+1);if(e&&typeof e==="object")Object.keys(e).forEach(function(k){o[k]=e[k];});});return o;}
+  if(schema.enum)return schema.enum[0];if(schema.default!==undefined)return schema.default;
+  switch(schema.type){case"integer":return schema.format==="int64"?1:0;case"number":return 0;case"boolean":return false;
+    case"string":if(schema.format==="date-time")return"2026-01-15T10:00:00Z";if(schema.format==="uri")return"https://example.com/feed.xml";return"string";
+    case"array":return[example(schema.items||{},depth+1)];
+    default:if(schema.properties){var r={};Object.keys(schema.properties).forEach(function(k){r[k]=example(schema.properties[k],depth+1);});return r;}return{};}}
+function paramsTable(params){if(!params||!params.length)return null;var tb=el("tbody");params.forEach(function(p){p=deref(p);var s=p.schema||{};var c=constraints(s);
+  tb.appendChild(el("tr",null,[el("td",{class:"name"},[el("code",{text:p.name}),p.required?el("span",{class:"req",text:"обяз."}):null]),el("td",{class:"type",text:p.in}),el("td",null,[typeNode(s)]),
+    el("td",null,[p.description?md(p.description):null,c?el("div",{class:"enum",text:c}):null])]));});
+  return el("table",null,[el("thead",null,[el("tr",null,[el("th",{text:"Параметр"}),el("th",{text:"Где"}),el("th",{text:"Тип"}),el("th",{text:"Описание"})])]),tb]);}
+function bodyBlock(title,content){if(!content)return null;var box=el("div");box.appendChild(el("h4",{text:title}));Object.keys(content).forEach(function(ct){var sc=content[ct].schema||{};
+  box.appendChild(el("div",{class:"type"},[document.createTextNode(ct+" — "),typeNode(sc)]));var t=propsTable(sc);if(t)box.appendChild(t);
+  if(/json/.test(ct)){var d=el("details");d.appendChild(el("summary",{text:"пример"}));d.appendChild(el("pre",{text:JSON.stringify(example(sc),null,2)}));box.appendChild(d);}});return box;}
+function opSection(method,path,op,pathParams){var id="op-"+op.operationId||(method+path);var s=el("section",{class:"op",id:id});
+  var secOpen=op.security&&op.security.length===0;var admin=/Requires an admin principal/.test(op.description||"");
+  s.appendChild(el("h3",null,[el("span",{class:"badge "+method,text:method}),el("code",{text:path}),el("span",{class:"sum",text:op.summary||""}),
+    secOpen?null:el("span",{class:"lock",text:op.security&&op.security[0]&&op.security[0].MetricsBearer!==undefined?"METRICS_TOKEN":"X-Auth-Token"}),admin?el("span",{class:"admin",text:"admin"}):null]));
+  if(op.description)s.appendChild(el("div",{class:"desc"},[md(op.description)]));
+  var params=(pathParams||[]).concat(op.parameters||[]);var pt=paramsTable(params);if(pt){s.appendChild(el("h4",{text:"Параметры"}));s.appendChild(pt);}
+  if(op.requestBody){var rb=deref(op.requestBody);s.appendChild(bodyBlock("Тело запроса"+(rb.required?"":" (необязательно)"),rb.content));}
+  var resp=op.responses||{};var codes=Object.keys(resp).sort();if(codes.length){s.appendChild(el("h4",{text:"Ответы"}));var tb=el("tbody");
+    codes.forEach(function(code){var r=deref(resp[code]);var cell=el("td");if(r.description)cell.appendChild(md(r.description));
+      if(r.content&&code[0]==="2"){Object.keys(r.content).forEach(function(ct){var sc=r.content[ct].schema||{};cell.appendChild(el("div",{class:"type"},[document.createTextNode(ct+" — "),typeNode(sc)]));
+        if(/json/.test(ct)){var d=el("details");d.appendChild(el("summary",{text:"пример"}));d.appendChild(el("pre",{text:JSON.stringify(example(sc),null,2)}));cell.appendChild(d);}});}
+      tb.appendChild(el("tr",{class:"resp"},[el("td",{class:"code"+(code[0]==="2"?"":" err"),text:code}),cell]));});
+    s.appendChild(el("table",null,[tb]));}
+  return s;}
+function render(){var info=doc.info||{};document.title=(info.title||"API")+" "+(info.version||"");document.getElementById("ver").textContent="версия "+(info.version||"?")+" · OpenAPI "+doc.openapi;
+  var intro=document.getElementById("intro");intro.appendChild(el("h1",{text:info.title||"API"}));intro.appendChild(md(info.description||""));
+  var byTag={};var order=(doc.tags||[]).map(function(t){return t.name;});var tagDesc={};(doc.tags||[]).forEach(function(t){tagDesc[t.name]=t.description||"";});
+  Object.keys(doc.paths).forEach(function(path){var item=doc.paths[path];["get","post","put","patch","delete"].forEach(function(m){if(!item[m])return;var tag=(item[m].tags||["other"])[0];
+    if(order.indexOf(tag)<0)order.push(tag);(byTag[tag]=byTag[tag]||[]).push({method:m,path:path,op:item[m],pathParams:item.parameters});});});
+  var toc=document.getElementById("toc"),ops=document.getElementById("ops");
+  order.forEach(function(tag){var list=byTag[tag];if(!list)return;toc.appendChild(el("h2",{text:tag}));var ul=el("ul");
+    var h=el("h2",{class:"tag",id:"tag-"+tag,text:tag});ops.appendChild(h);ops.appendChild(el("p",{text:tagDesc[tag]||""}));
+    list.forEach(function(o){var sec=opSection(o.method,o.path,o.op,o.pathParams);ops.appendChild(sec);
+      var li=el("li",{"data-path":(o.method+" "+o.path).toLowerCase()},[el("a",{href:"#"+sec.id},[el("span",{class:"badge "+o.method,text:o.method}),document.createTextNode(o.path)])]);li._sec=sec;ul.appendChild(li);});
+    toc.appendChild(ul);});
+  var sb=document.getElementById("schemasBody");var schemas=(doc.components||{}).schemas||{};Object.keys(schemas).sort().forEach(function(name){var sc=schemas[name];var sec=el("section",{id:"schema-"+name});
+    sec.appendChild(el("h3",{text:name}));if(sc.description)sec.appendChild(md(sc.description));var d=deref(sc);
+    if(d.enum){sec.appendChild(el("div",{class:"enum"},d.enum.map(function(v){return el("code",{text:String(v)});})));}
+    var t=propsTable(sc);if(t)sec.appendChild(t);else if(!d.enum)sec.appendChild(el("div",{class:"type",text:typeOf(sc)}));sb.appendChild(sec);});
+  var q=document.getElementById("q");q.addEventListener("input",function(){var v=q.value.trim().toLowerCase();document.querySelectorAll("#toc li").forEach(function(li){var hide=v&&li.getAttribute("data-path").indexOf(v)<0;li.classList.toggle("hidden",hide);if(li._sec)li._sec.classList.toggle("hidden",hide);});
+    document.querySelectorAll("#toc ul").forEach(function(ul){var any=ul.querySelector("li:not(.hidden)");ul.previousSibling.classList.toggle("hidden",!any);});});
+  if(location.hash){var t=document.getElementById(location.hash.slice(1));if(t)t.scrollIntoView();}}
+var xhr=new XMLHttpRequest();xhr.open("GET","/openapi.json");xhr.onload=function(){try{doc=JSON.parse(xhr.responseText);render();}catch(e){document.getElementById("ver").textContent="openapi.json: "+e;}};
+xhr.onerror=function(){document.getElementById("ver").textContent="не удалось загрузить /openapi.json";};xhr.send();
+})();
+</script>
+</body>
+</html>
