@@ -31,10 +31,10 @@ VALUES (
   $1, $2, $3,
   COALESCE((SELECT MAX(sort_order) + 1 FROM categories WHERE user_id = $1), 0)
 )
-RETURNING id, user_id, title, color, sort_order, created_at, updated_at`
+RETURNING id, user_id, title, color, sort_order, poll_hours, created_at, updated_at`
 	var c Category
 	err := s.db.QueryRow(ctx, q, userID, title, strings.TrimSpace(color)).Scan(
-		&c.ID, &c.UserID, &c.Title, &c.Color, &c.SortOrder, &c.CreatedAt, &c.UpdatedAt,
+		&c.ID, &c.UserID, &c.Title, &c.Color, &c.SortOrder, &c.PollHours, &c.CreatedAt, &c.UpdatedAt,
 	)
 	if err != nil {
 		return Category{}, fmt.Errorf("create category: %w", err)
@@ -44,7 +44,7 @@ RETURNING id, user_id, title, color, sort_order, created_at, updated_at`
 
 func (s *PostgresStore) ListCategories(ctx context.Context, userID int64, limit, offset int) ([]Category, int, error) {
 	base := `
-SELECT id, user_id, title, color, sort_order, created_at, updated_at, count(*) OVER()
+SELECT id, user_id, title, color, sort_order, poll_hours, created_at, updated_at, count(*) OVER()
 FROM categories
 WHERE user_id = $1
 ORDER BY sort_order ASC, id ASC`
@@ -72,7 +72,7 @@ ORDER BY sort_order ASC, id ASC`
 	total := 0
 	for rows.Next() {
 		var c Category
-		if err := rows.Scan(&c.ID, &c.UserID, &c.Title, &c.Color, &c.SortOrder, &c.CreatedAt, &c.UpdatedAt, &total); err != nil {
+		if err := rows.Scan(&c.ID, &c.UserID, &c.Title, &c.Color, &c.SortOrder, &c.PollHours, &c.CreatedAt, &c.UpdatedAt, &total); err != nil {
 			return nil, 0, fmt.Errorf("scan categories: %w", err)
 		}
 		out = append(out, c)
@@ -88,10 +88,10 @@ func (s *PostgresStore) UpdateCategory(ctx context.Context, userID int64, id int
 UPDATE categories
 SET title = $3, color = $4, updated_at = now()
 WHERE id = $1 AND user_id = $2
-RETURNING id, user_id, title, color, sort_order, created_at, updated_at`
+RETURNING id, user_id, title, color, sort_order, poll_hours, created_at, updated_at`
 	var c Category
 	err := s.db.QueryRow(ctx, q, id, userID, title, strings.TrimSpace(color)).Scan(
-		&c.ID, &c.UserID, &c.Title, &c.Color, &c.SortOrder, &c.CreatedAt, &c.UpdatedAt,
+		&c.ID, &c.UserID, &c.Title, &c.Color, &c.SortOrder, &c.PollHours, &c.CreatedAt, &c.UpdatedAt,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {

@@ -30,6 +30,8 @@ type Category struct {
 	Title     string
 	Color     string
 	SortOrder int
+	// PollHours is the daily polling window "HH:MM-HH:MM" ("" = always).
+	PollHours string
 	CreatedAt time.Time
 	UpdatedAt time.Time
 }

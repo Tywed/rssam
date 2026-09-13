@@ -19,6 +19,7 @@ func (h *Handler) handleCategoriesList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	data.Categories = cats
+	data.CategoryPollHours = h.cfg.CategoryPollHours != nil
 	data.Title = "Категории"
 	h.render(w, r, "categories_list", data)
 }
@@ -34,9 +35,18 @@ func (h *Handler) handleCategoryCreate(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "title required", http.StatusBadRequest)
 		return
 	}
-	_, err := h.cfg.Categories.CreateCategory(r.Context(), p.UserID, title, strings.TrimSpace(r.FormValue("color")))
+	pollHours, err := storage.NormalizePollHours(r.FormValue("poll_hours"))
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	cat, err := h.cfg.Categories.CreateCategory(r.Context(), p.UserID, title, strings.TrimSpace(r.FormValue("color")))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if err := h.saveCategoryPollHours(r, p.UserID, cat.ID, pollHours); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	http.Redirect(w, r, "/ui/categories", http.StatusFound)
@@ -58,12 +68,36 @@ func (h *Handler) handleCategoryUpdate(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "title required", http.StatusBadRequest)
 		return
 	}
+	pollHours, err := storage.NormalizePollHours(r.FormValue("poll_hours"))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 	_, err = h.cfg.Categories.UpdateCategory(r.Context(), p.UserID, id, title, strings.TrimSpace(r.FormValue("color")))
 	if err != nil {
 		http.NotFound(w, r)
 		return
 	}
+	if err := h.saveCategoryPollHours(r, p.UserID, id, pollHours); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 	http.Redirect(w, r, "/ui/categories", http.StatusFound)
+}
+
+// saveCategoryPollHours persists the window (no-op without a store or when
+// the form did not send the field) and drops the refresher cache entry.
+func (h *Handler) saveCategoryPollHours(r *http.Request, userID, categoryID int64, pollHours string) error {
+	if h.cfg.CategoryPollHours == nil || !r.Form.Has("poll_hours") {
+		return nil
+	}
+	if err := h.cfg.CategoryPollHours.SetCategoryPollHours(r.Context(), userID, categoryID, pollHours); err != nil {
+		return err
+	}
+	if h.cfg.Refresher != nil {
+		h.cfg.Refresher.InvalidatePollHours(categoryID)
+	}
+	return nil
 }
 
 func (h *Handler) handleCategoryDelete(w http.ResponseWriter, r *http.Request) {

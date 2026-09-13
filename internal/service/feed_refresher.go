@@ -57,6 +57,12 @@ type FeedRefresher struct {
 	filterCacheOnce sync.Once
 	filterCache     *enabledFilterCache
 
+	// PollHours supplies per-category polling windows (nil = no windows).
+	PollHours      storage.CategoryPollHoursStore
+	pollHoursOnce  sync.Once
+	pollHoursMu    sync.Mutex
+	pollHoursCache map[int64]pollHoursCacheItem
+
 	webhookCacheOnce sync.Once
 	webhookCache     *enabledWebhookCache
 }
@@ -218,6 +224,10 @@ func (r *FeedRefresher) refreshLoaded(ctx context.Context, feed storage.Feed, ma
 
 	started := time.Now()
 	now := started.UTC()
+	window, hasWindow := r.categoryPollWindow(ctx, feed)
+	if !manual && hasWindow && !window.Contains(now) {
+		return 0, ErrOutsidePollWindow{At: window.NextOpen(now)}
+	}
 	bridgeState := reader.ParseBridgeState(feed.BridgeState)
 
 	if manual && reader.NormalizeFeedType(feed.FeedType) == reader.FeedTypeMax {
@@ -317,6 +327,9 @@ func (r *FeedRefresher) refreshLoaded(ctx context.Context, feed storage.Feed, ma
 		if limit := now.Add(max); next.After(limit) {
 			next = limit
 		}
+	}
+	if hasWindow {
+		next = window.NextOpen(next)
 	}
 	if err := r.Feeds.UpdateFeedRefreshMeta(ctx, storage.UpdateFeedRefreshMetaParams{
 		ID:            feedID,

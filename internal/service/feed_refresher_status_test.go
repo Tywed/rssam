@@ -20,6 +20,7 @@ type statusFeedStore struct {
 	meta      storage.UpdateFeedRefreshMetaParams
 	next      time.Time
 	circuit   int
+	updates   int
 }
 
 func (s *statusFeedStore) GetFeedByID(_ context.Context, _ int64) (storage.Feed, error) {
@@ -37,6 +38,7 @@ func (s *statusFeedStore) RecordFeedPollFailure(_ context.Context, p storage.Rec
 	return nil
 }
 func (s *statusFeedStore) UpdateFeedRefreshMeta(_ context.Context, p storage.UpdateFeedRefreshMetaParams) error {
+	s.updates++
 	s.meta = p
 	if p.LastError == "" {
 		s.feed.ParsingErrorCount = 0
@@ -89,13 +91,15 @@ func (p *statusPublisher) PublishFeedStatusChanged(feed storage.Feed, err error)
 }
 
 type stubHandler struct {
-	res reader.FetchResponse
-	err error
+	res   reader.FetchResponse
+	err   error
+	calls int
 }
 
 func (h *stubHandler) Name() string                 { return "rss" }
 func (h *stubHandler) DetectFeedType(string) string { return "rss" }
 func (h *stubHandler) Fetch(context.Context, reader.FetchRequest) (reader.FetchResponse, error) {
+	h.calls++
 	return h.res, h.err
 }
 

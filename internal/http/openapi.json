@@ -2951,6 +2951,10 @@
           "color": {
             "type": "string",
             "description": "Hex colour, omitted when unset."
+          },
+          "poll_hours": {
+            "type": "string",
+            "description": "Daily polling window HH:MM-HH:MM in the server time zone (may wrap past midnight); omitted when the category is polled around the clock."
           }
         },
         "required": [
@@ -2968,6 +2972,10 @@
           "color": {
             "type": "string",
             "description": "Hex colour like #ff8800; empty clears."
+          },
+          "poll_hours": {
+            "type": "string",
+            "description": "Daily polling window HH:MM-HH:MM in the server time zone, e.g. 08:00-22:00 or 22:00-06:00. Feeds of the category are not fetched outside the window (manual refresh still works). Omit to keep the current value, empty string to poll around the clock."
           }
         },
         "required": [

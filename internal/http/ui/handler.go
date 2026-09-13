@@ -28,10 +28,12 @@ import (
 const defaultPageLimit = 50
 
 type Config struct {
-	Logger             *slog.Logger
-	Users              storage.UserStore
-	Sessions           storage.SessionStore
-	Categories         storage.CategoryStore
+	Logger     *slog.Logger
+	Users      storage.UserStore
+	Sessions   storage.SessionStore
+	Categories storage.CategoryStore
+	// CategoryPollHours stores the per-category polling window (nil = field hidden).
+	CategoryPollHours  storage.CategoryPollHoursStore
 	Feeds              storage.FeedStore
 	Entries            storage.EntryStore
 	Filters            storage.FilterStore

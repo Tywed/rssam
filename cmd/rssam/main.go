@@ -232,6 +232,7 @@ func main() {
 	refresher.Webhooks = pgStore
 	refresher.WebhookLogs = pgStore
 	refresher.PollLog = pgStore
+	refresher.PollHours = pgStore
 	if cfg.WSEnabled {
 		refresher.Realtime = wsPublisher
 	}
@@ -336,6 +337,7 @@ func main() {
 		FeedSilentDays:          cfg.FeedSilentDays,
 		DedupStore:              pgStore,
 		QueryMatcher:            pgStore,
+		CategoryPollHours:       pgStore,
 		FeedPollLogStore:        pgStore,
 		StoreEntriesMode:        cfg.StoreEntriesMode,
 		CircuitBreakerThreshold: cfg.FeedCircuitBreakerThreshold,
