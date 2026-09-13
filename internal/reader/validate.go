@@ -8,6 +8,7 @@ import (
 	"rssam/internal/reader/dzen"
 	maxbridge "rssam/internal/reader/max"
 	maxstatbridge "rssam/internal/reader/maxstat"
+	"rssam/internal/reader/page"
 	"rssam/internal/reader/rutube"
 	"rssam/internal/reader/smotrim"
 	"rssam/internal/reader/telegram"
@@ -23,6 +24,8 @@ var bridgeFeedSchemes = map[string]struct{}{
 	"rutube-person":  {},
 	"smotrim":        {},
 	"smotrim-brand":  {},
+	"page+http":      {},
+	"page+https":     {},
 }
 
 // IsBridgeSchemeURL reports whether feedURL uses an internal bridge pseudo-scheme
@@ -44,7 +47,11 @@ func ValidateFeedURL(feedURL string, guard *ssrf.Guard) error {
 		return fmt.Errorf("feed_url is required")
 	}
 	if IsBridgeSchemeURL(feedURL) {
-		return ValidateBridgeFeedURL(feedURL, DetectFeedTypeFromURL(feedURL))
+		ft := DetectFeedTypeFromURL(feedURL)
+		if ft == FeedTypeRSS {
+			return fmt.Errorf("feed_url: unrecognized bridge address")
+		}
+		return ValidateBridgeFeedURL(feedURL, ft)
 	}
 	u, err := url.Parse(feedURL)
 	if err != nil || u.Scheme == "" {
@@ -81,6 +88,8 @@ func FeedTypeLabel(feedType string) string {
 		return "Dzen News"
 	case FeedTypeSmotrim:
 		return "Smotrim"
+	case FeedTypePage:
+		return "Страница"
 	default:
 		return "RSS/Atom"
 	}
@@ -125,6 +134,10 @@ func ValidateBridgeFeedURL(feedURL, feedType string) error {
 	case FeedTypeSmotrim:
 		if _, ok := smotrim.ParseOptionsFromFeedURL(feedURL); !ok {
 			return fmt.Errorf("не удалось распознать бренд Smotrim в URL")
+		}
+	case FeedTypePage:
+		if _, ok := page.ParseFeedURL(feedURL); !ok {
+			return fmt.Errorf("ожидается page+https://адрес-страницы#css-селектор")
 		}
 	}
 	return nil

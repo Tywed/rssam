@@ -3064,7 +3064,7 @@
           "feed_url": {
             "type": "string",
             "format": "uri",
-            "description": "Feed address. On create with an empty title an HTML page is accepted too: the server follows <link rel=\"alternate\"> (or well-known /feed, /rss.xml … paths) and permanent redirects, and stores the resolved feed URL."
+            "description": "Feed address. On create with an empty title an HTML page is accepted too: the server follows <link rel=\"alternate\"> (or well-known /feed, /rss.xml … paths) and permanent redirects, and stores the resolved feed URL. Bridge pseudo-schemes are accepted as well, e.g. page+https://host/path#css-selector watches a page fragment and emits one entry per change (feed_type page)."
           },
           "title": {
             "type": "string",

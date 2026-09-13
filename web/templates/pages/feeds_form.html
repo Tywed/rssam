@@ -118,6 +118,17 @@
         <p class="meta" id="smotrim-brand-id"></p>
       </div>
 
+      <div class="card feed-type-settings" id="feed-settings-page" data-feed-type="page" {{if .Feed.ID}}{{if ne .Feed.FeedType "page"}}hidden{{end}}{{else}}hidden{{end}}>
+        <h2>Страница без RSS</h2>
+        <p class="meta">Слежение за фрагментом HTML-страницы: при каждом изменении текста внутри селектора появляется запись с разницей и самим фрагментом. Формат адреса — <code>page+https://адрес#css-селектор</code>:</p>
+        <ul class="meta">
+          <li><code>page+https://example.ru/tarify#.price-table</code></li>
+          <li><code>page+https://example.ru/news##main</code> — селектор по id пишется с двумя <code>#</code></li>
+          <li><code>page+https://example.ru/</code> — без селектора берётся <code>main</code>, <code>article</code> или <code>body</code></li>
+        </ul>
+        <p class="meta">Сравнивается только текст (скрипты, стили и разметка вне селектора не учитываются). Первая проверка создаёт запись «начальный снимок», по которой видно, что попало под селектор. Страница загружается сервером без выполнения JavaScript.</p>
+      </div>
+
       <div class="card feed-type-settings" id="feed-settings-rss" data-feed-type="rss" {{if .Feed.ID}}{{if ne .Feed.FeedType "rss"}}hidden{{end}}{{else}}hidden{{end}}>
         <h2>RSS/Atom</h2>
         <p class="meta">Обычная RSS или Atom лента. URL должен указывать на XML/JSON feed, а не на страницу сайта.</p>

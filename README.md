@@ -11,7 +11,7 @@
 - Фильтры (regex RE2 и полнотекстовые запросы с морфологией) с действиями: метка, вебхук, удаление
 - Вебхуки HTTP, Telegram и Max; после доставки — `on_success_entry`. Протокол: [docs/WEBHOOK_RECEIVER_SPEC.md](docs/WEBHOOK_RECEIVER_SPEC.md)
 - На ленте можно хранить только хеш до срабатывания фильтра
-- Источники: RSS/Atom, Telegram, Max, MaxStat, VK Search, Rutube, Dzen News, Smotrim
+- Источники: RSS/Atom (с автообнаружением по адресу сайта), Telegram, Max, MaxStat, VK Search, Rutube, Dzen News, Smotrim, произвольная страница без RSS (`page+https://…#селектор`)
 - Импорт/экспорт OPML; в экспорт добавляются атрибуты `rssam:*` (интервал, тип источника, TLS, hash-only, срок хранения, правила, вебхук по имени) — при импорте в другой инстанс настройки лент восстанавливаются, чужие читалки их игнорируют
 - REST `/v1` (API-ключи), схема `GET /openapi.json` (без встроенного Swagger UI)
 - Метрики Prometheus: `GET /metrics` (`METRICS_TOKEN`)

@@ -11,6 +11,7 @@ import (
 	"rssam/internal/reader"
 	dzenbridge "rssam/internal/reader/dzen"
 	maxstatbridge "rssam/internal/reader/maxstat"
+	"rssam/internal/reader/page"
 	"rssam/internal/reader/rutube"
 	smotrimbridge "rssam/internal/reader/smotrim"
 	vkbridge "rssam/internal/reader/vk"
@@ -95,10 +96,10 @@ func (h *Handler) handleFeedDetectType(w http.ResponseWriter, r *http.Request) {
 	}
 	if h.cfg.DiscoverFeed != nil {
 		switch ft {
-		case reader.FeedTypeTelegram, reader.FeedTypeRSS:
+		case reader.FeedTypeTelegram, reader.FeedTypeRSS, reader.FeedTypePage:
 			d, err := h.cfg.DiscoverFeed(r.Context(), feedURL, ft, tlsInsecure)
 			if err != nil {
-				if ft == reader.FeedTypeRSS {
+				if ft != reader.FeedTypeTelegram {
 					resp.Valid = false
 					resp.Error = formatRSSDetectError(err)
 					if reader.IsTLSCertError(err) && !tlsInsecure {
@@ -133,6 +134,9 @@ func formatRSSDetectError(err error) string {
 	msg := err.Error()
 	if errors.Is(err, reader.ErrNoFeedFound) {
 		return "На странице не найдено ссылок на RSS/Atom ленту; укажите адрес ленты вручную"
+	}
+	if errors.Is(err, page.ErrSelectorNoMatch) {
+		return "Селектор не нашёл ни одного элемента на странице: " + strings.TrimPrefix(msg, page.ErrSelectorNoMatch.Error()+": ")
 	}
 	if strings.Contains(msg, "Failed to detect feed type") || strings.Contains(msg, "parse feed:") {
 		return "Не удалось распознать RSS/Atom ленту по этому URL"
@@ -186,6 +190,14 @@ func resolveFeedBeforeCreate(ctx context.Context, h *Handler, params *storage.Cr
 				return err
 			}
 			params.FeedURL = d.FeedURL
+		}
+		if params.Title == "" {
+			params.Title = strings.TrimSpace(d.Title)
+		}
+	case reader.FeedTypePage:
+		d, err := h.cfg.DiscoverFeed(ctx, params.FeedURL, params.FeedType, params.TLSInsecure)
+		if err != nil {
+			return fmt.Errorf("%s", formatRSSDetectError(err))
 		}
 		if params.Title == "" {
 			params.Title = strings.TrimSpace(d.Title)

@@ -10,6 +10,7 @@ import (
 	"rssam/internal/reader/dzen"
 	"rssam/internal/reader/max"
 	"rssam/internal/reader/maxstat"
+	"rssam/internal/reader/page"
 	"rssam/internal/reader/rutube"
 	"rssam/internal/reader/smotrim"
 	"rssam/internal/reader/telegram"
@@ -80,6 +81,7 @@ type RegistryBundle struct {
 	Rutube   *rutube.Handler
 	Dzen     *dzen.Handler
 	Smotrim  *smotrim.Handler
+	Page     *page.Handler
 }
 
 // NewRegistry creates a registry with RSS (fallback) and optional bridge handlers.
@@ -215,6 +217,8 @@ func NewRegistry(cfg RegistryConfig) (*RegistryBundle, error) {
 		UserAgent:    cfg.SmotrimUserAgent,
 	})
 	reg.Register(newSmotrimHandler(smotrimHandler))
+	pageHandler := page.NewHandler(cfg.HTTPClient, cfg.SSRFGuard, cfg.UserAgent)
+	reg.Register(newPageHandler(pageHandler))
 
 	reg.Register(NewRSSHandler(rssFetcher))
 	return &RegistryBundle{
@@ -226,6 +230,7 @@ func NewRegistry(cfg RegistryConfig) (*RegistryBundle, error) {
 		Rutube:   rutubeHandler,
 		Dzen:     dzenHandler,
 		Smotrim:  smotrimHandler,
+		Page:     pageHandler,
 	}, nil
 }
 

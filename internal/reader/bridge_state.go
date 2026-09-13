@@ -14,6 +14,14 @@ type BridgeState struct {
 	Rutube   *RutubeBridgeState   `json:"rutube,omitempty"`
 	DzenNews *DzenNewsBridgeState `json:"dzen_news,omitempty"`
 	Smotrim  *SmotrimBridgeState  `json:"smotrim,omitempty"`
+	Page     *PageBridgeState     `json:"page,omitempty"`
+}
+
+// PageBridgeState is the last snapshot of a watched page fragment: the hash
+// decides whether anything changed, the text feeds the diff of the next entry.
+type PageBridgeState struct {
+	Hash string `json:"hash,omitempty"`
+	Text string `json:"text,omitempty"`
 }
 
 // RutubeBridgeState holds per-feed Rutube person channel id.
@@ -72,7 +80,7 @@ func ParseBridgeState(raw []byte) BridgeState {
 }
 
 func (s BridgeState) Marshal() []byte {
-	if s.Max == nil && s.Maxstat == nil && s.Telegram == nil && s.VKSearch == nil && s.Rutube == nil && s.DzenNews == nil && s.Smotrim == nil {
+	if s.Max == nil && s.Maxstat == nil && s.Telegram == nil && s.VKSearch == nil && s.Rutube == nil && s.DzenNews == nil && s.Smotrim == nil && s.Page == nil {
 		return []byte("{}")
 	}
 	b, err := json.Marshal(s)

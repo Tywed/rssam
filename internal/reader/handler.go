@@ -8,6 +8,7 @@ import (
 	"rssam/internal/reader/dzen"
 	maxbridge "rssam/internal/reader/max"
 	maxstatbridge "rssam/internal/reader/maxstat"
+	"rssam/internal/reader/page"
 	"rssam/internal/reader/rutube"
 	"rssam/internal/reader/smotrim"
 	"rssam/internal/reader/telegram"
@@ -110,13 +111,14 @@ const (
 	FeedTypeRutube   = "rutube"
 	FeedTypeDzenNews = "dzen_news"
 	FeedTypeSmotrim  = "smotrim"
+	FeedTypePage     = "page"
 	FeedTypeCustom   = "custom"
 )
 
 // NormalizeFeedType returns a canonical feed type or empty string.
 func NormalizeFeedType(t string) string {
 	switch t {
-	case FeedTypeRSS, FeedTypeAtom, FeedTypeJSON, FeedTypeTelegram, FeedTypeVK, FeedTypeVKSearch, FeedTypeMax, FeedTypeMaxstat, FeedTypeRutube, FeedTypeDzenNews, FeedTypeSmotrim, FeedTypeCustom:
+	case FeedTypeRSS, FeedTypeAtom, FeedTypeJSON, FeedTypeTelegram, FeedTypeVK, FeedTypeVKSearch, FeedTypeMax, FeedTypeMaxstat, FeedTypeRutube, FeedTypeDzenNews, FeedTypeSmotrim, FeedTypePage, FeedTypeCustom:
 		return t
 	default:
 		return ""
@@ -145,6 +147,9 @@ func DetectFeedTypeFromURL(feedURL string) string {
 	}
 	if smotrim.DetectFeedURL(feedURL) {
 		return FeedTypeSmotrim
+	}
+	if page.DetectFeedURL(feedURL) {
+		return FeedTypePage
 	}
 	return FeedTypeRSS
 }
