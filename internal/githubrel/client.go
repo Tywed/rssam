@@ -65,8 +65,16 @@ func (c *Client) latest(force bool) (Release, error) {
 	if c.TTL <= 0 {
 		c.TTL = 5 * time.Minute
 	}
-	if !force && !c.at.IsZero() && time.Since(c.at) < c.TTL && c.err == nil && c.cached.Tag != "" {
-		return c.cached, nil
+	// A failed fetch is cached for the TTL too: callers poll on a timer
+	// (UI page loads, the system-alert pass every minute) and an unreachable
+	// GitHub must not turn into one outbound request per tick.
+	if !force && !c.at.IsZero() && time.Since(c.at) < c.TTL {
+		if c.err == nil && c.cached.Tag != "" {
+			return c.cached, nil
+		}
+		if c.err != nil {
+			return c.cached, c.err
+		}
 	}
 	rel, err := c.fetch()
 	c.at = time.Now()

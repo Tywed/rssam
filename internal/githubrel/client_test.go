@@ -61,3 +61,27 @@ func TestRefreshBypassesCache(t *testing.T) {
 		t.Fatalf("fetches=%d", n)
 	}
 }
+
+func TestFailureCachedForTTL(t *testing.T) {
+	n := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		n++
+		w.WriteHeader(http.StatusBadGateway)
+	}))
+	defer srv.Close()
+	c := New("Tywed/rssam")
+	c.BaseURL = srv.URL
+	c.HTTP = srv.Client()
+	c.TTL = time.Hour
+	for range 3 {
+		if _, err := c.Latest(); err == nil {
+			t.Fatal("want error")
+		}
+	}
+	if n != 1 {
+		t.Fatalf("unreachable GitHub must be asked once per TTL, got %d requests", n)
+	}
+	if _, err := c.Refresh(); err == nil || n != 2 {
+		t.Fatalf("refresh must bypass the cached failure: err=%v n=%d", err, n)
+	}
+}
