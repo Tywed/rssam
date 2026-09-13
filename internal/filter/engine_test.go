@@ -2,6 +2,7 @@ package filter
 
 import (
 	"context"
+	"errors"
 	"regexp"
 	"strings"
 	"testing"
@@ -335,7 +336,7 @@ func TestEngine_QueryField(t *testing.T) {
 	}
 	entry := storage.Entry{Title: "ЦБ прокомментировал", Content: "курс рубля"}
 
-	if _, err := eng.MatchEntryStrict(entry, []storage.Filter{f}); err != ErrQueryRulesUnsupported {
+	if _, err := eng.MatchEntryStrict(entry, []storage.Filter{f}); !errors.Is(err, ErrQueryRulesUnsupported) {
 		t.Fatalf("strict mode without QueryHits: want ErrQueryRulesUnsupported, got %v", err)
 	}
 	matches, err := eng.MatchEntry(entry, []storage.Filter{f})
@@ -386,7 +387,7 @@ func TestQueryPatternsAndHits(t *testing.T) {
 	if err != nil || hits != nil {
 		t.Fatalf("no query rules: want nil,nil got %v %v", hits, err)
 	}
-	if _, err := QueryHits(context.Background(), nil, filters, items); err != ErrQueryRulesUnsupported {
+	if _, err := QueryHits(context.Background(), nil, filters, items); !errors.Is(err, ErrQueryRulesUnsupported) {
 		t.Fatalf("nil matcher with query rules: got %v", err)
 	}
 	m := &stubQueryMatcher{rows: [][]bool{{true, false}, {false, true}}}

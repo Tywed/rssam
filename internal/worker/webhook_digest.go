@@ -143,7 +143,7 @@ func (r *Runner) processWebhookDigest(ctx context.Context, l storage.WebhookLog)
 		return
 	}
 	code := resp.StatusCode
-	retryable := webhookHTTPRetryable(code) && !(code >= 200 && code <= 299)
+	retryable := webhookHTTPRetryable(code) && (code < 200 || code > 299)
 	r.digestFailure(ctx, store, ids, attempt, &code, failMsg, snippet, retryable)
 }
 

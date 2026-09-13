@@ -68,7 +68,7 @@ func (f *RSSFetcher) Discover(ctx context.Context, pageURL string, useProxy, tls
 		}
 	}
 	if lastErr != nil {
-		return Discovery{}, fmt.Errorf("%w (last candidate: %v)", ErrNoFeedFound, lastErr)
+		return Discovery{}, fmt.Errorf("%w (last candidate: %w)", ErrNoFeedFound, lastErr)
 	}
 	return Discovery{}, ErrNoFeedFound
 }

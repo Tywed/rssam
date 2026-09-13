@@ -354,11 +354,12 @@ func matchCompiled(entry storage.Entry, ctx MatchContext, f *compiledFilter) Mat
 
 func ruleMatches(entry storage.Entry, ctx MatchContext, r compiledRule) bool {
 	var ok bool
-	if r.field == FieldQuery {
+	switch r.field {
+	case FieldQuery:
 		ok = ctx.QueryHits[r.pattern]
-	} else if r.field == "both" {
+	case "both":
 		ok = r.re.MatchString(clipMatchField(entry.Title)) || r.re.MatchString(clipMatchField(entry.Content))
-	} else {
+	default:
 		ok = r.re.MatchString(fieldValue(entry, r.field))
 	}
 	if r.negate {
