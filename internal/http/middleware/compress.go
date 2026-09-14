@@ -46,16 +46,15 @@ type gzipResponseWriter struct {
 	http.ResponseWriter
 	gz     *gzip.Writer
 	pool   *sync.Pool
-	header http.Header
 	status int
 	wrote  bool
 }
 
+// Header is the outer writer's map: delayed WriteHeader still lets the
+// handler overwrite middleware headers (CSP). A private map copied with Add
+// on flush duplicated Content-Security-Policy and browsers AND the policies.
 func (w *gzipResponseWriter) Header() http.Header {
-	if w.header == nil {
-		w.header = make(http.Header)
-	}
-	return w.header
+	return w.ResponseWriter.Header()
 }
 
 func (w *gzipResponseWriter) WriteHeader(status int) {
@@ -66,11 +65,6 @@ func (w *gzipResponseWriter) Write(b []byte) (int, error) {
 	if !w.wrote {
 		w.wrote = true
 		h := w.ResponseWriter.Header()
-		for k, vv := range w.header {
-			for _, v := range vv {
-				h.Add(k, v)
-			}
-		}
 		ct := h.Get("Content-Type")
 		if w.status == 0 {
 			w.status = http.StatusOK
@@ -110,12 +104,6 @@ func (w *gzipResponseWriter) flushHeaders() {
 		return
 	}
 	w.wrote = true
-	h := w.ResponseWriter.Header()
-	for k, vv := range w.header {
-		for _, v := range vv {
-			h.Add(k, v)
-		}
-	}
 	status := w.status
 	if status == 0 {
 		status = http.StatusOK

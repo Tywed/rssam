@@ -102,6 +102,24 @@ func TestDocs_PublicSelfContainedCSP(t *testing.T) {
 	}
 }
 
+func TestDocs_GzipDoesNotDuplicateCSP(t *testing.T) {
+	s := New(Dependencies{CompressEnabled: true})
+	req := httptest.NewRequest(http.MethodGet, "/docs", nil)
+	req.Header.Set("Accept-Encoding", "gzip")
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d", rec.Code)
+	}
+	csps := rec.Header().Values("Content-Security-Policy")
+	if len(csps) != 1 {
+		t.Fatalf("gzip+middleware must not emit two CSPs (browsers AND them): %q", csps)
+	}
+	if !strings.Contains(csps[0], "script-src 'sha256-") {
+		t.Fatalf("docs CSP missing script hash: %q", csps[0])
+	}
+}
+
 func TestDocs_MethodNotAllowed(t *testing.T) {
 	s := New(Dependencies{})
 	for _, path := range []string{"/docs", "/openapi.json"} {

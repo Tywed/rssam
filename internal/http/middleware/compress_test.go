@@ -98,6 +98,28 @@ func TestCompress_WebSocketUpgradeBypassesGzip(t *testing.T) {
 	}
 }
 
+func TestCompress_HandlerCSPReplacesMiddleware(t *testing.T) {
+	inner := Compress(true)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Security-Policy", "default-src 'none'; script-src 'self'")
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write([]byte(strings.Repeat("x", 2000)))
+	}))
+	h := SecurityHeaders(SecurityConfig{})(inner)
+
+	req := httptest.NewRequest(http.MethodGet, "/docs", nil)
+	req.Header.Set("Accept-Encoding", "gzip")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	csps := rec.Header().Values("Content-Security-Policy")
+	if len(csps) != 1 {
+		t.Fatalf("want 1 CSP, got %q", csps)
+	}
+	if !strings.Contains(csps[0], "script-src 'self'") {
+		t.Fatalf("handler CSP lost under gzip: %q", csps[0])
+	}
+}
+
 func TestCompress_JSONGzippedWhenAccepted(t *testing.T) {
 	h := Compress(true)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
