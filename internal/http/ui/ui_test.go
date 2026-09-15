@@ -74,9 +74,6 @@ func (u *uiMemUsers) GetUserByUsername(_ context.Context, name string) (storage.
 	}
 	return storage.User{}, storage.ErrNotFound
 }
-func (u *uiMemUsers) GetUserByFeverAPIKey(context.Context, string) (storage.User, error) {
-	return storage.User{}, storage.ErrNotFound
-}
 func (u *uiMemUsers) CreateUser(context.Context, storage.CreateUserParams) (storage.User, error) {
 	return storage.User{}, nil
 }

@@ -14,7 +14,7 @@ func restorePlaceholderUser(t *testing.T, store *PostgresStore) {
 	t.Cleanup(func() {
 		_, _ = store.db.Exec(context.Background(), `
 UPDATE users
-SET username = 'default', password_hash = '', fever_api_key = '', is_admin = TRUE
+SET username = 'default', password_hash = '', is_admin = TRUE
 WHERE id = 1`)
 		_, _ = store.db.Exec(context.Background(), `DELETE FROM users WHERE username IN ('bootstrap-admin', 'default-adopt') AND id <> 1`)
 	})
@@ -50,7 +50,7 @@ func TestIntegration_EnsureBootstrapAdmin_AdoptsPlaceholderID1(t *testing.T) {
 
 	if _, err := store.db.Exec(ctx, `
 UPDATE users
-SET username = 'default', password_hash = '', fever_api_key = '', is_admin = TRUE
+SET username = 'default', password_hash = '', is_admin = TRUE
 WHERE id = 1`); err != nil {
 		t.Fatal(err)
 	}
@@ -85,7 +85,7 @@ func TestIntegration_EnsureBootstrapAdmin_AdoptsPlaceholderWithSameName(t *testi
 
 	if _, err := store.db.Exec(ctx, `
 UPDATE users
-SET username = 'default', password_hash = '', fever_api_key = '', is_admin = TRUE
+SET username = 'default', password_hash = '', is_admin = TRUE
 WHERE id = 1`); err != nil {
 		t.Fatal(err)
 	}

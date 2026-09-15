@@ -66,9 +66,8 @@ func (h *Handler) handleSettingsPassword(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	_, err = h.cfg.Users.UpdateUser(r.Context(), storage.UpdateUserParams{
-		ID:            p.UserID,
-		PasswordHash:  &hash,
-		PlainPassword: password,
+		ID:           p.UserID,
+		PasswordHash: &hash,
 	})
 	if err != nil {
 		http.Error(w, "update failed", http.StatusInternalServerError)

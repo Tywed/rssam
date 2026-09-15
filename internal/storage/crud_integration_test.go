@@ -275,20 +275,9 @@ func TestIntegration_UsersSessionsLabelsSettings(t *testing.T) {
 		t.Fatal("blank username accepted")
 	}
 
-	// Password change derives a fresh Fever key from the plain password.
-	upd, err := store.UpdateUser(ctx, UpdateUserParams{ID: owner.ID, PasswordHash: ptr("new-hash"), PlainPassword: "pw2"})
-	if err != nil || upd.PasswordHash != "new-hash" || upd.FeverAPIKey != feverAPIKey(owner.Username, "pw2") {
+	upd, err := store.UpdateUser(ctx, UpdateUserParams{ID: owner.ID, PasswordHash: ptr("new-hash")})
+	if err != nil || upd.PasswordHash != "new-hash" {
 		t.Fatalf("update user: %+v err=%v", upd, err)
-	}
-	byKey, err := store.GetUserByFeverAPIKey(ctx, " "+upd.FeverAPIKey+" ")
-	if err != nil || byKey.ID != owner.ID {
-		t.Fatalf("by fever key: %+v err=%v", byKey, err)
-	}
-	if _, err := store.GetUserByFeverAPIKey(ctx, ""); !errors.Is(err, ErrNotFound) {
-		t.Fatalf("empty key: err=%v", err)
-	}
-	if _, err := store.GetUserByFeverAPIKey(ctx, "nope"); !errors.Is(err, ErrNotFound) {
-		t.Fatalf("unknown key: err=%v", err)
 	}
 	same, err := store.UpdateUser(ctx, UpdateUserParams{ID: owner.ID})
 	if err != nil || same.PasswordHash != "new-hash" {
@@ -296,9 +285,6 @@ func TestIntegration_UsersSessionsLabelsSettings(t *testing.T) {
 	}
 	if _, err := store.UpdateUser(ctx, UpdateUserParams{ID: 999999, PasswordHash: ptr("h")}); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("missing user update: err=%v", err)
-	}
-	if _, err := store.UpdateUser(ctx, UpdateUserParams{ID: 999999, PasswordHash: ptr("h"), PlainPassword: "p"}); !errors.Is(err, ErrNotFound) {
-		t.Fatalf("missing user update with plain pw: err=%v", err)
 	}
 
 	exp := time.Now().Add(time.Hour)

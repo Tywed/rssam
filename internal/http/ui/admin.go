@@ -50,10 +50,9 @@ func (h *Handler) handleAdminUserCreate(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	u, err := h.cfg.Users.CreateUser(r.Context(), storage.CreateUserParams{
-		Username:      username,
-		PasswordHash:  hash,
-		PlainPassword: password,
-		IsAdmin:       isAdmin,
+		Username:     username,
+		PasswordHash: hash,
+		IsAdmin:      isAdmin,
 	})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)

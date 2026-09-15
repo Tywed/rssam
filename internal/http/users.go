@@ -186,10 +186,9 @@ func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	u, err := s.users.CreateUser(ctx, storage.CreateUserParams{
-		Username:      username,
-		PasswordHash:  hash,
-		PlainPassword: password,
-		IsAdmin:       isAdmin,
+		Username:     username,
+		PasswordHash: hash,
+		IsAdmin:      isAdmin,
 	})
 	if err != nil {
 		if errors.Is(err, storage.ErrDuplicateUsername) {
@@ -296,9 +295,8 @@ func (s *Server) handleUpdateMe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	u, err := s.users.UpdateUser(r.Context(), storage.UpdateUserParams{
-		ID:            p.UserID,
-		PasswordHash:  &hash,
-		PlainPassword: password,
+		ID:           p.UserID,
+		PasswordHash: &hash,
 	})
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {

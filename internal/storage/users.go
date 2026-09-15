@@ -20,7 +20,6 @@ type User struct {
 	ID           int64
 	Username     string
 	PasswordHash string
-	FeverAPIKey  string
 	IsAdmin      bool
 	CreatedAt    time.Time
 }
@@ -47,18 +46,14 @@ type APIKeyWithToken struct {
 }
 
 type CreateUserParams struct {
-	Username      string
-	PasswordHash  string
-	PlainPassword string // for fever_api_key derivation
-	FeverAPIKey   string
-	IsAdmin       bool
+	Username     string
+	PasswordHash string
+	IsAdmin      bool
 }
 
 type UpdateUserParams struct {
-	ID            int64
-	PasswordHash  *string
-	PlainPassword string
-	FeverAPIKey   *string
+	ID           int64
+	PasswordHash *string
 }
 
 type CreateAPIKeyParams struct {
@@ -79,7 +74,6 @@ type UserStore interface {
 	ListUsers(ctx context.Context, limit, offset int) ([]User, int, error)
 	GetUser(ctx context.Context, id int64) (User, error)
 	GetUserByUsername(ctx context.Context, username string) (User, error)
-	GetUserByFeverAPIKey(ctx context.Context, apiKey string) (User, error)
 	CreateUser(ctx context.Context, params CreateUserParams) (User, error)
 	UpdateUser(ctx context.Context, params UpdateUserParams) (User, error)
 	// DeleteUser returns ErrLastAdmin when the user is the only admin that
@@ -114,7 +108,7 @@ func (s *PostgresStore) ListUsers(ctx context.Context, limit, offset int) ([]Use
 		limit = 100
 	}
 	const q = `
-SELECT id, username, password_hash, fever_api_key, is_admin, created_at, count(*) OVER()
+SELECT id, username, password_hash, is_admin, created_at, count(*) OVER()
 FROM users
 ORDER BY id ASC
 LIMIT $1 OFFSET $2`
@@ -128,7 +122,7 @@ LIMIT $1 OFFSET $2`
 	total := 0
 	for rows.Next() {
 		var u User
-		if err := rows.Scan(&u.ID, &u.Username, &u.PasswordHash, &u.FeverAPIKey, &u.IsAdmin, &u.CreatedAt, &total); err != nil {
+		if err := rows.Scan(&u.ID, &u.Username, &u.PasswordHash, &u.IsAdmin, &u.CreatedAt, &total); err != nil {
 			return nil, 0, fmt.Errorf("scan user: %w", err)
 		}
 		out = append(out, u)
@@ -140,9 +134,9 @@ LIMIT $1 OFFSET $2`
 }
 
 func (s *PostgresStore) GetUser(ctx context.Context, id int64) (User, error) {
-	const q = `SELECT id, username, password_hash, fever_api_key, is_admin, created_at FROM users WHERE id = $1`
+	const q = `SELECT id, username, password_hash, is_admin, created_at FROM users WHERE id = $1`
 	var u User
-	err := s.db.QueryRow(ctx, q, id).Scan(&u.ID, &u.Username, &u.PasswordHash, &u.FeverAPIKey, &u.IsAdmin, &u.CreatedAt)
+	err := s.db.QueryRow(ctx, q, id).Scan(&u.ID, &u.Username, &u.PasswordHash, &u.IsAdmin, &u.CreatedAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return User{}, ErrNotFound
@@ -153,9 +147,9 @@ func (s *PostgresStore) GetUser(ctx context.Context, id int64) (User, error) {
 }
 
 func (s *PostgresStore) GetUserByUsername(ctx context.Context, username string) (User, error) {
-	const q = `SELECT id, username, password_hash, fever_api_key, is_admin, created_at FROM users WHERE username = $1`
+	const q = `SELECT id, username, password_hash, is_admin, created_at FROM users WHERE username = $1`
 	var u User
-	err := s.db.QueryRow(ctx, q, strings.TrimSpace(username)).Scan(&u.ID, &u.Username, &u.PasswordHash, &u.FeverAPIKey, &u.IsAdmin, &u.CreatedAt)
+	err := s.db.QueryRow(ctx, q, strings.TrimSpace(username)).Scan(&u.ID, &u.Username, &u.PasswordHash, &u.IsAdmin, &u.CreatedAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return User{}, ErrNotFound
@@ -165,39 +159,18 @@ func (s *PostgresStore) GetUserByUsername(ctx context.Context, username string) 
 	return u, nil
 }
 
-func (s *PostgresStore) GetUserByFeverAPIKey(ctx context.Context, apiKey string) (User, error) {
-	apiKey = strings.TrimSpace(apiKey)
-	if apiKey == "" {
-		return User{}, ErrNotFound
-	}
-	const q = `SELECT id, username, password_hash, fever_api_key, is_admin, created_at FROM users WHERE fever_api_key = $1`
-	var u User
-	err := s.db.QueryRow(ctx, q, apiKey).Scan(&u.ID, &u.Username, &u.PasswordHash, &u.FeverAPIKey, &u.IsAdmin, &u.CreatedAt)
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return User{}, ErrNotFound
-		}
-		return User{}, fmt.Errorf("get user by fever api key: %w", err)
-	}
-	return u, nil
-}
-
 func (s *PostgresStore) CreateUser(ctx context.Context, params CreateUserParams) (User, error) {
 	username := strings.TrimSpace(params.Username)
 	if username == "" {
 		return User{}, errors.New("username is required")
 	}
-	feverKey := params.FeverAPIKey
-	if feverKey == "" && params.PlainPassword != "" {
-		feverKey = feverAPIKey(username, params.PlainPassword)
-	}
 	const q = `
-INSERT INTO users(username, password_hash, fever_api_key, is_admin)
-VALUES ($1, $2, $3, $4)
-RETURNING id, username, password_hash, fever_api_key, is_admin, created_at`
+INSERT INTO users(username, password_hash, is_admin)
+VALUES ($1, $2, $3)
+RETURNING id, username, password_hash, is_admin, created_at`
 	var u User
-	err := s.db.QueryRow(ctx, q, username, params.PasswordHash, feverKey, params.IsAdmin).
-		Scan(&u.ID, &u.Username, &u.PasswordHash, &u.FeverAPIKey, &u.IsAdmin, &u.CreatedAt)
+	err := s.db.QueryRow(ctx, q, username, params.PasswordHash, params.IsAdmin).
+		Scan(&u.ID, &u.Username, &u.PasswordHash, &u.IsAdmin, &u.CreatedAt)
 	if err != nil {
 		if isDuplicateUsername(err) {
 			return User{}, ErrDuplicateUsername
@@ -209,21 +182,12 @@ RETURNING id, username, password_hash, fever_api_key, is_admin, created_at`
 
 func (s *PostgresStore) UpdateUser(ctx context.Context, params UpdateUserParams) (User, error) {
 	if params.PasswordHash != nil {
-		feverKey := params.FeverAPIKey
-		if feverKey == nil && params.PlainPassword != "" {
-			u, err := s.GetUser(ctx, params.ID)
-			if err != nil {
-				return User{}, err
-			}
-			k := feverAPIKey(u.Username, params.PlainPassword)
-			feverKey = &k
-		}
 		const q = `
-UPDATE users SET password_hash = $2, fever_api_key = COALESCE($3, fever_api_key) WHERE id = $1
-RETURNING id, username, password_hash, fever_api_key, is_admin, created_at`
+UPDATE users SET password_hash = $2 WHERE id = $1
+RETURNING id, username, password_hash, is_admin, created_at`
 		var u User
-		err := s.db.QueryRow(ctx, q, params.ID, *params.PasswordHash, feverKey).
-			Scan(&u.ID, &u.Username, &u.PasswordHash, &u.FeverAPIKey, &u.IsAdmin, &u.CreatedAt)
+		err := s.db.QueryRow(ctx, q, params.ID, *params.PasswordHash).
+			Scan(&u.ID, &u.Username, &u.PasswordHash, &u.IsAdmin, &u.CreatedAt)
 		if err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
 				return User{}, ErrNotFound
@@ -393,11 +357,9 @@ func (s *PostgresStore) EnsureBootstrapAdmin(ctx context.Context, username, pass
 	if err != nil {
 		return err
 	}
-	fever := feverAPIKey(username, password)
-
 	existing, err := s.GetUserByUsername(ctx, username)
 	if err == nil && existing.PasswordHash == "" {
-		return s.adoptPlaceholderAdmin(ctx, existing.ID, username, hash, fever)
+		return s.adoptPlaceholderAdmin(ctx, existing.ID, username, hash)
 	}
 	if err != nil && !errors.Is(err, ErrNotFound) {
 		return err
@@ -405,17 +367,16 @@ func (s *PostgresStore) EnsureBootstrapAdmin(ctx context.Context, username, pass
 
 	u, err := s.GetUser(ctx, 1)
 	if err == nil && u.PasswordHash == "" {
-		return s.adoptPlaceholderAdmin(ctx, u.ID, username, hash, fever)
+		return s.adoptPlaceholderAdmin(ctx, u.ID, username, hash)
 	}
 	if err != nil && !errors.Is(err, ErrNotFound) {
 		return err
 	}
 
 	_, err = s.CreateUser(ctx, CreateUserParams{
-		Username:      username,
-		PasswordHash:  hash,
-		PlainPassword: password,
-		IsAdmin:       true,
+		Username:     username,
+		PasswordHash: hash,
+		IsAdmin:      true,
 	})
 	if errors.Is(err, ErrDuplicateUsername) {
 		return nil
@@ -423,12 +384,12 @@ func (s *PostgresStore) EnsureBootstrapAdmin(ctx context.Context, username, pass
 	return err
 }
 
-func (s *PostgresStore) adoptPlaceholderAdmin(ctx context.Context, id int64, username, hash, feverKey string) error {
+func (s *PostgresStore) adoptPlaceholderAdmin(ctx context.Context, id int64, username, hash string) error {
 	const q = `
 UPDATE users
-SET username = $2, password_hash = $3, fever_api_key = $4, is_admin = TRUE
+SET username = $2, password_hash = $3, is_admin = TRUE
 WHERE id = $1 AND password_hash = ''`
-	if _, err := s.db.Exec(ctx, q, id, username, hash, feverKey); err != nil {
+	if _, err := s.db.Exec(ctx, q, id, username, hash); err != nil {
 		return fmt.Errorf("bootstrap admin: adopt placeholder user: %w", err)
 	}
 	return nil

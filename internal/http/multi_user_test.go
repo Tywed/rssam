@@ -3,8 +3,6 @@ package httpserver
 import (
 	"bytes"
 	"context"
-	"crypto/md5"
-	"encoding/hex"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -84,17 +82,6 @@ func (m *memUserStore) GetUserByUsername(_ context.Context, username string) (st
 	return m.users[id], nil
 }
 
-func (m *memUserStore) GetUserByFeverAPIKey(_ context.Context, key string) (storage.User, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	for _, u := range m.users {
-		if u.FeverAPIKey == key {
-			return u, nil
-		}
-	}
-	return storage.User{}, storage.ErrNotFound
-}
-
 func (m *memUserStore) CreateUser(_ context.Context, p storage.CreateUserParams) (storage.User, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -105,12 +92,8 @@ func (m *memUserStore) CreateUser(_ context.Context, p storage.CreateUserParams)
 		ID:           m.nextUID,
 		Username:     p.Username,
 		PasswordHash: p.PasswordHash,
-		FeverAPIKey:  p.FeverAPIKey,
 		IsAdmin:      p.IsAdmin,
 		CreatedAt:    time.Now().UTC(),
-	}
-	if u.FeverAPIKey == "" && p.PlainPassword != "" {
-		u.FeverAPIKey = storageFeverKey(p.Username, p.PlainPassword)
 	}
 	m.nextUID++
 	m.users[u.ID] = u
@@ -200,11 +183,6 @@ func (m *memUserStore) DeleteAPIKey(_ context.Context, userID, keyID int64) erro
 		}
 	}
 	return storage.ErrNotFound
-}
-
-func storageFeverKey(username, password string) string {
-	sum := md5.Sum([]byte(username + ":" + password))
-	return hex.EncodeToString(sum[:])
 }
 
 type tenantFeedStore struct {

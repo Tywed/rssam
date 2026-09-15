@@ -63,9 +63,6 @@ func (u *uiMemUsersWS) GetUser(_ context.Context, id int64) (storage.User, error
 func (u *uiMemUsersWS) GetUserByUsername(context.Context, string) (storage.User, error) {
 	return storage.User{}, storage.ErrNotFound
 }
-func (u *uiMemUsersWS) GetUserByFeverAPIKey(context.Context, string) (storage.User, error) {
-	return storage.User{}, storage.ErrNotFound
-}
 func (u *uiMemUsersWS) CreateUser(context.Context, storage.CreateUserParams) (storage.User, error) {
 	return storage.User{}, nil
 }
