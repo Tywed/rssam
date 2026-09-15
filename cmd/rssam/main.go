@@ -79,6 +79,17 @@ func main() {
 		if *runMigrate {
 			return
 		}
+	} else {
+		pending, err := migrations.Pending(ctx, db)
+		if err != nil {
+			log.Error("check pending migrations", "err", err)
+			os.Exit(1)
+		}
+		if len(pending) > 0 {
+			log.Error("database schema is behind this binary; run with RUN_MIGRATIONS=true or `rssam -migrate`",
+				"pending", len(pending), "first", pending[0], "last", pending[len(pending)-1])
+			os.Exit(1)
+		}
 	}
 
 	metrics.Init()
@@ -315,7 +326,7 @@ func main() {
 	}
 	go func() {
 		if err := w.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
-			log.Error("worker stopped", "err", err)
+			log.Error("workers not running", "err", err)
 		}
 	}()
 

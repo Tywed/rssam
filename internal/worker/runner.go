@@ -3,6 +3,7 @@ package worker
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -105,6 +106,10 @@ func DefaultInstanceID() string {
 	return host + "-" + strconv.Itoa(pid)
 }
 
+// ErrWorkerLockHeld: another rssam process already runs the workers against
+// this database.
+var ErrWorkerLockHeld = errors.New("another rssam instance holds the worker lock on this database; this process serves HTTP only (one instance per database polls feeds)")
+
 func (r *Runner) Run(ctx context.Context) error {
 	if r.Log == nil {
 		r.Log = slog.Default()
@@ -127,6 +132,18 @@ func (r *Runner) Run(ctx context.Context) error {
 	if r.Cfg.InstanceID == "" {
 		r.Cfg.InstanceID = DefaultInstanceID()
 	}
+
+	// Two processes polling the same database double every fetch and race
+	// on the same jobs; the second one keeps serving HTTP but runs no
+	// workers.
+	release, ok, err := r.Store.TryWorkerLock(ctx)
+	if err != nil {
+		return fmt.Errorf("worker lock: %w", err)
+	}
+	if !ok {
+		return ErrWorkerLockHeld
+	}
+	defer release()
 
 	metrics.Init()
 

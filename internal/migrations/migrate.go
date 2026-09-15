@@ -97,6 +97,34 @@ func Apply(ctx context.Context, db *pgxpool.Pool, log *slog.Logger) error {
 	return nil
 }
 
+// Pending returns the embedded migrations not yet recorded in
+// schema_migrations. A missing table means nothing was ever applied, so
+// every file is pending.
+func Pending(ctx context.Context, db *pgxpool.Pool) ([]string, error) {
+	files, err := listSQLFiles(embedded)
+	if err != nil {
+		return nil, err
+	}
+	var exists bool
+	if err := db.QueryRow(ctx, `SELECT to_regclass('schema_migrations') IS NOT NULL`).Scan(&exists); err != nil {
+		return nil, fmt.Errorf("check schema_migrations: %w", err)
+	}
+	if !exists {
+		return files, nil
+	}
+	applied, err := loadApplied(ctx, db)
+	if err != nil {
+		return nil, err
+	}
+	var out []string
+	for _, name := range files {
+		if !applied[name] {
+			out = append(out, name)
+		}
+	}
+	return out, nil
+}
+
 func listSQLFiles(fsys fs.FS) ([]string, error) {
 	entries, err := fs.ReadDir(fsys, ".")
 	if err != nil {
