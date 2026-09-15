@@ -71,8 +71,21 @@ func TestIntegration_WebhookStatsPersistAcrossLogRetention(t *testing.T) {
 	if err := store.MarkWebhookLogSent(ctx, mine[0].ID, 1, 200, "ok"); err != nil {
 		t.Fatalf("mark sent 1: %v", err)
 	}
+	var snippet *string
+	if err := store.db.QueryRow(ctx, `SELECT response_snippet FROM webhook_logs WHERE id = $1`, mine[0].ID).Scan(&snippet); err != nil {
+		t.Fatal(err)
+	}
+	if snippet == nil || *snippet != "ok" {
+		t.Fatalf("explicit snippet must be stored, got %v", snippet)
+	}
 	if err := store.MarkWebhookLogSent(ctx, mine[1].ID, 1, 204, ""); err != nil {
 		t.Fatalf("mark sent 2: %v", err)
+	}
+	if err := store.db.QueryRow(ctx, `SELECT response_snippet FROM webhook_logs WHERE id = $1`, mine[1].ID).Scan(&snippet); err != nil {
+		t.Fatal(err)
+	}
+	if snippet != nil {
+		t.Fatalf("empty snippet must be stored as NULL, got %q", *snippet)
 	}
 	code503 := 503
 	future := time.Now().Add(time.Hour)

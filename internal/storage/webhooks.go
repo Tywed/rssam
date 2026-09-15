@@ -405,7 +405,7 @@ WITH l AS (
   SET status = 'sent',
       last_status_code = $2,
       last_error = NULL,
-      response_snippet = $3,
+      response_snippet = NULLIF($3, ''),
       attempt = $4,
       next_retry_at = NULL,
       updated_at = now()

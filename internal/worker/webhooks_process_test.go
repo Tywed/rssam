@@ -42,11 +42,14 @@ func (m *memWebhookDelivery) LoadWebhookDeliveryContext(context.Context, int64) 
 	return m.delCtx, nil
 }
 
-func (m *memWebhookDelivery) MarkWebhookLogSent(_ context.Context, logID int64, attempt int, statusCode int, _ string) error {
+func (m *memWebhookDelivery) MarkWebhookLogSent(_ context.Context, logID int64, attempt int, statusCode int, snippet string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	l := m.logs[logID]
 	l.Status = "sent"
+	if snippet != "" {
+		l.ResponseSnippet = &snippet
+	}
 	l.Attempt = attempt
 	code := statusCode
 	l.LastStatusCode = &code
@@ -55,10 +58,13 @@ func (m *memWebhookDelivery) MarkWebhookLogSent(_ context.Context, logID int64, 
 	return nil
 }
 
-func (m *memWebhookDelivery) MarkWebhookLogFailed(_ context.Context, logID int64, statusCode *int, errMsg string, _ string, attempt int, nextRetryAt *time.Time, dead bool) error {
+func (m *memWebhookDelivery) MarkWebhookLogFailed(_ context.Context, logID int64, statusCode *int, errMsg string, snippet string, attempt int, nextRetryAt *time.Time, dead bool) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	l := m.logs[logID]
+	if snippet != "" {
+		l.ResponseSnippet = &snippet
+	}
 	if dead {
 		l.Status = "dead"
 	} else {
@@ -138,6 +144,7 @@ func TestWebhookHTTPRetryable(t *testing.T) {
 func TestProcessWebhookLog_SentAppliesOnSuccess(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"ok":true,"result":{"text":"echo of the whole message"}}`))
 	}))
 	defer srv.Close()
 
@@ -165,11 +172,15 @@ func TestProcessWebhookLog_SentAppliesOnSuccess(t *testing.T) {
 	if len(store.read) != 1 || store.read[0] != 42 {
 		t.Fatalf("mark_read not applied: %v", store.read)
 	}
+	if got.ResponseSnippet != nil {
+		t.Fatalf("a successful delivery must not keep the response body, got %q", *got.ResponseSnippet)
+	}
 }
 
 func TestProcessWebhookLog_400DeadNoRetry(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"ok":false,"description":"chat not found"}`))
 	}))
 	defer srv.Close()
 
@@ -186,6 +197,9 @@ func TestProcessWebhookLog_400DeadNoRetry(t *testing.T) {
 	}
 	if got.NextRetryAt != nil {
 		t.Fatalf("expected no retry, got %v", got.NextRetryAt)
+	}
+	if got.ResponseSnippet == nil || !strings.Contains(*got.ResponseSnippet, "chat not found") {
+		t.Fatal("a failed delivery must keep the response body for diagnosis")
 	}
 }
 

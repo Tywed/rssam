@@ -208,7 +208,9 @@ func (r *Runner) processWebhookLog(ctx context.Context, l storage.WebhookLog) {
 	snippet := readSnippet(resp.Body, webhookResponseSnippetMaxBytes)
 	ok, failMsg := storage.ProviderDeliveryOK(kind, resp.StatusCode, snippet)
 	if ok {
-		_ = store.MarkWebhookLogSent(ctx, l.ID, attempt, resp.StatusCode, snippet)
+		// The body of a successful delivery (Telegram echoes the whole
+		// message back) is not kept: the log row only needs it for diagnosis.
+		_ = store.MarkWebhookLogSent(ctx, l.ID, attempt, resp.StatusCode, "")
 		r.applyOnSuccessEntry(ctx, store, l, delCtx)
 		metrics.WebhookDeliveriesTotal.WithLabelValues("sent").Inc()
 		return
