@@ -66,7 +66,7 @@ curl -fsSL https://raw.githubusercontent.com/Tywed/rssam/main/install.sh | sudo 
 
 ## Резервное копирование
 
-Installer ставит `/usr/local/sbin/rssam-backup` и таймер `rssam-backup.timer` (ежедневно в 03:30, `--no-backup` — не ставить). Бэкап — пара файлов в `/opt/rssam/backups/`: `rssam-<дата>.dump` (`pg_dump -Fc`, сжатый, без очереди `jobs` и `sessions` — они пересоздаются) и копия `.env` (в нём `CSRF_SECRET` и токены). Хранятся последние 7 (`RSSAM_BACKUP_KEEP`).
+Installer ставит `/usr/local/sbin/rssam-backup` и таймер `rssam-backup.timer` (ежедневно в 03:30, `--no-backup` — не ставить). Бэкап — пара файлов в `/opt/rssam/backups/`: `rssam-<дата>.dump` (`pg_dump -Fc`, сжатый, без очереди `jobs` и `sessions` — они пересоздаются) и копия `.env` (в нём токены). Хранятся последние 7 (`RSSAM_BACKUP_KEEP`).
 
 ```bash
 sudo rssam-backup backup                       # вручную

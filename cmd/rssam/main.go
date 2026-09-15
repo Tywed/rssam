@@ -11,9 +11,9 @@ import (
 	"syscall"
 	"time"
 
+	"rssam/internal/auth"
 	"rssam/internal/bridgeconfig"
 	"rssam/internal/config"
-	"rssam/internal/envfile"
 	"rssam/internal/filter"
 	"rssam/internal/githubrel"
 	httpserver "rssam/internal/http"
@@ -22,7 +22,6 @@ import (
 	"rssam/internal/logger"
 	"rssam/internal/metrics"
 	"rssam/internal/migrations"
-	"rssam/internal/ops"
 	"rssam/internal/proxy"
 	"rssam/internal/reader"
 	"rssam/internal/service"
@@ -86,6 +85,11 @@ func main() {
 	pgStore := storage.NewPostgresStore(db, cfg.FTSLanguage)
 	if err := pgStore.EnsureBootstrapAdmin(ctx, cfg.AdminUsername, cfg.AdminPassword); err != nil {
 		log.Error("bootstrap admin failed", "err", err)
+		os.Exit(1)
+	}
+	csrfSecret, err := auth.ResolveCSRFSecret(ctx, os.Getenv("CSRF_SECRET"), pgStore, storage.ErrNotFound)
+	if err != nil {
+		log.Error("csrf secret", "err", err)
 		os.Exit(1)
 	}
 	wsHub := ws.NewHub(cfg.WSClientBuffer, cfg.WSPingInterval)
@@ -348,7 +352,7 @@ func main() {
 		MaxImportFeeds:          cfg.MaxImportFeeds,
 		CompressEnabled:         cfg.CompressEnabled,
 		UIEnabled:               cfg.UIEnabled,
-		CSRFSecret:              csrfSecret(cfg),
+		CSRFSecret:              csrfSecret,
 		MinPollInterval:         cfg.MinPollInterval,
 		MaxPollInterval:         cfg.MaxPollInterval,
 		AdaptiveMaxInterval:     cfg.AdaptiveMaxInterval,
@@ -388,31 +392,4 @@ func main() {
 		log.Warn("pprof shutdown", "err", err)
 	}
 	log.Info("shutdown complete")
-}
-
-func csrfSecret(cfg config.Config) string {
-	if v := cfg.AuthToken; v != "" {
-		return v
-	}
-	if v := cfg.MetricsToken; v != "" {
-		return v
-	}
-	if v := strings.TrimSpace(os.Getenv("CSRF_SECRET")); v != "" {
-		return v
-	}
-
-	secret, err := ops.GenerateHexSecret(32)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "csrf secret: %v\n", err)
-		os.Exit(1)
-	}
-
-	envPath := ops.EnvFilePath()
-	if err := envfile.SetKeys(envPath, map[string]string{"CSRF_SECRET": secret}); err != nil {
-		fmt.Fprintf(os.Stderr, "warning: generated CSRF secret but could not save to %s: %v\n", envPath, err)
-	} else {
-		_ = os.Setenv("CSRF_SECRET", secret)
-		fmt.Fprintf(os.Stderr, "warning: AUTH_TOKEN and METRICS_TOKEN are empty; generated CSRF secret and saved to %s\n", envPath)
-	}
-	return secret
 }
