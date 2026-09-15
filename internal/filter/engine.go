@@ -99,7 +99,13 @@ func (e *Engine) ValidateRules(rules []storage.CreateFilterRuleParams) error {
 		return errors.New("too many rules")
 	}
 	f := storage.Filter{Rules: make([]storage.FilterRule, 0, len(rules))}
-	for _, r := range rules {
+	for i, r := range rules {
+		// The operator joins a rule to the previous one; on the first rule
+		// it has nothing to join and was silently ignored, which read as
+		// "OR" to whoever wrote it.
+		if i == 0 && strings.EqualFold(strings.TrimSpace(r.Op), "or") {
+			return errors.New("the first rule cannot have op \"or\": there is no previous rule to join")
+		}
 		// Legacy rows with field "tags" still compile (they match against an
 		// empty string, as they always did); new ones are refused because
 		// entries carry no tags and such a rule can never do what it says.

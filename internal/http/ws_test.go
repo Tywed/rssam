@@ -78,7 +78,7 @@ func TestWSConnectAndReceiveNewEntry(t *testing.T) {
 	}
 	awaitSubscribed(t, conn)
 
-	hub.Publish([]string{"all"}, ws.Envelope{
+	hub.PublishToUser(1, []string{"all"}, ws.Envelope{
 		Event: "new_entry",
 		Data: map[string]any{
 			"entry": map[string]any{

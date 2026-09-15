@@ -69,19 +69,12 @@ func (h *Hub) Unregister(c *Client) {
 	close(c.send)
 }
 
-// Publish delivers event to every subscribed client regardless of owner.
-// Use PublishToUser for tenant-scoped data (entries, feed status, counters).
-func (h *Hub) Publish(channels []string, event Envelope) {
-	h.publish(0, channels, event)
-}
-
 // PublishToUser delivers event only to clients authenticated as userID.
-// userID <= 0 is treated as a broadcast to keep legacy callers working.
+// There is no owner-less broadcast: every event carries tenant data.
 func (h *Hub) PublishToUser(userID int64, channels []string, event Envelope) {
-	h.publish(userID, channels, event)
-}
-
-func (h *Hub) publish(userID int64, channels []string, event Envelope) {
+	if userID <= 0 {
+		return
+	}
 	uniq := make(map[string]struct{}, len(channels))
 	for _, ch := range channels {
 		ch = strings.TrimSpace(ch)
@@ -107,7 +100,7 @@ func (h *Hub) publish(userID int64, channels []string, event Envelope) {
 	var slow []*Client
 	h.mu.RLock()
 	for c := range h.clients {
-		if userID > 0 && c.UserID != userID {
+		if c.UserID != userID {
 			continue
 		}
 		if !c.isSubscribed(uniq) {

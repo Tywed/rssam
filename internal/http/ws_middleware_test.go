@@ -51,7 +51,7 @@ func TestWSUpgradeThroughFullMiddlewareChain(t *testing.T) {
 		t.Fatalf("subscribe: %v", err)
 	}
 	awaitSubscribed(t, conn)
-	hub.Publish([]string{"all"}, ws.Envelope{Event: "new_entry", Data: map[string]any{"id": 1}})
+	hub.PublishToUser(1, []string{"all"}, ws.Envelope{Event: "new_entry", Data: map[string]any{"id": 1}})
 
 	_ = conn.SetReadDeadline(time.Now().Add(3 * time.Second))
 	var raw string

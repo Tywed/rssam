@@ -3514,11 +3514,11 @@
           "url",
           "query"
         ],
-        "description": "query: PostgreSQL websearch query (morphology, \"phrase\", -exclude, or) evaluated against title+content in SQL; other fields take an RE2 regex. Rules are evaluated in priority order (ascending, then id); op joins a rule with the previous result, so op of the first rule is ignored. tags (pre-0.1.15) is refused on write."
+        "description": "query: PostgreSQL websearch query (morphology, \"phrase\", -exclude, or) evaluated against title+content in SQL; other fields take an RE2 regex. Rules are evaluated in priority order (ascending, then id); op joins a rule with the previous result, so op \"or\" on the first rule is rejected. tags (pre-0.1.15) is refused on write."
       },
       "FilterOp": {
         "type": "string",
-        "description": "Boolean operator joining this rule with the next one; empty means and.",
+        "description": "Boolean operator joining this rule with the previous one; empty means and. The first rule has no previous rule, so \"or\" on it is rejected with 400.",
         "enum": [
           "and",
           "or",

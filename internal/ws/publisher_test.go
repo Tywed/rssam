@@ -123,12 +123,12 @@ func TestPublisher_FeedStatusCarriesPersistedState(t *testing.T) {
 	}
 }
 
-func TestHub_PublishWithoutUserIsBroadcast(t *testing.T) {
+func TestHub_PublishWithoutUserReachesNobody(t *testing.T) {
 	hub := NewHub(16, time.Second)
 	a := newAttachedClient(t, hub, 1)
 	b := newAttachedClient(t, hub, 2)
-	hub.Publish([]string{ChannelAll}, Envelope{Event: "system"})
-	if len(drain(a)) != 1 || len(drain(b)) != 1 {
-		t.Fatal("legacy Publish must reach all clients")
+	hub.PublishToUser(0, []string{ChannelAll}, Envelope{Event: "system"})
+	if len(drain(a)) != 0 || len(drain(b)) != 0 {
+		t.Fatal("an event without an owner must not be broadcast")
 	}
 }

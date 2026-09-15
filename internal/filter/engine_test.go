@@ -304,6 +304,8 @@ func TestEngine_ValidateRules(t *testing.T) {
 		{name: "too long", rules: []storage.CreateFilterRuleParams{{Field: "title", Pattern: "abcdef"}}, wantErr: "regex too long"},
 		{name: "bad field", rules: []storage.CreateFilterRuleParams{{Field: "body", Pattern: "x"}}, wantErr: "invalid field"},
 		{name: "tags refused on write", rules: []storage.CreateFilterRuleParams{{Field: "Tags", Pattern: "x"}}, wantErr: "entries have no tags"},
+		{name: "or on first rule", rules: []storage.CreateFilterRuleParams{{Field: "title", Pattern: "a", Op: "OR"}, {Field: "title", Pattern: "b"}}, wantErr: "first rule cannot have op"},
+		{name: "or on second rule", rules: []storage.CreateFilterRuleParams{{Field: "title", Pattern: "a", Op: "and"}, {Field: "title", Pattern: "b", Op: "or"}}},
 		{name: "too many", rules: []storage.CreateFilterRuleParams{
 			{Field: "title", Pattern: "a"}, {Field: "title", Pattern: "b"}, {Field: "title", Pattern: "c"},
 		}, wantErr: "too many rules"},

@@ -65,7 +65,7 @@ func TestWSInboundFrameLimit(t *testing.T) {
 		t.Fatal(err)
 	}
 	awaitSubscribed(t, conn)
-	hub.Publish([]string{"all"}, ws.Envelope{Event: "new_entry", Data: map[string]any{"id": 1}})
+	hub.PublishToUser(1, []string{"all"}, ws.Envelope{Event: "new_entry", Data: map[string]any{"id": 1}})
 	_ = conn.SetReadDeadline(time.Now().Add(3 * time.Second))
 	if err := websocket.Message.Receive(conn, &raw); err != nil {
 		t.Fatalf("receive after limit: %v", err)
