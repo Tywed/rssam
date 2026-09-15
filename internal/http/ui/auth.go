@@ -22,18 +22,22 @@ const (
 )
 
 type pageData struct {
-	Title                      string
-	Layout                     bool
-	Nav                        string
-	BodyHTML                   template.HTML
-	Username                   string
-	IsAdmin                    bool
-	CSRFToken                  string
-	CSPNonce                   string
-	SessionID                  string
-	FlashMsg                   string
-	SessionMaxAge              string
-	FlashErr                   string
+	Title         string
+	Layout        bool
+	Nav           string
+	BodyHTML      template.HTML
+	Username      string
+	IsAdmin       bool
+	CSRFToken     string
+	CSPNonce      string
+	SessionID     string
+	FlashMsg      string
+	SessionMaxAge string
+	FlashErr      string
+	// HSTSWithoutTLS: HSTS=true but this request came over plain HTTP with
+	// no trusted proxy announcing https — the session cookie will be Secure
+	// and the browser will drop it, so the login form would loop silently.
+	HSTSWithoutTLS             bool
 	UnreadCount                int
 	FeedUnreadCounts           map[int64]int
 	CategoryUnreadCounts       map[int64]int
@@ -245,12 +249,20 @@ func (h *Handler) handleLoginGet(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) loginData(r *http.Request, errMsg string) pageData {
-	return pageData{
+	d := pageData{
 		Error:        errMsg,
 		CSRFToken:    h.csrfToken(r),
 		CSPNonce:     middleware.CSPNonce(r.Context()),
 		AssetVersion: assetVersion(),
 	}
+	if h.cfg.HSTSEnabled && r.TLS == nil && middleware.ForwardedProto(r) != "https" {
+		d.HSTSWithoutTLS = true
+		h.hstsWarnOnce.Do(func() {
+			h.log.Warn("HSTS=true but the login page was requested over plain HTTP; the session cookie is Secure and the browser will not send it back — terminate TLS in front of rssam and put the proxy in TRUSTED_PROXIES, or unset HSTS",
+				"remote", r.RemoteAddr, "host", r.Host)
+		})
+	}
+	return d
 }
 
 func (h *Handler) handleLoginPost(w http.ResponseWriter, r *http.Request) {

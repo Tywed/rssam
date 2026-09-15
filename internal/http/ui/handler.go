@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"rssam/internal/audit"
@@ -130,6 +131,9 @@ type Handler struct {
 	templates   *template.Template
 	unreadCache *unreadCountsCache
 	releases    *githubrel.Client
+	// hstsWarnOnce: the HSTS-over-HTTP misconfiguration is logged once per
+	// process, not once per login attempt.
+	hstsWarnOnce sync.Once
 }
 
 func NewHandler(cfg Config) (*Handler, error) {

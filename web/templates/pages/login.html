@@ -3,6 +3,7 @@
   <div class="login-box">
     <h1>rssam</h1>
     {{if .Error}}<div class="flash flash-err">{{.Error}}</div>{{end}}
+    {{if .HSTSWithoutTLS}}<div class="flash flash-err">Включён HSTS, но страница открыта по HTTP: браузер не примет cookie сессии и вход не сработает. Откройте rssam по HTTPS (прокси должен быть в TRUSTED_PROXIES и передавать X-Forwarded-Proto) или уберите HSTS.</div>{{end}}
     <form method="post" action="/ui/login">
       <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
       <div class="form-group">
