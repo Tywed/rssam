@@ -138,15 +138,35 @@ maybe_postgres() {
   command -v psql >/dev/null || die "psql not found"
   su -s /bin/sh postgres -c "psql -tc \"SELECT 1 FROM pg_roles WHERE rolname='rssam'\"" | grep -q 1 || \
     su -s /bin/sh postgres -c "createuser -P rssam" || true
+  # Russian FTS and ILIKE need a ctype that folds Cyrillic case; a database
+  # created under locale=C silently misses matches. C.UTF-8 ships with every
+  # glibc since 2.35 and with PostgreSQL 17's builtin provider.
   su -s /bin/sh postgres -c "psql -tc \"SELECT 1 FROM pg_database WHERE datname='rssam'\"" | grep -q 1 || \
-    su -s /bin/sh postgres -c "createdb -O rssam rssam"
+    su -s /bin/sh postgres -c "createdb -O rssam --template=template0 --encoding=UTF8 --locale=C.UTF-8 rssam" || \
+    su -s /bin/sh postgres -c "createdb -O rssam --template=template0 --encoding=UTF8 --locale=C.utf8 rssam" || \
+    die "createdb with an UTF-8 locale failed; create it by hand: createdb -O rssam --template=template0 --encoding=UTF8 --locale=<UTF-8 locale> rssam"
+  if ! su -s /bin/sh postgres -c "psql -Atc \"SELECT lower('Ж') = 'ж'\" rssam" | grep -q t; then
+    log "warning: database rssam does not fold Cyrillic case (locale=C?); Russian search will miss matches — recreate it with an UTF-8 locale"
+  fi
 }
 
+# 20 alphanumerics from /dev/urandom (~119 bits); printed once at the end of
+# install and kept only in .env.
+gen_password() {
+  LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 20
+}
+
+# NEW_PASSWORD is set only when this run created .env; do_install prints it.
+NEW_PASSWORD=""
 write_env() {
   [ -f "$ENV_FILE" ] && return 0
   mkdir -p "$PREFIX"
+  NEW_PASSWORD=$(gen_password)
   if [ -f "$SCRIPT_DIR/.env.example" ]; then
-    cp "$SCRIPT_DIR/.env.example" "$ENV_FILE"
+    # The example ships placeholders the service refuses on a fresh database.
+    sed -e "s/^ADMIN_PASSWORD=.*/ADMIN_PASSWORD=${NEW_PASSWORD}/" \
+        -e "s/^METRICS_TOKEN=.*/METRICS_TOKEN=/" \
+        "$SCRIPT_DIR/.env.example" >"$ENV_FILE"
   else
     cat >"$ENV_FILE" <<EOF
 DATABASE_URL=postgres://rssam:rssam@127.0.0.1:5432/rssam?sslmode=disable
@@ -154,7 +174,7 @@ LISTEN_ADDR=:8080
 RUN_MIGRATIONS=true
 UI_ENABLED=true
 ADMIN_USERNAME=admin
-ADMIN_PASSWORD=changeme
+ADMIN_PASSWORD=${NEW_PASSWORD}
 WORKER_POOL_SIZE=10
 WEBHOOK_WORKER_POOL_SIZE=10
 GITHUB_REPO=${REPO}
@@ -280,6 +300,9 @@ do_install() {
   sleep 1
   curl -sS --fail --retry 5 --retry-delay 1 --retry-connrefused http://127.0.0.1:8080/healthz >/dev/null
   log "installed $ver  UI http://<host>:8080/ui/login"
+  if [ -n "$NEW_PASSWORD" ]; then
+    log "admin login: admin / ${NEW_PASSWORD}  (kept in $ENV_FILE; change it in Settings after the first login)"
+  fi
 }
 
 do_update() {

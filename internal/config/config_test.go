@@ -312,3 +312,16 @@ func TestLoad_SessionMaxAge(t *testing.T) {
 		t.Fatalf("1m must be rejected, got %v", err)
 	}
 }
+
+func TestIsPlaceholderPassword(t *testing.T) {
+	for _, s := range []string{"changeme", " ChangeMe ", "CHANGEME"} {
+		if !IsPlaceholderPassword(s) {
+			t.Errorf("%q must be recognised", s)
+		}
+	}
+	for _, s := range []string{"", "changeme1", "s3cret-pass"} {
+		if IsPlaceholderPassword(s) {
+			t.Errorf("%q must not be recognised", s)
+		}
+	}
+}

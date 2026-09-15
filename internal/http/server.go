@@ -88,6 +88,7 @@ type Dependencies struct {
 	WebhookWorkerPoolSize int
 	EnvFilePath           string
 	DatabaseURL           string
+	DatabaseLocale        storage.DatabaseLocale
 	GitHubRepo            string
 
 	// Retention settings shown on the admin system page and the hook that
@@ -180,6 +181,7 @@ type Server struct {
 	feedSilentDays        int
 	runRetentionCleanup   func(ctx context.Context) (storage.RetentionCleanupResult, error)
 	databaseURL           string
+	databaseLocale        storage.DatabaseLocale
 	gitHubRepo            string
 	handlerRegistry       *reader.HandlerRegistry
 	titleResolver         *reader.TitleResolver
@@ -414,6 +416,7 @@ func New(dep Dependencies) *Server {
 		feedSilentDays:        dep.FeedSilentDays,
 		runRetentionCleanup:   dep.RunRetentionCleanup,
 		databaseURL:           dep.DatabaseURL,
+		databaseLocale:        dep.DatabaseLocale,
 		gitHubRepo:            dep.GitHubRepo,
 		handlerRegistry:       registry,
 		titleResolver:         dep.TitleResolver,

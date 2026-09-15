@@ -17,10 +17,10 @@ type Config struct {
 	RunMigrations    bool
 
 	AuthToken string
-	// AllowDevToken permits the well-known placeholder AUTH_TOKEN=dev-token
-	// from .env.example (ALLOW_DEV_TOKEN=true). Off by default: the token
-	// authenticates as the first user with full admin rights, and a copied
-	// example file must not become a production credential by accident.
+	// AllowDevToken permits the well-known placeholders from .env.example
+	// (AUTH_TOKEN=dev-token, ADMIN_PASSWORD=changeme on a fresh database)
+	// when ALLOW_DEV_TOKEN=true. Off by default: a copied example file must
+	// not become a production credential by accident.
 	AllowDevToken bool
 	MetricsToken  string
 
@@ -609,6 +609,14 @@ var placeholderAuthTokens = map[string]struct{}{
 func IsPlaceholderAuthToken(token string) bool {
 	_, ok := placeholderAuthTokens[strings.ToLower(strings.TrimSpace(token))]
 	return ok
+}
+
+// IsPlaceholderPassword reports whether password is the ADMIN_PASSWORD value
+// shipped in .env.example. A fresh database refuses to bootstrap the admin
+// with it (unless ALLOW_DEV_TOKEN=true), and a UI login with it lands on the
+// password form.
+func IsPlaceholderPassword(password string) bool {
+	return strings.EqualFold(strings.TrimSpace(password), "changeme")
 }
 
 // parseIntAllowZero is parseInt for settings where an explicit "0" is a valid

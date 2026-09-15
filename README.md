@@ -19,7 +19,7 @@
 
 ## Требования
 
-- Linux (systemd), PostgreSQL 16+ (нативно 17)
+- Linux (systemd), PostgreSQL 16+ (нативно 17); база в UTF-8 с локалью, которая сворачивает регистр кириллицы (`C.UTF-8`, `ru_RU.UTF-8` — не `C`/`POSIX`: на такой базе русский поиск и фильтры пропускают совпадения; сервис предупредит в логе и на странице «Система»)
 - root для установки; процесс работает от пользователя `rssam`
 
 ## Установка одной командой
@@ -30,7 +30,7 @@
 curl -fsSL https://raw.githubusercontent.com/Tywed/rssam/main/install.sh | sudo sh
 ```
 
-Затем откройте `http://<host>:8080/ui/login`. Логин/пароль admin — из `.env` (`ADMIN_USERNAME` / `ADMIN_PASSWORD`).
+Затем откройте `http://<host>:8080/ui/login`. Установщик генерирует пароль admin, печатает его в конце и сохраняет в `/opt/rssam/.env` (`ADMIN_USERNAME` / `ADMIN_PASSWORD`). Пароль `changeme` из `.env.example` на новой базе сервис не запустит (для локальной разработки — `ALLOW_DEV_TOKEN=true`); вход с ним на существующей базе ведёт сразу на форму смены пароля.
 
 | | |
 | --- | --- |
@@ -50,7 +50,7 @@ Self-update и restart из веб-UI в **Docker не работают** — о
 ./install.sh                         # install latest release
 ./install.sh v0.1.0                  # конкретная версия
 ./install.sh --quiet
-./install.sh --with-postgres         # создать роль/БД rssam, если нет
+./install.sh --with-postgres         # создать роль/БД rssam (UTF-8, C.UTF-8), если нет
 ./install.sh --no-backup             # без ежедневного бэкапа
 ./install.sh update                  # или: install.sh --update
 ./install.sh remove                  # БД и .env по умолчанию сохраняются

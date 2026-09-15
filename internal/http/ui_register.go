@@ -115,6 +115,7 @@ func (s *Server) registerUI(mux *http.ServeMux) {
 	cfg.FeedSilentDays = s.feedSilentDays
 	cfg.RunRetentionCleanup = s.runRetentionCleanup
 	cfg.DatabaseURL = s.databaseURL
+	cfg.DatabaseLocale = s.databaseLocale
 	cfg.GitHubRepo = s.gitHubRepo
 	if d, ok := s.entries.(storage.EntryDedupStore); ok {
 		cfg.Dedup = d

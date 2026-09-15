@@ -128,6 +128,7 @@ type adminSystemInfo struct {
 	InDocker      bool
 	DualWarning   string
 	AuthTokenSet  bool
+	LocaleWarning string
 	CanRestart    bool
 	RestartHint   string
 	CanUpdate     bool
@@ -166,6 +167,7 @@ func (h *Handler) handleAdminSystem(w http.ResponseWriter, r *http.Request) {
 		InDocker:      ops.InDocker(),
 		DualWarning:   ops.DualProcessWarning(),
 		AuthTokenSet:  h.cfg.AuthTokenSet,
+		LocaleWarning: localeWarning(h.cfg.DatabaseLocale),
 		CanRestart:    canR,
 		RestartHint:   rHint,
 		CanUpdate:     canU,
@@ -373,4 +375,13 @@ func (h *Handler) handleAdminBackupHint(w http.ResponseWriter, r *http.Request) 
 	if _, err := os.Stat(ops.UpdateLogPath()); err == nil {
 		fmt.Fprintf(w, "# update log: %s\n", ops.UpdateLogPath())
 	}
+}
+
+// localeWarning is empty unless the database was probed and cannot fold
+// Cyrillic case — the failure mode of a database created with locale=C.
+func localeWarning(l storage.DatabaseLocale) string {
+	if l.Ctype == "" || l.LowerOK {
+		return ""
+	}
+	return "База данных создана с локалью «" + l.Ctype + "» (" + l.Encoding + "): PostgreSQL не сворачивает регистр кириллицы, поиск и фильтры по русскому тексту пропускают совпадения. Пересоздайте базу с UTF-8-локалью (например, createdb --locale=C.UTF-8 --template=template0) и восстановите дамп."
 }

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"rssam/internal/auth"
+	"rssam/internal/config"
 	"rssam/internal/http/middleware"
 	"rssam/internal/storage"
 	"rssam/internal/version"
@@ -281,6 +282,12 @@ func (h *Handler) handleLoginPost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	auth.SetSessionCookie(w, h.sessionCookieCfg(r), sid)
+	// A login that succeeds with the example password proves the account
+	// still has it; the reader can wait until it is changed.
+	if config.IsPlaceholderPassword(password) {
+		http.Redirect(w, r, "/ui/settings?pw=placeholder", http.StatusFound)
+		return
+	}
 	next := strings.TrimSpace(r.FormValue("next"))
 	if next == "" {
 		next = strings.TrimSpace(r.URL.Query().Get("next"))

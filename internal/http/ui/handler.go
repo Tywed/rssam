@@ -74,13 +74,16 @@ type Config struct {
 	FetchTimeoutSeconds   int
 	EnvFilePath           string
 	// AuthTokenSet shows the deprecation banner on the system page.
-	AuthTokenSet  bool
-	DatabaseURL   string
-	GitHubRepo    string
-	PauseWorkers  func()
-	ResumeWorkers func()
-	WorkersPaused func() bool
-	Dedup         storage.EntryDedupStore
+	AuthTokenSet bool
+	DatabaseURL  string
+	// DatabaseLocale drives the "Cyrillic case folding is broken" banner on
+	// the system page; a zero value (tests) shows nothing.
+	DatabaseLocale storage.DatabaseLocale
+	GitHubRepo     string
+	PauseWorkers   func()
+	ResumeWorkers  func()
+	WorkersPaused  func() bool
+	Dedup          storage.EntryDedupStore
 	// Retention holds the retention windows the running process was started
 	// with; shown (and editable via .env) on the admin system page.
 	Retention RetentionSettings

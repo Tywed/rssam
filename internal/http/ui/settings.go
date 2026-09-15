@@ -32,6 +32,8 @@ func (h *Handler) handleSettings(w http.ResponseWriter, r *http.Request) {
 		data.FlashMsg = "Пароль изменён. Остальные сессии завершены."
 	case "sessions":
 		data.FlashMsg = "Остальные сессии завершены."
+	case "placeholder":
+		data.FlashErr = "Вы вошли с паролем из примера конфигурации. Смените его сейчас: после этого значение ADMIN_PASSWORD в .env больше не используется."
 	}
 	h.render(w, r, "settings", data)
 }

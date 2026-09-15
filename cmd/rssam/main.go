@@ -83,9 +83,31 @@ func main() {
 
 	metrics.Init()
 	pgStore := storage.NewPostgresStore(db, cfg.FTSLanguage)
+	if config.IsPlaceholderPassword(cfg.AdminPassword) && !cfg.AllowDevToken {
+		// The example password may only ever unlock an account that already
+		// exists; it must not become the admin credential of a new install.
+		n, err := pgStore.CountLoginCapableUsers(ctx)
+		if err != nil {
+			log.Error("count users", "err", err)
+			os.Exit(1)
+		}
+		if n == 0 {
+			log.Error("ADMIN_PASSWORD is the placeholder from .env.example; set a real password before the first start (or ALLOW_DEV_TOKEN=true for local development)")
+			os.Exit(2)
+		}
+	}
 	if err := pgStore.EnsureBootstrapAdmin(ctx, cfg.AdminUsername, cfg.AdminPassword); err != nil {
 		log.Error("bootstrap admin failed", "err", err)
 		os.Exit(1)
+	}
+	dbLocale, err := storage.ProbeDatabaseLocale(ctx, db)
+	if err != nil {
+		log.Error("database locale", "err", err)
+		os.Exit(1)
+	}
+	if !dbLocale.LowerOK {
+		log.Warn("database ctype does not fold Cyrillic case; search and filters on Russian text will miss matches — recreate the database with an UTF-8 locale (see README)",
+			"encoding", dbLocale.Encoding, "ctype", dbLocale.Ctype)
 	}
 	csrfSecret, err := auth.ResolveCSRFSecret(ctx, os.Getenv("CSRF_SECRET"), pgStore, storage.ErrNotFound)
 	if err != nil {
@@ -323,6 +345,7 @@ func main() {
 		MetricsToken:           cfg.MetricsToken,
 		AdminUsername:          cfg.AdminUsername,
 		AdminPassword:          cfg.AdminPassword,
+		DatabaseLocale:         dbLocale,
 		UserStore:              pgStore,
 		HTTPClient:             httpClient,
 		FetchUserAgent:         cfg.FetchUserAgent,
