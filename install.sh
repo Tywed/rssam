@@ -148,6 +148,11 @@ maybe_postgres() {
   if ! su -s /bin/sh postgres -c "psql -Atc \"SELECT lower('Ж') = 'ж'\" rssam" | grep -q t; then
     log "warning: database rssam does not fold Cyrillic case (locale=C?); Russian search will miss matches — recreate it with an UTF-8 locale"
   fi
+  # Full-page images dominate rssam's WAL (mark-read touches scattered
+  # pages): lz4 halves WAL bytes for ~1 % CPU. Cluster-wide, so only advised.
+  if su -s /bin/sh postgres -c "psql -Atc 'SHOW wal_compression'" | grep -qx off; then
+    log "hint: wal_compression is off; halve WAL writes with: ALTER SYSTEM SET wal_compression = 'lz4'; SELECT pg_reload_conf();"
+  fi
 }
 
 # 20 alphanumerics from /dev/urandom (~119 bits); printed once at the end of
