@@ -27,6 +27,8 @@ type SearchEntriesFilter struct {
 	Rank bool
 	// WithTotal counts all matches; see ListEntriesFilter.WithTotal.
 	WithTotal bool
+	// WithoutBody: see ListEntriesFilter.WithoutBody.
+	WithoutBody bool
 }
 
 func (s *PostgresStore) SearchEntries(ctx context.Context, userID int64, filter SearchEntriesFilter) ([]Entry, int, error) {
@@ -107,7 +109,7 @@ func (s *PostgresStore) SearchEntries(ctx context.Context, userID int64, filter 
 	if !filter.WithTotal {
 		fetch++
 	}
-	q := "SELECT " + entrySelectColumns + "\nFROM entries" + whereSQL +
+	q := "SELECT " + entryColumns(filter.WithoutBody) + "\nFROM entries" + whereSQL +
 		"\nORDER BY " + orderBy +
 		"\nLIMIT $" + fmt.Sprint(argN) + " OFFSET $" + fmt.Sprint(argN+1)
 

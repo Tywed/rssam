@@ -244,7 +244,7 @@ func (s *PostgresStore) listEntries(ctx context.Context, userID int64, filter Li
 	if !filter.WithTotal {
 		fetch++
 	}
-	q := "SELECT " + entrySelectColumns + "\nFROM entries" + whereSQL +
+	q := "SELECT " + entryColumns(filter.WithoutBody) + "\nFROM entries" + whereSQL +
 		"\nORDER BY " + entryOrderClause(filter.Sort) +
 		"\nLIMIT $" + fmt.Sprint(argN) + " OFFSET $" + fmt.Sprint(argN+1)
 

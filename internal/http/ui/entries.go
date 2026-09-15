@@ -13,7 +13,7 @@ func (h *Handler) handleUnread(w http.ResponseWriter, r *http.Request) {
 	data := h.baseData(r, "unread")
 	limit, offset := parsePage(r)
 
-	filter := storage.ListEntriesFilter{Limit: limit, Offset: offset, Sort: data.EntrySort}
+	filter := storage.ListEntriesFilter{Limit: limit, Offset: offset, Sort: data.EntrySort, WithoutBody: true}
 	q := make(map[string]string)
 	if r.URL.Query().Get("all") == "1" {
 		data.ShowAll = true
@@ -79,10 +79,11 @@ func (h *Handler) handleStarred(w http.ResponseWriter, r *http.Request) {
 
 	starred := true
 	entries, total, err := h.cfg.Entries.ListEntries(r.Context(), p.UserID, storage.ListEntriesFilter{
-		Starred: &starred,
-		Limit:   limit,
-		Offset:  offset,
-		Sort:    data.EntrySort,
+		Starred:     &starred,
+		Limit:       limit,
+		Offset:      offset,
+		Sort:        data.EntrySort,
+		WithoutBody: true,
 	})
 	if err != nil {
 		http.Error(w, "list entries failed", http.StatusInternalServerError)
@@ -123,10 +124,11 @@ func (h *Handler) handleSearch(w http.ResponseWriter, r *http.Request) {
 		appendEntrySortQuery(data.Query, data.EntrySort)
 
 		entries, total, err := h.cfg.Entries.SearchEntries(r.Context(), p.UserID, storage.SearchEntriesFilter{
-			Query:  q,
-			Sort:   data.EntrySort,
-			Limit:  limit,
-			Offset: offset,
+			Query:       q,
+			Sort:        data.EntrySort,
+			Limit:       limit,
+			Offset:      offset,
+			WithoutBody: true,
 		})
 		if err != nil {
 			if h.log != nil {

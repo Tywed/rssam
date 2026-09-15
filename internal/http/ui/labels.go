@@ -49,7 +49,7 @@ func (h *Handler) handleLabelEntries(w http.ResponseWriter, r *http.Request) {
 	data.Query = map[string]string{}
 	appendEntrySortQuery(data.Query, data.EntrySort)
 
-	filter := storage.ListEntriesFilter{LabelID: &id, Limit: limit, Offset: offset, Sort: data.EntrySort}
+	filter := storage.ListEntriesFilter{LabelID: &id, Limit: limit, Offset: offset, Sort: data.EntrySort, WithoutBody: true}
 	if r.URL.Query().Get("all") == "1" {
 		data.ShowAll = true
 		data.Query["all"] = "1"

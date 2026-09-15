@@ -625,4 +625,7 @@ type ListEntriesFilter struct {
 	Limit      int
 	Offset     int
 	WithTotal  bool
+	// WithoutBody leaves Content and OriginalContent empty; for callers that
+	// only render titles.
+	WithoutBody bool
 }

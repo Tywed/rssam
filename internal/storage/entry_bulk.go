@@ -11,6 +11,20 @@ import (
 
 const entrySelectColumns = `id, feed_id, title, url, content, original_content, content_fetched, author, published_at, hash, status, starred, created_at, updated_at`
 
+// entryListColumns is entrySelectColumns with the two body columns replaced
+// by empty literals, so the same scanner serves list pages that never render
+// a body (the reader loads it per entry). On typical feeds the bodies are
+// ~3 kB per row — 150 kB per 50-row page that was read from TOAST, sent and
+// dropped.
+const entryListColumns = `id, feed_id, title, url, '' AS content, '' AS original_content, content_fetched, author, published_at, hash, status, starred, created_at, updated_at`
+
+func entryColumns(withoutBody bool) string {
+	if withoutBody {
+		return entryListColumns
+	}
+	return entrySelectColumns
+}
+
 // BulkUpdateEntries updates status and/or starred for entries owned by userID.
 func (s *PostgresStore) BulkUpdateEntries(ctx context.Context, userID int64, entryIDs []int64, update BulkEntryUpdate) (int, error) {
 	if len(entryIDs) == 0 {
