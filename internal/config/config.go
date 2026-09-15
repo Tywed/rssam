@@ -39,7 +39,6 @@ type Config struct {
 	FeedCircuitBreakerThreshold int
 	FeedPollDailyResetEnabled   bool
 	FeedPollDailyResetTZ        string
-	FilterMatchTimeout          time.Duration
 
 	MaxAPIBaseURL        string
 	MaxDefaultLimit      int
@@ -176,7 +175,6 @@ func Load() (Config, error) {
 		FeedCircuitBreakerThreshold: parseInt(getEnv("FEED_CIRCUIT_BREAKER_THRESHOLD", "10"), 10),
 		FeedPollDailyResetEnabled:   parseBoolDefault(os.Getenv("FEED_POLL_DAILY_RESET"), true),
 		FeedPollDailyResetTZ:        getEnv("FEED_POLL_DAILY_RESET_TZ", "Europe/Moscow"),
-		FilterMatchTimeout:          parseDuration(getEnv("FILTER_MATCH_TIMEOUT", "50ms"), 50*time.Millisecond),
 
 		MaxAPIBaseURL:        strings.TrimSpace(os.Getenv("MAX_API_BASE_URL")),
 		MaxDefaultLimit:      parseInt(getEnv("MAX_DEFAULT_LIMIT", "100"), 100),

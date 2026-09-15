@@ -231,7 +231,6 @@ func main() {
 	filterEngine := filter.New(filter.Config{
 		MaxRulesPerFilter: cfg.MaxFilterRulesPerFilter,
 		MaxRegexLength:    cfg.MaxRegexLength,
-		MatchTimeout:      cfg.FilterMatchTimeout,
 	})
 	refresher.Filters = pgStore
 	refresher.Matches = pgStore

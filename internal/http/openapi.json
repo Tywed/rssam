@@ -3512,10 +3512,9 @@
           "both",
           "author",
           "url",
-          "tags",
           "query"
         ],
-        "description": "query: PostgreSQL websearch query (morphology, \"phrase\", -exclude, or) evaluated against title+content in SQL; other fields take an RE2 regex."
+        "description": "query: PostgreSQL websearch query (morphology, \"phrase\", -exclude, or) evaluated against title+content in SQL; other fields take an RE2 regex. Rules are evaluated in priority order (ascending, then id); op joins a rule with the previous result, so op of the first rule is ignored. tags (pre-0.1.15) is refused on write."
       },
       "FilterOp": {
         "type": "string",
@@ -3778,7 +3777,8 @@
             "type": "array",
             "items": {
               "type": "string"
-            }
+            },
+            "description": "Accepted for compatibility and ignored: entries carry no tags."
           },
           "feed_id": {
             "type": "integer",

@@ -303,6 +303,7 @@ func TestEngine_ValidateRules(t *testing.T) {
 		{name: "empty", rules: []storage.CreateFilterRuleParams{{Field: "title", Pattern: "  "}}, wantErr: "empty regex"},
 		{name: "too long", rules: []storage.CreateFilterRuleParams{{Field: "title", Pattern: "abcdef"}}, wantErr: "regex too long"},
 		{name: "bad field", rules: []storage.CreateFilterRuleParams{{Field: "body", Pattern: "x"}}, wantErr: "invalid field"},
+		{name: "tags refused on write", rules: []storage.CreateFilterRuleParams{{Field: "Tags", Pattern: "x"}}, wantErr: "entries have no tags"},
 		{name: "too many", rules: []storage.CreateFilterRuleParams{
 			{Field: "title", Pattern: "a"}, {Field: "title", Pattern: "b"}, {Field: "title", Pattern: "c"},
 		}, wantErr: "too many rules"},
@@ -320,6 +321,17 @@ func TestEngine_ValidateRules(t *testing.T) {
 				t.Fatalf("want error containing %q, got %v", tc.wantErr, err)
 			}
 		})
+	}
+}
+
+// Rows written before 0.1.15 with field "tags" keep compiling (and never
+// match), so an old filter does not start failing strict evaluation.
+func TestEngine_LegacyTagsRuleStillCompiles(t *testing.T) {
+	eng := New(Config{})
+	f := storage.Filter{ID: 1, Rules: []storage.FilterRule{{ID: 1, Field: "tags", Pattern: "news"}}}
+	got, err := eng.MatchEntryStrict(storage.Entry{Title: "news", Content: "news"}, []storage.Filter{f})
+	if err != nil || len(got) != 0 {
+		t.Fatalf("got %v err=%v", got, err)
 	}
 }
 

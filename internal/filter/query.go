@@ -13,6 +13,10 @@ import (
 // in one SQL per batch instead of a per-entry regex.
 const FieldQuery = "query"
 
+// FieldTags is accepted only for rows written before 0.1.15; ValidateRules
+// refuses it on write.
+const FieldTags = "tags"
+
 // ErrQueryRulesUnsupported is returned in strict mode when a filter has
 // `query` rules but the caller supplied no QueryHits.
 var ErrQueryRulesUnsupported = errors.New("query rules require full-text evaluation")

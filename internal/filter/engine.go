@@ -14,11 +14,12 @@ import (
 	"rssam/internal/storage"
 )
 
+// Config has no match or compile timeout on purpose: RE2 matching is linear
+// in the input, the input is capped at maxMatchFieldBytes, and the regex
+// length at MaxRegexLength — a deadline would only add a goroutine per match.
 type Config struct {
 	MaxRulesPerFilter int
 	MaxRegexLength    int
-	CompileTimeout    time.Duration
-	MatchTimeout      time.Duration
 }
 
 type Engine struct {
@@ -44,13 +45,12 @@ type compiledFilter struct {
 }
 
 type compiledRule struct {
-	ruleID   int64
-	field    string
-	pattern  string
-	negate   bool
-	op       string
-	priority int
-	re       *regexp.Regexp
+	ruleID  int64
+	field   string
+	pattern string
+	negate  bool
+	op      string
+	re      *regexp.Regexp
 }
 
 type MatchContext struct {
@@ -83,12 +83,6 @@ func New(cfg Config) *Engine {
 	if cfg.MaxRegexLength <= 0 {
 		cfg.MaxRegexLength = 2048
 	}
-	if cfg.CompileTimeout <= 0 {
-		cfg.CompileTimeout = 100 * time.Millisecond
-	}
-	if cfg.MatchTimeout <= 0 {
-		cfg.MatchTimeout = 50 * time.Millisecond
-	}
 	return &Engine{cfg: cfg, cache: map[cacheKey]*compiledFilter{}}
 }
 
@@ -106,9 +100,15 @@ func (e *Engine) ValidateRules(rules []storage.CreateFilterRuleParams) error {
 	}
 	f := storage.Filter{Rules: make([]storage.FilterRule, 0, len(rules))}
 	for _, r := range rules {
+		// Legacy rows with field "tags" still compile (they match against an
+		// empty string, as they always did); new ones are refused because
+		// entries carry no tags and such a rule can never do what it says.
+		if strings.ToLower(strings.TrimSpace(r.Field)) == FieldTags {
+			return fmt.Errorf("field %q is not supported: entries have no tags", FieldTags)
+		}
 		f.Rules = append(f.Rules, storage.FilterRule{Field: r.Field, Pattern: r.Pattern, Negate: r.Negate, Op: r.Op, Priority: r.Priority})
 	}
-	_, err := compileFilter(f, e.cfg.MaxRegexLength, e.cfg.CompileTimeout)
+	_, err := compileFilter(f, e.cfg.MaxRegexLength)
 	return err
 }
 
@@ -158,13 +158,7 @@ func (e *Engine) matchEntry(entry storage.Entry, ctx MatchContext, filters []sto
 		if strict && cf.hasQuery && ctx.QueryHits == nil {
 			return nil, ErrQueryRulesUnsupported
 		}
-		mr, err := e.matchCompiledSafe(entry, ctx, cf)
-		if err != nil {
-			if strict {
-				return nil, err
-			}
-			continue
-		}
+		mr := matchCompiled(entry, ctx, cf)
 		if !mr.Matched {
 			continue
 		}
@@ -232,7 +226,7 @@ func (e *Engine) getCompiled(f storage.Filter) (*compiledFilter, error) {
 		return cached, nil
 	}
 
-	cf, err := compileFilter(f, e.cfg.MaxRegexLength, e.cfg.CompileTimeout)
+	cf, err := compileFilter(f, e.cfg.MaxRegexLength)
 	if err != nil {
 		return nil, err
 	}
@@ -257,7 +251,7 @@ func normalizeFeedScope(scope string) string {
 	}
 }
 
-func compileFilter(f storage.Filter, maxRegexLen int, compileTimeout time.Duration) (*compiledFilter, error) {
+func compileFilter(f storage.Filter, maxRegexLen int) (*compiledFilter, error) {
 	cf := &compiledFilter{
 		filterID:     f.ID,
 		matchAnyRule: f.MatchAnyRule,
@@ -287,32 +281,27 @@ func compileFilter(f storage.Filter, maxRegexLen int, compileTimeout time.Durati
 			cf.hasQuery = true
 		} else {
 			var err error
-			re, err = compileRegexp(pat, compileTimeout)
+			re, err = regexp.Compile(pat)
 			if err != nil {
 				return nil, fmt.Errorf("compile regex: %w", err)
 			}
 		}
 		cf.rules = append(cf.rules, compiledRule{
-			ruleID:   r.ID,
-			field:    field,
-			pattern:  pat,
-			negate:   r.Negate,
-			op:       op,
-			priority: r.Priority,
-			re:       re,
+			ruleID:  r.ID,
+			field:   field,
+			pattern: pat,
+			negate:  r.Negate,
+			op:      op,
+			re:      re,
 		})
 	}
 	return cf, nil
 }
 
-func compileRegexp(pat string, _ time.Duration) (*regexp.Regexp, error) {
-	return regexp.Compile(pat)
-}
-
-func (e *Engine) matchCompiledSafe(entry storage.Entry, ctx MatchContext, f *compiledFilter) (MatchResult, error) {
-	return matchCompiled(entry, ctx, f), nil
-}
-
+// matchCompiled folds the rules left to right in the order storage returns
+// them (priority ASC, id ASC): the first rule seeds the accumulator, each
+// following rule joins it with its own op. The op of the first rule is
+// therefore never consulted.
 func matchCompiled(entry storage.Entry, ctx MatchContext, f *compiledFilter) MatchResult {
 	if len(f.rules) == 0 {
 		return MatchResult{FilterID: f.filterID, Matched: false}
@@ -384,8 +373,6 @@ func fieldValue(e storage.Entry, field string) string {
 		v = *e.Author
 	case "url":
 		v = e.URL
-	case "tags":
-		return ""
 	default:
 		return ""
 	}
@@ -401,7 +388,7 @@ func clipMatchField(s string) string {
 
 func isAllowedField(f string) bool {
 	switch f {
-	case "title", "content", "both", "author", "url", "tags", FieldQuery:
+	case "title", "content", "both", "author", "url", FieldTags, FieldQuery:
 		return true
 	default:
 		return false
