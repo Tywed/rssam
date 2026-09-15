@@ -57,6 +57,16 @@ func Apply(ctx context.Context, db *pgxpool.Pool, log *slog.Logger) error {
 	if err != nil {
 		return err
 	}
+	pending := 0
+	for _, name := range files {
+		if !applied[name] {
+			pending++
+		}
+	}
+	if pending == 0 {
+		return nil
+	}
+	log.Info("applying migrations", "pending", pending)
 
 	for _, name := range files {
 		if applied[name] {
@@ -77,9 +87,11 @@ func Apply(ctx context.Context, db *pgxpool.Pool, log *slog.Logger) error {
 		}
 
 		log.Info("applying migration", "name", name)
+		started := time.Now()
 		if err := applyOne(ctx, db, name, sql); err != nil {
 			return err
 		}
+		log.Info("migration applied", "name", name, "duration_ms", time.Since(started).Milliseconds())
 	}
 
 	return nil
@@ -137,15 +149,17 @@ func loadApplied(ctx context.Context, db *pgxpool.Pool) (map[string]bool, error)
 	return out, nil
 }
 
+// applyOne runs a migration in one transaction bounded only by ctx (SIGTERM).
+// A fixed deadline used to sit here; a data migration that legitimately runs
+// long on a large table (0037: ~25 s per million entries) would hit it, roll
+// back every write and be retried at the next start — a crash loop that
+// burns the disk for nothing.
 func applyOne(ctx context.Context, db *pgxpool.Pool, name, sql string) error {
-	txCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
-	defer cancel()
-
-	return withTx(txCtx, db, func(tx pgx.Tx) error {
-		if _, err := tx.Exec(txCtx, sql); err != nil {
+	return withTx(ctx, db, func(tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx, sql); err != nil {
 			return fmt.Errorf("exec %s: %w", name, err)
 		}
-		if _, err := tx.Exec(txCtx, `INSERT INTO schema_migrations(version) VALUES ($1)`, name); err != nil {
+		if _, err := tx.Exec(ctx, `INSERT INTO schema_migrations(version) VALUES ($1)`, name); err != nil {
 			return fmt.Errorf("record %s: %w", name, err)
 		}
 		return nil

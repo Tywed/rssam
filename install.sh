@@ -299,16 +299,23 @@ do_update() {
   fi
   log "restarting rssam"
   systemctl restart rssam
+  # Migrations run before the listener opens, so /healthz stays down for as
+  # long as they take (a data migration on a large table can run minutes).
+  # Keep waiting while the unit is active; only a unit that died is a failure.
   n=0
-  while [ "$n" -lt 30 ]; do
+  while [ "$n" -lt 600 ]; do
     if curl -sf --retry 0 http://127.0.0.1:8080/healthz >/dev/null 2>&1; then
       log "ok $ver"
       exit 0
     fi
+    if [ "$n" -ge 5 ] && ! systemctl is-active --quiet rssam; then
+      die "service exited during start (journalctl -u rssam -n 50)"
+    fi
+    [ "$n" -eq 30 ] && log "still starting after 30 s (migrations?), waiting up to 10 min"
     n=$((n + 1))
     sleep 1
   done
-  die "service did not become healthy"
+  die "service did not become healthy within 10 min"
 }
 
 do_remove() {
