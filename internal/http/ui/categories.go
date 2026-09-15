@@ -129,9 +129,13 @@ func (h *Handler) handleCategoryMarkRead(w http.ResponseWriter, r *http.Request)
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	_, _ = h.cfg.Entries.MarkAllCategoryEntriesRead(r.Context(), p.UserID, categoryID)
+	target := "/ui/unread?category_id=" + strings.TrimSpace(r.PathValue("categoryID"))
+	if _, err := h.cfg.Entries.MarkAllCategoryEntriesRead(r.Context(), p.UserID, categoryID); err != nil {
+		h.failRedirect(w, r, target, "mark category read", err)
+		return
+	}
 	h.invalidateUnread(p.UserID)
-	http.Redirect(w, r, "/ui/unread?category_id="+strings.TrimSpace(r.PathValue("categoryID")), http.StatusFound)
+	http.Redirect(w, r, target, http.StatusFound)
 }
 
 func (h *Handler) handleCategoryReorder(w http.ResponseWriter, r *http.Request) {

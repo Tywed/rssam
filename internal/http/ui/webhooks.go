@@ -323,10 +323,14 @@ func (h *Handler) handleWebhookRetryAll(w http.ResponseWriter, r *http.Request) 
 		http.NotFound(w, r)
 		return
 	}
+	target := "/ui/webhooks/" + strconv.FormatInt(id, 10)
 	if h.cfg.AdminWebhooks != nil {
-		_, _ = h.cfg.AdminWebhooks.RetryAllWebhookLogs(r.Context(), id)
+		if _, err := h.cfg.AdminWebhooks.RetryAllWebhookLogs(r.Context(), id); err != nil {
+			h.failRedirect(w, r, target, "webhook retry all", err)
+			return
+		}
 	}
-	http.Redirect(w, r, "/ui/webhooks/"+strconv.FormatInt(id, 10), http.StatusFound)
+	http.Redirect(w, r, target, http.StatusFound)
 }
 
 // handleWebhookResetStats clears the persistent delivery counters of a webhook
@@ -412,8 +416,12 @@ func (h *Handler) handleWebhookLogRetry(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	p, _ := principal(r)
-	_ = h.cfg.WebhookLogs.RetryWebhookLogNow(r.Context(), p.UserID, id)
-	http.Redirect(w, r, refererOr(r, "/ui/webhooks"), http.StatusFound)
+	target := refererOr(r, "/ui/webhooks")
+	if err := h.cfg.WebhookLogs.RetryWebhookLogNow(r.Context(), p.UserID, id); err != nil {
+		h.failRedirect(w, r, target, "webhook log retry", err)
+		return
+	}
+	http.Redirect(w, r, target, http.StatusFound)
 }
 
 func fillWebhookProviderFields(data *pageData, w storage.Webhook) {

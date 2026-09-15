@@ -77,7 +77,9 @@ func (h *Handler) handleCategoryBulkInterval(w http.ResponseWriter, r *http.Requ
 	}
 	if h.cfg.Refresher != nil {
 		for _, id := range ids {
-			_ = h.cfg.Refresher.RescheduleFeed(r.Context(), id, interval)
+			if err := h.cfg.Refresher.RescheduleFeed(r.Context(), id, interval); err != nil {
+				h.log.WarnContext(r.Context(), "reschedule feed failed", "feed_id", id, "err", err)
+			}
 		}
 	}
 	h.renderFeedsListFlash(w, r, fmt.Sprintf("Интервал опроса обновлён для %d лент", count))
@@ -254,12 +256,20 @@ func (h *Handler) handleCategoryBulkRefresh(w http.ResponseWriter, r *http.Reque
 	_ = r.ParseForm()
 	feeds, _, _ := h.cfg.Feeds.ListFeeds(r.Context(), p.UserID, storage.NoLimit, 0)
 	ids := feedIDsInCategory(feeds, categoryID)
+	failed := 0
 	if h.cfg.Refresher != nil {
 		for _, id := range ids {
-			_, _ = h.cfg.Refresher.RefreshFeedManual(r.Context(), id)
+			if _, err := h.cfg.Refresher.RefreshFeedManual(r.Context(), id); err != nil {
+				failed++
+				h.log.WarnContext(r.Context(), "bulk feed refresh failed", "feed_id", id, "err", err)
+			}
 		}
 	}
-	h.renderFeedsListFlash(w, r, fmt.Sprintf("Обновление запущено для %d лент", len(ids)))
+	msg := fmt.Sprintf("Обновлено лент: %d", len(ids)-failed)
+	if failed > 0 {
+		msg += fmt.Sprintf(", с ошибкой: %d (см. карточки лент)", failed)
+	}
+	h.renderFeedsListFlash(w, r, msg)
 }
 
 func (h *Handler) handleCategoryBulkPause(w http.ResponseWriter, r *http.Request) {

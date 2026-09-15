@@ -101,7 +101,10 @@ func (h *Handler) handleUnreadMarkRead(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	p, _ := principal(r)
-	_, _ = h.cfg.Entries.MarkAllEntriesRead(r.Context(), p.UserID)
+	if _, err := h.cfg.Entries.MarkAllEntriesRead(r.Context(), p.UserID); err != nil {
+		h.failRedirect(w, r, refererOr(r, "/ui/unread"), "mark all read", err)
+		return
+	}
 	h.invalidateUnread(p.UserID)
 	http.Redirect(w, r, refererOr(r, "/ui/unread"), http.StatusFound)
 }

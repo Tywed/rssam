@@ -224,7 +224,9 @@ func (h *Handler) authenticate(r *http.Request) (auth.Principal, string, bool) {
 	}
 	now := time.Now().UTC()
 	if ttl := h.sessionTTL(); storage.SessionNeedsTouch(sess.ExpiresAt, now, ttl) {
-		_ = h.cfg.Sessions.TouchSession(r.Context(), sid, now.Add(ttl))
+		if err := h.cfg.Sessions.TouchSession(r.Context(), sid, now.Add(ttl)); err != nil {
+			h.log.WarnContext(r.Context(), "touch session failed", "err", err)
+		}
 	}
 	return auth.Principal{UserID: u.ID, IsAdmin: u.IsAdmin, Username: u.Username}, sid, true
 }
@@ -291,7 +293,10 @@ func (h *Handler) handleLogout(w http.ResponseWriter, r *http.Request) {
 	if h.validateCSRF(r) {
 		sid := auth.SessionIDFromRequest(r)
 		if sid != "" {
-			_ = h.cfg.Sessions.DeleteSession(r.Context(), sid)
+			if err := h.cfg.Sessions.DeleteSession(r.Context(), sid); err != nil {
+				// The cookie is cleared regardless; the row expires on its own.
+				h.log.WarnContext(r.Context(), "delete session on logout failed", "err", err)
+			}
 		}
 	}
 	auth.ClearSessionCookie(w, h.sessionCookieCfg(r))
@@ -339,6 +344,9 @@ func (h *Handler) baseData(r *http.Request, nav string) pageData {
 		AppVersion:   version.Version,
 		GitHubURL:    githubURL,
 		DocsURL:      docsURL,
+	}
+	if code := r.URL.Query().Get(flashErrParam); code != "" {
+		data.FlashErr = flashErrText(code, r.URL.Query().Get(flashErrRequest))
 	}
 	if h.releases != nil {
 		st := h.releases.Status()

@@ -80,9 +80,13 @@ func (h *Handler) handleLabelMarkRead(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	_, _ = h.cfg.Entries.MarkAllLabelEntriesRead(r.Context(), p.UserID, id)
+	target := "/ui/labels/" + strconv.FormatInt(id, 10)
+	if _, err := h.cfg.Entries.MarkAllLabelEntriesRead(r.Context(), p.UserID, id); err != nil {
+		h.failRedirect(w, r, target, "mark label read", err)
+		return
+	}
 	h.invalidateUnread(p.UserID)
-	http.Redirect(w, r, "/ui/labels/"+strconv.FormatInt(id, 10), http.StatusFound)
+	http.Redirect(w, r, target, http.StatusFound)
 }
 
 func (h *Handler) handleLabelCreate(w http.ResponseWriter, r *http.Request) {

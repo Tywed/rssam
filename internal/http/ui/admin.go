@@ -99,7 +99,10 @@ func (h *Handler) handleAdminRefreshAll(w http.ResponseWriter, r *http.Request) 
 	}
 	p, _ := principal(r)
 	if h.cfg.RefreshAllFeeds != nil {
-		_ = h.cfg.RefreshAllFeeds(r, p.UserID)
+		if err := h.cfg.RefreshAllFeeds(r, p.UserID); err != nil {
+			h.failRedirect(w, r, "/ui/admin/users", "refresh all feeds", err)
+			return
+		}
 		h.cfg.Audit.Record(r, storage.AuditFeedsRefreshAll, "", 0, nil)
 	}
 	http.Redirect(w, r, "/ui/admin/users", http.StatusFound)

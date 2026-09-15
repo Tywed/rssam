@@ -421,7 +421,10 @@ func (h *Handler) handleAdminFeedRefresh(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	if h.cfg.Refresher != nil {
-		_, _ = h.cfg.Refresher.RefreshFeedManual(r.Context(), id)
+		if _, err := h.cfg.Refresher.RefreshFeedManual(r.Context(), id); err != nil {
+			h.failRedirect(w, r, adminFeedsRedirect(r), "admin feed refresh", err)
+			return
+		}
 	}
 	http.Redirect(w, r, adminFeedsRedirect(r), http.StatusFound)
 }
@@ -441,7 +444,10 @@ func (h *Handler) handleAdminFeedUnpause(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	// Clears manual_paused only; circuit breaker counters and poll_paused stay unchanged.
-	_ = h.cfg.Feeds.SetFeedManualPaused(r.Context(), id, false)
+	if err := h.cfg.Feeds.SetFeedManualPaused(r.Context(), id, false); err != nil {
+		h.failRedirect(w, r, adminFeedsRedirect(r), "feed unpause", err)
+		return
+	}
 	http.Redirect(w, r, adminFeedsRedirect(r), http.StatusFound)
 }
 
@@ -460,7 +466,10 @@ func (h *Handler) handleAdminFeedPause(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	_ = h.cfg.Feeds.SetFeedManualPaused(r.Context(), id, true)
+	if err := h.cfg.Feeds.SetFeedManualPaused(r.Context(), id, true); err != nil {
+		h.failRedirect(w, r, adminFeedsRedirect(r), "feed pause", err)
+		return
+	}
 	http.Redirect(w, r, adminFeedsRedirect(r), http.StatusFound)
 }
 
@@ -479,7 +488,10 @@ func (h *Handler) handleAdminFeedResetCircuit(w http.ResponseWriter, r *http.Req
 		http.NotFound(w, r)
 		return
 	}
-	_ = h.cfg.Feeds.ResetFeedPollCircuit(r.Context(), id)
+	if err := h.cfg.Feeds.ResetFeedPollCircuit(r.Context(), id); err != nil {
+		h.failRedirect(w, r, adminFeedsRedirect(r), "feed circuit reset", err)
+		return
+	}
 	http.Redirect(w, r, adminFeedsRedirect(r), http.StatusFound)
 }
 
@@ -488,7 +500,10 @@ func (h *Handler) handleAdminFeedsResetCircuits(w http.ResponseWriter, r *http.R
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
-	_, _ = h.cfg.Feeds.ResetErrorFeedPollCircuits(r.Context())
+	if _, err := h.cfg.Feeds.ResetErrorFeedPollCircuits(r.Context()); err != nil {
+		h.failRedirect(w, r, adminFeedsRedirect(r), "feeds circuit reset", err)
+		return
+	}
 	http.Redirect(w, r, adminFeedsRedirect(r), http.StatusFound)
 }
 

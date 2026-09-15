@@ -217,7 +217,11 @@ func (h *Handler) handleFeedUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if h.cfg.Refresher != nil {
-		_ = h.cfg.Refresher.RescheduleFeed(r.Context(), id, params.IntervalMinutes)
+		// The feed row is already saved; a failed reschedule only delays the
+		// next poll until the scheduler picks the row up on its own.
+		if err := h.cfg.Refresher.RescheduleFeed(r.Context(), id, params.IntervalMinutes); err != nil {
+			h.log.WarnContext(r.Context(), "reschedule feed failed", "feed_id", id, "err", err)
+		}
 	}
 	http.Redirect(w, r, "/ui/feeds/"+strconv.FormatInt(id, 10), http.StatusFound)
 }
@@ -255,10 +259,14 @@ func (h *Handler) handleFeedRefresh(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
+	target := refererOr(r, "/ui/feeds/"+strconv.FormatInt(id, 10))
 	if h.cfg.Refresher != nil {
-		_, _ = h.cfg.Refresher.RefreshFeedManual(r.Context(), id)
+		if _, err := h.cfg.Refresher.RefreshFeedManual(r.Context(), id); err != nil {
+			h.failRedirect(w, r, target, "feed refresh", err)
+			return
+		}
 	}
-	http.Redirect(w, r, refererOr(r, "/ui/feeds/"+strconv.FormatInt(id, 10)), http.StatusFound)
+	http.Redirect(w, r, target, http.StatusFound)
 }
 
 func (h *Handler) handleFeedMarkRead(w http.ResponseWriter, r *http.Request) {
@@ -272,9 +280,13 @@ func (h *Handler) handleFeedMarkRead(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	_, _ = h.cfg.Entries.MarkAllFeedEntriesRead(r.Context(), p.UserID, feedID)
+	target := "/ui/unread?feed_id=" + strconv.FormatInt(feedID, 10)
+	if _, err := h.cfg.Entries.MarkAllFeedEntriesRead(r.Context(), p.UserID, feedID); err != nil {
+		h.failRedirect(w, r, target, "mark feed read", err)
+		return
+	}
 	h.invalidateUnread(p.UserID)
-	http.Redirect(w, r, "/ui/unread?feed_id="+strconv.FormatInt(feedID, 10), http.StatusFound)
+	http.Redirect(w, r, target, http.StatusFound)
 }
 
 func (h *Handler) handleFeedsImport(w http.ResponseWriter, r *http.Request) {

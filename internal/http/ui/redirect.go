@@ -32,7 +32,15 @@ func localUIPath(raw, fallback string) string {
 	}
 	// url.Parse("//evil/ui/x") gives Host=evil, Path=/ui/x — dropping the
 	// host is exactly what we want; RequestURI keeps only path and query.
-	return (&url.URL{Path: p, RawQuery: u.RawQuery}).RequestURI()
+	// A failure banner from the previous action must not follow the user
+	// to the next one.
+	rawQuery := u.RawQuery
+	if q := u.Query(); q.Has(flashErrParam) || q.Has(flashErrRequest) {
+		q.Del(flashErrParam)
+		q.Del(flashErrRequest)
+		rawQuery = q.Encode()
+	}
+	return (&url.URL{Path: p, RawQuery: rawQuery}).RequestURI()
 }
 
 // refererOr returns the Referer reduced to a UI path, or fallback.
