@@ -241,7 +241,7 @@ func TestTrustedProxiesEnv(t *testing.T) {
 func TestLoad_FeedPollLogRetentionRange(t *testing.T) {
 	t.Setenv("DATABASE_URL", "postgres://u:p@localhost:5432/db?sslmode=disable")
 	// "0" is documented as "keep forever" for both log-like tables; it must
-	// not silently fall back to the default (that is what parseInt does).
+	// not be treated as "unset".
 	t.Setenv("FEED_POLL_LOG_RETENTION_DAYS", "0")
 	t.Setenv("FILTER_MATCH_RETENTION_DAYS", "0")
 	cfg, err := Load()
@@ -256,11 +256,34 @@ func TestLoad_FeedPollLogRetentionRange(t *testing.T) {
 	if _, err := Load(); err == nil {
 		t.Fatal("3651 must be rejected")
 	}
-	// Non-numeric garbage falls back to the default, like every other
-	// parseInt-backed setting.
-	t.Setenv("FEED_POLL_LOG_RETENTION_DAYS", "abc")
-	if cfg, err := Load(); err != nil || cfg.FeedPollLogRetentionDays != 14 {
-		t.Fatalf("garbage: cfg=%d err=%v", cfg.FeedPollLogRetentionDays, err)
+}
+
+func TestLoad_RejectsMalformedNumbers(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://u:p@localhost:5432/db?sslmode=disable")
+	cases := []struct{ key, val string }{
+		{"FEED_POLL_LOG_RETENTION_DAYS", "abc"},
+		{"FETCH_TIMEOUT_SECONDS", "15s"},
+		{"WEBHOOK_TIMEOUT", "10"},
+		{"SESSION_MAX_AGE", "30d"},
+		{"RATE_LIMIT_RPS", "ten"},
+		{"WORKER_POOL_SIZE", "-3"},
+		{"SCHEDULER_TICK", "0s"},
+		{"WEBHOOK_WORKER_POOL_SIZE", "x"},
+	}
+	for _, c := range cases {
+		t.Run(c.key, func(t *testing.T) {
+			t.Setenv(c.key, c.val)
+			_, err := Load()
+			if err == nil || !strings.Contains(err.Error(), c.key) {
+				t.Fatalf("%s=%q must fail naming the variable, got %v", c.key, c.val, err)
+			}
+		})
+	}
+	t.Setenv("FETCH_TIMEOUT_SECONDS", "x")
+	t.Setenv("WEBHOOK_TIMEOUT", "y")
+	_, err := Load()
+	if err == nil || !strings.Contains(err.Error(), "FETCH_TIMEOUT_SECONDS") || !strings.Contains(err.Error(), "WEBHOOK_TIMEOUT") {
+		t.Fatalf("all malformed variables must be reported at once, got %v", err)
 	}
 }
 

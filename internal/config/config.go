@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -148,9 +149,10 @@ type Config struct {
 }
 
 func Load() (Config, error) {
+	env := &envReader{}
 	cfg := Config{
 		DatabaseURL:      strings.TrimSpace(os.Getenv("DATABASE_URL")),
-		DatabaseMaxConns: parseInt(getEnv("DATABASE_MAX_CONNS", "0"), 0),
+		DatabaseMaxConns: env.int("DATABASE_MAX_CONNS", 0),
 		ListenAddr:       getEnv("LISTEN_ADDR", ":8080"),
 		LogLevel:         strings.ToLower(getEnv("LOG_LEVEL", "info")),
 		LogFormat:        strings.ToLower(getEnv("LOG_FORMAT", "json")), // json|text
@@ -168,46 +170,46 @@ func Load() (Config, error) {
 		FetchBlockedHosts:          parseCSV(os.Getenv("FETCH_BLOCKED_HOSTS")),
 		FetchTLSInsecureSkipVerify: parseBool(os.Getenv("FETCH_TLS_INSECURE")) || parseBool(os.Getenv("FETCH_INSECURE_SKIP_VERIFY")),
 		FetchUserAgent:             getEnv("FETCH_USER_AGENT", "rssam"),
-		FetchTimeoutSeconds:        parseInt(getEnv("FETCH_TIMEOUT_SECONDS", "15"), 15),
+		FetchTimeoutSeconds:        env.int("FETCH_TIMEOUT_SECONDS", 15),
 		FetchViaProxyURL:           strings.TrimSpace(os.Getenv("FETCH_VIA_PROXY")),
-		ScraperMaxContentBytes:     int64(parseInt(getEnv("SCRAPER_MAX_CONTENT_BYTES", "1048576"), 1048576)),
+		ScraperMaxContentBytes:     int64(env.int("SCRAPER_MAX_CONTENT_BYTES", 1048576)),
 
-		FeedCircuitBreakerThreshold: parseInt(getEnv("FEED_CIRCUIT_BREAKER_THRESHOLD", "10"), 10),
+		FeedCircuitBreakerThreshold: env.int("FEED_CIRCUIT_BREAKER_THRESHOLD", 10),
 		FeedPollDailyResetEnabled:   parseBoolDefault(os.Getenv("FEED_POLL_DAILY_RESET"), true),
 		FeedPollDailyResetTZ:        getEnv("FEED_POLL_DAILY_RESET_TZ", "Europe/Moscow"),
 
 		MaxAPIBaseURL:        strings.TrimSpace(os.Getenv("MAX_API_BASE_URL")),
-		MaxDefaultLimit:      parseInt(getEnv("MAX_DEFAULT_LIMIT", "100"), 100),
-		MaxDefaultLookback:   parseDuration(getEnv("MAX_DEFAULT_LOOKBACK_MS", "24h"), 24*time.Hour),
-		MaxOverlap:           parseDuration(getEnv("MAX_OVERLAP_MS", "2m"), 2*time.Minute),
-		MaxRateLimitSeconds:  parseInt(getEnv("MAX_RATE_LIMIT_SECONDS", "60"), 60),
-		MaxRequestIntervalMs: parseInt(getEnv("MAX_REQUEST_INTERVAL_MS", "1000"), 1000),
-		MaxConcurrentSlots:   parseInt(getEnv("MAX_CONCURRENT_SLOTS", "1"), 1),
+		MaxDefaultLimit:      env.int("MAX_DEFAULT_LIMIT", 100),
+		MaxDefaultLookback:   env.duration("MAX_DEFAULT_LOOKBACK_MS", 24*time.Hour),
+		MaxOverlap:           env.duration("MAX_OVERLAP_MS", 2*time.Minute),
+		MaxRateLimitSeconds:  env.int("MAX_RATE_LIMIT_SECONDS", 60),
+		MaxRequestIntervalMs: env.int("MAX_REQUEST_INTERVAL_MS", 1000),
+		MaxConcurrentSlots:   env.int("MAX_CONCURRENT_SLOTS", 1),
 		MaxAllowPrivateAPI:   parseBool(os.Getenv("MAX_ALLOW_PRIVATE_API")),
 
 		MaxstatAccessToken:      strings.TrimSpace(os.Getenv("MAXSTAT_ACCESS_TOKEN")),
 		MaxstatAPIBaseURL:       strings.TrimSpace(getEnv("MAXSTAT_API_BASE_URL", "https://maxstat.ru/api/v1")),
-		MaxstatDefaultLimit:     parseInt(getEnv("MAXSTAT_DEFAULT_LIMIT", "100"), 100),
-		MaxstatDefaultLookback:  parseDuration(getEnv("MAXSTAT_DEFAULT_LOOKBACK", "24h"), 24*time.Hour),
-		MaxstatOverlap:          parseDuration(getEnv("MAXSTAT_OVERLAP", "2m"), 2*time.Minute),
-		MaxstatRateLimitSeconds: parseInt(getEnv("MAXSTAT_RATE_LIMIT_SECONDS", "1800"), 1800),
+		MaxstatDefaultLimit:     env.int("MAXSTAT_DEFAULT_LIMIT", 100),
+		MaxstatDefaultLookback:  env.duration("MAXSTAT_DEFAULT_LOOKBACK", 24*time.Hour),
+		MaxstatOverlap:          env.duration("MAXSTAT_OVERLAP", 2*time.Minute),
+		MaxstatRateLimitSeconds: env.int("MAXSTAT_RATE_LIMIT_SECONDS", 1800),
 
 		TelegramProxyServiceURL:     strings.TrimSpace(os.Getenv("TELEGRAM_PROXY_SERVICE_URL")),
 		TelegramProxyServiceToken:   strings.TrimSpace(os.Getenv("TELEGRAM_PROXY_SERVICE_TOKEN")),
 		TelegramProxyTargetURL:      strings.TrimSpace(os.Getenv("TELEGRAM_PROXY_TARGET_URL")),
 		TelegramStaticProxy:         strings.TrimSpace(os.Getenv("TELEGRAM_STATIC_PROXY")),
-		TelegramProxyConnectTimeout: parseDuration(getEnv("TELEGRAM_PROXY_CONNECT_TIMEOUT", "10s"), 10*time.Second),
-		TelegramProxyRequestTimeout: parseDuration(getEnv("TELEGRAM_PROXY_REQUEST_TIMEOUT", "25s"), 25*time.Second),
-		TelegramProxyRetry:          parseInt(getEnv("TELEGRAM_PROXY_RETRY", "1"), 1),
-		TelegramMaxPages:            parseInt(getEnv("TELEGRAM_MAX_PAGES", "1"), 1),
-		TelegramConcurrentSlots:     parseInt(getEnv("TELEGRAM_CONCURRENT_SLOTS", "4"), 4),
+		TelegramProxyConnectTimeout: env.duration("TELEGRAM_PROXY_CONNECT_TIMEOUT", 10*time.Second),
+		TelegramProxyRequestTimeout: env.duration("TELEGRAM_PROXY_REQUEST_TIMEOUT", 25*time.Second),
+		TelegramProxyRetry:          env.int("TELEGRAM_PROXY_RETRY", 1),
+		TelegramMaxPages:            env.int("TELEGRAM_MAX_PAGES", 1),
+		TelegramConcurrentSlots:     env.int("TELEGRAM_CONCURRENT_SLOTS", 4),
 
 		VKAccessToken:      strings.TrimSpace(os.Getenv("VK_ACCESS_TOKEN")),
 		VKAPIVersion:       getEnv("VK_API_VERSION", "5.199"),
-		VKDefaultCount:     parseInt(getEnv("VK_DEFAULT_COUNT", "100"), 100),
-		VKDefaultLookback:  parseDuration(getEnv("VK_DEFAULT_LOOKBACK", "24h"), 24*time.Hour),
-		VKOverlap:          parseDuration(getEnv("VK_OVERLAP", "2m"), 2*time.Minute),
-		VKRateLimitSeconds: parseInt(getEnv("VK_RATE_LIMIT_SECONDS", "5"), 5),
+		VKDefaultCount:     env.int("VK_DEFAULT_COUNT", 100),
+		VKDefaultLookback:  env.duration("VK_DEFAULT_LOOKBACK", 24*time.Hour),
+		VKOverlap:          env.duration("VK_OVERLAP", 2*time.Minute),
+		VKRateLimitSeconds: env.int("VK_RATE_LIMIT_SECONDS", 5),
 
 		RutubeAPIBaseURL: strings.TrimSpace(getEnv("RUTUBE_API_BASE_URL", "https://rutube.ru/api")),
 
@@ -215,33 +217,33 @@ func Load() (Config, error) {
 		DzenUserAgent: strings.TrimSpace(os.Getenv("DZEN_USER_AGENT")),
 		DzenCookie:    strings.TrimSpace(getEnv("DZEN_COOKIE", "zen_sso_checked=1")),
 
-		RemovedRetentionDays:     parseInt(getEnv("REMOVED_RETENTION_DAYS", "30"), 30),
-		WebhookLogRetentionDays:  parseInt(getEnv("WEBHOOK_LOG_RETENTION_DAYS", "90"), 90),
-		FilterMatchRetentionDays: parseIntAllowZero(getEnv("FILTER_MATCH_RETENTION_DAYS", "90"), 90),
-		FeedPollLogRetentionDays: parseIntAllowZero(getEnv("FEED_POLL_LOG_RETENTION_DAYS", "14"), 14),
-		FeedSilentDays:           parseIntAllowZero(getEnv("FEED_SILENT_DAYS", "7"), 7),
+		RemovedRetentionDays:     env.int("REMOVED_RETENTION_DAYS", 30),
+		WebhookLogRetentionDays:  env.int("WEBHOOK_LOG_RETENTION_DAYS", 90),
+		FilterMatchRetentionDays: env.int("FILTER_MATCH_RETENTION_DAYS", 90),
+		FeedPollLogRetentionDays: env.int("FEED_POLL_LOG_RETENTION_DAYS", 14),
+		FeedSilentDays:           env.int("FEED_SILENT_DAYS", 7),
 		BackupDir:                strings.TrimSpace(os.Getenv("BACKUP_DIR")),
-		BackupMaxAge:             parseDuration(getEnv("BACKUP_MAX_AGE", "36h"), 36*time.Hour),
-		AuditLogRetentionDays:    parseIntAllowZero(getEnv("AUDIT_LOG_RETENTION_DAYS", "180"), 180),
-		CleanupInterval:          parseDuration(getEnv("CLEANUP_INTERVAL", "24h"), 24*time.Hour),
+		BackupMaxAge:             env.duration("BACKUP_MAX_AGE", 36*time.Hour),
+		AuditLogRetentionDays:    env.int("AUDIT_LOG_RETENTION_DAYS", 180),
+		CleanupInterval:          env.duration("CLEANUP_INTERVAL", 24*time.Hour),
 
-		WorkerPoolSize:      parseInt(getEnv("WORKER_POOL_SIZE", "10"), 10),
-		SchedulerTick:       parseDuration(getEnv("SCHEDULER_TICK", "5s"), 5*time.Second),
-		MinPollInterval:     parseDuration(getEnv("MIN_POLL_INTERVAL", "60s"), 60*time.Second),
-		MaxPollInterval:     parseDuration(getEnv("MAX_POLL_INTERVAL", "24h"), 24*time.Hour),
-		AdaptiveMaxInterval: parseDuration(getEnv("ADAPTIVE_MAX_INTERVAL", "6h"), 6*time.Hour),
+		WorkerPoolSize:      env.int("WORKER_POOL_SIZE", 10),
+		SchedulerTick:       env.duration("SCHEDULER_TICK", 5*time.Second),
+		MinPollInterval:     env.duration("MIN_POLL_INTERVAL", 60*time.Second),
+		MaxPollInterval:     env.duration("MAX_POLL_INTERVAL", 24*time.Hour),
+		AdaptiveMaxInterval: env.duration("ADAPTIVE_MAX_INTERVAL", 6*time.Hour),
 		WorkerInstanceID:    strings.TrimSpace(os.Getenv("WORKER_INSTANCE_ID")),
 
-		MaxFilterRulesPerFilter: parseInt(getEnv("MAX_FILTER_RULES_PER_FILTER", "50"), 50),
-		MaxRegexLength:          parseInt(getEnv("MAX_REGEX_LENGTH", "2048"), 2048),
+		MaxFilterRulesPerFilter: env.int("MAX_FILTER_RULES_PER_FILTER", 50),
+		MaxRegexLength:          env.int("MAX_REGEX_LENGTH", 2048),
 
-		WebhookMaxAttempts: parseInt(getEnv("WEBHOOK_MAX_ATTEMPTS", "10"), 10),
-		WebhookTimeout:     parseDuration(getEnv("WEBHOOK_TIMEOUT", "10s"), 10*time.Second),
-		WebhookRetryBase:   parseDuration(getEnv("WEBHOOK_RETRY_BASE", "5s"), 5*time.Second),
-		WebhookRetryMax:    parseDuration(getEnv("WEBHOOK_RETRY_MAX", "1h"), time.Hour),
+		WebhookMaxAttempts: env.int("WEBHOOK_MAX_ATTEMPTS", 10),
+		WebhookTimeout:     env.duration("WEBHOOK_TIMEOUT", 10*time.Second),
+		WebhookRetryBase:   env.duration("WEBHOOK_RETRY_BASE", 5*time.Second),
+		WebhookRetryMax:    env.duration("WEBHOOK_RETRY_MAX", time.Hour),
 		WSEnabled:          parseBool(getEnv("WS_ENABLED", "true")),
-		WSClientBuffer:     parseInt(getEnv("WS_CLIENT_BUFFER", "100"), 100),
-		WSPingInterval:     parseDuration(getEnv("WS_PING_INTERVAL", "30s"), 30*time.Second),
+		WSClientBuffer:     env.int("WS_CLIENT_BUFFER", 100),
+		WSPingInterval:     env.duration("WS_PING_INTERVAL", 30*time.Second),
 
 		UIEnabled: parseBool(os.Getenv("UI_ENABLED")),
 
@@ -249,27 +251,26 @@ func Load() (Config, error) {
 		StoreEntriesMode: parseStoreEntriesMode(),
 
 		HSTSEnabled:         parseBool(os.Getenv("HSTS")),
-		SessionMaxAge:       parseDuration(getEnv("SESSION_MAX_AGE", "720h"), 30*24*time.Hour),
+		SessionMaxAge:       env.duration("SESSION_MAX_AGE", 30*24*time.Hour),
 		TrustedProxies:      parseTrustedProxies(),
 		RateLimitEnabled:    parseBoolDefault(os.Getenv("RATE_LIMIT_ENABLED"), true),
-		RateLimitRPS:        parseFloat(getEnv("RATE_LIMIT_RPS", "10"), 10),
-		RateLimitBurst:      parseInt(getEnv("RATE_LIMIT_BURST", "20"), 20),
-		LoginRateLimitRPS:   parseFloat(getEnv("LOGIN_RATE_LIMIT_RPS", "0.2"), 0.2),
-		LoginRateLimitBurst: parseInt(getEnv("LOGIN_RATE_LIMIT_BURST", "10"), 10),
-		MaxRequestBodyBytes: int64(parseInt(getEnv("MAX_REQUEST_BODY_BYTES", "1048576"), 1048576)),
-		MaxImportFeeds:      parseInt(getEnv("MAX_IMPORT_FEEDS", "500"), 500),
+		RateLimitRPS:        env.float("RATE_LIMIT_RPS", 10),
+		RateLimitBurst:      env.int("RATE_LIMIT_BURST", 20),
+		LoginRateLimitRPS:   env.float("LOGIN_RATE_LIMIT_RPS", 0.2),
+		LoginRateLimitBurst: env.int("LOGIN_RATE_LIMIT_BURST", 10),
+		MaxRequestBodyBytes: int64(env.int("MAX_REQUEST_BODY_BYTES", 1048576)),
+		MaxImportFeeds:      env.int("MAX_IMPORT_FEEDS", 500),
 		CompressEnabled:     parseBoolDefault(os.Getenv("COMPRESS_ENABLED"), true),
 		PprofEnabled:        parseBool(os.Getenv("PPROF_ENABLED")),
 		PprofListenAddr:     getEnv("PPROF_LISTEN_ADDR", "127.0.0.1:6060"),
-		ShutdownTimeout:     parseDuration(getEnv("SHUTDOWN_TIMEOUT", "15s"), 15*time.Second),
+		ShutdownTimeout:     env.duration("SHUTDOWN_TIMEOUT", 15*time.Second),
 	}
 
-	if raw := strings.TrimSpace(os.Getenv("WEBHOOK_WORKER_POOL_SIZE")); raw == "" {
-		cfg.WebhookWorkerPoolSize = cfg.WorkerPoolSize
-	} else {
-		cfg.WebhookWorkerPoolSize = parseInt(raw, cfg.WorkerPoolSize)
-	}
+	cfg.WebhookWorkerPoolSize = env.int("WEBHOOK_WORKER_POOL_SIZE", cfg.WorkerPoolSize)
 
+	if err := errors.Join(env.errs...); err != nil {
+		return Config{}, err
+	}
 	if err := cfg.Validate(); err != nil {
 		return Config{}, err
 	}
@@ -521,39 +522,6 @@ func parseBoolDefault(v string, def bool) bool {
 	return parseBool(v)
 }
 
-func parseFloat(v string, def float64) float64 {
-	v = strings.TrimSpace(v)
-	if v == "" {
-		return def
-	}
-	var n float64
-	var frac float64
-	var div float64 = 1
-	dot := false
-	for _, r := range v {
-		if r == '.' {
-			dot = true
-			continue
-		}
-		if r < '0' || r > '9' {
-			return def
-		}
-		if dot {
-			div *= 10
-			frac = frac*10 + float64(r-'0')
-		} else {
-			n = n*10 + float64(r-'0')
-		}
-	}
-	if dot {
-		n += frac / div
-	}
-	if n <= 0 {
-		return def
-	}
-	return n
-}
-
 // parseTrustedProxies distinguishes "unset" (loopback default) from an
 // explicitly empty TRUSTED_PROXIES= (trust no forwarding headers at all).
 func parseTrustedProxies() []string {
@@ -581,24 +549,6 @@ func parseCSV(v string) []string {
 	return out
 }
 
-func parseInt(v string, def int) int {
-	v = strings.TrimSpace(v)
-	if v == "" {
-		return def
-	}
-	n := 0
-	for _, r := range v {
-		if r < '0' || r > '9' {
-			return def
-		}
-		n = n*10 + int(r-'0')
-	}
-	if n == 0 {
-		return def
-	}
-	return n
-}
-
 // placeholderAuthTokens are the values shipped in .env.example / docs that
 // people copy verbatim. They are refused at start unless ALLOW_DEV_TOKEN=true.
 var placeholderAuthTokens = map[string]struct{}{
@@ -619,22 +569,48 @@ func IsPlaceholderPassword(password string) bool {
 	return strings.EqualFold(strings.TrimSpace(password), "changeme")
 }
 
-// parseIntAllowZero is parseInt for settings where an explicit "0" is a valid
-// value ("disabled") rather than "use the default".
-func parseIntAllowZero(v string, def int) int {
-	if strings.TrimSpace(v) == "0" {
-		return 0
-	}
-	return parseInt(v, def)
+// envReader parses numeric settings and records every malformed value so
+// Load can refuse to start with the variable named. A silent fallback to the
+// default (the previous behaviour) hid typos like FETCH_TIMEOUT_SECONDS=15s
+// or WEBHOOK_TIMEOUT=10 until the service misbehaved in production.
+type envReader struct {
+	errs []error
 }
 
-func parseDuration(v string, def time.Duration) time.Duration {
-	v = strings.TrimSpace(v)
+func (e *envReader) int(key string, def int) int {
+	v := strings.TrimSpace(os.Getenv(key))
+	if v == "" {
+		return def
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil {
+		e.errs = append(e.errs, fmt.Errorf("%s: %q is not an integer", key, v))
+		return def
+	}
+	return n
+}
+
+func (e *envReader) float(key string, def float64) float64 {
+	v := strings.TrimSpace(os.Getenv(key))
+	if v == "" {
+		return def
+	}
+	n, err := strconv.ParseFloat(v, 64)
+	if err != nil {
+		e.errs = append(e.errs, fmt.Errorf("%s: %q is not a number", key, v))
+		return def
+	}
+	return n
+}
+
+func (e *envReader) duration(key string, def time.Duration) time.Duration {
+	v := strings.TrimSpace(os.Getenv(key))
 	if v == "" {
 		return def
 	}
 	d, err := time.ParseDuration(v)
-	if err != nil || d <= 0 {
+	if err != nil {
+		e.errs = append(e.errs, fmt.Errorf("%s: %q is not a duration (use 30s, 5m, 24h)", key, v))
 		return def
 	}
 	return d
