@@ -22,6 +22,9 @@ type Client struct {
 	UserID int64
 
 	send chan []byte
+	// gone is set by Hub.Unregister together with close(send); guarded by
+	// the hub mutex, not by mu.
+	gone bool
 
 	mu            sync.RWMutex
 	subscriptions map[string]struct{}

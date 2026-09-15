@@ -47,9 +47,14 @@ func (h *Hub) PingInterval() time.Duration {
 	return h.pingInterval
 }
 
+// Register is a no-op for a client that was already unregistered: its send
+// channel is closed and a later publish would panic on it.
 func (h *Hub) Register(c *Client) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
+	if c.gone {
+		return
+	}
 	h.clients[c] = struct{}{}
 }
 
@@ -60,6 +65,7 @@ func (h *Hub) Unregister(c *Client) {
 		return
 	}
 	delete(h.clients, c)
+	c.gone = true
 	close(c.send)
 }
 
@@ -92,14 +98,15 @@ func (h *Hub) publish(userID int64, channels []string, event Envelope) {
 		return
 	}
 
+	// The send happens under the read lock: Unregister closes c.send under
+	// the write lock, so a client present in the map has an open channel.
+	// Sending after a snapshot let a concurrent Unregister close the channel
+	// first — an unrecovered "send on closed channel" in a worker goroutine.
+	// The non-blocking send never waits on a client, so holding the lock
+	// costs nothing; eviction needs the write lock and runs afterwards.
+	var slow []*Client
 	h.mu.RLock()
-	clients := make([]*Client, 0, len(h.clients))
 	for c := range h.clients {
-		clients = append(clients, c)
-	}
-	h.mu.RUnlock()
-
-	for _, c := range clients {
 		if userID > 0 && c.UserID != userID {
 			continue
 		}
@@ -109,10 +116,14 @@ func (h *Hub) publish(userID int64, channels []string, event Envelope) {
 		select {
 		case c.send <- payload:
 		default:
-			// Медленного клиента отключаем, чтобы не тормозить broadcast.
-			c.Close()
-			h.Unregister(c)
+			slow = append(slow, c)
 		}
+	}
+	h.mu.RUnlock()
+
+	for _, c := range slow {
+		c.Close()
+		h.Unregister(c)
 	}
 }
 
