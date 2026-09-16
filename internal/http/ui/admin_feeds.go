@@ -11,8 +11,6 @@ import (
 	"rssam/internal/storage"
 )
 
-const adminFeedsDetailLookupLimit = 10000
-
 type adminFeedRowView struct {
 	storage.AdminFeedRow
 	Status string
@@ -368,16 +366,10 @@ func (h *Handler) handleAdminFeedShow(w http.ResponseWriter, r *http.Request) {
 
 	detail := adminFeedDetailView{Feed: feed}
 	if h.cfg.AdminFeeds != nil {
-		rows, err := h.cfg.AdminFeeds.ListAdminFeeds(r.Context(), adminFeedsDetailLookupLimit)
-		if err == nil {
-			for _, row := range rows {
-				if row.ID == id {
-					detail.EntryCount = row.EntryCount
-					detail.UnreadCount = row.UnreadCount
-					detail.Status = classifyAdminFeedStatus(row, time.Now())
-					break
-				}
-			}
+		if row, err := h.cfg.AdminFeeds.GetAdminFeedRow(r.Context(), id); err == nil {
+			detail.EntryCount = row.EntryCount
+			detail.UnreadCount = row.UnreadCount
+			detail.Status = classifyAdminFeedStatus(row, time.Now())
 		}
 		if job, err := h.cfg.AdminFeeds.GetPollFeedJob(r.Context(), id); err == nil {
 			detail.Job = job

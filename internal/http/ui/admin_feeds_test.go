@@ -19,8 +19,13 @@ type uiMemAdminFeeds struct {
 	jobs    storage.PollFeedJobCounts
 }
 
-func (m *uiMemAdminFeeds) ListAdminFeeds(_ context.Context, _ int) ([]storage.AdminFeedRow, error) {
-	return m.rows, nil
+func (m *uiMemAdminFeeds) GetAdminFeedRow(_ context.Context, feedID int64) (storage.AdminFeedRow, error) {
+	for _, row := range m.rows {
+		if row.ID == feedID {
+			return row, nil
+		}
+	}
+	return storage.AdminFeedRow{}, storage.ErrNotFound
 }
 func (m *uiMemAdminFeeds) ListAdminFeedsPage(_ context.Context, params storage.AdminFeedsListParams) ([]storage.AdminFeedRow, int, error) {
 	now := time.Now()

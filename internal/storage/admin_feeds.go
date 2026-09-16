@@ -63,7 +63,7 @@ type AdminFeedsListParams struct {
 
 // AdminFeedStore provides admin-only feed monitoring queries.
 type AdminFeedStore interface {
-	ListAdminFeeds(ctx context.Context, limit int) ([]AdminFeedRow, error)
+	GetAdminFeedRow(ctx context.Context, feedID int64) (AdminFeedRow, error)
 	ListAdminFeedsPage(ctx context.Context, params AdminFeedsListParams) ([]AdminFeedRow, int, error)
 	AdminFeedSummary(ctx context.Context, silentAfter time.Duration) (AdminFeedSummary, error)
 	PollFeedJobCounts(ctx context.Context) (PollFeedJobCounts, error)
@@ -73,34 +73,26 @@ type AdminFeedStore interface {
 	EstimateDatabaseSize(ctx context.Context) (int64, error)
 }
 
-func (s *PostgresStore) ListAdminFeeds(ctx context.Context, limit int) ([]AdminFeedRow, error) {
-	if limit <= 0 {
-		limit = 10000
-	}
-	if limit > 10000 {
-		limit = 10000
-	}
+// GetAdminFeedRow is one feed with its counters, for the admin feed card.
+func (s *PostgresStore) GetAdminFeedRow(ctx context.Context, feedID int64) (AdminFeedRow, error) {
 	q := `SELECT` + adminFeedSelectCols + adminFeedFromJoins + `
-ORDER BY f.title ASC, f.id ASC
-LIMIT $1`
-	rows, err := s.db.Query(ctx, q, limit)
+WHERE f.id = $1`
+	rows, err := s.db.Query(ctx, q, feedID)
 	if err != nil {
-		return nil, fmt.Errorf("list admin feeds: %w", err)
+		return AdminFeedRow{}, fmt.Errorf("get admin feed row: %w", err)
 	}
 	defer rows.Close()
-
-	out := make([]AdminFeedRow, 0, limit)
-	for rows.Next() {
-		row, err := scanAdminFeedRow(rows)
-		if err != nil {
-			return nil, fmt.Errorf("scan admin feed row: %w", err)
+	if !rows.Next() {
+		if err := rows.Err(); err != nil {
+			return AdminFeedRow{}, fmt.Errorf("get admin feed row: %w", err)
 		}
-		out = append(out, row)
+		return AdminFeedRow{}, ErrNotFound
 	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate admin feeds: %w", err)
+	row, err := scanAdminFeedRow(rows)
+	if err != nil {
+		return AdminFeedRow{}, fmt.Errorf("scan admin feed row: %w", err)
 	}
-	return out, nil
+	return row, nil
 }
 
 const adminFeedSelectCols = `

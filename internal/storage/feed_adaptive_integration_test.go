@@ -29,14 +29,12 @@ func TestIntegration_AdaptiveIntervalFlagAndActivity(t *testing.T) {
 	if err != nil || upd.AdaptiveInterval {
 		t.Fatalf("update must clear the flag when omitted: %v %v", upd.AdaptiveInterval, err)
 	}
-	rows, err := store.ListAdminFeeds(ctx, 0)
+	row, err := store.GetAdminFeedRow(ctx, feed.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, r := range rows {
-		if r.ID == feed.ID && r.AdaptiveInterval {
-			t.Fatal("admin row still shows adaptive after update")
-		}
+	if row.AdaptiveInterval {
+		t.Fatal("admin row still shows adaptive after update")
 	}
 
 	cat, err := store.CreateCategory(ctx, owner.ID, "adaptive-cat", "#000")

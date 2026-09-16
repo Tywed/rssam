@@ -302,7 +302,7 @@ func TestIntegration_AdminFeedDashboard(t *testing.T) {
 		t.Fatalf("summary=%+v", sum)
 	}
 
-	all, err := store.ListAdminFeeds(ctx, 0)
+	all, _, err := store.ListAdminFeedsPage(ctx, AdminFeedsListParams{Limit: 10})
 	if err != nil || len(all) != 4 {
 		t.Fatalf("list all: n=%d err=%v", len(all), err)
 	}
@@ -371,3 +371,23 @@ func feedIDs(rows []AdminFeedRow) []int64 {
 }
 
 func ptr[T any](v T) *T { return &v }
+
+func TestIntegration_GetAdminFeedRow(t *testing.T) {
+	store := isolatedStore(t)
+	ctx := context.Background()
+	owner := newIntegrationUser(t, store, "adminrow")
+	feed := newFeedForUser(t, store, owner.ID, "adminrow", 60)
+	if _, _, err := store.CreateEntries(ctx, feed.ID, []CreateEntryParams{
+		{Title: "a", URL: "https://example.com/ar/1", Hash: "ar-1"},
+		{Title: "b", URL: "https://example.com/ar/2", Hash: "ar-2", Status: EntryStatusRead},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	row, err := store.GetAdminFeedRow(ctx, feed.ID)
+	if err != nil || row.ID != feed.ID || row.EntryCount != 2 || row.UnreadCount != 1 {
+		t.Fatalf("row=%+v err=%v", row, err)
+	}
+	if _, err := store.GetAdminFeedRow(ctx, feed.ID+1_000_000); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("missing feed: %v", err)
+	}
+}
