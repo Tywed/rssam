@@ -91,7 +91,7 @@ func TestWSAuthSessionCookie(t *testing.T) {
 	}
 	req := httptest.NewRequest(http.MethodGet, "/ws/v1", nil)
 	req.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: "abc"})
-	if !s.hasValidAuthToken(req) {
+	if p, ok := s.authenticateRequest(req.Context(), req); !ok || p.UserID != 1 {
 		t.Fatal("expected ws cookie auth")
 	}
 }

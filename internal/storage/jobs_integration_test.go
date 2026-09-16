@@ -42,7 +42,7 @@ func TestIntegration_PollQueueLifecycle(t *testing.T) {
 		t.Fatalf("limit 0 must return nothing, got %v", got)
 	}
 
-	if err := store.EnqueuePollFeedJob(ctx, due.ID, time.Now().Add(time.Minute)); err != nil {
+	if err := store.EnqueuePollFeedJobs(ctx, []int64{due.ID}, time.Now().Add(time.Minute)); err != nil {
 		t.Fatal(err)
 	}
 	// Once queued the feed is no longer "due" for the scheduler.
@@ -50,7 +50,7 @@ func TestIntegration_PollQueueLifecycle(t *testing.T) {
 		t.Fatalf("queued feed listed as due: %v", ids)
 	}
 	// A second enqueue only moves run_at earlier, never later.
-	if err := store.EnqueuePollFeedJob(ctx, due.ID, time.Now().Add(-time.Second)); err != nil {
+	if err := store.EnqueuePollFeedJobs(ctx, []int64{due.ID}, time.Now().Add(-time.Second)); err != nil {
 		t.Fatal(err)
 	}
 	job, err := store.GetPollFeedJob(ctx, due.ID)
@@ -95,13 +95,6 @@ func TestIntegration_PollQueueLifecycle(t *testing.T) {
 	a, _ = store.ClaimDueJobs(ctx, 10, "inst-a")
 	if len(a) != 1 {
 		t.Fatalf("reclaim after reschedule: %v", jobIDs(a))
-	}
-	if err := store.ReleaseJob(ctx, a[0].ID, "inst-a"); err != nil {
-		t.Fatal(err)
-	}
-	a, _ = store.ClaimDueJobs(ctx, 10, "inst-a")
-	if len(a) != 1 {
-		t.Fatalf("claim after release: %v", jobIDs(a))
 	}
 	if deleted, err := store.CompleteJob(ctx, a[0].ID, "inst-a"); err != nil || !deleted {
 		t.Fatalf("complete: deleted=%v err=%v", deleted, err)
@@ -290,7 +283,7 @@ func TestIntegration_AdminFeedDashboard(t *testing.T) {
 	if err := store.SetFeedManualPaused(ctx, paused.ID, true); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.EnqueuePollFeedJob(ctx, waiting.ID, time.Now()); err != nil {
+	if err := store.EnqueuePollFeedJobs(ctx, []int64{waiting.ID}, time.Now()); err != nil {
 		t.Fatal(err)
 	}
 

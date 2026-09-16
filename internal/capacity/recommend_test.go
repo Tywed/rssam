@@ -125,7 +125,7 @@ func TestRecommend_FallbackTimeout(t *testing.T) {
 }
 
 func TestObservePollDuration_EWMA(t *testing.T) {
-	ResetPollDurationForTest()
+	resetPollDuration()
 	ObservePollDuration(10 * time.Second)
 	ObservePollDuration(time.Second)
 	avg, n := PollDurationSnapshot()
@@ -135,4 +135,11 @@ func TestObservePollDuration_EWMA(t *testing.T) {
 	if avg >= 10*time.Second || avg <= time.Second {
 		t.Fatalf("ewma=%s want between 1s and 10s", avg)
 	}
+}
+
+func resetPollDuration() {
+	pollMu.Lock()
+	defer pollMu.Unlock()
+	pollEWMA = 0
+	pollSamples = 0
 }

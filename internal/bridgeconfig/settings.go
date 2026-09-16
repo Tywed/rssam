@@ -286,10 +286,3 @@ func parseDuration(s string) (time.Duration, bool) {
 	}
 	return d, true
 }
-
-func FormatDuration(d time.Duration) string {
-	if d <= 0 {
-		return ""
-	}
-	return d.String()
-}

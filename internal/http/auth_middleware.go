@@ -144,11 +144,6 @@ func (s *Server) allowBootstrapCreateUser(ctx context.Context) bool {
 	return s.adminUsername != "" && s.adminPassword != ""
 }
 
-func (s *Server) hasValidAuthToken(r *http.Request) bool {
-	p, ok := s.authenticateRequest(r.Context(), r)
-	return ok && p.UserID > 0
-}
-
 func (s *Server) sessionTTL() time.Duration {
 	if s.sessionMaxAge > 0 {
 		return s.sessionMaxAge

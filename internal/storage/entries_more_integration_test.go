@@ -56,7 +56,7 @@ func TestIntegration_EntryDedupAndCollapse(t *testing.T) {
 	if err := store.StripEntryPayloadAfterWebhook(ctx, entries[0].ID); err != nil {
 		t.Fatal(err)
 	}
-	stripped, _ := store.GetEntryByID(ctx, entries[0].ID)
+	stripped, _ := store.GetEntry(ctx, owner.ID, entries[0].ID)
 	if stripped.Title != "" || stripped.Content != "" || stripped.Status != EntryStatusRemoved {
 		t.Fatalf("stripped entry: %+v", stripped)
 	}
@@ -91,7 +91,7 @@ func TestIntegration_EntryDedupAndCollapse(t *testing.T) {
 	if len(known) != 2 {
 		t.Fatalf("collapsed hashes not recorded: %v", known)
 	}
-	if _, err := store.GetEntryByID(ctx, hashEntries[0].ID); !errors.Is(err, ErrNotFound) {
+	if _, err := store.GetEntry(ctx, owner.ID, hashEntries[0].ID); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("collapsed entry still there: err=%v", err)
 	}
 	n64, err = store.CollapseEntriesToHashes(ctx, CollapseEntriesParams{UserID: owner.ID, FeedID: &feed.ID})
@@ -168,8 +168,8 @@ func TestIntegration_EnclosuresUnreadCountsAndMarkAll(t *testing.T) {
 	if n, err := store.CountUnreadGlobalForUser(ctx, owner.ID); err != nil || n != 3 {
 		t.Fatalf("unread for user=%d err=%v", n, err)
 	}
-	if global, err := store.CountUnreadGlobal(ctx); err != nil || global != 4 {
-		t.Fatalf("unread global=%d err=%v (ours + foreign)", global, err)
+	if n, err := store.CountUnreadGlobalForUser(ctx, other.ID); err != nil || n != 1 {
+		t.Fatalf("unread for other=%d err=%v", n, err)
 	}
 
 	if _, err := store.MarkAllCategoryEntriesRead(ctx, other.ID, cat.ID); !errors.Is(err, ErrNotFound) {
@@ -187,7 +187,7 @@ func TestIntegration_EnclosuresUnreadCountsAndMarkAll(t *testing.T) {
 	if n, _ := store.CountUnreadGlobalForUser(ctx, owner.ID); n != 0 {
 		t.Fatalf("still unread: %d", n)
 	}
-	if e, _ := store.GetEntryByID(ctx, foreignEntries[0].ID); e.Status != EntryStatusUnread {
+	if e, _ := store.GetEntry(ctx, other.ID, foreignEntries[0].ID); e.Status != EntryStatusUnread {
 		t.Fatalf("mark-all leaked to another user: %+v", e)
 	}
 

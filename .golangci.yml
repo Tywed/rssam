@@ -58,10 +58,6 @@ linters:
       - path: internal/http/pprof\.go
         linters: [gosec]
         text: G118
-      # Fever API keys are md5(username:password) by protocol definition.
-      - path: internal/storage/fever_key\.go
-        linters: [gosec]
-        text: G(401|501)
       # Non-cryptographic content cursor for the max bridge.
       - path: internal/reader/max/cursor\.go
         linters: [gosec]

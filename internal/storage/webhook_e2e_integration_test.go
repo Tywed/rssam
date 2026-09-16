@@ -94,7 +94,7 @@ func TestIntegration_WebhookOnSuccessEntry_ResolvesAcrossWebhooks(t *testing.T) 
 	if err := store.StripEntryPayloadAfterWebhook(ctx, entries[0].ID); err != nil {
 		t.Fatal(err)
 	}
-	e0, err := store.GetEntryByID(ctx, entries[0].ID)
+	e0, err := store.GetEntry(ctx, owner.ID, entries[0].ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -106,7 +106,7 @@ func TestIntegration_WebhookOnSuccessEntry_ResolvesAcrossWebhooks(t *testing.T) 
 	if err := store.MarkEntryRemovedKeepPayload(ctx, entries[1].ID); err != nil {
 		t.Fatal(err)
 	}
-	e1, err := store.GetEntryByID(ctx, entries[1].ID)
+	e1, err := store.GetEntry(ctx, owner.ID, entries[1].ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -118,7 +118,7 @@ func TestIntegration_WebhookOnSuccessEntry_ResolvesAcrossWebhooks(t *testing.T) 
 	if err := store.MarkEntryReadIfActive(ctx, entries[2].ID); err != nil {
 		t.Fatal(err)
 	}
-	e2, err := store.GetEntryByID(ctx, entries[2].ID)
+	e2, err := store.GetEntry(ctx, owner.ID, entries[2].ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -129,7 +129,7 @@ func TestIntegration_WebhookOnSuccessEntry_ResolvesAcrossWebhooks(t *testing.T) 
 	if err := store.MarkEntryReadIfActive(ctx, entries[1].ID); err != nil {
 		t.Fatal(err)
 	}
-	e1, _ = store.GetEntryByID(ctx, entries[1].ID)
+	e1, _ = store.GetEntry(ctx, owner.ID, entries[1].ID)
 	if e1.Status != EntryStatusRemoved {
 		t.Fatalf("mark_read must not resurrect removed entries: %q", e1.Status)
 	}
@@ -222,7 +222,7 @@ func TestIntegration_MarkEntriesRemoved_TenantScopedSoftDelete(t *testing.T) {
 		t.Fatalf("remove: n=%d err=%v", n, err)
 	}
 	for _, id := range ids {
-		e, err := store.GetEntryByID(ctx, id)
+		e, err := store.GetEntry(ctx, owner.ID, id)
 		if err != nil || e.Status != EntryStatusRemoved || e.Title == "" {
 			t.Fatalf("entry %d after remove: status=%q title=%q err=%v", id, e.Status, e.Title, err)
 		}

@@ -31,10 +31,6 @@ type Client struct {
 	closed        bool
 }
 
-func NewClient(hub *Hub, conn *websocket.Conn) *Client {
-	return NewUserClient(hub, conn, 0)
-}
-
 // NewUserClient creates a client bound to userID.
 // MaxInboundFrameBytes caps a single client→server WebSocket frame.
 const MaxInboundFrameBytes = 16 << 10

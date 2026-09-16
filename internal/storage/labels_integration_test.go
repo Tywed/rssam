@@ -73,7 +73,7 @@ func TestIntegration_LabelEntriesHideRemovedAndMarkRead(t *testing.T) {
 	if err != nil || unread[label.ID] != 0 {
 		t.Fatalf("unread by label after mark-read=%v err=%v", unread, err)
 	}
-	e0, _ := store.GetEntryByID(ctx, entries[0].ID)
+	e0, _ := store.GetEntry(ctx, owner.ID, entries[0].ID)
 	if e0.Status != EntryStatusRemoved {
 		t.Fatalf("mark-read must not resurrect the hashed entry: %q", e0.Status)
 	}

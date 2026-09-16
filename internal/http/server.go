@@ -36,7 +36,6 @@ type Dependencies struct {
 	CategoryStore    storage.CategoryStore
 	FeedStore        storage.FeedStore
 	EntryStore       storage.EntryStore
-	EntryDedupStore  storage.EntryDedupStore
 	FilterStore      storage.FilterStore
 	FilterMatchStore storage.FilterMatchStore
 	LabelStore       storage.LabelStore

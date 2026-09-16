@@ -50,10 +50,3 @@ func TestShouldSkipMessage(t *testing.T) {
 		t.Fatal("no cursor should not skip")
 	}
 }
-
-func TestCursorStateKey(t *testing.T) {
-	k := CursorStateKey("rosgvard_krd")
-	if k == "" || k == "cursor_" {
-		t.Fatalf("key=%q", k)
-	}
-}

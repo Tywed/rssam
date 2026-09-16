@@ -25,9 +25,6 @@ func (f *fetchEntryStore) GetEntry(_ context.Context, _, id int64) (storage.Entr
 	}
 	return f.entry, nil
 }
-func (f *fetchEntryStore) GetEntryByID(_ context.Context, id int64) (storage.Entry, error) {
-	return f.GetEntry(context.Background(), 0, id)
-}
 func (f *fetchEntryStore) UpdateEntryContent(_ context.Context, _ int64, params storage.UpdateEntryContentParams) (storage.Entry, error) {
 	e := f.entry
 	e.Content = params.Content

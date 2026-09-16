@@ -115,15 +115,6 @@ func ResolveQuery(feedURL string, bridgeQuery string) (string, error) {
 	return q, nil
 }
 
-// SearchPageURL builds the public search page URL for a query.
-func SearchPageURL(query string) string {
-	query = strings.TrimSpace(query)
-	if query == "" {
-		return "https://maxstat.ru"
-	}
-	return "https://maxstat.ru/posts?search=" + url.QueryEscape(query)
-}
-
 // FeedTitle returns a display title for a search feed.
 func FeedTitle(query string) string {
 	query = strings.TrimSpace(query)

@@ -62,6 +62,3 @@ docker-down:
 
 docker-build:
 	docker compose build app
-
-ui-css:
-	@echo "app.css is committed; edit web/static/app.css directly or run tailwind locally"

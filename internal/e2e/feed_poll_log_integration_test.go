@@ -73,7 +73,7 @@ func TestE2E_FeedPollLog_FailureThenRecovery(t *testing.T) {
 	}
 	// The failed job is parked until next_check_at (10m × 2); pull it forward
 	// the same way "refresh all" does.
-	if err := env.store.EnqueuePollFeedJob(ctx, feed.ID, time.Now().UTC().Add(-time.Second)); err != nil {
+	if err := env.store.EnqueuePollFeedJobs(ctx, []int64{feed.ID}, time.Now().UTC().Add(-time.Second)); err != nil {
 		t.Fatal(err)
 	}
 

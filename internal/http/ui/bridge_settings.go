@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"rssam/internal/bridgeconfig"
-	"rssam/internal/config"
 )
 
 // BridgeSettings holds runtime bridge configuration shown in the settings UI.
@@ -98,10 +97,6 @@ func BridgeSettingsFromRuntime(rt bridgeconfig.Runtime) BridgeSettings {
 			APIBaseURL: rt.Rutube.APIBaseURL,
 		},
 	}
-}
-
-func BridgeSettingsFrom(cfg config.Config) BridgeSettings {
-	return BridgeSettingsFromRuntime(bridgeconfig.MergeEnv(cfg, bridgeconfig.Stored{}))
 }
 
 func (s TelegramBridgeSettings) ProxyConfigured() bool {

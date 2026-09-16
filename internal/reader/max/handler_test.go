@@ -3,6 +3,7 @@ package max
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -125,13 +126,13 @@ func TestHandler_Fetch_RateLimited(t *testing.T) {
 	}
 
 	_, err = h.Fetch(context.Background(), "https://max.ru/test_channel", FetchState{})
-	if _, ok := IsBackoff(err); !ok {
+	if _, ok := isBackoff(err); !ok {
 		t.Fatalf("expected backoff after 429, err=%v", err)
 	}
 
 	start := time.Now()
 	_, err = h.Fetch(context.Background(), "https://max.ru/other_channel", FetchState{})
-	if _, ok := IsBackoff(err); !ok {
+	if _, ok := isBackoff(err); !ok {
 		t.Fatalf("second fetch should backoff immediately, err=%v", err)
 	}
 	if time.Since(start) > 50*time.Millisecond {
@@ -179,7 +180,7 @@ func TestHandler_Fetch_SerializesRequests(t *testing.T) {
 				okN.Add(1)
 				return
 			}
-			if _, yes := IsBackoff(err); !yes {
+			if _, yes := isBackoff(err); !yes {
 				t.Errorf("fetch: %v", err)
 			}
 		}(i)
@@ -233,7 +234,7 @@ func TestHandler_Fetch_ConcurrentSlots(t *testing.T) {
 				okN.Add(1)
 				return
 			}
-			if _, yes := IsBackoff(err); !yes {
+			if _, yes := isBackoff(err); !yes {
 				t.Errorf("fetch: %v", err)
 			}
 		}(i)
@@ -245,4 +246,12 @@ func TestHandler_Fetch_ConcurrentSlots(t *testing.T) {
 	if okN.Load() < 3 {
 		t.Fatalf("expected at least 3 fetches to reach the API, got %d", okN.Load())
 	}
+}
+
+func isBackoff(err error) (time.Time, bool) {
+	var e *ErrBackoff
+	if errors.As(err, &e) && e != nil && !e.Until.IsZero() {
+		return e.Until, true
+	}
+	return time.Time{}, false
 }

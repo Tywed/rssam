@@ -142,14 +142,6 @@ WHERE id = $1 AND user_id = $2`
 	return s.scanEntry(s.db.QueryRow(ctx, q, id, userID))
 }
 
-func (s *PostgresStore) GetEntryByID(ctx context.Context, id int64) (Entry, error) {
-	const q = `
-SELECT ` + entrySelectColumns + `
-FROM entries
-WHERE id = $1`
-	return s.scanEntry(s.db.QueryRow(ctx, q, id))
-}
-
 func (s *PostgresStore) scanEntry(row pgx.Row) (Entry, error) {
 	var e Entry
 	err := row.Scan(
@@ -389,15 +381,6 @@ SET content = $3,
 WHERE id = $1 AND user_id = $2
 RETURNING ` + entrySelectColumns
 	return s.scanEntry(s.db.QueryRow(ctx, q, params.ID, userID, params.Content, params.OriginalContent, params.ContentFetched))
-}
-
-func (s *PostgresStore) CountUnreadGlobal(ctx context.Context) (int, error) {
-	const q = `SELECT count(*) FROM entries WHERE status = $1`
-	var total int
-	if err := s.db.QueryRow(ctx, q, EntryStatusUnread).Scan(&total); err != nil {
-		return 0, fmt.Errorf("count unread global: %w", err)
-	}
-	return total, nil
 }
 
 // CountUnreadGlobalForUser counts unread entries owned by userID.

@@ -1,8 +1,6 @@
 package max
 
 import (
-	"crypto/sha1"
-	"encoding/hex"
 	"time"
 )
 
@@ -54,10 +52,4 @@ func ComputeAfter(lastEndTimeMs int64, p CursorParams) (afterMs, endTimeMs int64
 // ShouldSkipMessage returns true when the message was already covered by the cursor.
 func ShouldSkipMessage(msgTimeMs, lastEndTimeMs int64) bool {
 	return lastEndTimeMs > 0 && msgTimeMs <= lastEndTimeMs
-}
-
-// CursorStateKey returns the PHP-compatible cache key (for logging/tests).
-func CursorStateKey(channelName string) string {
-	sum := sha1.Sum([]byte(channelName))
-	return "cursor_" + hex.EncodeToString(sum[:])
 }

@@ -5,7 +5,6 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
-	"io"
 	"strconv"
 	"strings"
 	"time"
@@ -86,15 +85,6 @@ type FeedEntry struct {
 	// feed is still importable; the importer reports them and falls back to
 	// defaults for the offending attributes.
 	SettingsErrors []string
-}
-
-// Parse reads OPML XML from r.
-func Parse(r io.Reader) (*Document, error) {
-	data, err := io.ReadAll(r)
-	if err != nil {
-		return nil, err
-	}
-	return ParseBytes(data)
 }
 
 // ParseBytes parses OPML XML.

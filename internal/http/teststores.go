@@ -18,9 +18,6 @@ func (noopEntryStore) GetEntry(_ context.Context, _, _ int64) (storage.Entry, er
 func (noopEntryStore) GetFeedEntry(_ context.Context, _, _, _ int64) (storage.Entry, error) {
 	return storage.Entry{}, storage.ErrNotFound
 }
-func (noopEntryStore) GetEntryByID(_ context.Context, _ int64) (storage.Entry, error) {
-	return storage.Entry{}, storage.ErrNotFound
-}
 func (noopEntryStore) UpdateEntryContent(_ context.Context, _ int64, _ storage.UpdateEntryContentParams) (storage.Entry, error) {
 	return storage.Entry{}, nil
 }
@@ -43,7 +40,6 @@ func (noopEntryStore) CountUnreadByFeed(_ context.Context, _ int64) (int, error)
 func (noopEntryStore) CountUnreadByCategory(_ context.Context, _ int64) (int, error) {
 	return 0, nil
 }
-func (noopEntryStore) CountUnreadGlobal(_ context.Context) (int, error)             { return 0, nil }
 func (noopEntryStore) CountUnreadGlobalForUser(context.Context, int64) (int, error) { return 0, nil }
 func (noopEntryStore) UnreadCountsForUser(_ context.Context, _ int64) (map[int64]int, map[int64]int, error) {
 	return map[int64]int{}, map[int64]int{}, nil

@@ -45,12 +45,6 @@ func NewTitleResolver(cfg RegistryConfig, tg *telegram.Handler) (*TitleResolver,
 	return &TitleResolver{rss: rss, telegram: created, page: pg}, nil
 }
 
-// DiscoverTitle returns a human-readable feed title for feedURL.
-func (r *TitleResolver) DiscoverTitle(ctx context.Context, feedURL, feedType string, tlsInsecure bool) (string, error) {
-	d, err := r.DiscoverFeed(ctx, feedURL, feedType, tlsInsecure)
-	return d.Title, err
-}
-
 // DiscoverFeed resolves feedURL to the address that serves the feed (HTML
 // pages are scanned for feed links, permanent redirects are followed) and
 // its title. Bridge URLs are returned unchanged with the bridge's title.

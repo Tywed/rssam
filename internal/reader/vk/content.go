@@ -193,8 +193,3 @@ func isValidXMLChar(r rune) bool {
 func DedupKey(ownerID, postID int) string {
 	return fmt.Sprintf("%d_%d", ownerID, postID)
 }
-
-// TitlePreview truncates to maxRunes (tests).
-func TitlePreview(text string, maxRunes int) string {
-	return max.TitleFromText(text, maxRunes)
-}

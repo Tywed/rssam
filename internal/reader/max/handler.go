@@ -168,14 +168,6 @@ func (e *ErrBackoff) RetryAt() time.Time {
 	return e.Until
 }
 
-func IsBackoff(err error) (time.Time, bool) {
-	var e *ErrBackoff
-	if errors.As(err, &e) && e != nil && !e.Until.IsZero() {
-		return e.Until, true
-	}
-	return time.Time{}, false
-}
-
 func (h *Handler) Fetch(ctx context.Context, feedURL string, st FetchState) (FetchResult, error) {
 	channel, ok := ParseChannelFromFeedURL(feedURL)
 	if !ok || channel == "" {

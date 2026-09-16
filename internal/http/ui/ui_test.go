@@ -104,9 +104,6 @@ func (uiMemEntries) GetEntry(context.Context, int64, int64) (storage.Entry, erro
 func (uiMemEntries) GetFeedEntry(context.Context, int64, int64, int64) (storage.Entry, error) {
 	return storage.Entry{}, storage.ErrNotFound
 }
-func (uiMemEntries) GetEntryByID(context.Context, int64) (storage.Entry, error) {
-	return storage.Entry{}, storage.ErrNotFound
-}
 func (uiMemEntries) UpdateEntryContent(context.Context, int64, storage.UpdateEntryContentParams) (storage.Entry, error) {
 	return storage.Entry{}, nil
 }
@@ -127,7 +124,6 @@ func (uiMemEntries) ListEnclosuresByEntryIDs(context.Context, int64, []int64) (m
 }
 func (uiMemEntries) CountUnreadByFeed(context.Context, int64) (int, error)        { return 0, nil }
 func (uiMemEntries) CountUnreadByCategory(context.Context, int64) (int, error)    { return 0, nil }
-func (uiMemEntries) CountUnreadGlobal(context.Context) (int, error)               { return 0, nil }
 func (uiMemEntries) CountUnreadGlobalForUser(context.Context, int64) (int, error) { return 0, nil }
 func (uiMemEntries) UnreadCountsForUser(context.Context, int64) (map[int64]int, map[int64]int, error) {
 	return map[int64]int{}, map[int64]int{}, nil

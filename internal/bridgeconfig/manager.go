@@ -91,10 +91,6 @@ func (m *Manager) Save(ctx context.Context, stored Stored) error {
 	return nil
 }
 
-func (m *Manager) SaveRuntime(ctx context.Context, rt Runtime) error {
-	return m.Save(ctx, RuntimeToStored(rt))
-}
-
 func (m *Manager) apply() {
 	m.mu.RLock()
 	rt := m.runtime

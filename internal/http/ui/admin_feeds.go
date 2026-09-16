@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"net/http"
 	"runtime"
-	"sort"
 	"strings"
 	"time"
 
@@ -38,18 +37,6 @@ func (h *Handler) silentAfter() time.Duration {
 		return 0
 	}
 	return time.Duration(h.cfg.FeedSilentDays) * 24 * time.Hour
-}
-
-// isSilentAdminFeed mirrors adminFeedsSilentWhere for the in-memory path.
-func isSilentAdminFeed(row storage.AdminFeedRow, now time.Time, silentAfter time.Duration) bool {
-	if silentAfter <= 0 || row.ManualPaused || row.PollPaused || row.LastError != "" || row.ParsingErrorCount > 0 {
-		return false
-	}
-	last := row.CreatedAt
-	if row.LastEntryAt != nil {
-		last = *row.LastEntryAt
-	}
-	return last.Before(now.Add(-silentAfter))
 }
 
 func classifyAdminFeedStatus(row storage.AdminFeedRow, now time.Time) string {
@@ -121,26 +108,6 @@ func formatBytes(n int64) string {
 	return fmt.Sprintf("%.1f PiB", f/unit)
 }
 
-func filterAdminFeedRows(rows []adminFeedRowView, status string, silentAfter time.Duration) []adminFeedRowView {
-	if status == "" || status == "all" {
-		return rows
-	}
-	now := time.Now()
-	out := make([]adminFeedRowView, 0, len(rows))
-	for _, row := range rows {
-		if status == "silent" {
-			if isSilentAdminFeed(row.AdminFeedRow, now, silentAfter) {
-				out = append(out, row)
-			}
-			continue
-		}
-		if row.Status == status {
-			out = append(out, row)
-		}
-	}
-	return out
-}
-
 var adminFeedSortKeys = map[string]struct{}{
 	"name": {}, "id": {}, "status": {}, "last_checked": {}, "next_check": {}, "last_entry": {},
 	"errors": {}, "entries": {}, "unread": {},
@@ -197,71 +164,6 @@ func adminFeedsSortIndicator(sortKey, order, column string) string {
 		return " ↓"
 	}
 	return " ↑"
-}
-
-func sortAdminFeedRows(rows []adminFeedRowView, sortKey, order string) {
-	desc := order == "desc"
-	sort.SliceStable(rows, func(i, j int) bool {
-		less := compareAdminFeedRows(rows[i], rows[j], sortKey)
-		if desc {
-			return !less
-		}
-		return less
-	})
-}
-
-func compareAdminFeedRows(a, b adminFeedRowView, sortKey string) bool {
-	switch sortKey {
-	case "id":
-		return a.ID < b.ID
-	case "status":
-		if a.Status != b.Status {
-			return a.Status < b.Status
-		}
-		return a.ID < b.ID
-	case "last_checked":
-		return timePtrBefore(a.LastCheckedAt, b.LastCheckedAt, a.ID, b.ID)
-	case "next_check":
-		return timePtrBefore(a.NextCheckAt, b.NextCheckAt, a.ID, b.ID)
-	case "last_entry":
-		return timePtrBefore(a.LastEntryAt, b.LastEntryAt, a.ID, b.ID)
-	case "errors":
-		if a.ParsingErrorCount != b.ParsingErrorCount {
-			return a.ParsingErrorCount < b.ParsingErrorCount
-		}
-		return a.ID < b.ID
-	case "entries":
-		if a.EntryCount != b.EntryCount {
-			return a.EntryCount < b.EntryCount
-		}
-		return a.ID < b.ID
-	case "unread":
-		if a.UnreadCount != b.UnreadCount {
-			return a.UnreadCount < b.UnreadCount
-		}
-		return a.ID < b.ID
-	default:
-		if a.Title != b.Title {
-			return a.Title < b.Title
-		}
-		return a.ID < b.ID
-	}
-}
-
-func timePtrBefore(a, b *time.Time, idA, idB int64) bool {
-	switch {
-	case a == nil && b == nil:
-		return idA < idB
-	case a == nil:
-		return true
-	case b == nil:
-		return false
-	default:
-		if !a.Equal(*b) {
-			return a.Before(*b)
-		}
-		return idA < idB
-	}
 }
 
 func (h *Handler) loadAdminFeedsDashboard(r *http.Request) (pageData, error) {

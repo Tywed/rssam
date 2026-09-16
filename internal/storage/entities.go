@@ -272,12 +272,10 @@ type FeedStore interface {
 }
 
 type JobStore interface {
-	EnqueuePollFeedJob(ctx context.Context, feedID int64, runAt time.Time) error
 	EnqueuePollFeedJobs(ctx context.Context, feedIDs []int64, runAt time.Time) error
 	EnqueueRefreshAllPollJobs(ctx context.Context) (feeds int, queued int, err error)
 	ClaimDueJobs(ctx context.Context, limit int, lockedBy string) ([]Job, error)
 	CompleteJob(ctx context.Context, jobID int64, lockedBy string) (deleted bool, err error)
-	ReleaseJob(ctx context.Context, jobID int64, lockedBy string) error
 	ReclaimStalePollJobs(ctx context.Context, instanceID string, staleAfter time.Duration) (int64, error)
 	RescheduleJob(ctx context.Context, jobID int64, lockedBy string, runAt time.Time, lastError string) error
 }
@@ -313,7 +311,6 @@ type EntryStore interface {
 	CreateEntries(ctx context.Context, feedID int64, entries []CreateEntryParams) (inserted int, insertedEntries []Entry, err error)
 	GetEntry(ctx context.Context, userID int64, id int64) (Entry, error)
 	GetFeedEntry(ctx context.Context, userID, feedID, entryID int64) (Entry, error)
-	GetEntryByID(ctx context.Context, id int64) (Entry, error) // internal/worker
 	UpdateEntryContent(ctx context.Context, userID int64, params UpdateEntryContentParams) (Entry, error)
 	UpdateEntry(ctx context.Context, userID, feedID, entryID int64, params UpdateEntryParams) (Entry, error)
 	ListEntries(ctx context.Context, userID int64, filter ListEntriesFilter) ([]Entry, int, error)
@@ -322,7 +319,6 @@ type EntryStore interface {
 	ListEnclosuresByEntryIDs(ctx context.Context, userID int64, entryIDs []int64) (map[int64][]Enclosure, error)
 	CountUnreadByFeed(ctx context.Context, feedID int64) (int, error)
 	CountUnreadByCategory(ctx context.Context, categoryID int64) (int, error)
-	CountUnreadGlobal(ctx context.Context) (int, error)
 	CountUnreadGlobalForUser(ctx context.Context, userID int64) (int, error)
 	UnreadCountsForUser(ctx context.Context, userID int64) (feedCounts map[int64]int, categoryCounts map[int64]int, err error)
 	BulkUpdateEntries(ctx context.Context, userID int64, entryIDs []int64, update BulkEntryUpdate) (int, error)

@@ -6,20 +6,6 @@ import (
 	"time"
 )
 
-func (s *PostgresStore) EnqueuePollFeedJob(ctx context.Context, feedID int64, runAt time.Time) error {
-	const q = `
-INSERT INTO jobs(type, feed_id, run_at)
-VALUES ('poll_feed', $1, $2)
-ON CONFLICT (type, feed_id) WHERE (type = 'poll_feed' AND feed_id IS NOT NULL)
-DO UPDATE SET run_at = LEAST(jobs.run_at, EXCLUDED.run_at),
-              updated_at = now()`
-	_, err := s.db.Exec(ctx, q, feedID, runAt)
-	if err != nil {
-		return fmt.Errorf("enqueue poll_feed job: %w", err)
-	}
-	return nil
-}
-
 // EnqueueSpread is the run_at jitter for a batch of n poll jobs: 100 ms per
 // feed, at most one minute. It desynchronises feeds that became due together
 // (restart, refresh-all, daily reset) without visibly delaying polls; the
@@ -143,20 +129,6 @@ func (s *PostgresStore) CompleteJob(ctx context.Context, jobID int64, lockedBy s
 		return false, fmt.Errorf("complete job: %w", err)
 	}
 	return cmd.RowsAffected() > 0, nil
-}
-
-func (s *PostgresStore) ReleaseJob(ctx context.Context, jobID int64, lockedBy string) error {
-	const q = `
-UPDATE jobs
-SET locked_at = NULL,
-    locked_by = NULL,
-    updated_at = now()
-WHERE id = $1 AND locked_by = $2`
-	_, err := s.db.Exec(ctx, q, jobID, lockedBy)
-	if err != nil {
-		return fmt.Errorf("release job: %w", err)
-	}
-	return nil
 }
 
 // ReclaimStalePollJobs unlocks poll_feed jobs left behind by dead processes, and

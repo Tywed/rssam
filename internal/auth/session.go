@@ -14,10 +14,6 @@ type SessionCookieConfig struct {
 	SameSite http.SameSite
 }
 
-func DefaultSessionCookieConfig(secure bool) SessionCookieConfig {
-	return SessionCookieConfigFor(secure, 30*24*time.Hour)
-}
-
 func SessionCookieConfigFor(secure bool, maxAge time.Duration) SessionCookieConfig {
 	return SessionCookieConfig{
 		Secure:   secure,

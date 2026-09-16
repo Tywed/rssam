@@ -31,9 +31,6 @@ func (s *entryReadStore) GetEntry(_ context.Context, _ int64, id int64) (storage
 func (s *entryReadStore) GetFeedEntry(context.Context, int64, int64, int64) (storage.Entry, error) {
 	return storage.Entry{}, storage.ErrNotFound
 }
-func (s *entryReadStore) GetEntryByID(context.Context, int64) (storage.Entry, error) {
-	return storage.Entry{}, storage.ErrNotFound
-}
 func (s *entryReadStore) UpdateEntryContent(context.Context, int64, storage.UpdateEntryContentParams) (storage.Entry, error) {
 	return storage.Entry{}, nil
 }
@@ -59,7 +56,6 @@ func (s *entryReadStore) CountUnreadByFeed(context.Context, int64) (int, error) 
 func (s *entryReadStore) CountUnreadByCategory(context.Context, int64) (int, error) {
 	return 0, nil
 }
-func (s *entryReadStore) CountUnreadGlobal(context.Context) (int, error)               { return 0, nil }
 func (s *entryReadStore) CountUnreadGlobalForUser(context.Context, int64) (int, error) { return 0, nil }
 func (s *entryReadStore) UnreadCountsForUser(context.Context, int64) (map[int64]int, map[int64]int, error) {
 	return map[int64]int{}, map[int64]int{}, nil

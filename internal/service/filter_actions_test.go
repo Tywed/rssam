@@ -54,9 +54,6 @@ func (m *memEntryBulk) GetEntry(context.Context, int64, int64) (storage.Entry, e
 func (m *memEntryBulk) GetFeedEntry(context.Context, int64, int64, int64) (storage.Entry, error) {
 	return storage.Entry{}, storage.ErrNotFound
 }
-func (m *memEntryBulk) GetEntryByID(context.Context, int64) (storage.Entry, error) {
-	return storage.Entry{}, storage.ErrNotFound
-}
 func (m *memEntryBulk) UpdateEntryContent(context.Context, int64, storage.UpdateEntryContentParams) (storage.Entry, error) {
 	return storage.Entry{}, nil
 }
@@ -79,7 +76,6 @@ func (m *memEntryBulk) CountUnreadByFeed(context.Context, int64) (int, error) { 
 func (m *memEntryBulk) CountUnreadByCategory(context.Context, int64) (int, error) {
 	return 0, nil
 }
-func (m *memEntryBulk) CountUnreadGlobal(context.Context) (int, error)               { return 0, nil }
 func (m *memEntryBulk) CountUnreadGlobalForUser(context.Context, int64) (int, error) { return 0, nil }
 func (m *memEntryBulk) UnreadCountsForUser(context.Context, int64) (map[int64]int, map[int64]int, error) {
 	return nil, nil, nil

@@ -3,7 +3,6 @@ package envfile
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 	"unicode"
 )
@@ -74,8 +73,4 @@ func upsert(text, key, value string) string {
 		lines = append(lines, prefix+value)
 	}
 	return strings.Join(lines, "\n") + "\n"
-}
-
-func Dir(path string) string {
-	return filepath.Dir(path)
 }

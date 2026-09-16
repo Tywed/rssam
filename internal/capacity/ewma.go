@@ -38,11 +38,3 @@ func PollDurationSnapshot() (avg time.Duration, samples int) {
 	}
 	return time.Duration(pollEWMA * float64(time.Second)), pollSamples
 }
-
-// ResetPollDurationForTest clears EWMA state. Tests only.
-func ResetPollDurationForTest() {
-	pollMu.Lock()
-	defer pollMu.Unlock()
-	pollEWMA = 0
-	pollSamples = 0
-}
