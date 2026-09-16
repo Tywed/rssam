@@ -40,7 +40,7 @@ type FeedRefresher struct {
 	// disappear either (nil = slog.Default()).
 	Log *slog.Logger
 
-	// StoreEntriesMode: "full" (default) or "dedup_only" — see STORE_ENTRIES_MODE / DEDUP_ONLY_STORAGE.
+	// StoreEntriesMode: "full" (default) or "dedup_only" — see STORE_ENTRIES_MODE.
 	StoreEntriesMode string
 
 	// CircuitBreakerThreshold consecutive poll errors before pausing background polling (0 = default 10).

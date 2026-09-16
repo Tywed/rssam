@@ -28,6 +28,10 @@ type Config struct {
 	AdminUsername string
 	AdminPassword string
 
+	// Warnings are non-fatal findings from Load (deprecated variable names);
+	// main logs them once at start-up.
+	Warnings []string
+
 	FetchAllowPrivateNetwork   bool
 	FetchAllowedCIDRs          []string
 	FetchBlockedHosts          []string
@@ -168,7 +172,7 @@ func Load() (Config, error) {
 		FetchAllowPrivateNetwork:   parseBool(os.Getenv("FETCH_ALLOW_PRIVATE_NETWORK")),
 		FetchAllowedCIDRs:          parseCSV(os.Getenv("FETCH_ALLOWED_CIDRS")),
 		FetchBlockedHosts:          parseCSV(os.Getenv("FETCH_BLOCKED_HOSTS")),
-		FetchTLSInsecureSkipVerify: parseBool(os.Getenv("FETCH_TLS_INSECURE")) || parseBool(os.Getenv("FETCH_INSECURE_SKIP_VERIFY")),
+		FetchTLSInsecureSkipVerify: parseBool(env.get("FETCH_TLS_INSECURE", "FETCH_INSECURE_SKIP_VERIFY")),
 		FetchUserAgent:             getEnv("FETCH_USER_AGENT", "rssam"),
 		FetchTimeoutSeconds:        env.int("FETCH_TIMEOUT_SECONDS", 15),
 		FetchViaProxyURL:           strings.TrimSpace(os.Getenv("FETCH_VIA_PROXY")),
@@ -180,8 +184,8 @@ func Load() (Config, error) {
 
 		MaxAPIBaseURL:        strings.TrimSpace(os.Getenv("MAX_API_BASE_URL")),
 		MaxDefaultLimit:      env.int("MAX_DEFAULT_LIMIT", 100),
-		MaxDefaultLookback:   env.duration("MAX_DEFAULT_LOOKBACK_MS", 24*time.Hour),
-		MaxOverlap:           env.duration("MAX_OVERLAP_MS", 2*time.Minute),
+		MaxDefaultLookback:   env.duration("MAX_DEFAULT_LOOKBACK", 24*time.Hour, "MAX_DEFAULT_LOOKBACK_MS"),
+		MaxOverlap:           env.duration("MAX_OVERLAP", 2*time.Minute, "MAX_OVERLAP_MS"),
 		MaxRateLimitSeconds:  env.int("MAX_RATE_LIMIT_SECONDS", 60),
 		MaxRequestIntervalMs: env.int("MAX_REQUEST_INTERVAL_MS", 1000),
 		MaxConcurrentSlots:   env.int("MAX_CONCURRENT_SLOTS", 1),
@@ -248,7 +252,7 @@ func Load() (Config, error) {
 		UIEnabled: parseBoolDefault(os.Getenv("UI_ENABLED"), true),
 
 		FTSLanguage:      strings.ToLower(getEnv("FTS_LANGUAGE", "russian")),
-		StoreEntriesMode: parseStoreEntriesMode(),
+		StoreEntriesMode: env.storeEntriesMode(),
 
 		HSTSEnabled:         parseBool(os.Getenv("HSTS")),
 		SessionMaxAge:       env.duration("SESSION_MAX_AGE", 30*24*time.Hour),
@@ -267,6 +271,7 @@ func Load() (Config, error) {
 	}
 
 	cfg.WebhookWorkerPoolSize = env.int("WEBHOOK_WORKER_POOL_SIZE", cfg.WorkerPoolSize)
+	cfg.Warnings = env.warns
 
 	if err := errors.Join(env.errs...); err != nil {
 		return Config{}, err
@@ -313,10 +318,10 @@ func (c Config) Validate() error {
 		errs = append(errs, fmt.Errorf("MAX_DEFAULT_LIMIT must be between 1 and 200, got %d", c.MaxDefaultLimit))
 	}
 	if c.MaxDefaultLookback <= 0 || c.MaxDefaultLookback > 30*24*time.Hour {
-		errs = append(errs, fmt.Errorf("MAX_DEFAULT_LOOKBACK_MS must be between 1ms and 720h, got %s", c.MaxDefaultLookback))
+		errs = append(errs, fmt.Errorf("MAX_DEFAULT_LOOKBACK must be between 1ms and 720h, got %s", c.MaxDefaultLookback))
 	}
 	if c.MaxOverlap < 0 || c.MaxOverlap > 24*time.Hour {
-		errs = append(errs, fmt.Errorf("MAX_OVERLAP_MS must be between 0 and 24h, got %s", c.MaxOverlap))
+		errs = append(errs, fmt.Errorf("MAX_OVERLAP must be between 0 and 24h, got %s", c.MaxOverlap))
 	}
 	if c.MaxRateLimitSeconds < 1 || c.MaxRateLimitSeconds > 86400 {
 		errs = append(errs, fmt.Errorf("MAX_RATE_LIMIT_SECONDS must be between 1 and 86400, got %d", c.MaxRateLimitSeconds))
@@ -505,11 +510,12 @@ func parseBool(v string) bool {
 	}
 }
 
-func parseStoreEntriesMode() string {
+func (e *envReader) storeEntriesMode() string {
 	if v := strings.ToLower(strings.TrimSpace(os.Getenv("STORE_ENTRIES_MODE"))); v != "" {
 		return v
 	}
 	if parseBool(os.Getenv("DEDUP_ONLY_STORAGE")) {
+		e.deprecated("DEDUP_ONLY_STORAGE", "STORE_ENTRIES_MODE=dedup_only")
 		return "dedup_only"
 	}
 	return "full"
@@ -574,7 +580,27 @@ func IsPlaceholderPassword(password string) bool {
 // default (the previous behaviour) hid typos like FETCH_TIMEOUT_SECONDS=15s
 // or WEBHOOK_TIMEOUT=10 until the service misbehaved in production.
 type envReader struct {
-	errs []error
+	errs  []error
+	warns []string
+}
+
+func (e *envReader) deprecated(old, replacement string) {
+	e.warns = append(e.warns, old+" is deprecated, use "+replacement)
+}
+
+// get returns the trimmed value of key, falling back to the deprecated
+// aliases (recorded as a warning when one is used).
+func (e *envReader) get(key string, aliases ...string) string {
+	if v := strings.TrimSpace(os.Getenv(key)); v != "" {
+		return v
+	}
+	for _, a := range aliases {
+		if v := strings.TrimSpace(os.Getenv(a)); v != "" {
+			e.deprecated(a, key)
+			return v
+		}
+	}
+	return ""
 }
 
 func (e *envReader) int(key string, def int) int {
@@ -603,8 +629,8 @@ func (e *envReader) float(key string, def float64) float64 {
 	return n
 }
 
-func (e *envReader) duration(key string, def time.Duration) time.Duration {
-	v := strings.TrimSpace(os.Getenv(key))
+func (e *envReader) duration(key string, def time.Duration, aliases ...string) time.Duration {
+	v := e.get(key, aliases...)
 	if v == "" {
 		return def
 	}

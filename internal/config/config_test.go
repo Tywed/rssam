@@ -59,6 +59,11 @@ func TestLoad_Defaults(t *testing.T) {
 	os.Unsetenv("FILTER_MATCH_RETENTION_DAYS")
 	os.Unsetenv("FEED_POLL_LOG_RETENTION_DAYS")
 	os.Unsetenv("CLEANUP_INTERVAL")
+	os.Unsetenv("UI_ENABLED")
+	os.Unsetenv("MAX_DEFAULT_LOOKBACK")
+	os.Unsetenv("MAX_DEFAULT_LOOKBACK_MS")
+	os.Unsetenv("MAX_OVERLAP")
+	os.Unsetenv("MAX_OVERLAP_MS")
 
 	cfg, err := Load()
 	if err != nil {
@@ -66,6 +71,15 @@ func TestLoad_Defaults(t *testing.T) {
 	}
 	if cfg.ListenAddr != ":8080" {
 		t.Fatalf("ListenAddr=%q", cfg.ListenAddr)
+	}
+	if !cfg.UIEnabled {
+		t.Fatal("UIEnabled must default to true")
+	}
+	if cfg.MaxDefaultLookback != 24*time.Hour || cfg.MaxOverlap != 2*time.Minute {
+		t.Fatalf("MaxDefaultLookback=%s MaxOverlap=%s", cfg.MaxDefaultLookback, cfg.MaxOverlap)
+	}
+	if len(cfg.Warnings) != 0 {
+		t.Fatalf("Warnings=%v", cfg.Warnings)
 	}
 	if cfg.LogLevel != "info" {
 		t.Fatalf("LogLevel=%q", cfg.LogLevel)
@@ -157,19 +171,26 @@ func TestLoad_Defaults(t *testing.T) {
 }
 
 func TestParseStoreEntriesMode(t *testing.T) {
+	env := &envReader{}
 	t.Setenv("STORE_ENTRIES_MODE", "")
 	t.Setenv("DEDUP_ONLY_STORAGE", "")
-	if got := parseStoreEntriesMode(); got != "full" {
+	if got := env.storeEntriesMode(); got != "full" {
 		t.Fatalf("got %q", got)
 	}
 	t.Setenv("DEDUP_ONLY_STORAGE", "true")
-	if got := parseStoreEntriesMode(); got != "dedup_only" {
+	if got := env.storeEntriesMode(); got != "dedup_only" {
 		t.Fatalf("got %q", got)
+	}
+	if len(env.warns) != 1 || !strings.Contains(env.warns[0], "DEDUP_ONLY_STORAGE is deprecated") {
+		t.Fatalf("warns=%v", env.warns)
 	}
 	t.Setenv("DEDUP_ONLY_STORAGE", "")
 	t.Setenv("STORE_ENTRIES_MODE", "dedup_only")
-	if got := parseStoreEntriesMode(); got != "dedup_only" {
+	if got := env.storeEntriesMode(); got != "dedup_only" {
 		t.Fatalf("got %q", got)
+	}
+	if len(env.warns) != 1 {
+		t.Fatalf("warns=%v", env.warns)
 	}
 }
 
@@ -185,6 +206,9 @@ func TestLoad_FetchTLSInsecure(t *testing.T) {
 	if !cfg.FetchTLSInsecureSkipVerify {
 		t.Fatal("expected FetchTLSInsecureSkipVerify=true")
 	}
+	if len(cfg.Warnings) != 0 {
+		t.Fatalf("Warnings=%v", cfg.Warnings)
+	}
 
 	t.Setenv("FETCH_TLS_INSECURE", "")
 	t.Setenv("FETCH_INSECURE_SKIP_VERIFY", "yes")
@@ -194,6 +218,9 @@ func TestLoad_FetchTLSInsecure(t *testing.T) {
 	}
 	if !cfg.FetchTLSInsecureSkipVerify {
 		t.Fatal("expected alias FETCH_INSECURE_SKIP_VERIFY=true")
+	}
+	if len(cfg.Warnings) != 1 || !strings.Contains(cfg.Warnings[0], "FETCH_INSECURE_SKIP_VERIFY is deprecated, use FETCH_TLS_INSECURE") {
+		t.Fatalf("Warnings=%v", cfg.Warnings)
 	}
 }
 
@@ -346,5 +373,43 @@ func TestIsPlaceholderPassword(t *testing.T) {
 		if IsPlaceholderPassword(s) {
 			t.Errorf("%q must not be recognised", s)
 		}
+	}
+}
+
+func TestLoad_UIEnabledFalse(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://u:p@localhost:5432/db?sslmode=disable")
+	t.Setenv("UI_ENABLED", "false")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.UIEnabled {
+		t.Fatal("UI_ENABLED=false must disable the UI")
+	}
+}
+
+func TestLoad_MaxDurationAliases(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://u:p@localhost:5432/db?sslmode=disable")
+	t.Setenv("MAX_DEFAULT_LOOKBACK", "")
+	t.Setenv("MAX_DEFAULT_LOOKBACK_MS", "12h")
+	t.Setenv("MAX_OVERLAP", "5m")
+	t.Setenv("MAX_OVERLAP_MS", "9m")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.MaxDefaultLookback != 12*time.Hour {
+		t.Fatalf("MaxDefaultLookback=%s want 12h via alias", cfg.MaxDefaultLookback)
+	}
+	if cfg.MaxOverlap != 5*time.Minute {
+		t.Fatalf("MaxOverlap=%s: new name must win over the alias", cfg.MaxOverlap)
+	}
+	if len(cfg.Warnings) != 1 || !strings.Contains(cfg.Warnings[0], "MAX_DEFAULT_LOOKBACK_MS is deprecated, use MAX_DEFAULT_LOOKBACK") {
+		t.Fatalf("Warnings=%v", cfg.Warnings)
+	}
+
+	t.Setenv("MAX_DEFAULT_LOOKBACK_MS", "86400000")
+	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "MAX_DEFAULT_LOOKBACK") {
+		t.Fatalf("raw milliseconds must be rejected, got %v", err)
 	}
 }

@@ -58,6 +58,9 @@ func main() {
 	}
 
 	log := logger.New(cfg.LogLevel, cfg.LogFormat)
+	for _, w := range cfg.Warnings {
+		log.Warn(w)
+	}
 
 	if err := middleware.SetTrustedProxies(cfg.TrustedProxies); err != nil {
 		log.Error("invalid TRUSTED_PROXIES", "err", err)
