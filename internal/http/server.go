@@ -12,6 +12,7 @@ import (
 	"rssam/internal/audit"
 	"rssam/internal/bridgeconfig"
 	"rssam/internal/filter"
+	"rssam/internal/githubrel"
 	"rssam/internal/http/middleware"
 	"rssam/internal/http/ui"
 	"rssam/internal/reader"
@@ -88,7 +89,7 @@ type Dependencies struct {
 	EnvFilePath           string
 	DatabaseURL           string
 	DatabaseLocale        storage.DatabaseLocale
-	GitHubRepo            string
+	Releases              *githubrel.Client
 
 	// Retention settings shown on the admin system page and the hook that
 	// runs one cleanup pass on demand (nil = unavailable).
@@ -181,7 +182,7 @@ type Server struct {
 	runRetentionCleanup   func(ctx context.Context) (storage.RetentionCleanupResult, error)
 	databaseURL           string
 	databaseLocale        storage.DatabaseLocale
-	gitHubRepo            string
+	releases              *githubrel.Client
 	handlerRegistry       *reader.HandlerRegistry
 	titleResolver         *reader.TitleResolver
 	bridgeManager         *bridgeconfig.Manager
@@ -416,7 +417,7 @@ func New(dep Dependencies) *Server {
 		runRetentionCleanup:   dep.RunRetentionCleanup,
 		databaseURL:           dep.DatabaseURL,
 		databaseLocale:        dep.DatabaseLocale,
-		gitHubRepo:            dep.GitHubRepo,
+		releases:              dep.Releases,
 		handlerRegistry:       registry,
 		titleResolver:         dep.TitleResolver,
 		bridgeManager:         dep.BridgeManager,

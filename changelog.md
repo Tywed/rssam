@@ -4,6 +4,7 @@
 
 - Админка: карточка ленты (`/ui/admin/feeds/{id}`) считала записи и непрочитанные для **всех** лент базы (`ListAdminFeeds` с лимитом 10 000 — два `COUNT(*)` по `entries` на каждую ленту), чтобы показать цифры одной. Теперь один точечный запрос. Замер (PG 17, 2 000 лент × 50 записей): 170–190 мс и ~160 тыс. буферов → 0,3 мс на открытие карточки.
 - Чистка мёртвого кода (`deadcode ./cmd/rssam` теперь пуст, кроме четырёх тестовых точек входа): удалены недостижимые `auth.UserIDFromContext`, `auth.DefaultSessionCookieConfig`, `bridgeconfig.Manager.SaveRuntime`, `bridgeconfig.FormatDuration`, `envfile.Dir`, `Server.hasValidAuthToken`, `ui.BridgeSettingsFrom`, `opml.Parse`, `TitleResolver.DiscoverTitle`, `max.CursorStateKey`, `max.IsBackoff`, `maxstat.SearchPageURL`, `vk.TitlePreview`, `ws.NewClient`, методы стора `CountUnreadGlobal`, `GetEntryByID`, `EnqueuePollFeedJob`, `ReleaseJob`; in-memory сортировка/фильтр таблицы лент админки (заменена SQL ещё в 0.1.10) переехала в тесты; удалены шаблон `partials/topbar.html` (не вызывался), поле `Dependencies.EntryDedupStore` (никем не заполнялось), исключение gosec для несуществующего `fever_key.go`, цель `make ui-css`. Поведение не меняется.
+- Проверка обновлений: UI и системные оповещения используют один общий клиент GitHub-релизов вместо двух независимых кэшей (5 мин и 1 ч); убран лишний запрос к GitHub при каждом старте процесса.
 
 ## 0.1.16
 

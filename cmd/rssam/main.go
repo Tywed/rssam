@@ -243,7 +243,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Release check for system alerts: one GitHub request per hour at most.
+	// One release cache per process, shared by the system-alerts pass and
+	// the UI; at most one GitHub request per hour (the «Система» page forces
+	// a refresh explicitly).
 	releases := githubrel.New(strings.TrimSpace(os.Getenv("GITHUB_REPO")))
 	releases.TTL = time.Hour
 
@@ -410,7 +412,7 @@ func main() {
 		},
 		RunRetentionCleanup: w.RetentionCleanupNow,
 		DatabaseURL:         cfg.DatabaseURL,
-		GitHubRepo:          strings.TrimSpace(os.Getenv("GITHUB_REPO")),
+		Releases:            releases,
 		WorkerControl:       w,
 	})
 

@@ -80,11 +80,13 @@ type Config struct {
 	// DatabaseLocale drives the "Cyrillic case folding is broken" banner on
 	// the system page; a zero value (tests) shows nothing.
 	DatabaseLocale storage.DatabaseLocale
-	GitHubRepo     string
-	PauseWorkers   func()
-	ResumeWorkers  func()
-	WorkersPaused  func() bool
-	Dedup          storage.EntryDedupStore
+	// Releases is the process-wide GitHub release cache shared with the
+	// system-alerts pass; nil disables the update check in the UI.
+	Releases      *githubrel.Client
+	PauseWorkers  func()
+	ResumeWorkers func()
+	WorkersPaused func() bool
+	Dedup         storage.EntryDedupStore
 	// Retention holds the retention windows the running process was started
 	// with; shown (and editable via .env) on the admin system page.
 	Retention RetentionSettings
@@ -150,9 +152,8 @@ func NewHandler(cfg Config) (*Handler, error) {
 		log:         log,
 		templates:   tmpl,
 		unreadCache: newUnreadCountsCache(),
-		releases:    githubrel.New(cfg.GitHubRepo),
+		releases:    cfg.Releases,
 	}
-	go func() { _, _ = h.releases.Latest() }()
 	return h, nil
 }
 

@@ -116,7 +116,7 @@ func (s *Server) registerUI(mux *http.ServeMux) {
 	cfg.RunRetentionCleanup = s.runRetentionCleanup
 	cfg.DatabaseURL = s.databaseURL
 	cfg.DatabaseLocale = s.databaseLocale
-	cfg.GitHubRepo = s.gitHubRepo
+	cfg.Releases = s.releases
 	if d, ok := s.entries.(storage.EntryDedupStore); ok {
 		cfg.Dedup = d
 	}
