@@ -13,7 +13,6 @@ import (
 const pollHoursCacheTTL = 10 * time.Second
 
 type pollHoursCacheItem struct {
-	at     time.Time
 	window storage.PollWindow
 	ok     bool
 }
@@ -26,25 +25,12 @@ type ErrOutsidePollWindow struct{ At time.Time }
 func (e ErrOutsidePollWindow) Error() string      { return "outside category poll hours" }
 func (e ErrOutsidePollWindow) RetryAt() time.Time { return e.At }
 
-func (r *FeedRefresher) initPollHoursCache() {
-	r.pollHoursOnce.Do(func() {
-		r.pollHoursCache = make(map[int64]pollHoursCacheItem)
-	})
-}
-
 // InvalidatePollHours drops the cached window of a category (0 = all).
 func (r *FeedRefresher) InvalidatePollHours(categoryID int64) {
 	if r == nil {
 		return
 	}
-	r.initPollHoursCache()
-	r.pollHoursMu.Lock()
-	defer r.pollHoursMu.Unlock()
-	if categoryID <= 0 {
-		r.pollHoursCache = make(map[int64]pollHoursCacheItem)
-		return
-	}
-	delete(r.pollHoursCache, categoryID)
+	r.pollHoursCache.invalidate(categoryID)
 }
 
 // categoryPollWindow returns the feed's category window, if any. Lookups are
@@ -55,21 +41,14 @@ func (r *FeedRefresher) categoryPollWindow(ctx context.Context, feed storage.Fee
 		return storage.PollWindow{}, false
 	}
 	id := *feed.CategoryID
-	r.initPollHoursCache()
-	r.pollHoursMu.Lock()
-	if it, hit := r.pollHoursCache[id]; hit && time.Since(it.at) < pollHoursCacheTTL {
-		r.pollHoursMu.Unlock()
+	if it, hit := r.pollHoursCache.get(id, pollHoursCacheTTL); hit {
 		return it.window, it.ok
 	}
-	r.pollHoursMu.Unlock()
-
 	raw, err := r.PollHours.GetCategoryPollHours(ctx, id)
 	if err != nil {
 		return storage.PollWindow{}, false
 	}
 	w, ok, _ := storage.ParsePollHours(raw)
-	r.pollHoursMu.Lock()
-	r.pollHoursCache[id] = pollHoursCacheItem{at: time.Now(), window: w, ok: ok}
-	r.pollHoursMu.Unlock()
+	r.pollHoursCache.put(id, pollHoursCacheItem{window: w, ok: ok})
 	return w, ok
 }

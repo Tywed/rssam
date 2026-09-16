@@ -2,8 +2,6 @@ package service
 
 import (
 	"context"
-	"sync"
-	"time"
 
 	"rssam/internal/storage"
 )
@@ -13,40 +11,13 @@ import (
 // per user like enabled filters instead of being queried on every poll.
 const enabledWebhookCacheTTL = enabledFilterCacheTTL
 
-type enabledWebhookCache struct {
-	mu    sync.Mutex
-	ttl   time.Duration
-	items map[int64]enabledWebhookCacheItem
-}
-
-type enabledWebhookCacheItem struct {
-	at       time.Time
-	webhooks []storage.Webhook
-}
-
-func (r *FeedRefresher) initWebhookCache() {
-	r.webhookCacheOnce.Do(func() {
-		r.webhookCache = &enabledWebhookCache{
-			ttl:   enabledWebhookCacheTTL,
-			items: make(map[int64]enabledWebhookCacheItem),
-		}
-	})
-}
-
 // InvalidateWebhookCache drops cached enabled webhooks for userID (0 = all).
 // Call it after creating, updating, deleting or (un)pausing a webhook.
 func (r *FeedRefresher) InvalidateWebhookCache(userID int64) {
 	if r == nil {
 		return
 	}
-	r.initWebhookCache()
-	r.webhookCache.mu.Lock()
-	defer r.webhookCache.mu.Unlock()
-	if userID <= 0 {
-		r.webhookCache.items = make(map[int64]enabledWebhookCacheItem)
-		return
-	}
-	delete(r.webhookCache.items, userID)
+	r.webhookCache.invalidate(userID)
 }
 
 // listLegacyFilterWebhooksCached returns the user's enabled webhooks that are
@@ -55,16 +26,9 @@ func (r *FeedRefresher) listLegacyFilterWebhooksCached(ctx context.Context, user
 	if r.Webhooks == nil {
 		return nil, nil
 	}
-	r.initWebhookCache()
-	r.webhookCache.mu.Lock()
-	if it, ok := r.webhookCache.items[userID]; ok && time.Since(it.at) < r.webhookCache.ttl {
-		webhooks := it.webhooks
-		r.webhookCache.mu.Unlock()
+	if webhooks, ok := r.webhookCache.get(userID, enabledWebhookCacheTTL); ok {
 		return webhooks, nil
 	}
-	delete(r.webhookCache.items, userID)
-	r.webhookCache.mu.Unlock()
-
 	all, err := r.Webhooks.ListEnabledWebhooks(ctx, userID, 1000)
 	if err != nil {
 		return nil, err
@@ -75,8 +39,6 @@ func (r *FeedRefresher) listLegacyFilterWebhooksCached(ctx context.Context, user
 			legacy = append(legacy, wh)
 		}
 	}
-	r.webhookCache.mu.Lock()
-	r.webhookCache.items[userID] = enabledWebhookCacheItem{at: time.Now(), webhooks: legacy}
-	r.webhookCache.mu.Unlock()
+	r.webhookCache.put(userID, legacy)
 	return legacy, nil
 }

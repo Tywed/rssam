@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
-	"sync"
 	"time"
 
 	"rssam/internal/filter"
@@ -54,17 +53,12 @@ type FeedRefresher struct {
 	AdaptiveMaxInterval time.Duration
 	Activity            storage.FeedActivityStore
 
-	filterCacheOnce sync.Once
-	filterCache     *enabledFilterCache
-
 	// PollHours supplies per-category polling windows (nil = no windows).
-	PollHours      storage.CategoryPollHoursStore
-	pollHoursOnce  sync.Once
-	pollHoursMu    sync.Mutex
-	pollHoursCache map[int64]pollHoursCacheItem
+	PollHours storage.CategoryPollHoursStore
 
-	webhookCacheOnce sync.Once
-	webhookCache     *enabledWebhookCache
+	filterCache    ttlCache[[]storage.Filter]
+	webhookCache   ttlCache[[]storage.Webhook]
+	pollHoursCache ttlCache[pollHoursCacheItem]
 }
 
 func (r *FeedRefresher) dedupOnlyStorage() bool {
