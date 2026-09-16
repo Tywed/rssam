@@ -1,9 +1,11 @@
 package httpserver
 
 import (
+	"errors"
 	"net/http"
 
 	"rssam/internal/auth"
+	"rssam/internal/storage"
 )
 
 func principalFromRequest(r *http.Request) (auth.Principal, bool) {
@@ -29,4 +31,52 @@ func requireAdmin(w http.ResponseWriter, r *http.Request) (auth.Principal, bool)
 		return auth.Principal{}, false
 	}
 	return p, true
+}
+
+// requireStore is the common handler prologue: authenticated (admin when
+// admin is set) principal plus a configured backing store, otherwise the
+// response is already written.
+func requireStore(w http.ResponseWriter, r *http.Request, admin, configured bool, unavailable string) (auth.Principal, bool) {
+	var (
+		p  auth.Principal
+		ok bool
+	)
+	if admin {
+		p, ok = requireAdmin(w, r)
+	} else {
+		p, ok = requireUser(w, r)
+	}
+	if !ok {
+		return auth.Principal{}, false
+	}
+	if !configured {
+		writeError(w, http.StatusServiceUnavailable, unavailable)
+		return auth.Principal{}, false
+	}
+	return p, true
+}
+
+// requireStoreID is requireStore followed by the {id} path parameter.
+func requireStoreID(w http.ResponseWriter, r *http.Request, admin, configured bool, unavailable string) (auth.Principal, int64, bool) {
+	p, ok := requireStore(w, r, admin, configured, unavailable)
+	if !ok {
+		return auth.Principal{}, 0, false
+	}
+	id, err := parsePathID(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return auth.Principal{}, 0, false
+	}
+	return p, id, true
+}
+
+// storeError maps a storage error to the API response: ErrNotFound becomes
+// 404 with notFound, anything else is logged as logMsg and answered 500.
+func (s *Server) storeError(w http.ResponseWriter, r *http.Request, err error, notFound, logMsg string) {
+	if errors.Is(err, storage.ErrNotFound) {
+		writeError(w, http.StatusNotFound, notFound)
+		return
+	}
+	s.log.ErrorContext(r.Context(), logMsg, "err", err)
+	writeError(w, http.StatusInternalServerError, "internal server error")
 }

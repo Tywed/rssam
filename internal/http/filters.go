@@ -81,11 +81,8 @@ type filterWriteRequest struct {
 }
 
 func (s *Server) handleListFilters(w http.ResponseWriter, r *http.Request) {
-	p, ok := requireAdmin(w, r)
-	if !ok || s.filters == nil {
-		if ok {
-			writeError(w, http.StatusServiceUnavailable, "filter storage is not configured")
-		}
+	p, ok := requireStore(w, r, true, s.filters != nil, "filter storage is not configured")
+	if !ok {
 		return
 	}
 	limit, offset, err := parseLimitOffset(r, 100, 10000)
@@ -107,11 +104,8 @@ func (s *Server) handleListFilters(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleCreateFilter(w http.ResponseWriter, r *http.Request) {
-	p, ok := requireAdmin(w, r)
-	if !ok || s.filters == nil {
-		if ok {
-			writeError(w, http.StatusServiceUnavailable, "filter storage is not configured")
-		}
+	p, ok := requireStore(w, r, true, s.filters != nil, "filter storage is not configured")
+	if !ok {
 		return
 	}
 	var req filterWriteRequest
@@ -141,42 +135,21 @@ func (s *Server) handleCreateFilter(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleGetFilter(w http.ResponseWriter, r *http.Request) {
-	p, ok := requireAdmin(w, r)
-	if !ok || s.filters == nil {
-		if ok {
-			writeError(w, http.StatusServiceUnavailable, "filter storage is not configured")
-		}
-		return
-	}
-	id, err := parsePathID(r)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+	p, id, ok := requireStoreID(w, r, true, s.filters != nil, "filter storage is not configured")
+	if !ok {
 		return
 	}
 	f, err := s.filters.GetFilter(r.Context(), p.UserID, id)
 	if err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
-			writeError(w, http.StatusNotFound, "filter not found")
-			return
-		}
-		s.log.ErrorContext(r.Context(), "get filter failed", "err", err)
-		writeError(w, http.StatusInternalServerError, "internal server error")
+		s.storeError(w, r, err, "filter not found", "get filter failed")
 		return
 	}
 	writeJSON(w, http.StatusOK, listResponse[filterDTO]{Data: toFilterDTO(f), Total: 1})
 }
 
 func (s *Server) handleUpdateFilter(w http.ResponseWriter, r *http.Request) {
-	p, ok := requireAdmin(w, r)
-	if !ok || s.filters == nil {
-		if ok {
-			writeError(w, http.StatusServiceUnavailable, "filter storage is not configured")
-		}
-		return
-	}
-	id, err := parsePathID(r)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+	p, id, ok := requireStoreID(w, r, true, s.filters != nil, "filter storage is not configured")
+	if !ok {
 		return
 	}
 	var req filterWriteRequest
@@ -195,12 +168,7 @@ func (s *Server) handleUpdateFilter(w http.ResponseWriter, r *http.Request) {
 	}
 	f, err := s.filters.UpdateFilter(r.Context(), params)
 	if err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
-			writeError(w, http.StatusNotFound, "filter not found")
-			return
-		}
-		s.log.ErrorContext(r.Context(), "update filter failed", "err", err)
-		writeError(w, http.StatusInternalServerError, "internal server error")
+		s.storeError(w, r, err, "filter not found", "update filter failed")
 		return
 	}
 	if s.refresher != nil {
@@ -210,25 +178,12 @@ func (s *Server) handleUpdateFilter(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleDeleteFilter(w http.ResponseWriter, r *http.Request) {
-	p, ok := requireAdmin(w, r)
-	if !ok || s.filters == nil {
-		if ok {
-			writeError(w, http.StatusServiceUnavailable, "filter storage is not configured")
-		}
-		return
-	}
-	id, err := parsePathID(r)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+	p, id, ok := requireStoreID(w, r, true, s.filters != nil, "filter storage is not configured")
+	if !ok {
 		return
 	}
 	if err := s.filters.DeleteFilter(r.Context(), p.UserID, id); err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
-			writeError(w, http.StatusNotFound, "filter not found")
-			return
-		}
-		s.log.ErrorContext(r.Context(), "delete filter failed", "err", err)
-		writeError(w, http.StatusInternalServerError, "internal server error")
+		s.storeError(w, r, err, "filter not found", "delete filter failed")
 		return
 	}
 	if s.refresher != nil {
@@ -267,26 +222,13 @@ type filterTestResponse struct {
 }
 
 func (s *Server) handleTestFilter(w http.ResponseWriter, r *http.Request) {
-	p, ok := requireAdmin(w, r)
-	if !ok || s.filters == nil || s.filterEngine == nil {
-		if ok {
-			writeError(w, http.StatusServiceUnavailable, "filter engine is not configured")
-		}
-		return
-	}
-	id, err := parsePathID(r)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+	p, id, ok := requireStoreID(w, r, true, s.filters != nil && s.filterEngine != nil, "filter engine is not configured")
+	if !ok {
 		return
 	}
 	filterObj, err := s.filters.GetFilter(r.Context(), p.UserID, id)
 	if err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
-			writeError(w, http.StatusNotFound, "filter not found")
-			return
-		}
-		s.log.ErrorContext(r.Context(), "get filter failed", "err", err)
-		writeError(w, http.StatusInternalServerError, "internal server error")
+		s.storeError(w, r, err, "filter not found", "get filter failed")
 		return
 	}
 
@@ -408,16 +350,8 @@ type filterMatchRowDTO struct {
 }
 
 func (s *Server) handleListFilterMatches(w http.ResponseWriter, r *http.Request) {
-	p, ok := requireAdmin(w, r)
-	if !ok || s.filterMatches == nil {
-		if ok {
-			writeError(w, http.StatusServiceUnavailable, "filter match storage is not configured")
-		}
-		return
-	}
-	id, err := parsePathID(r)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+	p, id, ok := requireStoreID(w, r, true, s.filterMatches != nil, "filter match storage is not configured")
+	if !ok {
 		return
 	}
 	if s.filters != nil {

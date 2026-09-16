@@ -11,12 +11,8 @@ import (
 )
 
 func (s *Server) handleFetchEntryContent(w http.ResponseWriter, r *http.Request) {
-	p, ok := requireUser(w, r)
+	p, ok := requireStore(w, r, false, s.contentFetcher != nil, "content fetcher is not configured")
 	if !ok {
-		return
-	}
-	if s.contentFetcher == nil {
-		writeError(w, http.StatusServiceUnavailable, "content fetcher is not configured")
 		return
 	}
 	if s.entries == nil {

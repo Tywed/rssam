@@ -1,7 +1,6 @@
 package httpserver
 
 import (
-	"errors"
 	"net/http"
 	"strings"
 
@@ -9,11 +8,8 @@ import (
 )
 
 func (s *Server) handleMarkCategoryAllRead(w http.ResponseWriter, r *http.Request) {
-	p, ok := requireUser(w, r)
-	if !ok || s.entries == nil {
-		if ok {
-			writeError(w, http.StatusServiceUnavailable, "entry storage is not configured")
-		}
+	p, ok := requireStore(w, r, false, s.entries != nil, "entry storage is not configured")
+	if !ok {
 		return
 	}
 	categoryID, err := parsePathInt64(r, "categoryID")
@@ -24,12 +20,7 @@ func (s *Server) handleMarkCategoryAllRead(w http.ResponseWriter, r *http.Reques
 
 	marked, err := s.entries.MarkAllCategoryEntriesRead(r.Context(), p.UserID, categoryID)
 	if err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
-			writeError(w, http.StatusNotFound, "category not found")
-			return
-		}
-		s.log.ErrorContext(r.Context(), "mark category all read failed", "err", err)
-		writeError(w, http.StatusInternalServerError, "internal server error")
+		s.storeError(w, r, err, "category not found", "mark category all read failed")
 		return
 	}
 	writeJSON(w, http.StatusOK, listResponse[markAllReadResultDTO]{
@@ -39,11 +30,8 @@ func (s *Server) handleMarkCategoryAllRead(w http.ResponseWriter, r *http.Reques
 }
 
 func (s *Server) handleGetFeedEntry(w http.ResponseWriter, r *http.Request) {
-	p, ok := requireUser(w, r)
-	if !ok || s.entries == nil {
-		if ok {
-			writeError(w, http.StatusServiceUnavailable, "entry storage is not configured")
-		}
+	p, ok := requireStore(w, r, false, s.entries != nil, "entry storage is not configured")
+	if !ok {
 		return
 	}
 	feedID, err := parsePathInt64(r, "feedID")
@@ -59,12 +47,7 @@ func (s *Server) handleGetFeedEntry(w http.ResponseWriter, r *http.Request) {
 
 	entry, err := s.entries.GetFeedEntry(r.Context(), p.UserID, feedID, entryID)
 	if err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
-			writeError(w, http.StatusNotFound, "entry not found")
-			return
-		}
-		s.log.ErrorContext(r.Context(), "get feed entry failed", "err", err)
-		writeError(w, http.StatusInternalServerError, "internal server error")
+		s.storeError(w, r, err, "entry not found", "get feed entry failed")
 		return
 	}
 
@@ -83,11 +66,8 @@ type updateEntryRequest struct {
 }
 
 func (s *Server) handleUpdateFeedEntry(w http.ResponseWriter, r *http.Request) {
-	p, ok := requireUser(w, r)
-	if !ok || s.entries == nil {
-		if ok {
-			writeError(w, http.StatusServiceUnavailable, "entry storage is not configured")
-		}
+	p, ok := requireStore(w, r, false, s.entries != nil, "entry storage is not configured")
+	if !ok {
 		return
 	}
 	feedID, err := parsePathInt64(r, "feedID")
@@ -124,12 +104,7 @@ func (s *Server) handleUpdateFeedEntry(w http.ResponseWriter, r *http.Request) {
 		Starred: req.Starred,
 	})
 	if err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
-			writeError(w, http.StatusNotFound, "entry not found")
-			return
-		}
-		s.log.ErrorContext(r.Context(), "update feed entry failed", "err", err)
-		writeError(w, http.StatusInternalServerError, "internal server error")
+		s.storeError(w, r, err, "entry not found", "update feed entry failed")
 		return
 	}
 

@@ -60,11 +60,8 @@ type feedWriteRequest struct {
 const defaultIntervalMinutes = 60
 
 func (s *Server) handleListFeeds(w http.ResponseWriter, r *http.Request) {
-	p, ok := requireUser(w, r)
-	if !ok || s.feeds == nil {
-		if ok {
-			writeError(w, http.StatusServiceUnavailable, "feed storage is not configured")
-		}
+	p, ok := requireStore(w, r, false, s.feeds != nil, "feed storage is not configured")
+	if !ok {
 		return
 	}
 	limit, offset, err := parseLimitOffset(r, 100, 10000)
@@ -86,11 +83,8 @@ func (s *Server) handleListFeeds(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleCreateFeed(w http.ResponseWriter, r *http.Request) {
-	p, ok := requireAdmin(w, r)
-	if !ok || s.feeds == nil {
-		if ok {
-			writeError(w, http.StatusServiceUnavailable, "feed storage is not configured")
-		}
+	p, ok := requireStore(w, r, true, s.feeds != nil, "feed storage is not configured")
+	if !ok {
 		return
 	}
 	var req feedWriteRequest
@@ -134,42 +128,21 @@ func (s *Server) handleCreateFeed(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleGetFeed(w http.ResponseWriter, r *http.Request) {
-	p, ok := requireUser(w, r)
-	if !ok || s.feeds == nil {
-		if ok {
-			writeError(w, http.StatusServiceUnavailable, "feed storage is not configured")
-		}
-		return
-	}
-	id, err := parsePathID(r)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+	p, id, ok := requireStoreID(w, r, false, s.feeds != nil, "feed storage is not configured")
+	if !ok {
 		return
 	}
 	feed, err := s.feeds.GetFeed(r.Context(), p.UserID, id)
 	if err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
-			writeError(w, http.StatusNotFound, "feed not found")
-			return
-		}
-		s.log.ErrorContext(r.Context(), "get feed failed", "err", err)
-		writeError(w, http.StatusInternalServerError, "internal server error")
+		s.storeError(w, r, err, "feed not found", "get feed failed")
 		return
 	}
 	writeJSON(w, http.StatusOK, listResponse[feedDTO]{Data: toFeedDTO(feed), Total: 1})
 }
 
 func (s *Server) handleUpdateFeed(w http.ResponseWriter, r *http.Request) {
-	p, ok := requireAdmin(w, r)
-	if !ok || s.feeds == nil {
-		if ok {
-			writeError(w, http.StatusServiceUnavailable, "feed storage is not configured")
-		}
-		return
-	}
-	id, err := parsePathID(r)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+	p, id, ok := requireStoreID(w, r, true, s.feeds != nil, "feed storage is not configured")
+	if !ok {
 		return
 	}
 	var req feedWriteRequest
@@ -224,25 +197,12 @@ func (s *Server) handleUpdateFeed(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleDeleteFeed(w http.ResponseWriter, r *http.Request) {
-	p, ok := requireAdmin(w, r)
-	if !ok || s.feeds == nil {
-		if ok {
-			writeError(w, http.StatusServiceUnavailable, "feed storage is not configured")
-		}
-		return
-	}
-	id, err := parsePathID(r)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+	p, id, ok := requireStoreID(w, r, true, s.feeds != nil, "feed storage is not configured")
+	if !ok {
 		return
 	}
 	if err := s.feeds.DeleteFeed(r.Context(), p.UserID, id); err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
-			writeError(w, http.StatusNotFound, "feed not found")
-			return
-		}
-		s.log.ErrorContext(r.Context(), "delete feed failed", "err", err)
-		writeError(w, http.StatusInternalServerError, "internal server error")
+		s.storeError(w, r, err, "feed not found", "delete feed failed")
 		return
 	}
 	writeJSON(w, http.StatusOK, listResponse[deletedDTO]{Data: deletedDTO{Deleted: true}, Total: 1})
@@ -316,12 +276,8 @@ type refreshResultDTO struct {
 }
 
 func (s *Server) handleRefreshFeed(w http.ResponseWriter, r *http.Request) {
-	p, ok := requireUser(w, r)
+	p, ok := requireStore(w, r, false, s.feeds != nil, "feed storage is not configured")
 	if !ok {
-		return
-	}
-	if s.feeds == nil {
-		writeError(w, http.StatusServiceUnavailable, "feed storage is not configured")
 		return
 	}
 	if s.entries == nil {
@@ -338,12 +294,7 @@ func (s *Server) handleRefreshFeed(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 
 	if _, err := s.feeds.GetFeed(ctx, p.UserID, feedID); err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
-			writeError(w, http.StatusNotFound, "feed not found")
-			return
-		}
-		s.log.ErrorContext(r.Context(), "refresh feed lookup failed", "err", err)
-		writeError(w, http.StatusInternalServerError, "internal server error")
+		s.storeError(w, r, err, "feed not found", "refresh feed lookup failed")
 		return
 	}
 	inserted, err := s.refresher.RefreshFeedManual(ctx, feedID)

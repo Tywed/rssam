@@ -131,11 +131,8 @@ func toImportJobDTO(j *importJob) importJobDTO {
 }
 
 func (s *Server) handleGetImportJob(w http.ResponseWriter, r *http.Request) {
-	p, ok := requireAdmin(w, r)
-	if !ok || s.importJobs == nil {
-		if ok {
-			writeError(w, http.StatusServiceUnavailable, "import jobs are not configured")
-		}
+	p, ok := requireStore(w, r, true, s.importJobs != nil, "import jobs are not configured")
+	if !ok {
 		return
 	}
 	jobID := r.PathValue("jobID")

@@ -2,7 +2,6 @@
 package httpserver
 
 import (
-	"errors"
 	"net/http"
 	"strings"
 
@@ -42,11 +41,8 @@ func (s *Server) applyCategoryPollHours(r *http.Request, userID int64, c *storag
 }
 
 func (s *Server) handleListCategories(w http.ResponseWriter, r *http.Request) {
-	p, ok := requireUser(w, r)
-	if !ok || s.categories == nil {
-		if ok {
-			writeError(w, http.StatusServiceUnavailable, "category storage is not configured")
-		}
+	p, ok := requireStore(w, r, false, s.categories != nil, "category storage is not configured")
+	if !ok {
 		return
 	}
 	limit, offset, err := parseLimitOffset(r, 100, 10000)
@@ -73,11 +69,8 @@ func (s *Server) handleListCategories(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleCreateCategory(w http.ResponseWriter, r *http.Request) {
-	p, ok := requireAdmin(w, r)
-	if !ok || s.categories == nil {
-		if ok {
-			writeError(w, http.StatusServiceUnavailable, "category storage is not configured")
-		}
+	p, ok := requireStore(w, r, true, s.categories != nil, "category storage is not configured")
+	if !ok {
 		return
 	}
 	var req categoryWriteRequest
@@ -114,16 +107,8 @@ func (s *Server) handleCreateCategory(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleUpdateCategory(w http.ResponseWriter, r *http.Request) {
-	p, ok := requireAdmin(w, r)
-	if !ok || s.categories == nil {
-		if ok {
-			writeError(w, http.StatusServiceUnavailable, "category storage is not configured")
-		}
-		return
-	}
-	id, err := parsePathID(r)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+	p, id, ok := requireStoreID(w, r, true, s.categories != nil, "category storage is not configured")
+	if !ok {
 		return
 	}
 	var req categoryWriteRequest
@@ -144,12 +129,7 @@ func (s *Server) handleUpdateCategory(w http.ResponseWriter, r *http.Request) {
 	}
 	category, err := s.categories.UpdateCategory(r.Context(), p.UserID, id, req.Title, strings.TrimSpace(req.Color))
 	if err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
-			writeError(w, http.StatusNotFound, "category not found")
-			return
-		}
-		s.log.ErrorContext(r.Context(), "update category failed", "err", err)
-		writeError(w, http.StatusInternalServerError, "internal server error")
+		s.storeError(w, r, err, "category not found", "update category failed")
 		return
 	}
 	if err := s.applyCategoryPollHours(r, p.UserID, &category, req); err != nil {
@@ -164,25 +144,12 @@ func (s *Server) handleUpdateCategory(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleDeleteCategory(w http.ResponseWriter, r *http.Request) {
-	p, ok := requireAdmin(w, r)
-	if !ok || s.categories == nil {
-		if ok {
-			writeError(w, http.StatusServiceUnavailable, "category storage is not configured")
-		}
-		return
-	}
-	id, err := parsePathID(r)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+	p, id, ok := requireStoreID(w, r, true, s.categories != nil, "category storage is not configured")
+	if !ok {
 		return
 	}
 	if err := s.categories.DeleteCategory(r.Context(), p.UserID, id); err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
-			writeError(w, http.StatusNotFound, "category not found")
-			return
-		}
-		s.log.ErrorContext(r.Context(), "delete category failed", "err", err)
-		writeError(w, http.StatusInternalServerError, "internal server error")
+		s.storeError(w, r, err, "category not found", "delete category failed")
 		return
 	}
 	writeJSON(w, http.StatusOK, listResponse[deletedDTO]{Data: deletedDTO{Deleted: true}, Total: 1})

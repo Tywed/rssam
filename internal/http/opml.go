@@ -30,11 +30,8 @@ type importReportDTO struct {
 }
 
 func (s *Server) handleImportFeeds(w http.ResponseWriter, r *http.Request) {
-	p, ok := requireAdmin(w, r)
-	if !ok || s.categories == nil || s.feeds == nil {
-		if ok {
-			writeError(w, http.StatusServiceUnavailable, "storage is not configured")
-		}
+	p, ok := requireStore(w, r, true, s.categories != nil && s.feeds != nil, "storage is not configured")
+	if !ok {
 		return
 	}
 	if r.Method != http.MethodPost {

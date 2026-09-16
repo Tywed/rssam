@@ -15,11 +15,7 @@ type refreshAllResultDTO struct {
 }
 
 func (s *Server) handleRefreshAllFeeds(w http.ResponseWriter, r *http.Request) {
-	if _, ok := requireAdmin(w, r); !ok {
-		return
-	}
-	if s.refreshAll == nil {
-		writeError(w, http.StatusServiceUnavailable, "job queue is not configured")
+	if _, ok := requireStore(w, r, true, s.refreshAll != nil, "job queue is not configured"); !ok {
 		return
 	}
 

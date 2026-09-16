@@ -119,11 +119,8 @@ func providerConfigFromWrite(req webhookWriteRequest) (kind string, cfg []byte, 
 }
 
 func (s *Server) handleListWebhooks(w http.ResponseWriter, r *http.Request) {
-	p, ok := requireAdmin(w, r)
-	if !ok || s.webhooks == nil {
-		if ok {
-			writeError(w, http.StatusServiceUnavailable, "webhook storage is not configured")
-		}
+	p, ok := requireStore(w, r, true, s.webhooks != nil, "webhook storage is not configured")
+	if !ok {
 		return
 	}
 	limit, offset, err := parseLimitOffset(r, 100, 10000)
@@ -145,11 +142,8 @@ func (s *Server) handleListWebhooks(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleCreateWebhook(w http.ResponseWriter, r *http.Request) {
-	p, ok := requireAdmin(w, r)
-	if !ok || s.webhooks == nil {
-		if ok {
-			writeError(w, http.StatusServiceUnavailable, "webhook storage is not configured")
-		}
+	p, ok := requireStore(w, r, true, s.webhooks != nil, "webhook storage is not configured")
+	if !ok {
 		return
 	}
 	var req webhookWriteRequest
@@ -229,42 +223,21 @@ func (s *Server) invalidateWebhookCache(userID int64) {
 }
 
 func (s *Server) handleGetWebhook(w http.ResponseWriter, r *http.Request) {
-	p, ok := requireAdmin(w, r)
-	if !ok || s.webhooks == nil {
-		if ok {
-			writeError(w, http.StatusServiceUnavailable, "webhook storage is not configured")
-		}
-		return
-	}
-	id, err := parsePathID(r)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+	p, id, ok := requireStoreID(w, r, true, s.webhooks != nil, "webhook storage is not configured")
+	if !ok {
 		return
 	}
 	wh, err := s.webhooks.GetWebhook(r.Context(), p.UserID, id)
 	if err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
-			writeError(w, http.StatusNotFound, "webhook not found")
-			return
-		}
-		s.log.ErrorContext(r.Context(), "get webhook failed", "err", err)
-		writeError(w, http.StatusInternalServerError, "internal server error")
+		s.storeError(w, r, err, "webhook not found", "get webhook failed")
 		return
 	}
 	writeJSON(w, http.StatusOK, listResponse[webhookDTO]{Data: toWebhookDTO(wh), Total: 1})
 }
 
 func (s *Server) handleUpdateWebhook(w http.ResponseWriter, r *http.Request) {
-	p, ok := requireAdmin(w, r)
-	if !ok || s.webhooks == nil {
-		if ok {
-			writeError(w, http.StatusServiceUnavailable, "webhook storage is not configured")
-		}
-		return
-	}
-	id, err := parsePathID(r)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+	p, id, ok := requireStoreID(w, r, true, s.webhooks != nil, "webhook storage is not configured")
+	if !ok {
 		return
 	}
 	var req webhookWriteRequest
@@ -335,25 +308,12 @@ func (s *Server) handleUpdateWebhook(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleDeleteWebhook(w http.ResponseWriter, r *http.Request) {
-	p, ok := requireAdmin(w, r)
-	if !ok || s.webhooks == nil {
-		if ok {
-			writeError(w, http.StatusServiceUnavailable, "webhook storage is not configured")
-		}
-		return
-	}
-	id, err := parsePathID(r)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+	p, id, ok := requireStoreID(w, r, true, s.webhooks != nil, "webhook storage is not configured")
+	if !ok {
 		return
 	}
 	if err := s.webhooks.DeleteWebhook(r.Context(), p.UserID, id); err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
-			writeError(w, http.StatusNotFound, "webhook not found")
-			return
-		}
-		s.log.ErrorContext(r.Context(), "delete webhook failed", "err", err)
-		writeError(w, http.StatusInternalServerError, "internal server error")
+		s.storeError(w, r, err, "webhook not found", "delete webhook failed")
 		return
 	}
 	s.invalidateWebhookCache(p.UserID)
@@ -368,16 +328,8 @@ type webhookTestResult struct {
 }
 
 func (s *Server) handleTestWebhook(w http.ResponseWriter, r *http.Request) {
-	p, ok := requireAdmin(w, r)
-	if !ok || s.webhooks == nil {
-		if ok {
-			writeError(w, http.StatusServiceUnavailable, "webhook storage is not configured")
-		}
-		return
-	}
-	id, err := parsePathID(r)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+	p, id, ok := requireStoreID(w, r, true, s.webhooks != nil, "webhook storage is not configured")
+	if !ok {
 		return
 	}
 	res, err := s.runWebhookTest(r.Context(), p.UserID, id)
@@ -555,27 +507,13 @@ type webhookLogDTO struct {
 }
 
 func (s *Server) handleListWebhookLogs(w http.ResponseWriter, r *http.Request) {
-	p, ok := requireAdmin(w, r)
+	p, id, ok := requireStoreID(w, r, true, s.webhookLogs != nil && s.webhooks != nil, "webhook log storage is not configured")
 	if !ok {
-		return
-	}
-	if s.webhookLogs == nil || s.webhooks == nil {
-		writeError(w, http.StatusServiceUnavailable, "webhook log storage is not configured")
-		return
-	}
-	id, err := parsePathID(r)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	// Logs are addressed by webhook id; the webhook itself is tenant-scoped.
 	if _, err := s.webhooks.GetWebhook(r.Context(), p.UserID, id); err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
-			writeError(w, http.StatusNotFound, "webhook not found")
-			return
-		}
-		s.log.ErrorContext(r.Context(), "get webhook failed", "err", err)
-		writeError(w, http.StatusInternalServerError, "internal server error")
+		s.storeError(w, r, err, "webhook not found", "get webhook failed")
 		return
 	}
 	limit, offset, err := parseLimitOffset(r, 100, 10000)
@@ -609,12 +547,8 @@ func (s *Server) handleListWebhookLogs(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleRetryWebhookLog(w http.ResponseWriter, r *http.Request) {
-	p, ok := requireAdmin(w, r)
+	p, ok := requireStore(w, r, true, s.webhookLogs != nil, "webhook log storage is not configured")
 	if !ok {
-		return
-	}
-	if s.webhookLogs == nil {
-		writeError(w, http.StatusServiceUnavailable, "webhook log storage is not configured")
 		return
 	}
 	logID, err := parsePathInt64(r, "logID")
@@ -623,12 +557,7 @@ func (s *Server) handleRetryWebhookLog(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.webhookLogs.RetryWebhookLogNow(r.Context(), p.UserID, logID); err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
-			writeError(w, http.StatusNotFound, "webhook log not found")
-			return
-		}
-		s.log.ErrorContext(r.Context(), "retry webhook log failed", "err", err)
-		writeError(w, http.StatusInternalServerError, "internal server error")
+		s.storeError(w, r, err, "webhook log not found", "retry webhook log failed")
 		return
 	}
 	writeJSON(w, http.StatusOK, listResponse[map[string]bool]{Data: map[string]bool{"retried": true}, Total: 1})

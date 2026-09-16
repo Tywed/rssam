@@ -51,11 +51,8 @@ func toEntryDTO(e storage.Entry, encs []storage.Enclosure) entryDTO {
 }
 
 func (s *Server) handleListEntries(w http.ResponseWriter, r *http.Request) {
-	p, ok := requireUser(w, r)
-	if !ok || s.entries == nil {
-		if ok {
-			writeError(w, http.StatusServiceUnavailable, "entry storage is not configured")
-		}
+	p, ok := requireStore(w, r, false, s.entries != nil, "entry storage is not configured")
+	if !ok {
 		return
 	}
 	limit, offset, err := parseLimitOffset(r, 100, 10000)
@@ -106,26 +103,13 @@ func (s *Server) handleListEntries(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleGetEntry(w http.ResponseWriter, r *http.Request) {
-	p, ok := requireUser(w, r)
-	if !ok || s.entries == nil {
-		if ok {
-			writeError(w, http.StatusServiceUnavailable, "entry storage is not configured")
-		}
-		return
-	}
-	id, err := parsePathID(r)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+	p, id, ok := requireStoreID(w, r, false, s.entries != nil, "entry storage is not configured")
+	if !ok {
 		return
 	}
 	entry, err := s.entries.GetEntry(r.Context(), p.UserID, id)
 	if err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
-			writeError(w, http.StatusNotFound, "entry not found")
-			return
-		}
-		s.log.ErrorContext(r.Context(), "get entry failed", "err", err)
-		writeError(w, http.StatusInternalServerError, "internal server error")
+		s.storeError(w, r, err, "entry not found", "get entry failed")
 		return
 	}
 	dto, err := s.entryToDTO(r.Context(), p.UserID, entry)
@@ -138,11 +122,8 @@ func (s *Server) handleGetEntry(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleListFeedEntries(w http.ResponseWriter, r *http.Request) {
-	p, ok := requireUser(w, r)
-	if !ok || s.entries == nil {
-		if ok {
-			writeError(w, http.StatusServiceUnavailable, "entry storage is not configured")
-		}
+	p, ok := requireStore(w, r, false, s.entries != nil, "entry storage is not configured")
+	if !ok {
 		return
 	}
 	feedID, err := parsePathInt64(r, "feedID")

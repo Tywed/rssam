@@ -1,7 +1,6 @@
 package httpserver
 
 import (
-	"errors"
 	"net/http"
 	"strings"
 
@@ -25,11 +24,8 @@ type markAllReadResultDTO struct {
 }
 
 func (s *Server) handleBulkUpdateEntries(w http.ResponseWriter, r *http.Request) {
-	p, ok := requireUser(w, r)
-	if !ok || s.entries == nil {
-		if ok {
-			writeError(w, http.StatusServiceUnavailable, "entry storage is not configured")
-		}
+	p, ok := requireStore(w, r, false, s.entries != nil, "entry storage is not configured")
+	if !ok {
 		return
 	}
 	var req bulkUpdateEntriesRequest
@@ -73,11 +69,8 @@ func (s *Server) handleBulkUpdateEntries(w http.ResponseWriter, r *http.Request)
 }
 
 func (s *Server) handleMarkFeedAllRead(w http.ResponseWriter, r *http.Request) {
-	p, ok := requireUser(w, r)
-	if !ok || s.entries == nil {
-		if ok {
-			writeError(w, http.StatusServiceUnavailable, "entry storage is not configured")
-		}
+	p, ok := requireStore(w, r, false, s.entries != nil, "entry storage is not configured")
+	if !ok {
 		return
 	}
 	feedID, err := parsePathInt64(r, "feedID")
@@ -88,12 +81,7 @@ func (s *Server) handleMarkFeedAllRead(w http.ResponseWriter, r *http.Request) {
 
 	marked, err := s.entries.MarkAllFeedEntriesRead(r.Context(), p.UserID, feedID)
 	if err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
-			writeError(w, http.StatusNotFound, "feed not found")
-			return
-		}
-		s.log.ErrorContext(r.Context(), "mark feed all read failed", "err", err)
-		writeError(w, http.StatusInternalServerError, "internal server error")
+		s.storeError(w, r, err, "feed not found", "mark feed all read failed")
 		return
 	}
 	writeJSON(w, http.StatusOK, listResponse[markAllReadResultDTO]{

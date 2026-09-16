@@ -3,15 +3,12 @@ package httpserver
 import (
 	"context"
 	"encoding/base64"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
 	"strings"
 	"time"
-
-	"rssam/internal/storage"
 )
 
 const maxFeedIconBytes = 512 * 1024
@@ -22,11 +19,8 @@ type feedIconDTO struct {
 }
 
 func (s *Server) handleFeedIcon(w http.ResponseWriter, r *http.Request) {
-	p, ok := requireUser(w, r)
-	if !ok || s.feeds == nil {
-		if ok {
-			writeError(w, http.StatusServiceUnavailable, "feed storage is not configured")
-		}
+	p, ok := requireStore(w, r, false, s.feeds != nil, "feed storage is not configured")
+	if !ok {
 		return
 	}
 	feedID, err := parsePathInt64(r, "feedID")
@@ -38,12 +32,7 @@ func (s *Server) handleFeedIcon(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	feed, err := s.feeds.GetFeed(ctx, p.UserID, feedID)
 	if err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
-			writeError(w, http.StatusNotFound, "feed not found")
-			return
-		}
-		s.log.ErrorContext(r.Context(), "get feed icon failed", "err", err)
-		writeError(w, http.StatusInternalServerError, "internal server error")
+		s.storeError(w, r, err, "feed not found", "get feed icon failed")
 		return
 	}
 

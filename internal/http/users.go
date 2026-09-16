@@ -93,11 +93,7 @@ func toUserDTO(u storage.User) userDTO {
 }
 
 func (s *Server) handleListUsers(w http.ResponseWriter, r *http.Request) {
-	if _, ok := requireAdmin(w, r); !ok {
-		return
-	}
-	if s.users == nil {
-		writeError(w, http.StatusServiceUnavailable, "user storage is not configured")
+	if _, ok := requireStore(w, r, true, s.users != nil, "user storage is not configured"); !ok {
 		return
 	}
 	limit, offset, err := parseLimitOffset(r, 100, 10000)
@@ -204,17 +200,8 @@ func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleDeleteUser(w http.ResponseWriter, r *http.Request) {
-	p, ok := requireAdmin(w, r)
+	p, id, ok := requireStoreID(w, r, true, s.users != nil, "user storage is not configured")
 	if !ok {
-		return
-	}
-	if s.users == nil {
-		writeError(w, http.StatusServiceUnavailable, "user storage is not configured")
-		return
-	}
-	id, err := parsePathID(r)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	if id == p.UserID {
@@ -245,12 +232,7 @@ func (s *Server) handleGetMe(w http.ResponseWriter, r *http.Request) {
 	}
 	u, err := s.users.GetUser(r.Context(), p.UserID)
 	if err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
-			writeError(w, http.StatusNotFound, "user not found")
-			return
-		}
-		s.log.ErrorContext(r.Context(), "get me failed", "err", err)
-		writeError(w, http.StatusInternalServerError, "internal server error")
+		s.storeError(w, r, err, "user not found", "get me failed")
 		return
 	}
 	writeJSON(w, http.StatusOK, listResponse[userDTO]{Data: toUserDTO(u), Total: 1})
@@ -273,12 +255,7 @@ func (s *Server) handleUpdateMe(w http.ResponseWriter, r *http.Request) {
 	}
 	cur, err := s.users.GetUser(r.Context(), p.UserID)
 	if err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
-			writeError(w, http.StatusNotFound, "user not found")
-			return
-		}
-		s.log.ErrorContext(r.Context(), "update me: get user failed", "err", err)
-		writeError(w, http.StatusInternalServerError, "internal server error")
+		s.storeError(w, r, err, "user not found", "update me: get user failed")
 		return
 	}
 	if cur.PasswordHash != "" && !auth.CheckPassword(cur.PasswordHash, req.CurrentPassword) {
@@ -299,12 +276,7 @@ func (s *Server) handleUpdateMe(w http.ResponseWriter, r *http.Request) {
 		PasswordHash: &hash,
 	})
 	if err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
-			writeError(w, http.StatusNotFound, "user not found")
-			return
-		}
-		s.log.ErrorContext(r.Context(), "update me failed", "err", err)
-		writeError(w, http.StatusInternalServerError, "internal server error")
+		s.storeError(w, r, err, "user not found", "update me failed")
 		return
 	}
 	if s.sessions != nil {
@@ -397,12 +369,7 @@ func (s *Server) handleDeleteAPIKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.users.DeleteAPIKey(r.Context(), p.UserID, keyID); err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
-			writeError(w, http.StatusNotFound, "api key not found")
-			return
-		}
-		s.log.ErrorContext(r.Context(), "delete api key failed", "err", err)
-		writeError(w, http.StatusInternalServerError, "internal server error")
+		s.storeError(w, r, err, "api key not found", "delete api key failed")
 		return
 	}
 	s.audit.Record(r, storage.AuditAPIKeyDelete, "api_key", keyID, nil)
