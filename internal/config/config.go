@@ -245,7 +245,7 @@ func Load() (Config, error) {
 		WSClientBuffer:     env.int("WS_CLIENT_BUFFER", 100),
 		WSPingInterval:     env.duration("WS_PING_INTERVAL", 30*time.Second),
 
-		UIEnabled: parseBool(os.Getenv("UI_ENABLED")),
+		UIEnabled: parseBoolDefault(os.Getenv("UI_ENABLED"), true),
 
 		FTSLanguage:      strings.ToLower(getEnv("FTS_LANGUAGE", "russian")),
 		StoreEntriesMode: parseStoreEntriesMode(),
