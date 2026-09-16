@@ -8,33 +8,13 @@ import (
 )
 
 func parseCategoryFeedsPage(r *http.Request) (limit, offset int) {
-	limit = sidebarLazyFeedThreshold
-	offset = 0
-	if v := r.URL.Query().Get("limit"); v != "" {
-		if n, err := strconvAtoi(v); err == nil && n > 0 && n <= 200 {
-			limit = n
-		}
-	}
-	if v := r.URL.Query().Get("offset"); v != "" {
-		if n, err := strconvAtoi(v); err == nil && n >= 0 {
-			offset = n
-		}
-	}
-	return limit, offset
+	return limitOffset(r, sidebarLazyFeedThreshold, 200)
 }
 
 const feedsListPageSize = 50
 
 func parseFeedsListPage(r *http.Request) (limit, offset, page int) {
-	limit = feedsListPageSize
-	page = 1
-	if v := r.URL.Query().Get("page"); v != "" {
-		if n, err := strconvAtoi(v); err == nil && n > 0 {
-			page = n
-		}
-	}
-	offset = (page - 1) * limit
-	return limit, offset, page
+	return pageOffset(r, feedsListPageSize)
 }
 
 func feedsListPageLink(filter string, page int) string {

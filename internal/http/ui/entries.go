@@ -263,12 +263,12 @@ func (h *Handler) handleEntriesBulk(w http.ResponseWriter, r *http.Request) {
 	}
 	ids := make([]int64, 0, len(raw))
 	for _, v := range raw {
-		id, err := strconvAtoi(v)
+		id, err := strconv.ParseInt(v, 10, 64)
 		if err != nil || id <= 0 {
 			http.Error(w, "invalid entry id", http.StatusBadRequest)
 			return
 		}
-		ids = append(ids, int64(id))
+		ids = append(ids, id)
 	}
 	var update storage.BulkEntryUpdate
 	switch r.FormValue("action") {

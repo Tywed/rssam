@@ -3,6 +3,7 @@ package ui
 import (
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -137,8 +138,8 @@ func (h *Handler) handleAPIKeyCreate(w http.ResponseWriter, r *http.Request) {
 	}
 	var expiresAt *time.Time
 	if v := r.FormValue("expires_in_days"); v != "" && v != "0" {
-		days, err := strconvAtoi(v)
-		if err != nil || days > 3650 {
+		days, err := strconv.Atoi(v)
+		if err != nil || days < 0 || days > 3650 {
 			http.Error(w, "invalid expiry", http.StatusBadRequest)
 			return
 		}

@@ -349,7 +349,7 @@ func feedParamsFromForm(r *http.Request) (storage.CreateFeedParams, error) {
 	title := strings.TrimSpace(r.FormValue("title"))
 	interval := 60
 	if v := r.FormValue("interval_minutes"); v != "" {
-		if n, err := strconvAtoi(v); err == nil {
+		if n, err := strconv.Atoi(v); err == nil {
 			interval = n
 		}
 	}

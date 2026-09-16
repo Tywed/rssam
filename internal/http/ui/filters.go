@@ -298,7 +298,7 @@ func filterParamsFromForm(r *http.Request) (storage.CreateFilterParams, error) {
 	inverse := r.FormValue("inverse") == "1"
 	orderID := 0
 	if v := strings.TrimSpace(r.FormValue("order_id")); v != "" {
-		if n, err := strconvAtoi(v); err == nil {
+		if n, err := strconv.Atoi(v); err == nil && n >= 0 {
 			orderID = n
 		}
 	}

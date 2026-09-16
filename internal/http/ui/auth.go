@@ -5,7 +5,9 @@ import (
 	"context"
 	"errors"
 	"html/template"
+	"math"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -450,31 +452,29 @@ func (h *Handler) renderPartial(w http.ResponseWriter, r *http.Request, name str
 	}
 }
 
-func parsePage(r *http.Request) (limit, offset int) {
-	limit = defaultPageLimit
-	offset = 0
-	if v := r.URL.Query().Get("limit"); v != "" {
-		if n, err := strconvAtoi(v); err == nil && n > 0 && n <= 100 {
-			limit = n
-		}
+// queryInt returns the integer query parameter key clamped to [lo, hi], or
+// def when it is absent or not an integer in that range.
+func queryInt(r *http.Request, key string, def, lo, hi int) int {
+	n, err := strconv.Atoi(r.URL.Query().Get(key))
+	if err != nil || n < lo || n > hi {
+		return def
 	}
-	if v := r.URL.Query().Get("offset"); v != "" {
-		if n, err := strconvAtoi(v); err == nil && n >= 0 {
-			offset = n
-		}
-	}
-	return limit, offset
+	return n
 }
 
-func strconvAtoi(s string) (int, error) {
-	n := 0
-	for _, c := range s {
-		if c < '0' || c > '9' {
-			return 0, errors.New("invalid")
-		}
-		n = n*10 + int(c-'0')
-	}
-	return n, nil
+// limitOffset reads ?limit (1..maxLimit) and ?offset (>= 0).
+func limitOffset(r *http.Request, defLimit, maxLimit int) (limit, offset int) {
+	return queryInt(r, "limit", defLimit, 1, maxLimit), queryInt(r, "offset", 0, 0, math.MaxInt32)
+}
+
+// pageOffset reads ?page (>= 1) for fixed-size pages.
+func pageOffset(r *http.Request, pageSize int) (limit, offset, page int) {
+	page = queryInt(r, "page", 1, 1, math.MaxInt32)
+	return pageSize, (page - 1) * pageSize, page
+}
+
+func parsePage(r *http.Request) (limit, offset int) {
+	return limitOffset(r, defaultPageLimit, 100)
 }
 
 func parsePathID(r *http.Request, keys ...string) (int64, error) {

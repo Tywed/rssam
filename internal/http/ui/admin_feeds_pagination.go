@@ -7,15 +7,7 @@ import (
 const adminFeedsPageSize = 50
 
 func parseAdminFeedsPage(r *http.Request) (limit, offset, page int) {
-	limit = adminFeedsPageSize
-	page = 1
-	if v := r.URL.Query().Get("page"); v != "" {
-		if n, err := strconvAtoi(v); err == nil && n > 0 {
-			page = n
-		}
-	}
-	offset = (page - 1) * limit
-	return limit, offset, page
+	return pageOffset(r, adminFeedsPageSize)
 }
 
 func adminFeedsPageCount(total, limit int) int {

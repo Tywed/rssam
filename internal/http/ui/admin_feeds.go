@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
@@ -459,7 +460,7 @@ func adminFeedsRedirect(r *http.Request) string {
 	pageStr := strings.TrimSpace(r.FormValue("page"))
 	if status != "" || sortKey != "" || order != "" || pageStr != "" {
 		page := 1
-		if n, err := strconvAtoi(pageStr); err == nil && n > 0 {
+		if n, err := strconv.Atoi(pageStr); err == nil && n > 0 {
 			page = n
 		}
 		return adminFeedsListURL(status, sortKey, order, page)
