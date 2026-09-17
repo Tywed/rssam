@@ -3514,7 +3514,7 @@
           "url",
           "query"
         ],
-        "description": "query: PostgreSQL websearch query (morphology, \"phrase\", -exclude, or) evaluated against title+content in SQL; other fields take an RE2 regex. Rules are evaluated in priority order (ascending, then id); op joins a rule with the previous result, so op \"or\" on the first rule is rejected. tags (pre-0.1.15) is refused on write."
+        "description": "query: PostgreSQL websearch query (morphology, \"phrase\", -exclude, or) evaluated against title+content in SQL; other fields take an RE2 regex. Rules are evaluated in priority order (ascending, then id); op joins a rule with the previous result, so op \"or\" on the first rule is rejected."
       },
       "FilterOp": {
         "type": "string",

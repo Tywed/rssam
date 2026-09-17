@@ -106,12 +106,6 @@ func (e *Engine) ValidateRules(rules []storage.CreateFilterRuleParams) error {
 		if i == 0 && strings.EqualFold(strings.TrimSpace(r.Op), "or") {
 			return errors.New("the first rule cannot have op \"or\": there is no previous rule to join")
 		}
-		// Legacy rows with field "tags" still compile (they match against an
-		// empty string, as they always did); new ones are refused because
-		// entries carry no tags and such a rule can never do what it says.
-		if strings.ToLower(strings.TrimSpace(r.Field)) == FieldTags {
-			return fmt.Errorf("field %q is not supported: entries have no tags", FieldTags)
-		}
 		f.Rules = append(f.Rules, storage.FilterRule{Field: r.Field, Pattern: r.Pattern, Negate: r.Negate, Op: r.Op, Priority: r.Priority})
 	}
 	_, err := compileFilter(f, e.cfg.MaxRegexLength)
@@ -394,7 +388,7 @@ func clipMatchField(s string) string {
 
 func isAllowedField(f string) bool {
 	switch f {
-	case "title", "content", "both", "author", "url", FieldTags, FieldQuery:
+	case "title", "content", "both", "author", "url", FieldQuery:
 		return true
 	default:
 		return false
