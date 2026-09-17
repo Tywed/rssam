@@ -115,12 +115,11 @@ func (s *PostgresStore) CreateWebhook(ctx context.Context, params CreateWebhookP
 
 	var out Webhook
 	q := `
-INSERT INTO webhooks(user_id, filter_id, name, url, method, headers, body_template, secret, enabled, on_success_entry, kind, provider_config, system_alerts, digest_minutes)
-VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, $10, $11, $12::jsonb, $13, $14)
+INSERT INTO webhooks(user_id, name, url, method, headers, body_template, secret, enabled, on_success_entry, kind, provider_config, system_alerts, digest_minutes)
+VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, $8, $9, $10, $11::jsonb, $12, $13)
 RETURNING ` + webhookSQLColumns
 	if err := s.db.QueryRow(ctx, q,
 		params.UserID,
-		params.FilterID,
 		name,
 		displayURL,
 		method,
@@ -221,25 +220,23 @@ func (s *PostgresStore) UpdateWebhook(ctx context.Context, params UpdateWebhookP
 
 		q := `
 UPDATE webhooks
-SET filter_id = $2,
-    name = $3,
-    url = $4,
-    method = $5,
-    headers = $6::jsonb,
-    body_template = $7,
-    secret = $8,
-    enabled = $9,
-    on_success_entry = $10,
-    kind = $11,
-    provider_config = $12::jsonb,
-    system_alerts = $14,
-    digest_minutes = $15,
+SET name = $2,
+    url = $3,
+    method = $4,
+    headers = $5::jsonb,
+    body_template = $6,
+    secret = $7,
+    enabled = $8,
+    on_success_entry = $9,
+    kind = $10,
+    provider_config = $11::jsonb,
+    system_alerts = $13,
+    digest_minutes = $14,
     updated_at = now()
-WHERE id = $1 AND user_id = $13
+WHERE id = $1 AND user_id = $12
 RETURNING ` + webhookSQLColumns
 		if err := tx.QueryRow(ctx, q,
 			params.ID,
-			params.FilterID,
 			name,
 			displayURL,
 			method,

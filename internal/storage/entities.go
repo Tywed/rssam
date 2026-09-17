@@ -199,7 +199,6 @@ type FilterMatchWithEntry struct {
 type Webhook struct {
 	ID             int64
 	UserID         int64
-	FilterID       *int64
 	Name           string
 	URL            string
 	Method         string
@@ -572,7 +571,6 @@ type CreateFilterMatchParams struct {
 
 type CreateWebhookParams struct {
 	UserID         int64
-	FilterID       *int64
 	Name           string
 	URL            string
 	Method         string
@@ -590,7 +588,6 @@ type CreateWebhookParams struct {
 type UpdateWebhookParams struct {
 	ID             int64
 	UserID         int64
-	FilterID       *int64
 	Name           *string
 	URL            string
 	Method         string

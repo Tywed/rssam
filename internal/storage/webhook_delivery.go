@@ -27,7 +27,7 @@ type WebhookDeliveryContext struct {
 func (s *PostgresStore) LoadWebhookDeliveryContext(ctx context.Context, logID int64) (WebhookDeliveryContext, error) {
 	const q = `
 SELECT
-  w.id, w.user_id, w.filter_id, w.name, w.url, w.method, w.headers, w.body_template, w.secret, w.enabled, w.on_success_entry, w.kind, w.provider_config, w.system_alerts, w.digest_minutes, w.created_at, w.updated_at,
+  w.id, w.user_id, w.name, w.url, w.method, w.headers, w.body_template, w.secret, w.enabled, w.on_success_entry, w.kind, w.provider_config, w.system_alerts, w.digest_minutes, w.created_at, w.updated_at,
   e.id, e.feed_id, e.title, e.url, e.content, e.author, e.published_at, e.hash, e.status, e.created_at, e.updated_at,
   fd.id, fd.title,
   f.id, f.user_id, f.name, f.enabled, f.created_at, f.updated_at,
@@ -40,7 +40,6 @@ LEFT JOIN LATERAL (
   SELECT fm.filter_id, fm.details
   FROM filter_matches fm
   WHERE fm.entry_id = wl.entry_id
-    AND (w.filter_id IS NULL OR fm.filter_id = w.filter_id)
   ORDER BY fm.matched_at DESC, fm.id DESC
   LIMIT 1
 ) fm ON TRUE
@@ -60,7 +59,6 @@ WHERE wl.id = $1`
 	err := s.db.QueryRow(ctx, q, logID).Scan(
 		&out.Webhook.ID,
 		&out.Webhook.UserID,
-		&out.Webhook.FilterID,
 		&out.Webhook.Name,
 		&out.Webhook.URL,
 		&out.Webhook.Method,

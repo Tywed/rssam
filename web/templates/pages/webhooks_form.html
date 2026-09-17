@@ -66,7 +66,7 @@
       </div>
     </div>
 
-    {{if or .WebhookBindingFeeds .WebhookBindingFilters .Webhook.FilterID}}
+    {{if or .WebhookBindingFeeds .WebhookBindingFilters}}
     <div class="card">
       <h2>Привязки</h2>
       {{if .WebhookBindingFeeds}}
@@ -84,9 +84,6 @@
         <li><a href="/ui/filters/{{.ID}}">{{.Name}}</a></li>
         {{end}}
       </ul>
-      {{end}}
-      {{if .Webhook.FilterID}}
-      <p class="meta">Устаревшая привязка filter_id={{derefInt64 .Webhook.FilterID}} на самом webhook — предпочтительно через действие фильтра.</p>
       {{end}}
       {{if not (or .WebhookBindingFeeds .WebhookBindingFilters)}}
       <p class="meta">Нет привязок — webhook не будет вызываться, пока не назначен на ленту или в фильтре.</p>

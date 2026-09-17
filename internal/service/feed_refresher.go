@@ -57,7 +57,6 @@ type FeedRefresher struct {
 	PollHours storage.CategoryPollHoursStore
 
 	filterCache    ttlCache[[]storage.Filter]
-	webhookCache   ttlCache[[]storage.Webhook]
 	pollHoursCache ttlCache[pollHoursCacheItem]
 }
 
@@ -398,15 +397,6 @@ func (r *FeedRefresher) applyFiltersBestEffort(ctx context.Context, feed storage
 		r.enqueueFeedWebhooksBestEffort(ctx, feed, entries)
 		return
 	}
-	var legacyWebhooks []storage.Webhook
-	if r.Webhooks != nil && r.WebhookLogs != nil {
-		var err error
-		legacyWebhooks, err = r.listLegacyFilterWebhooksCached(ctx, feed.UserID)
-		if err != nil && r.Log != nil {
-			r.Log.Warn("list enabled webhooks failed; legacy filter webhooks skipped for this refresh",
-				"feed_id", feed.ID, "user_id", feed.UserID, "err", err)
-		}
-	}
 	matchCtx := filter.MatchContext{FeedID: feed.ID, CategoryID: feed.CategoryID}
 	queryHits := r.queryHitsBestEffort(ctx, feed.ID, filters, entries)
 	now := time.Now().UTC()
@@ -436,7 +426,6 @@ func (r *FeedRefresher) applyFiltersBestEffort(ctx context.Context, feed storage
 				metrics.FilterMatchesTotal.Add(float64(inserted))
 			}
 			r.applyFilterActions(ctx, feed.UserID, e, filters, matchedFilterIDs)
-			enqueueLegacyFilterWebhooks(ctx, legacyWebhooks, r.WebhookLogs, matchedFilterIDs, e.ID)
 		}
 		if feed.WebhookID != nil && r.WebhookLogs != nil {
 			_ = r.WebhookLogs.EnqueueWebhookLogs(ctx, []int64{*feed.WebhookID}, e.ID)

@@ -12,7 +12,7 @@ const (
 	WebhookOnSuccessMarkRead = "mark_read"
 )
 
-const webhookSQLColumns = `id, user_id, filter_id, name, url, method, headers, body_template, secret, enabled, on_success_entry, kind, provider_config, system_alerts, digest_minutes, created_at, updated_at`
+const webhookSQLColumns = `id, user_id, name, url, method, headers, body_template, secret, enabled, on_success_entry, kind, provider_config, system_alerts, digest_minutes, created_at, updated_at`
 
 const webhookNameMaxLen = 80
 
@@ -28,7 +28,6 @@ func webhookScanDest(w *Webhook) []any {
 	return []any{
 		&w.ID,
 		&w.UserID,
-		&w.FilterID,
 		&w.Name,
 		&w.URL,
 		&w.Method,

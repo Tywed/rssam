@@ -65,27 +65,3 @@ func (r *FeedRefresher) applyFilterAction(ctx context.Context, userID int64, ent
 		}
 	}
 }
-
-func enqueueLegacyFilterWebhooks(
-	ctx context.Context,
-	webhooks []storage.Webhook,
-	webhookLogs storage.WebhookLogStore,
-	matchedFilterIDs map[int64]struct{},
-	entryID int64,
-) {
-	if webhookLogs == nil || len(webhooks) == 0 {
-		return
-	}
-	var ids []int64
-	for _, wh := range webhooks {
-		if !wh.Enabled || wh.FilterID == nil {
-			continue
-		}
-		if _, ok := matchedFilterIDs[*wh.FilterID]; ok {
-			ids = append(ids, wh.ID)
-		}
-	}
-	if len(ids) > 0 {
-		_ = webhookLogs.EnqueueWebhookLogs(ctx, ids, entryID)
-	}
-}

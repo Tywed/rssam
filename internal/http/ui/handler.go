@@ -175,12 +175,6 @@ func parseTemplates() (*template.Template, error) {
 			}
 			return *p
 		},
-		"derefInt64": func(p *int64) string {
-			if p == nil {
-				return ""
-			}
-			return strconv.FormatInt(*p, 10)
-		},
 		"derefInt": func(p *int) string {
 			if p == nil {
 				return ""

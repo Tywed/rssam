@@ -3948,10 +3948,6 @@
             "type": "integer",
             "format": "int64"
           },
-          "filter_id": {
-            "type": "integer",
-            "format": "int64"
-          },
           "name": {
             "type": "string"
           },
@@ -4025,11 +4021,6 @@
       "WebhookWrite": {
         "type": "object",
         "properties": {
-          "filter_id": {
-            "type": "integer",
-            "format": "int64",
-            "nullable": true
-          },
           "name": {
             "type": "string"
           },

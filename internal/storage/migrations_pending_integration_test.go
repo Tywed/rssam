@@ -19,17 +19,17 @@ func TestIntegration_MigrationsPending(t *testing.T) {
 	if p, err := migrations.Pending(ctx, store.db); err != nil || len(p) != 0 {
 		t.Fatalf("migrated schema: pending=%v err=%v", p, err)
 	}
-	if _, err := store.db.Exec(ctx, `DELETE FROM schema_migrations WHERE version = '0045_write_amplification.sql'`); err != nil {
+	if _, err := store.db.Exec(ctx, `DELETE FROM schema_migrations WHERE version = '0046_webhook_filter_id_to_actions.sql'`); err != nil {
 		t.Fatal(err)
 	}
 	p, err := migrations.Pending(ctx, store.db)
-	if err != nil || len(p) != 1 || p[0] != "0045_write_amplification.sql" {
+	if err != nil || len(p) != 1 || p[0] != "0046_webhook_filter_id_to_actions.sql" {
 		t.Fatalf("one row removed: pending=%v err=%v", p, err)
 	}
 	if _, err := store.db.Exec(ctx, `DROP TABLE schema_migrations`); err != nil {
 		t.Fatal(err)
 	}
-	if p, err := migrations.Pending(ctx, store.db); err != nil || len(p) < 45 {
+	if p, err := migrations.Pending(ctx, store.db); err != nil || len(p) < 46 {
 		t.Fatalf("no table: pending=%d err=%v", len(p), err)
 	}
 }

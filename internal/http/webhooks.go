@@ -21,7 +21,6 @@ import (
 type webhookDTO struct {
 	ID             int64                           `json:"id"`
 	UserID         int64                           `json:"user_id"`
-	FilterID       *int64                          `json:"filter_id,omitempty"`
 	Name           string                          `json:"name"`
 	Kind           string                          `json:"kind"`
 	URL            string                          `json:"url"`
@@ -39,7 +38,6 @@ type webhookDTO struct {
 }
 
 type webhookWriteRequest struct {
-	FilterID       *int64                          `json:"filter_id"`
 	Name           *string                         `json:"name"`
 	Kind           *string                         `json:"kind"`
 	URL            string                          `json:"url"`
@@ -64,7 +62,6 @@ func toWebhookDTO(w storage.Webhook) webhookDTO {
 	dto := webhookDTO{
 		ID:             w.ID,
 		UserID:         w.UserID,
-		FilterID:       w.FilterID,
 		Name:           w.Name,
 		Kind:           kind,
 		URL:            w.URL,
@@ -194,7 +191,6 @@ func (s *Server) handleCreateWebhook(w http.ResponseWriter, r *http.Request) {
 	}
 	wh, err := s.webhooks.CreateWebhook(r.Context(), storage.CreateWebhookParams{
 		UserID:         p.UserID,
-		FilterID:       req.FilterID,
 		Name:           name,
 		URL:            url,
 		Method:         method,
@@ -212,14 +208,7 @@ func (s *Server) handleCreateWebhook(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	s.invalidateWebhookCache(p.UserID)
 	writeJSON(w, http.StatusCreated, listResponse[webhookDTO]{Data: toWebhookDTO(wh), Total: 1})
-}
-
-func (s *Server) invalidateWebhookCache(userID int64) {
-	if s.refresher != nil {
-		s.refresher.InvalidateWebhookCache(userID)
-	}
 }
 
 func (s *Server) handleGetWebhook(w http.ResponseWriter, r *http.Request) {
@@ -281,7 +270,6 @@ func (s *Server) handleUpdateWebhook(w http.ResponseWriter, r *http.Request) {
 	wh, err := s.webhooks.UpdateWebhook(r.Context(), storage.UpdateWebhookParams{
 		ID:             id,
 		UserID:         p.UserID,
-		FilterID:       req.FilterID,
 		Name:           req.Name,
 		URL:            url,
 		Method:         method,
@@ -303,7 +291,6 @@ func (s *Server) handleUpdateWebhook(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	s.invalidateWebhookCache(p.UserID)
 	writeJSON(w, http.StatusOK, listResponse[webhookDTO]{Data: toWebhookDTO(wh), Total: 1})
 }
 
@@ -316,7 +303,6 @@ func (s *Server) handleDeleteWebhook(w http.ResponseWriter, r *http.Request) {
 		s.storeError(w, r, err, "webhook not found", "delete webhook failed")
 		return
 	}
-	s.invalidateWebhookCache(p.UserID)
 	writeJSON(w, http.StatusOK, listResponse[deletedDTO]{Data: deletedDTO{Deleted: true}, Total: 1})
 }
 
@@ -357,18 +343,11 @@ func (s *Server) runWebhookTest(ctx context.Context, userID, webhookID int64) (w
 		return webhookTestResult{}, err
 	}
 
-	var f *storage.Filter
-	if wh.FilterID != nil && s.filters != nil {
-		ff, ferr := s.filters.GetFilter(ctx, userID, *wh.FilterID)
-		if ferr == nil {
-			f = &ff
-		}
-	}
 	feed := storage.WebhookFeed{Title: "test feed"}
 	entry := storage.Entry{Title: "test entry", URL: "https://example.com/test"}
 	kind, _ := storage.NormalizeWebhookKind(wh.Kind)
 
-	out, err := storage.BuildWebhookOutbound(wh, feed, entry, f)
+	out, err := storage.BuildWebhookOutbound(wh, feed, entry, nil)
 	if err != nil {
 		return webhookTestResult{}, err
 	}

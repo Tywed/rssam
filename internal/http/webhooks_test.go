@@ -68,7 +68,6 @@ func (m *memWebhookStore) CreateWebhook(_ context.Context, p storage.CreateWebho
 		DigestMinutes:  digest,
 		ID:             id,
 		UserID:         p.UserID,
-		FilterID:       p.FilterID,
 		Name:           name,
 		URL:            displayURL,
 		Method:         strings.ToUpper(strings.TrimSpace(p.Method)),
@@ -100,7 +99,6 @@ func (m *memWebhookStore) UpdateWebhook(_ context.Context, p storage.UpdateWebho
 	if !ok {
 		return storage.Webhook{}, storage.ErrNotFound
 	}
-	w.FilterID = p.FilterID
 	w.Method = strings.ToUpper(strings.TrimSpace(p.Method))
 	w.Headers = p.Headers
 	w.BodyTemplate = p.BodyTemplate
