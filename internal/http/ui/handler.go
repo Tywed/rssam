@@ -525,6 +525,8 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.Handle("GET /ui/admin/users", auth(h.requireAdmin(http.HandlerFunc(h.handleAdminUsers))))
 	mux.Handle("GET /ui/admin/audit", auth(h.requireAdmin(http.HandlerFunc(h.handleAdminAudit))))
 	mux.Handle("POST /ui/admin/users", auth(h.requireAdmin(http.HandlerFunc(h.handleAdminUserCreate))))
+	mux.Handle("POST /ui/admin/users/{id}/role", auth(h.requireAdmin(http.HandlerFunc(h.handleAdminUserRole))))
+	mux.Handle("POST /ui/admin/users/{id}/password", auth(h.requireAdmin(http.HandlerFunc(h.handleAdminUserPassword))))
 	mux.Handle("POST /ui/admin/users/{id}/delete", auth(h.requireAdmin(http.HandlerFunc(h.handleAdminUserDelete))))
 	mux.Handle("POST /ui/admin/feeds/refresh-all", auth(h.requireAdmin(http.HandlerFunc(h.handleAdminRefreshAll))))
 	mux.Handle("POST /ui/admin/feeds/reset-circuits", auth(h.requireAdmin(http.HandlerFunc(h.handleAdminFeedsResetCircuits))))

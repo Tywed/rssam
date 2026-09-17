@@ -163,6 +163,7 @@ func TestOpenAPI_Served(t *testing.T) {
 
 var rbacProbeBodies = map[string]string{
 	"/v1/users":                            `{"username":"x","password":"Str0ng-Passw0rd!"}`,
+	"/v1/users/{id}":                       `{"is_admin":true}`,
 	"/v1/me":                               `{"current_password":"a","password":"b"}`,
 	"/v1/me/api-keys":                      `{"name":"n"}`,
 	"/v1/categories":                       `{"title":"t"}`,

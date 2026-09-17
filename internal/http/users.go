@@ -23,6 +23,11 @@ type userCreateRequest struct {
 	IsAdmin  *bool  `json:"is_admin"`
 }
 
+type userUpdateRequest struct {
+	Password *string `json:"password"`
+	IsAdmin  *bool   `json:"is_admin"`
+}
+
 type meUpdateRequest struct {
 	CurrentPassword string `json:"current_password"`
 	Password        string `json:"password"`
@@ -197,6 +202,66 @@ func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 	}
 	s.audit.Record(r, storage.AuditUserCreate, "user", u.ID, map[string]any{"username": username, "is_admin": isAdmin})
 	writeJSON(w, http.StatusCreated, listResponse[userDTO]{Data: toUserDTO(u), Total: 1})
+}
+
+func (s *Server) handleUpdateUser(w http.ResponseWriter, r *http.Request) {
+	p, id, ok := requireStoreID(w, r, true, s.users != nil, "user storage is not configured")
+	if !ok {
+		return
+	}
+	var req userUpdateRequest
+	if err := decodeJSONBody(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if req.Password == nil && req.IsAdmin == nil {
+		writeError(w, http.StatusBadRequest, "nothing to update: pass password and/or is_admin")
+		return
+	}
+	// Demoting yourself is refused outright rather than only when you are
+	// the last admin: the request would lock the caller out of this very API.
+	if req.IsAdmin != nil && !*req.IsAdmin && id == p.UserID {
+		writeError(w, http.StatusBadRequest, "cannot revoke your own admin role")
+		return
+	}
+	params := storage.UpdateUserParams{ID: id, IsAdmin: req.IsAdmin}
+	details := map[string]any{}
+	if req.IsAdmin != nil {
+		details["is_admin"] = *req.IsAdmin
+	}
+	if req.Password != nil {
+		password := strings.TrimSpace(*req.Password)
+		if err := auth.ValidateNewPassword(password); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		hash, err := auth.HashPassword(password)
+		if err != nil {
+			s.log.ErrorContext(r.Context(), "hash password failed", "err", err)
+			writeError(w, http.StatusInternalServerError, "internal server error")
+			return
+		}
+		params.PasswordHash = &hash
+		details["password"] = true
+	}
+	u, err := s.users.UpdateUser(r.Context(), params)
+	if err != nil {
+		if errors.Is(err, storage.ErrLastAdmin) {
+			writeError(w, http.StatusConflict, "cannot demote the last admin")
+			return
+		}
+		s.storeError(w, r, err, "user not found", "update user failed")
+		return
+	}
+	// A reset password revokes the user's sessions, like a self-service
+	// change does; a role change takes effect on the next request anyway.
+	if req.Password != nil && s.sessions != nil {
+		if err := s.sessions.DeleteUserSessions(r.Context(), id); err != nil {
+			s.log.WarnContext(r.Context(), "revoke sessions after password reset failed", "user_id", id, "err", err)
+		}
+	}
+	s.audit.Record(r, storage.AuditUserUpdate, "user", id, details)
+	writeJSON(w, http.StatusOK, listResponse[userDTO]{Data: toUserDTO(u), Total: 1})
 }
 
 func (s *Server) handleDeleteUser(w http.ResponseWriter, r *http.Request) {

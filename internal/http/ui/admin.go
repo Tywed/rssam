@@ -62,6 +62,78 @@ func (h *Handler) handleAdminUserCreate(w http.ResponseWriter, r *http.Request) 
 	http.Redirect(w, r, "/ui/admin/users", http.StatusFound)
 }
 
+func (h *Handler) handleAdminUserRole(w http.ResponseWriter, r *http.Request) {
+	if !h.validateCSRF(r) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	p, _ := principal(r)
+	id, err := parsePathID(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	isAdmin := r.FormValue("is_admin") == "1"
+	if id == p.UserID && !isAdmin {
+		http.Error(w, "нельзя снять права администратора с себя", http.StatusBadRequest)
+		return
+	}
+	if _, err := h.cfg.Users.UpdateUser(r.Context(), storage.UpdateUserParams{ID: id, IsAdmin: &isAdmin}); err != nil {
+		switch {
+		case errors.Is(err, storage.ErrNotFound):
+			http.NotFound(w, r)
+		case errors.Is(err, storage.ErrLastAdmin):
+			http.Error(w, "нельзя снять права с последнего администратора", http.StatusConflict)
+		default:
+			http.Error(w, "update user failed", http.StatusInternalServerError)
+		}
+		return
+	}
+	h.cfg.Audit.Record(r, storage.AuditUserUpdate, "user", id, map[string]any{"is_admin": isAdmin})
+	http.Redirect(w, r, "/ui/admin/users", http.StatusFound)
+}
+
+func (h *Handler) handleAdminUserPassword(w http.ResponseWriter, r *http.Request) {
+	if !h.validateCSRF(r) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	id, err := parsePathID(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	password := r.FormValue("password")
+	if err := auth.ValidateNewPassword(password); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	hash, err := auth.HashPassword(password)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if _, err := h.cfg.Users.UpdateUser(r.Context(), storage.UpdateUserParams{ID: id, PasswordHash: &hash}); err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			http.NotFound(w, r)
+			return
+		}
+		http.Error(w, "update user failed", http.StatusInternalServerError)
+		return
+	}
+	// The user (including the admin resetting their own password here)
+	// signs in again with the new password; a stale session must not
+	// outlive it.
+	_ = h.cfg.Sessions.DeleteUserSessions(r.Context(), id)
+	h.cfg.Audit.Record(r, storage.AuditUserUpdate, "user", id, map[string]any{"password": true})
+	p, _ := principal(r)
+	if id == p.UserID {
+		http.Redirect(w, r, "/ui/login", http.StatusFound)
+		return
+	}
+	http.Redirect(w, r, "/ui/admin/users", http.StatusFound)
+}
+
 func (h *Handler) handleAdminUserDelete(w http.ResponseWriter, r *http.Request) {
 	if !h.validateCSRF(r) {
 		http.Error(w, "forbidden", http.StatusForbidden)

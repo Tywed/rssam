@@ -2455,6 +2455,74 @@
           "description": "Object id."
         }
       ],
+      "put": {
+        "tags": [
+          "users"
+        ],
+        "summary": "Update user",
+        "operationId": "updateUser",
+        "description": "Set a new password and/or toggle the admin role of any user. At least one field is required. A reset password revokes all of the user's sessions. Requires an admin principal.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UserUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated user.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid id or body, empty update, weak password, or the caller tried to revoke their own admin role.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "description": "Refused: demoting this user would leave no login-capable admin.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        }
+      },
       "delete": {
         "tags": [
           "users"
@@ -4215,6 +4283,19 @@
           "username",
           "password"
         ]
+      },
+      "UserUpdate": {
+        "type": "object",
+        "description": "At least one property must be present.",
+        "properties": {
+          "password": {
+            "type": "string",
+            "description": "New password, subject to the password policy. Revokes the user's sessions."
+          },
+          "is_admin": {
+            "type": "boolean"
+          }
+        }
       },
       "MeUpdate": {
         "type": "object",

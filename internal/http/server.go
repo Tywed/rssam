@@ -478,6 +478,7 @@ func (s *Server) Handler() http.Handler {
 	api.HandleFunc("POST /v1/webhook-logs/{logID}/retry", s.handleRetryWebhookLog)
 	api.HandleFunc("GET /v1/users", s.handleListUsers)
 	api.HandleFunc("POST /v1/users", s.handleCreateUser)
+	api.HandleFunc("PUT /v1/users/{id}", s.handleUpdateUser)
 	api.HandleFunc("DELETE /v1/users/{id}", s.handleDeleteUser)
 	api.HandleFunc("GET /v1/me", s.handleGetMe)
 	api.HandleFunc("PUT /v1/me", s.handleUpdateMe)

@@ -102,7 +102,31 @@ func (m *memUserStore) CreateUser(_ context.Context, p storage.CreateUserParams)
 }
 
 func (m *memUserStore) UpdateUser(_ context.Context, p storage.UpdateUserParams) (storage.User, error) {
-	return m.GetUser(context.Background(), p.ID)
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	u, ok := m.users[p.ID]
+	if !ok {
+		return storage.User{}, storage.ErrNotFound
+	}
+	if p.IsAdmin != nil && !*p.IsAdmin && u.IsAdmin && u.PasswordHash != "" {
+		others := 0
+		for oid, o := range m.users {
+			if oid != p.ID && o.IsAdmin && o.PasswordHash != "" {
+				others++
+			}
+		}
+		if others == 0 {
+			return storage.User{}, storage.ErrLastAdmin
+		}
+	}
+	if p.IsAdmin != nil {
+		u.IsAdmin = *p.IsAdmin
+	}
+	if p.PasswordHash != nil {
+		u.PasswordHash = *p.PasswordHash
+	}
+	m.users[p.ID] = u
+	return u, nil
 }
 
 func (m *memUserStore) DeleteUser(_ context.Context, id int64) error {

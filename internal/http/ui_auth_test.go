@@ -12,7 +12,8 @@ import (
 )
 
 type memSessionStore struct {
-	s storage.Session
+	s       storage.Session
+	revoked []int64
 }
 
 func (m *memSessionStore) CreateSession(_ context.Context, userID int64, sessionID string, expiresAt time.Time) (storage.Session, error) {
@@ -25,9 +26,12 @@ func (m *memSessionStore) LookupSession(_ context.Context, sessionID string) (st
 	}
 	return storage.Session{}, storage.ErrNotFound
 }
-func (m *memSessionStore) TouchSession(_ context.Context, _ string, _ time.Time) error   { return nil }
-func (m *memSessionStore) DeleteSession(_ context.Context, _ string) error               { return nil }
-func (m *memSessionStore) DeleteUserSessions(_ context.Context, _ int64) error           { return nil }
+func (m *memSessionStore) TouchSession(_ context.Context, _ string, _ time.Time) error { return nil }
+func (m *memSessionStore) DeleteSession(_ context.Context, _ string) error             { return nil }
+func (m *memSessionStore) DeleteUserSessions(_ context.Context, id int64) error {
+	m.revoked = append(m.revoked, id)
+	return nil
+}
 func (m *memSessionStore) DeleteUserSessionsExcept(context.Context, int64, string) error { return nil }
 
 func TestAuthenticateSessionCookie(t *testing.T) {

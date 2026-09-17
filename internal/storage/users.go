@@ -54,6 +54,7 @@ type CreateUserParams struct {
 type UpdateUserParams struct {
 	ID           int64
 	PasswordHash *string
+	IsAdmin      *bool
 }
 
 type CreateAPIKeyParams struct {
@@ -75,6 +76,8 @@ type UserStore interface {
 	GetUser(ctx context.Context, id int64) (User, error)
 	GetUserByUsername(ctx context.Context, username string) (User, error)
 	CreateUser(ctx context.Context, params CreateUserParams) (User, error)
+	// UpdateUser changes the password and/or the admin flag; nil fields are
+	// left alone. Demoting the only login-capable admin returns ErrLastAdmin.
 	UpdateUser(ctx context.Context, params UpdateUserParams) (User, error)
 	// DeleteUser returns ErrLastAdmin when the user is the only admin that
 	// can log in (is_admin with a non-empty password_hash).
@@ -181,27 +184,74 @@ RETURNING id, username, password_hash, is_admin, created_at`
 }
 
 func (s *PostgresStore) UpdateUser(ctx context.Context, params UpdateUserParams) (User, error) {
-	if params.PasswordHash != nil {
-		const q = `
-UPDATE users SET password_hash = $2 WHERE id = $1
-RETURNING id, username, password_hash, is_admin, created_at`
-		var u User
-		err := s.db.QueryRow(ctx, q, params.ID, *params.PasswordHash).
-			Scan(&u.ID, &u.Username, &u.PasswordHash, &u.IsAdmin, &u.CreatedAt)
-		if err != nil {
-			if errors.Is(err, pgx.ErrNoRows) {
-				return User{}, ErrNotFound
-			}
-			return User{}, fmt.Errorf("update user password: %w", err)
-		}
-		return u, nil
+	if params.PasswordHash == nil && params.IsAdmin == nil {
+		return s.GetUser(ctx, params.ID)
 	}
-	return s.GetUser(ctx, params.ID)
+	var u User
+	err := withTx(ctx, s.db, func(tx pgx.Tx) error {
+		if params.IsAdmin != nil && !*params.IsAdmin {
+			if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock($1)`, userAdminLockKey); err != nil {
+				return fmt.Errorf("update user: lock: %w", err)
+			}
+			last, err := isLastLoginCapableAdmin(ctx, tx, params.ID)
+			if err != nil {
+				return err
+			}
+			if last {
+				return ErrLastAdmin
+			}
+		}
+		const q = `
+UPDATE users
+SET password_hash = COALESCE($2, password_hash),
+    is_admin = COALESCE($3, is_admin)
+WHERE id = $1
+RETURNING id, username, password_hash, is_admin, created_at`
+		err := tx.QueryRow(ctx, q, params.ID, params.PasswordHash, params.IsAdmin).
+			Scan(&u.ID, &u.Username, &u.PasswordHash, &u.IsAdmin, &u.CreatedAt)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrNotFound
+		}
+		if err != nil {
+			return fmt.Errorf("update user: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		return User{}, err
+	}
+	return u, nil
 }
 
-// userAdminLockKey serialises admin-count checks in DeleteUser so two
-// concurrent deletions cannot each see "another admin still exists".
+// userAdminLockKey serialises the admin-count checks in DeleteUser and
+// UpdateUser so two concurrent changes cannot each see "another admin still
+// exists".
 const userAdminLockKey int64 = 0x7273616d5f61646d // "rsam_adm"
+
+// isLastLoginCapableAdmin reports whether id is an admin with a password
+// and no other such admin exists. Callers hold userAdminLockKey.
+func isLastLoginCapableAdmin(ctx context.Context, tx pgx.Tx, id int64) (bool, error) {
+	var isAdmin bool
+	var hash string
+	err := tx.QueryRow(ctx, `SELECT is_admin, password_hash FROM users WHERE id = $1 FOR UPDATE`, id).Scan(&isAdmin, &hash)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, ErrNotFound
+	}
+	if err != nil {
+		return false, fmt.Errorf("load user: %w", err)
+	}
+	if !isAdmin || hash == "" {
+		return false, nil
+	}
+	var others int
+	err = tx.QueryRow(ctx, `
+SELECT count(*) FROM users
+WHERE is_admin AND password_hash <> '' AND id <> $1`, id).Scan(&others)
+	if err != nil {
+		return false, fmt.Errorf("count admins: %w", err)
+	}
+	return others == 0, nil
+}
 
 // DeleteUser removes a user and everything owned by it (ON DELETE CASCADE).
 // Deleting the last login-capable admin is refused with ErrLastAdmin:
@@ -211,26 +261,12 @@ func (s *PostgresStore) DeleteUser(ctx context.Context, id int64) error {
 		if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock($1)`, userAdminLockKey); err != nil {
 			return fmt.Errorf("delete user: lock: %w", err)
 		}
-		var isAdmin bool
-		var hash string
-		err := tx.QueryRow(ctx, `SELECT is_admin, password_hash FROM users WHERE id = $1 FOR UPDATE`, id).Scan(&isAdmin, &hash)
-		if errors.Is(err, pgx.ErrNoRows) {
-			return ErrNotFound
-		}
+		last, err := isLastLoginCapableAdmin(ctx, tx, id)
 		if err != nil {
 			return fmt.Errorf("delete user: %w", err)
 		}
-		if isAdmin && hash != "" {
-			var others int
-			err := tx.QueryRow(ctx, `
-SELECT count(*) FROM users
-WHERE is_admin AND password_hash <> '' AND id <> $1`, id).Scan(&others)
-			if err != nil {
-				return fmt.Errorf("delete user: count admins: %w", err)
-			}
-			if others == 0 {
-				return ErrLastAdmin
-			}
+		if last {
+			return ErrLastAdmin
 		}
 		if _, err := tx.Exec(ctx, `DELETE FROM users WHERE id = $1`, id); err != nil {
 			return fmt.Errorf("delete user: %w", err)

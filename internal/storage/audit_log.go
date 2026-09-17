@@ -11,6 +11,7 @@ import (
 // Audit actions. Keep the list short: every entry is a row per human action.
 const (
 	AuditUserCreate       = "user.create"
+	AuditUserUpdate       = "user.update"
 	AuditUserDelete       = "user.delete"
 	AuditPasswordChange   = "user.password_change"
 	AuditLogoutOthers     = "session.logout_others"
@@ -32,7 +33,7 @@ const (
 
 // AuditActions lists every action in display order (filter dropdown).
 var AuditActions = []string{
-	AuditUserCreate, AuditUserDelete, AuditPasswordChange, AuditLogoutOthers,
+	AuditUserCreate, AuditUserUpdate, AuditUserDelete, AuditPasswordChange, AuditLogoutOthers,
 	AuditAPIKeyCreate, AuditAPIKeyDelete,
 	AuditEnvUpdate, AuditBridgeUpdate,
 	AuditWorkersPause, AuditWorkersResume, AuditServiceRestart, AuditServiceUpdate,

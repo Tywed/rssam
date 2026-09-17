@@ -18,7 +18,25 @@
         <td>{{.ID}}</td>
         <td>{{.Username}}</td>
         <td>{{if .IsAdmin}}да{{else}}нет{{end}}</td>
-        <td>{{if ne .ID $.CurrentUserID}}<form method="post" action="/ui/admin/users/{{.ID}}/delete" data-confirm="Удалить?"><input type="hidden" name="csrf_token" value="{{$.CSRFToken}}"><button class="btn btn-sm btn-danger">×</button></form>{{end}}</td>
+        <td>
+          <div class="btn-row">
+            {{if ne .ID $.CurrentUserID}}
+            <form method="post" action="/ui/admin/users/{{.ID}}/role" data-confirm="{{if .IsAdmin}}Снять права администратора с «{{.Username}}»?{{else}}Сделать «{{.Username}}» администратором?{{end}}">
+              <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+              <input type="hidden" name="is_admin" value="{{if .IsAdmin}}0{{else}}1{{end}}">
+              <button class="btn btn-sm">{{if .IsAdmin}}Снять admin{{else}}Сделать admin{{end}}</button>
+            </form>
+            {{end}}
+            <form method="post" action="/ui/admin/users/{{.ID}}/password" data-confirm="Задать новый пароль для «{{.Username}}»? Все его сессии будут завершены.">
+              <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+              <input name="password" type="password" placeholder="Новый пароль" required minlength="8" autocomplete="new-password">
+              <button class="btn btn-sm">Сменить пароль</button>
+            </form>
+            {{if ne .ID $.CurrentUserID}}
+            <form method="post" action="/ui/admin/users/{{.ID}}/delete" data-confirm="Удалить пользователя «{{.Username}}» со всеми его лентами, фильтрами и вебхуками?"><input type="hidden" name="csrf_token" value="{{$.CSRFToken}}"><button class="btn btn-sm btn-danger">×</button></form>
+            {{end}}
+          </div>
+        </td>
       </tr>
       {{end}}
       </tbody>

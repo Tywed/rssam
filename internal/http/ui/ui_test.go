@@ -15,6 +15,7 @@ import (
 
 type uiMemSessions struct {
 	sessions map[string]storage.Session
+	revoked  []int64
 }
 
 func (m *uiMemSessions) CreateSession(_ context.Context, userID int64, sessionID string, expiresAt time.Time) (storage.Session, error) {
@@ -42,7 +43,10 @@ func (m *uiMemSessions) DeleteSession(_ context.Context, sessionID string) error
 	delete(m.sessions, sessionID)
 	return nil
 }
-func (m *uiMemSessions) DeleteUserSessions(_ context.Context, _ int64) error { return nil }
+func (m *uiMemSessions) DeleteUserSessions(_ context.Context, userID int64) error {
+	m.revoked = append(m.revoked, userID)
+	return nil
+}
 func (m *uiMemSessions) DeleteUserSessionsExcept(_ context.Context, userID int64, keep string) error {
 	for id, sess := range m.sessions {
 		if sess.UserID == userID && id != keep {
@@ -55,6 +59,8 @@ func (m *uiMemSessions) DeleteUserSessionsExcept(_ context.Context, userID int64
 type uiMemUsers struct {
 	user      storage.User
 	deleteErr error
+	updateErr error
+	updates   []storage.UpdateUserParams
 }
 
 func (u *uiMemUsers) CountUsers(context.Context) (int, error)             { return 1, nil }
@@ -77,7 +83,11 @@ func (u *uiMemUsers) GetUserByUsername(_ context.Context, name string) (storage.
 func (u *uiMemUsers) CreateUser(context.Context, storage.CreateUserParams) (storage.User, error) {
 	return storage.User{}, nil
 }
-func (u *uiMemUsers) UpdateUser(context.Context, storage.UpdateUserParams) (storage.User, error) {
+func (u *uiMemUsers) UpdateUser(_ context.Context, p storage.UpdateUserParams) (storage.User, error) {
+	if u.updateErr != nil {
+		return storage.User{}, u.updateErr
+	}
+	u.updates = append(u.updates, p)
 	return u.user, nil
 }
 func (u *uiMemUsers) DeleteUser(context.Context, int64) error { return u.deleteErr }
