@@ -23,6 +23,13 @@ type SearchFeedsFilter struct {
 	Limit      int
 }
 
+func escapeLikePattern(s string) string {
+	s = strings.ReplaceAll(s, `\`, `\\`)
+	s = strings.ReplaceAll(s, `%`, `\%`)
+	s = strings.ReplaceAll(s, `_`, `\_`)
+	return s
+}
+
 func clampFeedSuggestLimit(n int) int {
 	if n <= 0 {
 		return DefaultFeedSuggestLimit

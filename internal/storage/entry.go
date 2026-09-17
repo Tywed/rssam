@@ -370,7 +370,9 @@ WHERE f.category_id = $1
 }
 
 func (s *PostgresStore) UpdateEntryContent(ctx context.Context, userID int64, params UpdateEntryContentParams) (Entry, error) {
-	vecExpr := ftsVectorExpr(s.ftsLanguage)
+	// Column references inside SET see the row before the update, so the
+	// vector must be built from the $3 parameter, not from `content`.
+	vecExpr := ftsVectorExprPlaceholders(s.ftsLanguage, "title", "$3")
 	q := `
 UPDATE entries
 SET content = $3,

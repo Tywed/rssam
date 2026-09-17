@@ -21,11 +21,11 @@ func TestNormalizeFTSLanguage(t *testing.T) {
 
 func TestFTSVectorExpr_allowlisted(t *testing.T) {
 	const want = "to_tsvector('simple', left(coalesce(title, '') || ' ' || coalesce(content, ''), 150000))"
-	expr := ftsVectorExpr("simple")
+	expr := ftsVectorExprPlaceholders("simple", "title", "content")
 	if expr != want {
 		t.Fatalf("unexpected expr: %s", expr)
 	}
-	expr = ftsVectorExpr("'; DROP TABLE entries; --")
+	expr = ftsVectorExprPlaceholders("'; DROP TABLE entries; --", "title", "content")
 	if expr != want {
 		t.Fatalf("unexpected sanitized expr: %s", expr)
 	}

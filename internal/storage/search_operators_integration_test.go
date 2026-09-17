@@ -5,6 +5,7 @@ package storage
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 )
 
@@ -74,12 +75,24 @@ func TestIntegration_SearchEntriesWebsearchOperators(t *testing.T) {
 	if got := search("нефть or дивиденды"); !has(got, texts[4], texts[0]) {
 		t.Fatalf("or: %v", got)
 	}
-	// Plain words keep the substring fallback.
-	if got := search("ефть"); !has(got, texts[4]) {
-		t.Fatalf("substring fallback: %v", got)
+	// Plain words match as prefixes too: an unfinished word or a stem the
+	// dictionary does not know still finds the entry; substrings inside a
+	// word do not.
+	if got := search("нефт"); !has(got, texts[4]) {
+		t.Fatalf("prefix: %v", got)
+	}
+	if got := search("газпр выр"); !has(got, texts[1]) {
+		t.Fatalf("multi-word prefix: %v", got)
+	}
+	if got := search("ефть"); len(got) != 0 {
+		t.Fatalf("infix must not match: %v", got)
+	}
+	// Operator characters inside a plain word are data, not syntax.
+	if got := search("газпром'а"); !has(got, texts[0], texts[1]) {
+		t.Fatalf("quote inside word: %v", got)
 	}
 	// Garbage never errors, just finds nothing.
-	for _, q := range []string{`"`, `"""`, "(((", "&&& ||| !!!", "OR OR", "-", `""`, "a:*", "!a", "a <-> b"} {
+	for _, q := range []string{`"`, `"""`, "(((", "&&& ||| !!!", "OR OR", "-", `""`, "a:*", "!a", "a <-> b", `'`, `''`, `\`, `\'`, "':*", "a:*b", "x'y\\z", "в", "в на", strings.Repeat("я", 3000)} {
 		if _, _, err := store.SearchEntries(ctx, owner.ID, SearchEntriesFilter{Query: q, FeedID: &feed.ID, Limit: 10, Rank: true, WithTotal: true}); err != nil {
 			t.Fatalf("garbage %q: %v", q, err)
 		}

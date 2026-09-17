@@ -12,3 +12,20 @@ func TestSearchEntries_requiresQuery(t *testing.T) {
 		t.Fatal("expected error for empty query")
 	}
 }
+
+func TestFTSPrefixQuery(t *testing.T) {
+	for in, want := range map[string]string{
+		"постгр":          `'постгр':*`,
+		"  постгр   нов ": `'постгр':* & 'нов':*`,
+		"it's":            `'it''s':*`,
+		`a\b`:             `'a\\b':*`,
+		"a:*b & !c":       `'a:*b':* & '&' & '!c'`,
+		"ip адрес":        `'ip' & 'адрес':*`,
+		"яяя":             `'яяя':*`,
+		"":                ``,
+	} {
+		if got := ftsPrefixQuery(in); got != want {
+			t.Errorf("ftsPrefixQuery(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

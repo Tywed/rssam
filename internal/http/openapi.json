@@ -2908,7 +2908,7 @@
         "schema": {
           "type": "string"
         },
-        "description": "Full-text search over title and content. Supports websearch syntax: \"quoted phrase\", -excluded word, `or` between terms. Plain words also match as substrings."
+        "description": "Full-text search over title and content. Supports websearch syntax: \"quoted phrase\", -excluded word, `or` between terms. Plain words also match as word prefixes (`постгр` finds `постгрес`); substrings inside a word are not searched."
       },
       "feedIDQuery": {
         "name": "feed_id",

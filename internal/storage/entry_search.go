@@ -6,13 +6,6 @@ import (
 	"strings"
 )
 
-func escapeLikePattern(s string) string {
-	s = strings.ReplaceAll(s, `\`, `\\`)
-	s = strings.ReplaceAll(s, `%`, `\%`)
-	s = strings.ReplaceAll(s, `_`, `\_`)
-	return s
-}
-
 // SearchEntriesFilter controls FTS search over entries. Removed rows are
 // excluded unless Status asks for them explicitly.
 type SearchEntriesFilter struct {
@@ -56,25 +49,21 @@ func (s *PostgresStore) SearchEntries(ctx context.Context, userID int64, filter 
 	args = append(args, userID)
 	argN++
 
-	queryArg := fmt.Sprintf("$%d", argN)
-	tsq := ftsWebsearchExpr(s.ftsLanguage, queryArg)
+	tsq := ftsWebsearchExpr(s.ftsLanguage, fmt.Sprintf("$%d", argN))
 	args = append(args, query)
 	argN++
-
-	if HasSearchOperators(query) {
-		where = append(where, "search_vector @@ "+tsq)
-	} else {
-		likeArg := fmt.Sprintf("$%d", argN)
-		likePattern := "%" + escapeLikePattern(query) + "%"
-		// ILIKE covers substrings that the stemmer misses (especially Cyrillic with simple config).
-		where = append(where, fmt.Sprintf(`(
-  search_vector @@ %s
-  OR title ILIKE %s ESCAPE '\'
-  OR coalesce(content, '') ILIKE %s ESCAPE '\'
-)`, tsq, likeArg, likeArg))
-		args = append(args, likePattern)
+	if !HasSearchOperators(query) {
+		// Plain words also match as prefixes so that a stem the dictionary
+		// does not know ("постгр", "kubern") or an unfinished word still
+		// finds the entry. Both halves are answered by the GIN index; the
+		// former `title/content ILIKE '%q%'` fallback forced a sequential
+		// scan of the whole table (200 000 entries, 1 GB: 4.7–6.4 s and
+		// 2.4 M buffers per search versus 0.4–25 ms and <10 k buffers now).
+		tsq = fmt.Sprintf("(%s || %s)", tsq, ftsPrefixExpr(s.ftsLanguage, fmt.Sprintf("$%d", argN)))
+		args = append(args, ftsPrefixQuery(query))
 		argN++
 	}
+	where = append(where, "search_vector @@ "+tsq)
 
 	if filter.FeedID != nil {
 		where = append(where, fmt.Sprintf("feed_id = $%d", argN))
@@ -101,7 +90,7 @@ func (s *PostgresStore) SearchEntries(ctx context.Context, userID int64, filter 
 
 	orderBy := entryOrderClause(filter.Sort)
 	if filter.Rank {
-		orderBy = fmt.Sprintf("CASE WHEN search_vector @@ %s THEN ts_rank_cd(search_vector, %s) ELSE 0 END DESC, ", tsq, ftsWebsearchExpr(s.ftsLanguage, queryArg)) + orderBy
+		orderBy = fmt.Sprintf("ts_rank_cd(search_vector, %s) DESC, ", tsq) + orderBy
 	}
 
 	whereSQL := "\nWHERE " + strings.Join(where, " AND ")
@@ -109,8 +98,19 @@ func (s *PostgresStore) SearchEntries(ctx context.Context, userID int64, filter 
 	if !filter.WithTotal {
 		fetch++
 	}
-	q := "SELECT " + entryColumns(filter.WithoutBody) + "\nFROM entries" + whereSQL +
-		"\nORDER BY " + orderBy +
+	q := "SELECT " + entryColumns(filter.WithoutBody) + "\nFROM entries" + whereSQL
+	if !filter.Rank {
+		// When the ORDER BY matches entries_user_sort_idx the planner walks
+		// that index and tests search_vector on every row, betting the
+		// LIMIT fills quickly; for a rare term that detoasts the whole
+		// table (200 000 entries: 8–19 s). The materialized CTE pins the
+		// plan to the GIN index instead (0.1–120 ms). A ranked ORDER BY
+		// cannot use the sort index, so there the planner already picks
+		// the GIN or a sequential scan on its own.
+		q = "WITH hits AS MATERIALIZED (SELECT id FROM entries" + whereSQL + ")\n" +
+			"SELECT " + entryColumns(filter.WithoutBody) + "\nFROM entries\nWHERE id IN (SELECT id FROM hits)"
+	}
+	q += "\nORDER BY " + orderBy +
 		"\nLIMIT $" + fmt.Sprint(argN) + " OFFSET $" + fmt.Sprint(argN+1)
 
 	rows, err := s.db.Query(ctx, q, append(args, fetch, offset)...)
