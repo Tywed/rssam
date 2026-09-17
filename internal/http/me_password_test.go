@@ -56,6 +56,41 @@ func TestUpdateMe_RequiresCurrentPasswordAndRevokesSessions(t *testing.T) {
 	}
 }
 
+// A password-less account may set its first password without proof only
+// while no user can log in (bootstrap); afterwards that is an admin's job.
+func TestUpdateMe_PasswordlessOnlyDuringBootstrap(t *testing.T) {
+	users := newMemUserStore()
+	s := New(Dependencies{UserStore: users, SessionStore: &memSessionStore{}})
+	do := func(body string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodPut, "/v1/me", bytes.NewBufferString(body))
+		req = req.WithContext(auth.WithPrincipal(req.Context(), auth.Principal{UserID: 1, IsAdmin: true}))
+		rec := httptest.NewRecorder()
+		s.handleUpdateMe(rec, req)
+		return rec
+	}
+	if _, err := users.CreateUser(context.Background(), storage.CreateUserParams{Username: "bob", PasswordHash: "h"}); err != nil {
+		t.Fatal(err)
+	}
+	if rec := do(`{"password":"newpass123"}`); rec.Code != http.StatusForbidden {
+		t.Fatalf("password-less after bootstrap: %d %s", rec.Code, rec.Body.String())
+	}
+	if rec := do(`{"current_password":"","password":"newpass123"}`); rec.Code != http.StatusForbidden {
+		t.Fatalf("password-less after bootstrap, empty current: %d %s", rec.Code, rec.Body.String())
+	}
+	if err := users.DeleteUser(context.Background(), 2); err != nil {
+		t.Fatal(err)
+	}
+	if rec := do(`{"password":"newpass123"}`); rec.Code != http.StatusOK {
+		t.Fatalf("bootstrap: %d %s", rec.Code, rec.Body.String())
+	}
+	if u, _ := users.GetUser(context.Background(), 1); !auth.CheckPassword(u.PasswordHash, "newpass123") {
+		t.Fatalf("password not stored: %+v", u)
+	}
+	if rec := do(`{"password":"another123"}`); rec.Code != http.StatusForbidden {
+		t.Fatalf("second change without current_password: %d %s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestSystemInfo_AdminOnly(t *testing.T) {
 	s := New(Dependencies{UserStore: newMemUserStore()})
 	req := httptest.NewRequest(http.MethodGet, "/v1/system/info", nil)

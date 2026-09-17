@@ -323,7 +323,24 @@ func (s *Server) handleUpdateMe(w http.ResponseWriter, r *http.Request) {
 		s.storeError(w, r, err, "user not found", "update me: get user failed")
 		return
 	}
-	if cur.PasswordHash != "" && !auth.CheckPassword(cur.PasswordHash, req.CurrentPassword) {
+	if cur.PasswordHash == "" {
+		// A password-less account (the AUTH_TOKEN placeholder) may set its
+		// first password only while nobody can log in yet — that is how an
+		// instance without ADMIN_USERNAME/ADMIN_PASSWORD bootstraps its UI
+		// login. Once a login-capable user exists, only an admin may give
+		// such an account a password (PUT /v1/users/{id}); otherwise the
+		// dev token alone would mint a persistent admin login.
+		n, err := s.users.CountLoginCapableUsers(r.Context())
+		if err != nil {
+			s.log.ErrorContext(r.Context(), "update me: count users failed", "err", err)
+			writeError(w, http.StatusInternalServerError, "internal server error")
+			return
+		}
+		if n > 0 {
+			writeError(w, http.StatusForbidden, "account has no password; ask an admin to set one")
+			return
+		}
+	} else if !auth.CheckPassword(cur.PasswordHash, req.CurrentPassword) {
 		writeError(w, http.StatusForbidden, "current_password is incorrect")
 		return
 	}

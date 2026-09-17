@@ -2648,7 +2648,7 @@
             "$ref": "#/components/responses/Unauthorized"
           },
           "403": {
-            "description": "current_password is incorrect.",
+            "description": "current_password is incorrect, or the account has no password and bootstrap is over.",
             "content": {
               "application/json": {
                 "schema": {
@@ -4311,7 +4311,7 @@
           "current_password",
           "password"
         ],
-        "description": "Change own password. Users authenticated via API token must still know the current password."
+        "description": "Change own password. Users authenticated via API token must still know the current password. Bootstrap exception: an account without a password (the AUTH_TOKEN placeholder) may set its first password without current_password only while no login-capable user exists; afterwards an admin sets it via PUT /v1/users/{id}."
       },
       "ApiKey": {
         "type": "object",
