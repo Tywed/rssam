@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"strings"
+
+	"github.com/jackc/pgx/v5"
 )
 
 // SearchEntriesFilter controls FTS search over entries. Removed rows are
@@ -16,13 +18,31 @@ type SearchEntriesFilter struct {
 	Sort    string
 	Limit   int
 	Offset  int
-	// Rank orders by ts_rank when true (default for search).
+	// Rank orders by relevance among the SearchRankWindow newest hits; see
+	// SearchEntries.
 	Rank bool
-	// WithTotal counts all matches; see ListEntriesFilter.WithTotal.
+	// WithTotal counts matches up to SearchTotalCap; a total equal to the
+	// cap means "at least that many". Without it the total is
+	// Offset+len(page), plus one when a further page exists.
 	WithTotal bool
 	// WithoutBody: see ListEntriesFilter.WithoutBody.
 	WithoutBody bool
 }
+
+// SearchRankWindow is how many of the newest hits a ranked search orders
+// by ts_rank_cd. Ranking needs the tsvector of every candidate, and on
+// wide entries those live in TOAST: ranking all hits of a common word read
+// 0.8–1.5 M buffers (200 000 entries, 626 MB; 355–750 ms even from cache).
+// Ranking the newest 2 000 reads ≤ 25 k buffers (2–66 ms) and, for a feed
+// reader, "most relevant among the recent" is the useful order anyway.
+// 5 000 and 10 000 measured 86 and 110 ms for no visible gain.
+const SearchRankWindow = 2000
+
+// SearchTotalCap bounds the WithTotal count. Counting every hit of a
+// common word costs as much as the search itself (345–360 ms on the set
+// above); the UI and API only need the number to page and to say
+// "10 000+".
+const SearchTotalCap = 10001
 
 func (s *PostgresStore) SearchEntries(ctx context.Context, userID int64, filter SearchEntriesFilter) ([]Entry, int, error) {
 	query := strings.TrimSpace(filter.Query)
@@ -88,46 +108,60 @@ func (s *PostgresStore) SearchEntries(ctx context.Context, userID int64, filter 
 		argN++
 	}
 
-	orderBy := entryOrderClause(filter.Sort)
-	if filter.Rank {
-		orderBy = fmt.Sprintf("ts_rank_cd(search_vector, %s) DESC, ", tsq) + orderBy
-	}
-
 	whereSQL := "\nWHERE " + strings.Join(where, " AND ")
 	fetch := limit
 	if !filter.WithTotal {
 		fetch++
 	}
-	q := "SELECT " + entryColumns(filter.WithoutBody) + "\nFROM entries" + whereSQL
-	if !filter.Rank {
-		// When the ORDER BY matches entries_user_sort_idx the planner walks
-		// that index and tests search_vector on every row, betting the
-		// LIMIT fills quickly; for a rare term that detoasts the whole
-		// table (200 000 entries: 8–19 s). The materialized CTE pins the
-		// plan to the GIN index instead (0.1–120 ms). A ranked ORDER BY
-		// cannot use the sort index, so there the planner already picks
-		// the GIN or a sequential scan on its own.
-		q = "WITH hits AS MATERIALIZED (SELECT id FROM entries" + whereSQL + ")\n" +
-			"SELECT " + entryColumns(filter.WithoutBody) + "\nFROM entries\nWHERE id IN (SELECT id FROM hits)"
+	// The newest `window` hits are picked first and the page is cut from
+	// them, sorted by date or, when Rank is set, by relevance. The ranked
+	// window is fixed so that every page ranks the same candidate set;
+	// paging past it yields nothing, like paging past the last hit. Only the GIN
+	// index is allowed to find the hits: pg_stats keeps at most 1 000
+	// common lexemes of a tsvector column, so any other word is estimated
+	// at ~1 000 rows and the planner happily walks the whole table
+	// through entries_user_sort_idx or a sequential scan, detoasting every
+	// row on the way (405–856 ms and 0.8 M buffers for a word with 50
+	// hits). With the two scan types off the same query runs the GIN
+	// bitmap path in 0.5–58 ms; the settings are transaction-local.
+	window := offset + fetch
+	if filter.Rank {
+		window = SearchRankWindow
+	}
+	orderBy := entryOrderClause(filter.Sort)
+	q := "WITH hits AS MATERIALIZED (SELECT id FROM entries" + whereSQL +
+		"\nORDER BY " + orderBy + "\nLIMIT " + fmt.Sprint(window) + ")\n" +
+		"SELECT " + entryColumns(filter.WithoutBody) + "\nFROM entries\nWHERE id IN (SELECT id FROM hits)"
+	if filter.Rank {
+		orderBy = fmt.Sprintf("ts_rank_cd(search_vector, %s) DESC, ", tsq) + orderBy
 	}
 	q += "\nORDER BY " + orderBy +
 		"\nLIMIT $" + fmt.Sprint(argN) + " OFFSET $" + fmt.Sprint(argN+1)
 
-	rows, err := s.db.Query(ctx, q, append(args, fetch, offset)...)
-	if err != nil {
-		return nil, 0, fmt.Errorf("search entries: %w", err)
-	}
-	out, err := scanEntries(rows, fetch)
+	var out []Entry
+	total := 0
+	err := withTx(ctx, s.db, func(tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx, "SET LOCAL enable_seqscan = off; SET LOCAL enable_indexscan = off"); err != nil {
+			return err
+		}
+		rows, err := tx.Query(ctx, q, append(args, fetch, offset)...)
+		if err != nil {
+			return err
+		}
+		if out, err = scanEntries(rows, fetch); err != nil {
+			return err
+		}
+		if !filter.WithTotal {
+			return nil
+		}
+		return tx.QueryRow(ctx, "SELECT count(*) FROM (SELECT 1 FROM entries"+whereSQL+
+			"\nLIMIT "+fmt.Sprint(SearchTotalCap)+") c", args...).Scan(&total)
+	})
 	if err != nil {
 		return nil, 0, fmt.Errorf("search entries: %w", err)
 	}
 	if !filter.WithTotal {
-		out, total := trimPage(offset, limit, out)
-		return out, total, nil
-	}
-	var total int
-	if err := s.db.QueryRow(ctx, "SELECT count(*) FROM entries"+whereSQL, args...).Scan(&total); err != nil {
-		return nil, 0, fmt.Errorf("count search entries: %w", err)
+		out, total = trimPage(offset, limit, out)
 	}
 	return out, total, nil
 }
