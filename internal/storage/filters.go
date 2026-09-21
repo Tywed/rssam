@@ -90,7 +90,7 @@ RETURNING ` + filterSelectCols
 				return err
 			}
 		}
-		return s.loadFilterPartsTx(ctx, tx, &out)
+		return loadFilterParts(ctx, tx, &out)
 	})
 	if err != nil {
 		return Filter{}, fmt.Errorf("create filter: %w", err)
@@ -111,7 +111,7 @@ WHERE id = $1 AND user_id = $2`
 		}
 		return Filter{}, fmt.Errorf("get filter: %w", err)
 	}
-	if err := s.loadFilterParts(ctx, &f); err != nil {
+	if err := loadFilterParts(ctx, s.db, &f); err != nil {
 		return Filter{}, err
 	}
 	return f, nil
@@ -168,7 +168,7 @@ RETURNING ` + filterSelectCols
 				return err
 			}
 		}
-		return s.loadFilterPartsTx(ctx, tx, &out)
+		return loadFilterParts(ctx, tx, &out)
 	})
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {
@@ -273,7 +273,7 @@ LIMIT $2`
 	out := make([]Filter, 0, len(order))
 	for _, id := range order {
 		f := *byID[id]
-		if err := s.loadFilterScopeAndActions(ctx, &f); err != nil {
+		if err := loadFilterScopeAndActions(ctx, s.db, &f); err != nil {
 			return nil, err
 		}
 		out = append(out, f)
@@ -281,41 +281,22 @@ LIMIT $2`
 	return out, nil
 }
 
-func (s *PostgresStore) loadFilterParts(ctx context.Context, f *Filter) error {
-	rules, err := s.getFilterRules(ctx, f.ID)
+func loadFilterParts(ctx context.Context, q querier, f *Filter) error {
+	rules, err := getFilterRules(ctx, q, f.ID)
 	if err != nil {
 		return err
 	}
 	f.Rules = rules
-	return s.loadFilterScopeAndActions(ctx, f)
+	return loadFilterScopeAndActions(ctx, q, f)
 }
 
-func (s *PostgresStore) loadFilterPartsTx(ctx context.Context, tx pgx.Tx, f *Filter) error {
-	rules, err := s.getFilterRulesTx(ctx, tx, f.ID)
-	if err != nil {
-		return err
-	}
-	f.Rules = rules
-	scope, err := s.getFilterScopeItemsTx(ctx, tx, f.ID)
+func loadFilterScopeAndActions(ctx context.Context, q querier, f *Filter) error {
+	scope, err := getFilterScopeItems(ctx, q, f.ID)
 	if err != nil {
 		return err
 	}
 	f.ScopeItems = scope
-	actions, err := s.getFilterActionsTx(ctx, tx, f.ID)
-	if err != nil {
-		return err
-	}
-	f.Actions = actions
-	return nil
-}
-
-func (s *PostgresStore) loadFilterScopeAndActions(ctx context.Context, f *Filter) error {
-	scope, err := s.getFilterScopeItems(ctx, f.ID)
-	if err != nil {
-		return err
-	}
-	f.ScopeItems = scope
-	actions, err := s.getFilterActions(ctx, f.ID)
+	actions, err := getFilterActions(ctx, q, f.ID)
 	if err != nil {
 		return err
 	}
@@ -440,13 +421,13 @@ LIMIT $2 OFFSET $3`
 	return out, total, nil
 }
 
-func (s *PostgresStore) getFilterRules(ctx context.Context, filterID int64) ([]FilterRule, error) {
-	const q = `
+func getFilterRules(ctx context.Context, q querier, filterID int64) ([]FilterRule, error) {
+	const sql = `
 SELECT id, filter_id, field, pattern, negate, op, priority, created_at
 FROM filter_rules
 WHERE filter_id = $1
 ORDER BY priority ASC, id ASC`
-	rows, err := s.db.Query(ctx, q, filterID)
+	rows, err := q.Query(ctx, sql, filterID)
 	if err != nil {
 		return nil, fmt.Errorf("get filter rules: %w", err)
 	}
@@ -465,52 +446,13 @@ ORDER BY priority ASC, id ASC`
 	return out, nil
 }
 
-func (s *PostgresStore) getFilterRulesTx(ctx context.Context, tx pgx.Tx, filterID int64) ([]FilterRule, error) {
-	const q = `
-SELECT id, filter_id, field, pattern, negate, op, priority, created_at
-FROM filter_rules
-WHERE filter_id = $1
-ORDER BY priority ASC, id ASC`
-	rows, err := tx.Query(ctx, q, filterID)
-	if err != nil {
-		return nil, fmt.Errorf("get filter rules: %w", err)
-	}
-	defer rows.Close()
-	out := make([]FilterRule, 0, 16)
-	for rows.Next() {
-		var r FilterRule
-		if err := rows.Scan(&r.ID, &r.FilterID, &r.Field, &r.Pattern, &r.Negate, &r.Op, &r.Priority, &r.CreatedAt); err != nil {
-			return nil, fmt.Errorf("scan filter rule: %w", err)
-		}
-		out = append(out, r)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate filter rules: %w", err)
-	}
-	return out, nil
-}
-
-func (s *PostgresStore) getFilterScopeItems(ctx context.Context, filterID int64) ([]FilterScopeItem, error) {
-	const q = `
+func getFilterScopeItems(ctx context.Context, q querier, filterID int64) ([]FilterScopeItem, error) {
+	const sql = `
 SELECT id, filter_id, feed_id, category_id, created_at
 FROM filter_scope_items
 WHERE filter_id = $1
 ORDER BY id ASC`
-	rows, err := s.db.Query(ctx, q, filterID)
-	if err != nil {
-		return nil, fmt.Errorf("get filter scope items: %w", err)
-	}
-	defer rows.Close()
-	return scanFilterScopeItems(rows)
-}
-
-func (s *PostgresStore) getFilterScopeItemsTx(ctx context.Context, tx pgx.Tx, filterID int64) ([]FilterScopeItem, error) {
-	const q = `
-SELECT id, filter_id, feed_id, category_id, created_at
-FROM filter_scope_items
-WHERE filter_id = $1
-ORDER BY id ASC`
-	rows, err := tx.Query(ctx, q, filterID)
+	rows, err := q.Query(ctx, sql, filterID)
 	if err != nil {
 		return nil, fmt.Errorf("get filter scope items: %w", err)
 	}
@@ -533,27 +475,13 @@ func scanFilterScopeItems(rows pgx.Rows) ([]FilterScopeItem, error) {
 	return out, nil
 }
 
-func (s *PostgresStore) getFilterActions(ctx context.Context, filterID int64) ([]FilterAction, error) {
-	const q = `
+func getFilterActions(ctx context.Context, q querier, filterID int64) ([]FilterAction, error) {
+	const sql = `
 SELECT id, filter_id, action_type, action_param, priority, created_at
 FROM filter_actions
 WHERE filter_id = $1
 ORDER BY priority ASC, id ASC`
-	rows, err := s.db.Query(ctx, q, filterID)
-	if err != nil {
-		return nil, fmt.Errorf("get filter actions: %w", err)
-	}
-	defer rows.Close()
-	return scanFilterActions(rows)
-}
-
-func (s *PostgresStore) getFilterActionsTx(ctx context.Context, tx pgx.Tx, filterID int64) ([]FilterAction, error) {
-	const q = `
-SELECT id, filter_id, action_type, action_param, priority, created_at
-FROM filter_actions
-WHERE filter_id = $1
-ORDER BY priority ASC, id ASC`
-	rows, err := tx.Query(ctx, q, filterID)
+	rows, err := q.Query(ctx, sql, filterID)
 	if err != nil {
 		return nil, fmt.Errorf("get filter actions: %w", err)
 	}

@@ -132,13 +132,23 @@ ON CONFLICT (entry_id, label_id) DO NOTHING`
 }
 
 func (s *PostgresStore) EntryCountsByLabel(ctx context.Context, userID int64) (map[int64]int, error) {
-	const q = `
+	return s.countsByLabel(ctx, userID, "<>", EntryStatusRemoved)
+}
+
+func (s *PostgresStore) UnreadCountsByLabel(ctx context.Context, userID int64) (map[int64]int, error) {
+	return s.countsByLabel(ctx, userID, "=", EntryStatusUnread)
+}
+
+// countsByLabel groups the user's entries whose status compares to status
+// with op ("=" or "<>") by label.
+func (s *PostgresStore) countsByLabel(ctx context.Context, userID int64, op, status string) (map[int64]int, error) {
+	q := `
 SELECT el.label_id, count(*)
 FROM entry_labels el
 JOIN entries e ON e.id = el.entry_id
-WHERE e.user_id = $1 AND e.status <> $2
+WHERE e.user_id = $1 AND e.status ` + op + ` $2
 GROUP BY el.label_id`
-	rows, err := s.db.Query(ctx, q, userID, EntryStatusRemoved)
+	rows, err := s.db.Query(ctx, q, userID, status)
 	if err != nil {
 		return nil, fmt.Errorf("entry counts by label: %w", err)
 	}
@@ -155,34 +165,6 @@ GROUP BY el.label_id`
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("iterate entry counts by label: %w", err)
-	}
-	return out, nil
-}
-
-func (s *PostgresStore) UnreadCountsByLabel(ctx context.Context, userID int64) (map[int64]int, error) {
-	const q = `
-SELECT el.label_id, count(*)
-FROM entry_labels el
-JOIN entries e ON e.id = el.entry_id
-WHERE e.user_id = $1 AND e.status = $2
-GROUP BY el.label_id`
-	rows, err := s.db.Query(ctx, q, userID, EntryStatusUnread)
-	if err != nil {
-		return nil, fmt.Errorf("unread counts by label: %w", err)
-	}
-	defer rows.Close()
-
-	out := map[int64]int{}
-	for rows.Next() {
-		var labelID int64
-		var n int
-		if err := rows.Scan(&labelID, &n); err != nil {
-			return nil, fmt.Errorf("scan unread counts by label: %w", err)
-		}
-		out[labelID] = n
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate unread counts by label: %w", err)
 	}
 	return out, nil
 }
