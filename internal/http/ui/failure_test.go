@@ -32,7 +32,7 @@ func (f *failingFeeds) ResetErrorFeedPollCircuits(context.Context) (int64, error
 func TestUIMutation_StoreFailureIsVisible(t *testing.T) {
 	feeds := &failingFeeds{uiMemFeeds{feeds: []storage.Feed{{ID: 1, Title: "News", FeedType: "rss"}}}}
 	h, err := NewHandler(Config{
-		Users:      &uiMemUsers{user: storage.User{ID: 1, Username: "alice", PasswordHash: mustHash(t, "secret"), IsAdmin: true}},
+		Users:      &uiMemUsers{user: storage.User{ID: 1, Username: "alice", PasswordHash: mustHash(t, "secret"), Role: auth.RoleAdmin}},
 		Sessions:   &uiMemSessions{sessions: map[string]storage.Session{}},
 		Entries:    uiMemEntries{},
 		Feeds:      feeds,

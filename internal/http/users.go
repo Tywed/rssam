@@ -13,6 +13,7 @@ import (
 type userDTO struct {
 	ID        int64     `json:"id"`
 	Username  string    `json:"username"`
+	Role      string    `json:"role"`
 	IsAdmin   bool      `json:"is_admin"`
 	CreatedAt time.Time `json:"created_at"`
 }
@@ -20,12 +21,12 @@ type userDTO struct {
 type userCreateRequest struct {
 	Username string `json:"username"`
 	Password string `json:"password"`
-	IsAdmin  *bool  `json:"is_admin"`
+	Role     string `json:"role"`
 }
 
 type userUpdateRequest struct {
 	Password *string `json:"password"`
-	IsAdmin  *bool   `json:"is_admin"`
+	Role     *string `json:"role"`
 }
 
 type meUpdateRequest struct {
@@ -92,13 +93,14 @@ func toUserDTO(u storage.User) userDTO {
 	return userDTO{
 		ID:        u.ID,
 		Username:  u.Username,
-		IsAdmin:   u.IsAdmin,
+		Role:      u.Role,
+		IsAdmin:   u.IsAdmin(),
 		CreatedAt: u.CreatedAt,
 	}
 }
 
 func (s *Server) handleListUsers(w http.ResponseWriter, r *http.Request) {
-	if _, ok := requireStore(w, r, true, s.users != nil, "user storage is not configured"); !ok {
+	if _, ok := requireStore(w, r, auth.RoleAdmin, s.users != nil, "user storage is not configured"); !ok {
 		return
 	}
 	limit, offset, err := parseLimitOffset(r, 100, 10000)
@@ -136,9 +138,13 @@ func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	isAdmin := false
-	if req.IsAdmin != nil {
-		isAdmin = *req.IsAdmin
+	role := strings.TrimSpace(req.Role)
+	if role == "" {
+		role = auth.RoleReader
+	}
+	if !auth.IsValidRole(role) {
+		writeError(w, http.StatusBadRequest, "invalid role: use admin, editor or reader")
+		return
 	}
 
 	ctx := r.Context()
@@ -159,17 +165,16 @@ func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	} else if count == 0 {
-		// Unauthenticated first bootstrap: env admin credentials or explicit is_admin.
+		// Unauthenticated first bootstrap: the env admin credentials; the
+		// first user is always an admin.
 		if s.adminUsername != "" && s.adminPassword != "" {
 			if username != s.adminUsername || password != s.adminPassword {
 				writeError(w, http.StatusBadRequest, "bootstrap requires ADMIN_USERNAME/PASSWORD credentials")
 				return
 			}
-			isAdmin = true
 			envBootstrap = true
-		} else if !isAdmin {
-			isAdmin = true // first user is admin
 		}
+		role = auth.RoleAdmin
 	} else {
 		writeError(w, http.StatusUnauthorized, "unauthorized")
 		return
@@ -189,7 +194,7 @@ func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 	u, err := s.users.CreateUser(ctx, storage.CreateUserParams{
 		Username:     username,
 		PasswordHash: hash,
-		IsAdmin:      isAdmin,
+		Role:         role,
 	})
 	if err != nil {
 		if errors.Is(err, storage.ErrDuplicateUsername) {
@@ -200,12 +205,12 @@ func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
-	s.audit.Record(r, storage.AuditUserCreate, "user", u.ID, map[string]any{"username": username, "is_admin": isAdmin})
+	s.audit.Record(r, storage.AuditUserCreate, "user", u.ID, map[string]any{"username": username, "role": role})
 	writeJSON(w, http.StatusCreated, listResponse[userDTO]{Data: toUserDTO(u), Total: 1})
 }
 
 func (s *Server) handleUpdateUser(w http.ResponseWriter, r *http.Request) {
-	p, id, ok := requireStoreID(w, r, true, s.users != nil, "user storage is not configured")
+	p, id, ok := requireStoreID(w, r, auth.RoleAdmin, s.users != nil, "user storage is not configured")
 	if !ok {
 		return
 	}
@@ -214,20 +219,24 @@ func (s *Server) handleUpdateUser(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if req.Password == nil && req.IsAdmin == nil {
-		writeError(w, http.StatusBadRequest, "nothing to update: pass password and/or is_admin")
+	if req.Password == nil && req.Role == nil {
+		writeError(w, http.StatusBadRequest, "nothing to update: pass password and/or role")
+		return
+	}
+	if req.Role != nil && !auth.IsValidRole(*req.Role) {
+		writeError(w, http.StatusBadRequest, "invalid role: use admin, editor or reader")
 		return
 	}
 	// Demoting yourself is refused outright rather than only when you are
 	// the last admin: the request would lock the caller out of this very API.
-	if req.IsAdmin != nil && !*req.IsAdmin && id == p.UserID {
+	if req.Role != nil && *req.Role != auth.RoleAdmin && id == p.UserID {
 		writeError(w, http.StatusBadRequest, "cannot revoke your own admin role")
 		return
 	}
-	params := storage.UpdateUserParams{ID: id, IsAdmin: req.IsAdmin}
+	params := storage.UpdateUserParams{ID: id, Role: req.Role}
 	details := map[string]any{}
-	if req.IsAdmin != nil {
-		details["is_admin"] = *req.IsAdmin
+	if req.Role != nil {
+		details["role"] = *req.Role
 	}
 	if req.Password != nil {
 		password := strings.TrimSpace(*req.Password)
@@ -265,7 +274,7 @@ func (s *Server) handleUpdateUser(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleDeleteUser(w http.ResponseWriter, r *http.Request) {
-	p, id, ok := requireStoreID(w, r, true, s.users != nil, "user storage is not configured")
+	p, id, ok := requireStoreID(w, r, auth.RoleAdmin, s.users != nil, "user storage is not configured")
 	if !ok {
 		return
 	}

@@ -57,7 +57,7 @@ func TestUI_ColoursViaNoncedStyleAndLabelMarkRead(t *testing.T) {
 	catID := int64(7)
 	entries := &labelMarkEntries{}
 	h, err := NewHandler(Config{
-		Users:    &uiMemUsers{user: storage.User{ID: 1, Username: "alice", PasswordHash: mustHash(t, "secret"), IsAdmin: true}},
+		Users:    &uiMemUsers{user: storage.User{ID: 1, Username: "alice", PasswordHash: mustHash(t, "secret"), Role: auth.RoleAdmin}},
 		Sessions: &uiMemSessions{sessions: map[string]storage.Session{}},
 		Entries:  entries,
 		Feeds:    &uiMemFeeds{feeds: []storage.Feed{{ID: 1, Title: "F", CategoryID: &catID}}},

@@ -9,9 +9,6 @@ import (
 )
 
 func (h *Handler) handleLabelsList(w http.ResponseWriter, r *http.Request) {
-	if !h.requireAdminPrincipal(w, r) {
-		return
-	}
 	p, _ := principal(r)
 	data := h.baseData(r, "settings")
 	data.SettingsSection = "labels"
@@ -90,7 +87,7 @@ func (h *Handler) handleLabelMarkRead(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) handleLabelCreate(w http.ResponseWriter, r *http.Request) {
-	if !h.requireAdminPrincipal(w, r) || !h.validateCSRF(r) {
+	if !h.validateCSRF(r) {
 		return
 	}
 	p, _ := principal(r)
@@ -118,7 +115,7 @@ func (h *Handler) handleLabelCreate(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) handleLabelUpdate(w http.ResponseWriter, r *http.Request) {
-	if !h.requireAdminPrincipal(w, r) || !h.validateCSRF(r) {
+	if !h.validateCSRF(r) {
 		return
 	}
 	p, _ := principal(r)
@@ -147,7 +144,7 @@ func (h *Handler) handleLabelUpdate(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) handleLabelDelete(w http.ResponseWriter, r *http.Request) {
-	if !h.requireAdminPrincipal(w, r) || !h.validateCSRF(r) {
+	if !h.validateCSRF(r) {
 		return
 	}
 	p, _ := principal(r)

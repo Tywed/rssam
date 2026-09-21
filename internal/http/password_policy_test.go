@@ -15,7 +15,7 @@ import (
 func TestCreateUser_PasswordPolicy(t *testing.T) {
 	users := newMemUserStore()
 	s := New(Dependencies{UserStore: users})
-	admin := auth.Principal{UserID: 1, IsAdmin: true}
+	admin := auth.Principal{UserID: 1, Role: auth.RoleAdmin}
 
 	do := func(body string) *httptest.ResponseRecorder {
 		req := httptest.NewRequest(http.MethodPost, "/v1/users", bytes.NewBufferString(body))
@@ -59,7 +59,7 @@ func TestUpdateMe_PasswordPolicy(t *testing.T) {
 	u.PasswordHash = hash
 	users.users[1] = u
 	s := New(Dependencies{UserStore: users, SessionStore: &recSessions{}})
-	p := auth.Principal{UserID: 1, IsAdmin: true}
+	p := auth.Principal{UserID: 1, Role: auth.RoleAdmin}
 
 	req := httptest.NewRequest(http.MethodPut, "/v1/me", bytes.NewBufferString(`{"current_password":"oldpass123","password":"short"}`))
 	req = req.WithContext(auth.WithPrincipal(req.Context(), p))

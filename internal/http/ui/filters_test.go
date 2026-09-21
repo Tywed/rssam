@@ -86,7 +86,7 @@ func newAdminUIHandler(t *testing.T) http.Handler {
 	h, err := NewHandler(Config{
 		FilterEngine: filter.New(filter.Config{}),
 		Users: &uiMemUsers{user: storage.User{
-			ID: 1, Username: "alice", PasswordHash: mustHash(t, "secret"), IsAdmin: true,
+			ID: 1, Username: "alice", PasswordHash: mustHash(t, "secret"), Role: auth.RoleAdmin,
 		}},
 		Sessions:   &uiMemSessions{sessions: map[string]storage.Session{}},
 		Entries:    uiMemEntries{},
@@ -210,7 +210,7 @@ func TestUI_FeedSuggest(t *testing.T) {
 	catID := int64(3)
 	h, err := NewHandler(Config{
 		Users: &uiMemUsers{user: storage.User{
-			ID: 1, Username: "alice", PasswordHash: mustHash(t, "secret"), IsAdmin: true,
+			ID: 1, Username: "alice", PasswordHash: mustHash(t, "secret"), Role: auth.RoleAdmin,
 		}},
 		Sessions: &uiMemSessions{sessions: map[string]storage.Session{}},
 		Entries:  uiMemEntries{},

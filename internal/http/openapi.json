@@ -3,7 +3,7 @@
   "info": {
     "title": "rssam API",
     "version": "0.0.0-dev",
-    "description": "REST API of the rssam RSS aggregator.\n\n**Authentication.** Every `/v1` endpoint takes `X-Auth-Token: <token>` where the token is a personal API key (`POST /v1/me/api-keys`, with a `scope` of `read`/`write`/`admin` and an optional expiry). A request outside the key's scope is rejected with 403. A browser session cookie is also accepted, but state-changing requests authenticated only by the cookie must pass the same-origin check (`Sec-Fetch-Site`/`Origin`), otherwise 403.\n\n**Envelope.** Successful JSON responses are `{\"data\": ..., \"total\": n}`; errors are `{\"error_message\": \"...\"}`. Lists take `limit`/`offset`; `total` is the full row count.\n\n**Ownership.** Objects are scoped to the calling user; reading another user's object yields 404. Endpoints marked \"Requires an admin principal\" return 403 for non-admins.\n\n**Request id.** Every response carries `X-Request-Id` (echoed from the request when a proxy set it, generated otherwise); quote it when reporting 5xx errors.\n\n**Limits.** Request bodies are capped (MAX_REQUEST_BODY_BYTES, default 1 MiB) → 413; per-IP rate limits on authentication failures and sensitive routes → 429."
+    "description": "REST API of the rssam RSS aggregator.\n\n**Authentication.** Every `/v1` endpoint takes `X-Auth-Token: <token>` where the token is a personal API key (`POST /v1/me/api-keys`, with a `scope` of `read`/`write`/`admin` and an optional expiry). A request outside the key's scope is rejected with 403. A browser session cookie is also accepted, but state-changing requests authenticated only by the cookie must pass the same-origin check (`Sec-Fetch-Site`/`Origin`), otherwise 403.\n\n**Envelope.** Successful JSON responses are `{\"data\": ..., \"total\": n}`; errors are `{\"error_message\": \"...\"}`. Lists take `limit`/`offset`; `total` is the full row count.\n\n**Roles.** Every user has one of three roles, each including the previous one: `reader` — reads entries, changes read/starred state, manages own categories and labels; `editor` — additionally creates, edits and deletes feeds (including bridges), imports/exports OPML, manages filters and webhooks; `admin` — additionally manages users (`/v1/users`), triggers refresh-all and reads `/v1/system/info`. Endpoints marked \"Requires an editor principal\" / \"Requires an admin principal\" return 403 for lower roles. Objects are scoped to the calling user; reading another user's object yields 404.\n\n**Request id.** Every response carries `X-Request-Id` (echoed from the request when a proxy set it, generated otherwise); quote it when reporting 5xx errors.\n\n**Limits.** Request bodies are capped (MAX_REQUEST_BODY_BYTES, default 1 MiB) → 413; per-IP rate limits on authentication failures and sensitive routes → 429."
   },
   "servers": [
     {
@@ -252,7 +252,7 @@
         ],
         "summary": "Create category",
         "operationId": "createCategory",
-        "description": "Requires an admin principal.",
+        "description": "Categories are per user: every role manages its own.",
         "requestBody": {
           "required": true,
           "content": {
@@ -315,7 +315,7 @@
         ],
         "summary": "Update category",
         "operationId": "updateCategory",
-        "description": "Requires an admin principal.",
+        "description": "Categories are per user: every role manages its own.",
         "requestBody": {
           "required": true,
           "content": {
@@ -366,7 +366,7 @@
         ],
         "summary": "Delete category",
         "operationId": "deleteCategory",
-        "description": "Requires an admin principal.",
+        "description": "Categories are per user: every role manages its own.",
         "responses": {
           "200": {
             "description": "Deleted.",
@@ -506,7 +506,7 @@
         ],
         "summary": "Create feed",
         "operationId": "createFeed",
-        "description": "feed_url is validated against the SSRF policy (no private networks unless FETCH_ALLOW_PRIVATE_NETWORK). Requires an admin principal.",
+        "description": "feed_url is validated against the SSRF policy (no private networks unless FETCH_ALLOW_PRIVATE_NETWORK). Requires an editor principal.",
         "requestBody": {
           "required": true,
           "content": {
@@ -559,7 +559,7 @@
         ],
         "summary": "Import OPML",
         "operationId": "importFeeds",
-        "description": "Body is either raw OPML or a multipart form with a `file` field. Existing feed URLs are skipped; categories are created on demand (MAX_IMPORT_FEEDS caps the total). Requires an admin principal.",
+        "description": "Body is either raw OPML or a multipart form with a `file` field. Existing feed URLs are skipped; categories are created on demand (MAX_IMPORT_FEEDS caps the total). Requires an editor principal.",
         "parameters": [
           {
             "name": "async",
@@ -670,7 +670,7 @@
         ],
         "summary": "Import job status",
         "operationId": "getImportJob",
-        "description": "Requires an admin principal.",
+        "description": "Requires an editor principal.",
         "responses": {
           "200": {
             "description": "Job.",
@@ -710,7 +710,7 @@
         ],
         "summary": "Export OPML",
         "operationId": "exportFeeds",
-        "description": "Requires an admin principal.",
+        "description": "Requires an editor principal.",
         "responses": {
           "200": {
             "description": "OPML 2.0 document.",
@@ -831,7 +831,7 @@
         ],
         "summary": "Update feed",
         "operationId": "updateFeed",
-        "description": "Requires an admin principal.",
+        "description": "Requires an editor principal.",
         "requestBody": {
           "required": true,
           "content": {
@@ -892,7 +892,7 @@
         ],
         "summary": "Delete feed",
         "operationId": "deleteFeed",
-        "description": "Requires an admin principal.",
+        "description": "Requires an editor principal.",
         "responses": {
           "200": {
             "description": "Deleted with its entries.",
@@ -1536,7 +1536,7 @@
         ],
         "summary": "List filters",
         "operationId": "listFilters",
-        "description": "Requires an admin principal.",
+        "description": "Requires an editor principal.",
         "parameters": [
           {
             "$ref": "#/components/parameters/limit"
@@ -1582,7 +1582,7 @@
         ],
         "summary": "Create filter",
         "operationId": "createFilter",
-        "description": "Rules are validated (field, RE2 pattern) and actions must be one of label/webhook/delete. Requires an admin principal.",
+        "description": "Rules are validated (field, RE2 pattern) and actions must be one of label/webhook/delete. Requires an editor principal.",
         "requestBody": {
           "required": true,
           "content": {
@@ -1645,7 +1645,7 @@
         ],
         "summary": "Get filter",
         "operationId": "getFilter",
-        "description": "Requires an admin principal.",
+        "description": "Requires an editor principal.",
         "responses": {
           "200": {
             "description": "Filter.",
@@ -1686,7 +1686,7 @@
         ],
         "summary": "Update filter",
         "operationId": "updateFilter",
-        "description": "rules/scope_items/actions, when present, replace the existing sets. Requires an admin principal.",
+        "description": "rules/scope_items/actions, when present, replace the existing sets. Requires an editor principal.",
         "requestBody": {
           "required": true,
           "content": {
@@ -1737,7 +1737,7 @@
         ],
         "summary": "Delete filter",
         "operationId": "deleteFilter",
-        "description": "Requires an admin principal.",
+        "description": "Requires an editor principal.",
         "responses": {
           "200": {
             "description": "Deleted.",
@@ -1793,7 +1793,7 @@
         ],
         "summary": "Dry-run a filter",
         "operationId": "testFilter",
-        "description": "Requires an admin principal.",
+        "description": "Requires an editor principal.",
         "parameters": [
           {
             "name": "limit",
@@ -1870,7 +1870,7 @@
         ],
         "summary": "Filter match history",
         "operationId": "listFilterMatches",
-        "description": "Requires an admin principal.",
+        "description": "Requires an editor principal.",
         "parameters": [
           {
             "$ref": "#/components/parameters/limit"
@@ -1921,7 +1921,7 @@
         ],
         "summary": "List webhooks",
         "operationId": "listWebhooks",
-        "description": "Requires an admin principal.",
+        "description": "Requires an editor principal.",
         "parameters": [
           {
             "$ref": "#/components/parameters/limit"
@@ -1967,7 +1967,7 @@
         ],
         "summary": "Create webhook",
         "operationId": "createWebhook",
-        "description": "url is SSRF-checked for kind=http. telegram/max kinds take their provider block instead. Requires an admin principal.",
+        "description": "url is SSRF-checked for kind=http. telegram/max kinds take their provider block instead. Requires an editor principal.",
         "requestBody": {
           "required": true,
           "content": {
@@ -2027,7 +2027,7 @@
         ],
         "summary": "Get webhook",
         "operationId": "getWebhook",
-        "description": "Requires an admin principal.",
+        "description": "Requires an editor principal.",
         "responses": {
           "200": {
             "description": "Webhook.",
@@ -2068,7 +2068,7 @@
         ],
         "summary": "Update webhook",
         "operationId": "updateWebhook",
-        "description": "Requires an admin principal.",
+        "description": "Requires an editor principal.",
         "requestBody": {
           "required": true,
           "content": {
@@ -2116,7 +2116,7 @@
         ],
         "summary": "Delete webhook",
         "operationId": "deleteWebhook",
-        "description": "Requires an admin principal.",
+        "description": "Requires an editor principal.",
         "responses": {
           "200": {
             "description": "Deleted with its delivery log.",
@@ -2172,7 +2172,7 @@
         ],
         "summary": "Send a test delivery",
         "operationId": "testWebhook",
-        "description": "Uses the newest matching entry (or a synthetic sample) and the webhook's template. Requires an admin principal.",
+        "description": "Uses the newest matching entry (or a synthetic sample) and the webhook's template. Requires an editor principal.",
         "responses": {
           "200": {
             "description": "Endpoint answered 2xx.",
@@ -2235,7 +2235,7 @@
         ],
         "summary": "Delivery log of a webhook",
         "operationId": "listWebhookLogs",
-        "description": "Requires an admin principal.",
+        "description": "Requires an editor principal.",
         "parameters": [
           {
             "$ref": "#/components/parameters/limit"
@@ -2299,7 +2299,7 @@
         ],
         "summary": "Re-queue a failed delivery",
         "operationId": "retryWebhookLog",
-        "description": "Requires an admin principal.",
+        "description": "Requires an editor principal.",
         "responses": {
           "200": {
             "description": "Marked pending; the webhook worker picks it up.",
@@ -2461,7 +2461,7 @@
         ],
         "summary": "Update user",
         "operationId": "updateUser",
-        "description": "Set a new password and/or toggle the admin role of any user. At least one field is required. A reset password revokes all of the user's sessions. Requires an admin principal.",
+        "description": "Set a new password and/or change the role of any user. At least one field is required. A reset password revokes all of the user's sessions. Requires an admin principal.",
         "requestBody": {
           "required": true,
           "content": {
@@ -4249,8 +4249,17 @@
           "username": {
             "type": "string"
           },
+          "role": {
+            "type": "string",
+            "enum": [
+              "admin",
+              "editor",
+              "reader"
+            ]
+          },
           "is_admin": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Equivalent to role == admin; kept for clients written against 0.1.x."
           },
           "created_at": {
             "type": "string",
@@ -4260,6 +4269,7 @@
         "required": [
           "id",
           "username",
+          "role",
           "is_admin",
           "created_at"
         ]
@@ -4275,8 +4285,14 @@
             "type": "string",
             "description": "Subject to the password policy (length, common-password check)."
           },
-          "is_admin": {
-            "type": "boolean"
+          "role": {
+            "type": "string",
+            "enum": [
+              "admin",
+              "editor",
+              "reader"
+            ],
+            "default": "reader"
           }
         },
         "required": [
@@ -4292,8 +4308,14 @@
             "type": "string",
             "description": "New password, subject to the password policy. Revokes the user's sessions."
           },
-          "is_admin": {
-            "type": "boolean"
+          "role": {
+            "type": "string",
+            "enum": [
+              "admin",
+              "editor",
+              "reader"
+            ],
+            "description": "Demoting yourself is refused (400); demoting the last login-capable admin is refused (409)."
           }
         }
       },

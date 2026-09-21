@@ -61,7 +61,7 @@ func (m *memAuditStore) CountAuditLog(context.Context) (int, error) {
 func TestUI_AuditRecordsAdminActions(t *testing.T) {
 	store := &memAuditStore{}
 	h, err := NewHandler(Config{
-		Users:      &uiMemUsers{user: storage.User{ID: 1, Username: "alice", PasswordHash: mustHash(t, "secret"), IsAdmin: true}},
+		Users:      &uiMemUsers{user: storage.User{ID: 1, Username: "alice", PasswordHash: mustHash(t, "secret"), Role: auth.RoleAdmin}},
 		Sessions:   &uiMemSessions{sessions: map[string]storage.Session{}},
 		Entries:    uiMemEntries{},
 		Feeds:      &uiMemFeeds{},

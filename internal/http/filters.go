@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"rssam/internal/auth"
+
 	"rssam/internal/filter"
 	"rssam/internal/storage"
 )
@@ -81,7 +83,7 @@ type filterWriteRequest struct {
 }
 
 func (s *Server) handleListFilters(w http.ResponseWriter, r *http.Request) {
-	p, ok := requireStore(w, r, true, s.filters != nil, "filter storage is not configured")
+	p, ok := requireStore(w, r, auth.RoleEditor, s.filters != nil, "filter storage is not configured")
 	if !ok {
 		return
 	}
@@ -104,7 +106,7 @@ func (s *Server) handleListFilters(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleCreateFilter(w http.ResponseWriter, r *http.Request) {
-	p, ok := requireStore(w, r, true, s.filters != nil, "filter storage is not configured")
+	p, ok := requireStore(w, r, auth.RoleEditor, s.filters != nil, "filter storage is not configured")
 	if !ok {
 		return
 	}
@@ -135,7 +137,7 @@ func (s *Server) handleCreateFilter(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleGetFilter(w http.ResponseWriter, r *http.Request) {
-	p, id, ok := requireStoreID(w, r, true, s.filters != nil, "filter storage is not configured")
+	p, id, ok := requireStoreID(w, r, auth.RoleEditor, s.filters != nil, "filter storage is not configured")
 	if !ok {
 		return
 	}
@@ -148,7 +150,7 @@ func (s *Server) handleGetFilter(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleUpdateFilter(w http.ResponseWriter, r *http.Request) {
-	p, id, ok := requireStoreID(w, r, true, s.filters != nil, "filter storage is not configured")
+	p, id, ok := requireStoreID(w, r, auth.RoleEditor, s.filters != nil, "filter storage is not configured")
 	if !ok {
 		return
 	}
@@ -178,7 +180,7 @@ func (s *Server) handleUpdateFilter(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleDeleteFilter(w http.ResponseWriter, r *http.Request) {
-	p, id, ok := requireStoreID(w, r, true, s.filters != nil, "filter storage is not configured")
+	p, id, ok := requireStoreID(w, r, auth.RoleEditor, s.filters != nil, "filter storage is not configured")
 	if !ok {
 		return
 	}
@@ -222,7 +224,7 @@ type filterTestResponse struct {
 }
 
 func (s *Server) handleTestFilter(w http.ResponseWriter, r *http.Request) {
-	p, id, ok := requireStoreID(w, r, true, s.filters != nil && s.filterEngine != nil, "filter engine is not configured")
+	p, id, ok := requireStoreID(w, r, auth.RoleEditor, s.filters != nil && s.filterEngine != nil, "filter engine is not configured")
 	if !ok {
 		return
 	}
@@ -350,7 +352,7 @@ type filterMatchRowDTO struct {
 }
 
 func (s *Server) handleListFilterMatches(w http.ResponseWriter, r *http.Request) {
-	p, id, ok := requireStoreID(w, r, true, s.filterMatches != nil, "filter match storage is not configured")
+	p, id, ok := requireStoreID(w, r, auth.RoleEditor, s.filterMatches != nil, "filter match storage is not configured")
 	if !ok {
 		return
 	}

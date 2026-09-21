@@ -22,7 +22,7 @@ func newCategoryBulkTestHandler(t *testing.T, admin bool) (http.Handler, *uiMemF
 	}}
 	h, err := NewHandler(Config{
 		Users: &uiMemUsers{user: storage.User{
-			ID: 1, Username: "alice", PasswordHash: mustHash(t, "secret"), IsAdmin: admin,
+			ID: 1, Username: "alice", PasswordHash: mustHash(t, "secret"), Role: roleFor(admin),
 		}},
 		Sessions:   &uiMemSessions{sessions: map[string]storage.Session{}},
 		Entries:    uiMemEntries{},
@@ -191,7 +191,7 @@ func TestAdminHashAllEntriesIncludesLabeled(t *testing.T) {
 	dedup := &uiMemDedup{n: 3}
 	h, err := NewHandler(Config{
 		Users: &uiMemUsers{user: storage.User{
-			ID: 1, Username: "alice", PasswordHash: mustHash(t, "secret"), IsAdmin: true,
+			ID: 1, Username: "alice", PasswordHash: mustHash(t, "secret"), Role: auth.RoleAdmin,
 		}},
 		Sessions:   &uiMemSessions{sessions: map[string]storage.Session{}},
 		Entries:    uiMemEntries{},

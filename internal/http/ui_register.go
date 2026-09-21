@@ -135,7 +135,7 @@ func (s *Server) registerUI(mux *http.ServeMux) {
 
 func (s *Server) refreshAllFeedsForUser(r *http.Request, userID int64) error {
 	u, err := s.users.GetUser(r.Context(), userID)
-	if err != nil || !u.IsAdmin {
+	if err != nil || !u.IsAdmin() {
 		return errForbidden
 	}
 	if s.refreshAll == nil {

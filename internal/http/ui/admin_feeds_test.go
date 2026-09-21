@@ -93,7 +93,7 @@ func newAdminFeedsUIHandler(t *testing.T) http.Handler {
 	next := now.Add(time.Hour)
 	h, err := NewHandler(Config{
 		Users: &uiMemUsers{user: storage.User{
-			ID: 1, Username: "alice", PasswordHash: mustHash(t, "secret"), IsAdmin: true,
+			ID: 1, Username: "alice", PasswordHash: mustHash(t, "secret"), Role: auth.RoleAdmin,
 		}},
 		Sessions: &uiMemSessions{sessions: map[string]storage.Session{}},
 		Entries:  uiMemEntries{},
@@ -207,7 +207,7 @@ func TestUI_AdminFeedsPagination(t *testing.T) {
 	}
 	h, err := NewHandler(Config{
 		Users: &uiMemUsers{user: storage.User{
-			ID: 1, Username: "alice", PasswordHash: mustHash(t, "secret"), IsAdmin: true,
+			ID: 1, Username: "alice", PasswordHash: mustHash(t, "secret"), Role: auth.RoleAdmin,
 		}},
 		Sessions:   &uiMemSessions{sessions: map[string]storage.Session{}},
 		Entries:    uiMemEntries{},
@@ -275,7 +275,7 @@ func TestUI_AdminFeedsStatusFilterWithPagination(t *testing.T) {
 	}
 	h, err := NewHandler(Config{
 		Users: &uiMemUsers{user: storage.User{
-			ID: 1, Username: "alice", PasswordHash: mustHash(t, "secret"), IsAdmin: true,
+			ID: 1, Username: "alice", PasswordHash: mustHash(t, "secret"), Role: auth.RoleAdmin,
 		}},
 		Sessions:   &uiMemSessions{sessions: map[string]storage.Session{}},
 		Entries:    uiMemEntries{},
@@ -364,7 +364,7 @@ func TestUI_AdminFeedsSilentCard(t *testing.T) {
 	old := now.Add(-30 * 24 * time.Hour)
 	newHandler := func(silentDays int) *http.ServeMux {
 		h, err := NewHandler(Config{
-			Users:      &uiMemUsers{user: storage.User{ID: 1, Username: "alice", PasswordHash: mustHash(t, "secret"), IsAdmin: true}},
+			Users:      &uiMemUsers{user: storage.User{ID: 1, Username: "alice", PasswordHash: mustHash(t, "secret"), Role: auth.RoleAdmin}},
 			Sessions:   &uiMemSessions{sessions: map[string]storage.Session{}},
 			Entries:    uiMemEntries{},
 			Feeds:      &uiMemFeeds{},

@@ -32,7 +32,7 @@ func TestUpdateMe_RequiresCurrentPasswordAndRevokesSessions(t *testing.T) {
 	users.users[1] = u
 	sessions := &recSessions{}
 	s := New(Dependencies{UserStore: users, SessionStore: sessions})
-	p := auth.Principal{UserID: 1, IsAdmin: true}
+	p := auth.Principal{UserID: 1, Role: auth.RoleAdmin}
 
 	do := func(body string) *httptest.ResponseRecorder {
 		req := httptest.NewRequest(http.MethodPut, "/v1/me", bytes.NewBufferString(body))
@@ -63,7 +63,7 @@ func TestUpdateMe_PasswordlessOnlyDuringBootstrap(t *testing.T) {
 	s := New(Dependencies{UserStore: users, SessionStore: &memSessionStore{}})
 	do := func(body string) *httptest.ResponseRecorder {
 		req := httptest.NewRequest(http.MethodPut, "/v1/me", bytes.NewBufferString(body))
-		req = req.WithContext(auth.WithPrincipal(req.Context(), auth.Principal{UserID: 1, IsAdmin: true}))
+		req = req.WithContext(auth.WithPrincipal(req.Context(), auth.Principal{UserID: 1, Role: auth.RoleAdmin}))
 		rec := httptest.NewRecorder()
 		s.handleUpdateMe(rec, req)
 		return rec
@@ -94,7 +94,7 @@ func TestUpdateMe_PasswordlessOnlyDuringBootstrap(t *testing.T) {
 func TestSystemInfo_AdminOnly(t *testing.T) {
 	s := New(Dependencies{UserStore: newMemUserStore()})
 	req := httptest.NewRequest(http.MethodGet, "/v1/system/info", nil)
-	req = req.WithContext(auth.WithPrincipal(req.Context(), auth.Principal{UserID: 2, IsAdmin: false}))
+	req = req.WithContext(auth.WithPrincipal(req.Context(), auth.Principal{UserID: 2, Role: auth.RoleReader}))
 	rec := httptest.NewRecorder()
 	s.handleSystemInfo(rec, req)
 	if rec.Code != http.StatusForbidden {

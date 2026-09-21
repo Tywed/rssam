@@ -12,9 +12,6 @@ import (
 )
 
 func (h *Handler) handleFiltersList(w http.ResponseWriter, r *http.Request) {
-	if !h.requireAdminPrincipal(w, r) {
-		return
-	}
 	p, _ := principal(r)
 	data := h.baseData(r, "settings")
 	data.SettingsSection = "filters"
@@ -29,18 +26,12 @@ func (h *Handler) handleFiltersList(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) handleFilterNew(w http.ResponseWriter, r *http.Request) {
-	if !h.requireAdminPrincipal(w, r) {
-		return
-	}
 	data := h.prepareFilterFormData(r)
 	data.Title = "Новый фильтр"
 	h.render(w, r, "filters_form", data)
 }
 
 func (h *Handler) handleFilterEdit(w http.ResponseWriter, r *http.Request) {
-	if !h.requireAdminPrincipal(w, r) {
-		return
-	}
 	p, _ := principal(r)
 	id, err := parsePathID(r)
 	if err != nil {
@@ -117,7 +108,7 @@ func scopeIDMaps(items []storage.FilterScopeItem) (feeds map[int64]bool, cats ma
 }
 
 func (h *Handler) handleFilterCreate(w http.ResponseWriter, r *http.Request) {
-	if !h.requireAdminPrincipal(w, r) || !h.validateCSRF(r) {
+	if !h.validateCSRF(r) {
 		return
 	}
 	p, _ := principal(r)
@@ -144,7 +135,7 @@ func (h *Handler) handleFilterCreate(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) handleFilterUpdate(w http.ResponseWriter, r *http.Request) {
-	if !h.requireAdminPrincipal(w, r) || !h.validateCSRF(r) {
+	if !h.validateCSRF(r) {
 		return
 	}
 	p, _ := principal(r)
@@ -188,7 +179,7 @@ func (h *Handler) handleFilterUpdate(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) handleFilterDelete(w http.ResponseWriter, r *http.Request) {
-	if !h.requireAdminPrincipal(w, r) || !h.validateCSRF(r) {
+	if !h.validateCSRF(r) {
 		return
 	}
 	p, _ := principal(r)
@@ -208,9 +199,6 @@ func (h *Handler) handleFilterDelete(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) handleFilterTest(w http.ResponseWriter, r *http.Request) {
-	if !h.requireAdminPrincipal(w, r) {
-		return
-	}
 	p, _ := principal(r)
 	id, err := parsePathID(r)
 	if err != nil {
@@ -260,9 +248,6 @@ func (h *Handler) handleFilterTest(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) handleFilterMatches(w http.ResponseWriter, r *http.Request) {
-	if !h.requireAdminPrincipal(w, r) {
-		return
-	}
 	p, _ := principal(r)
 	id, err := parsePathID(r)
 	if err != nil {

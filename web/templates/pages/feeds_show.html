@@ -8,7 +8,7 @@
       {{if .Feed.LastError}}<div class="flash flash-err">{{.Feed.LastError}}</div>{{end}}
       <div class="toolbar">
         <form method="post" action="/ui/feeds/{{.Feed.ID}}/refresh"><input type="hidden" name="csrf_token" value="{{.CSRFToken}}"><button class="btn btn-primary">Обновить сейчас</button></form>
-        {{if .IsAdmin}}<a class="btn" href="/ui/feeds/{{.Feed.ID}}/edit">Редактировать</a>{{end}}
+        {{if .CanEdit}}<a class="btn" href="/ui/feeds/{{.Feed.ID}}/edit">Редактировать</a>{{end}}
         <a class="btn" href="/ui/unread?feed_id={{.Feed.ID}}">Записи</a>
       </div>
     </div>

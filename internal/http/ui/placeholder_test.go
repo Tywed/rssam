@@ -16,7 +16,7 @@ import (
 func TestUI_LoginWithPlaceholderPasswordGoesToPasswordForm(t *testing.T) {
 	h, err := NewHandler(Config{
 		Users: &uiMemUsers{user: storage.User{
-			ID: 1, Username: "alice", PasswordHash: mustHash(t, "changeme"), IsAdmin: true,
+			ID: 1, Username: "alice", PasswordHash: mustHash(t, "changeme"), Role: auth.RoleAdmin,
 		}},
 		Sessions:   &uiMemSessions{sessions: map[string]storage.Session{}},
 		Entries:    uiMemEntries{},
@@ -60,7 +60,7 @@ func TestUI_SystemPageLocaleWarning(t *testing.T) {
 	newMux := func(l storage.DatabaseLocale) (http.Handler, string) {
 		h, err := NewHandler(Config{
 			Users: &uiMemUsers{user: storage.User{
-				ID: 1, Username: "alice", PasswordHash: mustHash(t, "secret"), IsAdmin: true,
+				ID: 1, Username: "alice", PasswordHash: mustHash(t, "secret"), Role: auth.RoleAdmin,
 			}},
 			Sessions:       &uiMemSessions{sessions: map[string]storage.Session{}},
 			Entries:        uiMemEntries{},

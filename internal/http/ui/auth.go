@@ -30,6 +30,7 @@ type pageData struct {
 	BodyHTML      template.HTML
 	Username      string
 	IsAdmin       bool
+	CanEdit       bool
 	CSRFToken     string
 	CSPNonce      string
 	SessionID     string
@@ -203,9 +204,17 @@ func (h *Handler) requireAuth(next http.Handler) http.Handler {
 }
 
 func (h *Handler) requireAdmin(next http.Handler) http.Handler {
+	return requireRole(auth.RoleAdmin, next)
+}
+
+func (h *Handler) requireEditor(next http.Handler) http.Handler {
+	return requireRole(auth.RoleEditor, next)
+}
+
+func requireRole(role string, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		p, ok := auth.PrincipalFromContext(r.Context())
-		if !ok || !p.IsAdmin {
+		if !ok || !auth.RoleAtLeast(p.Role, role) {
 			http.Error(w, "forbidden", http.StatusForbidden)
 			return
 		}
@@ -235,7 +244,7 @@ func (h *Handler) authenticate(r *http.Request) (auth.Principal, string, bool) {
 			h.log.WarnContext(r.Context(), "touch session failed", "err", err)
 		}
 	}
-	return auth.Principal{UserID: u.ID, IsAdmin: u.IsAdmin, Username: u.Username}, sid, true
+	return auth.Principal{UserID: u.ID, Role: u.Role, Username: u.Username}, sid, true
 }
 
 func principal(r *http.Request) (auth.Principal, bool) {
@@ -359,7 +368,8 @@ func (h *Handler) baseData(r *http.Request, nav string) pageData {
 		Nav:          nav,
 		CSRFToken:    h.csrfToken(r),
 		CSPNonce:     middleware.CSPNonce(r.Context()),
-		IsAdmin:      p.IsAdmin,
+		IsAdmin:      p.IsAdmin(),
+		CanEdit:      p.CanEdit(),
 		EntrySort:    parseEntrySort(r),
 		AssetVersion: assetVersion(),
 		AppVersion:   version.Version,

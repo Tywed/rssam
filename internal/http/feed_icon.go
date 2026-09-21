@@ -19,7 +19,7 @@ type feedIconDTO struct {
 }
 
 func (s *Server) handleFeedIcon(w http.ResponseWriter, r *http.Request) {
-	p, ok := requireStore(w, r, false, s.feeds != nil, "feed storage is not configured")
+	p, ok := requireStore(w, r, "", s.feeds != nil, "feed storage is not configured")
 	if !ok {
 		return
 	}

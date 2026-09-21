@@ -12,11 +12,16 @@ import (
 )
 
 func newFeedsRBACHandler(t *testing.T, admin bool) http.Handler {
+	role := roleFor(admin)
+	return newFeedsRBACHandlerRole(t, role)
+}
+
+func newFeedsRBACHandlerRole(t *testing.T, role string) http.Handler {
 	t.Helper()
 	catID := int64(10)
 	h, err := NewHandler(Config{
 		Users: &uiMemUsers{user: storage.User{
-			ID: 1, Username: "alice", PasswordHash: mustHash(t, "secret"), IsAdmin: admin,
+			ID: 1, Username: "alice", PasswordHash: mustHash(t, "secret"), Role: role,
 		}},
 		Sessions: &uiMemSessions{sessions: map[string]storage.Session{}},
 		Entries:  uiMemEntries{},
@@ -50,8 +55,8 @@ func TestFeedsRBAC_NonAdminCannotMutateSubscriptions(t *testing.T) {
 	if strings.Contains(body, "Добавить") || strings.Contains(body, "Экспорт OPML") || strings.Contains(body, "Импорт OPML") {
 		t.Fatal("user feeds list must not show subscription admin actions")
 	}
-	if strings.Contains(body, `href="/ui/categories"`) {
-		t.Fatal("user settings nav must not include categories")
+	if !strings.Contains(body, `href="/ui/categories"`) || strings.Contains(body, `href="/ui/filters"`) || strings.Contains(body, `href="/ui/webhooks"`) {
+		t.Fatal("reader settings nav: categories yes, filters/webhooks no")
 	}
 	if strings.Contains(body, "/ui/feeds/1/edit") {
 		t.Fatal("user must not get edit links")
@@ -78,8 +83,14 @@ func TestFeedsRBAC_NonAdminCannotMutateSubscriptions(t *testing.T) {
 	if rec := post("/ui/feeds/1/delete"); rec.Code != http.StatusForbidden {
 		t.Fatalf("delete feed: status=%d", rec.Code)
 	}
-	if rec := post("/ui/categories"); rec.Code != http.StatusForbidden {
-		t.Fatalf("create category: status=%d", rec.Code)
+	if rec := post("/ui/categories"); rec.Code == http.StatusForbidden {
+		t.Fatalf("reader creates own category: status=%d", rec.Code)
+	}
+	if rec := post("/ui/filters"); rec.Code != http.StatusForbidden {
+		t.Fatalf("create filter: status=%d", rec.Code)
+	}
+	if rec := post("/ui/webhooks"); rec.Code != http.StatusForbidden {
+		t.Fatalf("create webhook: status=%d", rec.Code)
 	}
 	if rec := post("/ui/feeds/import"); rec.Code != http.StatusForbidden {
 		t.Fatalf("import: status=%d", rec.Code)
@@ -101,8 +112,11 @@ func TestFeedsRBAC_NonAdminCannotMutateSubscriptions(t *testing.T) {
 	if rec := get("/ui/feeds/export"); rec.Code != http.StatusForbidden {
 		t.Fatalf("export: status=%d", rec.Code)
 	}
-	if rec := get("/ui/categories"); rec.Code != http.StatusForbidden {
+	if rec := get("/ui/categories"); rec.Code != http.StatusOK {
 		t.Fatalf("categories: status=%d", rec.Code)
+	}
+	if rec := get("/ui/filters"); rec.Code != http.StatusForbidden {
+		t.Fatalf("filters: status=%d", rec.Code)
 	}
 	if rec := get("/ui/feeds/1"); rec.Code != http.StatusOK {
 		t.Fatalf("show feed: status=%d", rec.Code)
@@ -143,5 +157,46 @@ func TestFeedsRBAC_AdminKeepsSubscriptionControls(t *testing.T) {
 	}
 	if !strings.Contains(body, `href="/ui/categories"`) {
 		t.Fatal("admin settings nav should include categories")
+	}
+}
+
+// An editor gets the catalog controls (feeds, OPML, filters, webhooks) but
+// none of the admin pages.
+func TestFeedsRBAC_EditorManagesCatalogOnly(t *testing.T) {
+	mux := newFeedsRBACHandlerRole(t, auth.RoleEditor)
+	sid := uiSessionCookie(t, nil, mux)
+	get := func(path string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		req.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: sid})
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, req)
+		return rec
+	}
+	rec := get("/ui/feeds")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("list: status=%d", rec.Code)
+	}
+	body := rec.Body.String()
+	for _, want := range []string{"Добавить", "Экспорт OPML", "Импорт OPML", `href="/ui/filters"`, `href="/ui/webhooks"`, "/ui/feeds/1/edit"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("editor feeds list must contain %q", want)
+		}
+	}
+	for _, deny := range []string{`href="/ui/admin/users"`, `href="/ui/admin/system"`, `href="/ui/settings/bridges"`} {
+		if strings.Contains(body, deny) {
+			t.Fatalf("editor nav must not contain %q", deny)
+		}
+	}
+	for path, want := range map[string]int{
+		"/ui/feeds/new":    http.StatusOK,
+		"/ui/feeds/1/edit": http.StatusOK,
+		"/ui/admin/users":  http.StatusForbidden,
+		"/ui/admin/system": http.StatusForbidden,
+		"/ui/admin/feeds":  http.StatusForbidden,
+		"/ui/admin/audit":  http.StatusForbidden,
+	} {
+		if rec := get(path); rec.Code != want {
+			t.Fatalf("%s: status=%d want=%d", path, rec.Code, want)
+		}
 	}
 }

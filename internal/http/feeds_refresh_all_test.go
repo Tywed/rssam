@@ -41,7 +41,7 @@ func TestRefreshAllFeeds_Admin(t *testing.T) {
 	})
 
 	req := httptest.NewRequest(http.MethodPost, "/v1/feeds/refresh", nil)
-	req = req.WithContext(auth.WithPrincipal(req.Context(), auth.Principal{UserID: 1, IsAdmin: true}))
+	req = req.WithContext(auth.WithPrincipal(req.Context(), auth.Principal{UserID: 1, Role: auth.RoleAdmin}))
 	rec := httptest.NewRecorder()
 	s.handleRefreshAllFeeds(rec, req)
 

@@ -21,31 +21,28 @@ func requireUser(w http.ResponseWriter, r *http.Request) (auth.Principal, bool) 
 	return p, true
 }
 
-func requireAdmin(w http.ResponseWriter, r *http.Request) (auth.Principal, bool) {
+// requireRole is requireUser plus a minimum role ("" = any).
+func requireRole(w http.ResponseWriter, r *http.Request, role string) (auth.Principal, bool) {
 	p, ok := requireUser(w, r)
 	if !ok {
 		return auth.Principal{}, false
 	}
-	if !p.IsAdmin {
-		writeError(w, http.StatusForbidden, "admin required")
+	if role != "" && !auth.RoleAtLeast(p.Role, role) {
+		writeError(w, http.StatusForbidden, role+" role required")
 		return auth.Principal{}, false
 	}
 	return p, true
 }
 
-// requireStore is the common handler prologue: authenticated (admin when
-// admin is set) principal plus a configured backing store, otherwise the
+func requireAdmin(w http.ResponseWriter, r *http.Request) (auth.Principal, bool) {
+	return requireRole(w, r, auth.RoleAdmin)
+}
+
+// requireStore is the common handler prologue: authenticated principal of at
+// least role ("" = any) plus a configured backing store, otherwise the
 // response is already written.
-func requireStore(w http.ResponseWriter, r *http.Request, admin, configured bool, unavailable string) (auth.Principal, bool) {
-	var (
-		p  auth.Principal
-		ok bool
-	)
-	if admin {
-		p, ok = requireAdmin(w, r)
-	} else {
-		p, ok = requireUser(w, r)
-	}
+func requireStore(w http.ResponseWriter, r *http.Request, role string, configured bool, unavailable string) (auth.Principal, bool) {
+	p, ok := requireRole(w, r, role)
 	if !ok {
 		return auth.Principal{}, false
 	}
@@ -57,8 +54,8 @@ func requireStore(w http.ResponseWriter, r *http.Request, admin, configured bool
 }
 
 // requireStoreID is requireStore followed by the {id} path parameter.
-func requireStoreID(w http.ResponseWriter, r *http.Request, admin, configured bool, unavailable string) (auth.Principal, int64, bool) {
-	p, ok := requireStore(w, r, admin, configured, unavailable)
+func requireStoreID(w http.ResponseWriter, r *http.Request, role string, configured bool, unavailable string) (auth.Principal, int64, bool) {
+	p, ok := requireStore(w, r, role, configured, unavailable)
 	if !ok {
 		return auth.Principal{}, 0, false
 	}

@@ -11,6 +11,8 @@ import (
 	"strings"
 	"time"
 
+	"rssam/internal/auth"
+
 	"rssam/internal/reader"
 	"rssam/internal/service"
 	"rssam/internal/ssrf"
@@ -60,7 +62,7 @@ type feedWriteRequest struct {
 const defaultIntervalMinutes = 60
 
 func (s *Server) handleListFeeds(w http.ResponseWriter, r *http.Request) {
-	p, ok := requireStore(w, r, false, s.feeds != nil, "feed storage is not configured")
+	p, ok := requireStore(w, r, "", s.feeds != nil, "feed storage is not configured")
 	if !ok {
 		return
 	}
@@ -83,7 +85,7 @@ func (s *Server) handleListFeeds(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleCreateFeed(w http.ResponseWriter, r *http.Request) {
-	p, ok := requireStore(w, r, true, s.feeds != nil, "feed storage is not configured")
+	p, ok := requireStore(w, r, auth.RoleEditor, s.feeds != nil, "feed storage is not configured")
 	if !ok {
 		return
 	}
@@ -128,7 +130,7 @@ func (s *Server) handleCreateFeed(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleGetFeed(w http.ResponseWriter, r *http.Request) {
-	p, id, ok := requireStoreID(w, r, false, s.feeds != nil, "feed storage is not configured")
+	p, id, ok := requireStoreID(w, r, "", s.feeds != nil, "feed storage is not configured")
 	if !ok {
 		return
 	}
@@ -141,7 +143,7 @@ func (s *Server) handleGetFeed(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleUpdateFeed(w http.ResponseWriter, r *http.Request) {
-	p, id, ok := requireStoreID(w, r, true, s.feeds != nil, "feed storage is not configured")
+	p, id, ok := requireStoreID(w, r, auth.RoleEditor, s.feeds != nil, "feed storage is not configured")
 	if !ok {
 		return
 	}
@@ -197,7 +199,7 @@ func (s *Server) handleUpdateFeed(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleDeleteFeed(w http.ResponseWriter, r *http.Request) {
-	p, id, ok := requireStoreID(w, r, true, s.feeds != nil, "feed storage is not configured")
+	p, id, ok := requireStoreID(w, r, auth.RoleEditor, s.feeds != nil, "feed storage is not configured")
 	if !ok {
 		return
 	}
@@ -276,7 +278,7 @@ type refreshResultDTO struct {
 }
 
 func (s *Server) handleRefreshFeed(w http.ResponseWriter, r *http.Request) {
-	p, ok := requireStore(w, r, false, s.feeds != nil, "feed storage is not configured")
+	p, ok := requireStore(w, r, "", s.feeds != nil, "feed storage is not configured")
 	if !ok {
 		return
 	}

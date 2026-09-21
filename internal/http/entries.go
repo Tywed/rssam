@@ -51,7 +51,7 @@ func toEntryDTO(e storage.Entry, encs []storage.Enclosure) entryDTO {
 }
 
 func (s *Server) handleListEntries(w http.ResponseWriter, r *http.Request) {
-	p, ok := requireStore(w, r, false, s.entries != nil, "entry storage is not configured")
+	p, ok := requireStore(w, r, "", s.entries != nil, "entry storage is not configured")
 	if !ok {
 		return
 	}
@@ -103,7 +103,7 @@ func (s *Server) handleListEntries(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleGetEntry(w http.ResponseWriter, r *http.Request) {
-	p, id, ok := requireStoreID(w, r, false, s.entries != nil, "entry storage is not configured")
+	p, id, ok := requireStoreID(w, r, "", s.entries != nil, "entry storage is not configured")
 	if !ok {
 		return
 	}
@@ -122,7 +122,7 @@ func (s *Server) handleGetEntry(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleListFeedEntries(w http.ResponseWriter, r *http.Request) {
-	p, ok := requireStore(w, r, false, s.entries != nil, "entry storage is not configured")
+	p, ok := requireStore(w, r, "", s.entries != nil, "entry storage is not configured")
 	if !ok {
 		return
 	}

@@ -26,7 +26,7 @@ type memUserStore struct {
 
 func newMemUserStore() *memUserStore {
 	return &memUserStore{
-		users:   map[int64]storage.User{1: {ID: 1, Username: "default", IsAdmin: true, CreatedAt: time.Now().UTC()}},
+		users:   map[int64]storage.User{1: {ID: 1, Username: "default", Role: auth.RoleAdmin, CreatedAt: time.Now().UTC()}},
 		byName:  map[string]int64{"default": 1},
 		keys:    make(map[string]storage.APIKey),
 		nextUID: 2,
@@ -101,11 +101,15 @@ func (m *memUserStore) CreateUser(_ context.Context, p storage.CreateUserParams)
 	if _, dup := m.byName[p.Username]; dup {
 		return storage.User{}, storage.ErrDuplicateUsername
 	}
+	role := p.Role
+	if role == "" {
+		role = auth.RoleReader
+	}
 	u := storage.User{
 		ID:           m.nextUID,
 		Username:     p.Username,
 		PasswordHash: p.PasswordHash,
-		IsAdmin:      p.IsAdmin,
+		Role:         role,
 		CreatedAt:    time.Now().UTC(),
 	}
 	m.nextUID++
@@ -121,10 +125,10 @@ func (m *memUserStore) UpdateUser(_ context.Context, p storage.UpdateUserParams)
 	if !ok {
 		return storage.User{}, storage.ErrNotFound
 	}
-	if p.IsAdmin != nil && !*p.IsAdmin && u.IsAdmin && u.PasswordHash != "" {
+	if p.Role != nil && *p.Role != auth.RoleAdmin && u.IsAdmin() && u.PasswordHash != "" {
 		others := 0
 		for oid, o := range m.users {
-			if oid != p.ID && o.IsAdmin && o.PasswordHash != "" {
+			if oid != p.ID && o.IsAdmin() && o.PasswordHash != "" {
 				others++
 			}
 		}
@@ -132,8 +136,8 @@ func (m *memUserStore) UpdateUser(_ context.Context, p storage.UpdateUserParams)
 			return storage.User{}, storage.ErrLastAdmin
 		}
 	}
-	if p.IsAdmin != nil {
-		u.IsAdmin = *p.IsAdmin
+	if p.Role != nil {
+		u.Role = *p.Role
 	}
 	if p.PasswordHash != nil {
 		u.PasswordHash = *p.PasswordHash
@@ -149,10 +153,10 @@ func (m *memUserStore) DeleteUser(_ context.Context, id int64) error {
 	if !ok {
 		return storage.ErrNotFound
 	}
-	if u.IsAdmin && u.PasswordHash != "" {
+	if u.IsAdmin() && u.PasswordHash != "" {
 		others := 0
 		for oid, o := range m.users {
-			if oid != id && o.IsAdmin && o.PasswordHash != "" {
+			if oid != id && o.IsAdmin() && o.PasswordHash != "" {
 				others++
 			}
 		}
@@ -304,10 +308,10 @@ func TestMultiUser_CreateUserAndAPIKeyAuth(t *testing.T) {
 		FeedStore: feeds,
 		SSRFGuard: testSSRFGuard(t),
 	})
-	admin := auth.Principal{UserID: 1, IsAdmin: true}
+	admin := auth.Principal{UserID: 1, Role: auth.RoleAdmin}
 
 	// Create user bob as admin (handler only; wrapAPI would require admin token)
-	body := `{"username":"bob","password":"bobpass123","is_admin":false}`
+	body := `{"username":"bob","password":"bobpass123","role":"reader"}`
 	req := httptest.NewRequest(http.MethodPost, "/v1/users", bytes.NewBufferString(body))
 	req = req.WithContext(auth.WithPrincipal(req.Context(), admin))
 	rec := httptest.NewRecorder()
@@ -353,8 +357,8 @@ func TestMultiUser_FeedIsolation(t *testing.T) {
 	users := newMemUserStore()
 	feeds := newTenantFeedStore()
 
-	uA, _ := users.CreateUser(context.Background(), storage.CreateUserParams{Username: "alice", IsAdmin: false})
-	uB, _ := users.CreateUser(context.Background(), storage.CreateUserParams{Username: "bill", IsAdmin: false})
+	uA, _ := users.CreateUser(context.Background(), storage.CreateUserParams{Username: "alice", Role: auth.RoleReader})
+	uB, _ := users.CreateUser(context.Background(), storage.CreateUserParams{Username: "bill", Role: auth.RoleReader})
 
 	_, _ = feeds.CreateFeed(context.Background(), uA.ID, storage.CreateFeedParams{FeedURL: "https://example.com/shared.xml", Title: "A"})
 	fB, _ := feeds.CreateFeed(context.Background(), uB.ID, storage.CreateFeedParams{FeedURL: "https://example.com/shared.xml", Title: "B"})

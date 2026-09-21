@@ -14,7 +14,7 @@ func restorePlaceholderUser(t *testing.T, store *PostgresStore) {
 	t.Cleanup(func() {
 		_, _ = store.db.Exec(context.Background(), `
 UPDATE users
-SET username = 'default', password_hash = '', is_admin = TRUE
+SET username = 'default', password_hash = '', role = 'admin'
 WHERE id = 1`)
 		_, _ = store.db.Exec(context.Background(), `DELETE FROM users WHERE username IN ('bootstrap-admin', 'default-adopt') AND id <> 1`)
 	})
@@ -50,7 +50,7 @@ func TestIntegration_EnsureBootstrapAdmin_AdoptsPlaceholderID1(t *testing.T) {
 
 	if _, err := store.db.Exec(ctx, `
 UPDATE users
-SET username = 'default', password_hash = '', is_admin = TRUE
+SET username = 'default', password_hash = '', role = 'admin'
 WHERE id = 1`); err != nil {
 		t.Fatal(err)
 	}
@@ -62,8 +62,8 @@ WHERE id = 1`); err != nil {
 	if err != nil {
 		t.Fatalf("id=1: %v", err)
 	}
-	if u.Username != "bootstrap-admin" || !u.IsAdmin || !auth.CheckPassword(u.PasswordHash, "s3cret-pass") {
-		t.Fatalf("id=1 not adopted: username=%q is_admin=%v hash_ok=%v", u.Username, u.IsAdmin, auth.CheckPassword(u.PasswordHash, "s3cret-pass"))
+	if u.Username != "bootstrap-admin" || !u.IsAdmin() || !auth.CheckPassword(u.PasswordHash, "s3cret-pass") {
+		t.Fatalf("id=1 not adopted: username=%q role=%q hash_ok=%v", u.Username, u.Role, auth.CheckPassword(u.PasswordHash, "s3cret-pass"))
 	}
 	if _, err := store.GetUserByUsername(ctx, "default"); err != ErrNotFound {
 		t.Fatalf("placeholder name should be gone, err=%v", err)
@@ -85,11 +85,11 @@ func TestIntegration_EnsureBootstrapAdmin_AdoptsPlaceholderWithSameName(t *testi
 
 	if _, err := store.db.Exec(ctx, `
 UPDATE users
-SET username = 'default', password_hash = '', is_admin = TRUE
+SET username = 'default', password_hash = '', role = 'admin'
 WHERE id = 1`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.db.Exec(ctx, `INSERT INTO users(username, password_hash, is_admin) VALUES ('default-adopt', '', FALSE) ON CONFLICT DO NOTHING`); err != nil {
+	if _, err := store.db.Exec(ctx, `INSERT INTO users(username, password_hash, role) VALUES ('default-adopt', '', 'reader') ON CONFLICT DO NOTHING`); err != nil {
 		t.Fatal(err)
 	}
 
@@ -100,8 +100,8 @@ WHERE id = 1`); err != nil {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !u.IsAdmin || !auth.CheckPassword(u.PasswordHash, "adopt-pass-1") {
-		t.Fatalf("placeholder not adopted: is_admin=%v", u.IsAdmin)
+	if !u.IsAdmin() || !auth.CheckPassword(u.PasswordHash, "adopt-pass-1") {
+		t.Fatalf("placeholder not adopted: role=%q", u.Role)
 	}
 	placeholder, err := store.GetUser(ctx, 1)
 	if err != nil {

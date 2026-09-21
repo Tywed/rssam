@@ -20,7 +20,7 @@ func newAdminPauseTestHandler(t *testing.T) (http.Handler, *uiMemFeeds) {
 	}}
 	h, err := NewHandler(Config{
 		Users: &uiMemUsers{user: storage.User{
-			ID: 1, Username: "alice", PasswordHash: mustHash(t, "secret"), IsAdmin: true,
+			ID: 1, Username: "alice", PasswordHash: mustHash(t, "secret"), Role: auth.RoleAdmin,
 		}},
 		Sessions:   &uiMemSessions{sessions: map[string]storage.Session{}},
 		Entries:    uiMemEntries{},

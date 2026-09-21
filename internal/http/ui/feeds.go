@@ -79,7 +79,7 @@ func (h *Handler) handleFeedsList(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "list feeds failed", http.StatusInternalServerError)
 		return
 	}
-	if p.IsAdmin {
+	if p.CanEdit() {
 		h.loadFeedFormWebhooks(r, &data)
 	}
 	data.Title = "Ленты"
@@ -504,7 +504,7 @@ func (h *Handler) renderFeedsCategoryTree(w http.ResponseWriter, r *http.Request
 		Feeds:       feeds,
 		CSRFToken:   h.csrfToken(r),
 		FeedsFilter: filter,
-		IsAdmin:     principalIsAdmin(r),
+		CanEdit:     principalCanEdit(r),
 		Limit:       limit,
 		Offset:      offset,
 		Total:       total,
@@ -516,7 +516,7 @@ func (h *Handler) renderFeedsCategoryTree(w http.ResponseWriter, r *http.Request
 	}
 }
 
-func principalIsAdmin(r *http.Request) bool {
+func principalCanEdit(r *http.Request) bool {
 	p, ok := principal(r)
-	return ok && p.IsAdmin
+	return ok && p.CanEdit()
 }

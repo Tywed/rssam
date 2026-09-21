@@ -39,7 +39,7 @@ func (s *Server) authenticateRequestSource(ctx context.Context, r *http.Request)
 			_ = s.users.TouchAPIKeyUsed(ctx, key.ID)
 			u, uerr := s.users.GetUser(ctx, key.UserID)
 			if uerr == nil {
-				return auth.Principal{UserID: u.ID, IsAdmin: u.IsAdmin, Username: u.Username, Scope: key.Scope}, true, false
+				return auth.Principal{UserID: u.ID, Role: u.Role, Username: u.Username, Scope: key.Scope}, true, false
 			}
 		}
 	}
@@ -82,7 +82,7 @@ func (s *Server) authenticateSession(ctx context.Context, r *http.Request) (auth
 	if ttl := s.sessionTTL(); storage.SessionNeedsTouch(sess.ExpiresAt, now, ttl) {
 		_ = s.sessions.TouchSession(ctx, sessionID, now.Add(ttl))
 	}
-	return auth.Principal{UserID: u.ID, IsAdmin: u.IsAdmin, Username: u.Username}, true
+	return auth.Principal{UserID: u.ID, Role: u.Role, Username: u.Username}, true
 }
 
 func (s *Server) wrapAPI(next http.Handler) http.Handler {

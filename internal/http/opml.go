@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"strings"
 
+	"rssam/internal/auth"
+
 	"rssam/internal/http/middleware"
 	"rssam/internal/opml"
 	"rssam/internal/reader"
@@ -30,7 +32,7 @@ type importReportDTO struct {
 }
 
 func (s *Server) handleImportFeeds(w http.ResponseWriter, r *http.Request) {
-	p, ok := requireStore(w, r, true, s.categories != nil && s.feeds != nil, "storage is not configured")
+	p, ok := requireStore(w, r, auth.RoleEditor, s.categories != nil && s.feeds != nil, "storage is not configured")
 	if !ok {
 		return
 	}
@@ -146,7 +148,7 @@ func (s *Server) exportOPMLForUser(w http.ResponseWriter, ctx context.Context, u
 }
 
 func (s *Server) handleExportFeeds(w http.ResponseWriter, r *http.Request) {
-	p, ok := requireAdmin(w, r)
+	p, ok := requireRole(w, r, auth.RoleEditor)
 	if !ok {
 		return
 	}

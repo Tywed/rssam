@@ -7,24 +7,34 @@
       <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
       <div class="form-group"><label>Имя</label><input name="username" required></div>
       <div class="form-group"><label>Пароль</label><input name="password" type="password" required minlength="8"></div>
-      <div class="form-group"><label class="checkbox-label"><input type="checkbox" name="is_admin" value="1"> Admin</label></div>
+      <div class="form-group"><label>Роль</label>
+        <select name="role">
+          <option value="reader">Читатель — подписки, чтение, свои метки и категории</option>
+          <option value="editor">Редактор — плюс ленты, OPML, фильтры, вебхуки</option>
+          <option value="admin">Администратор — плюс пользователи и система</option>
+        </select>
+      </div>
       <button type="submit" class="btn btn-primary">Создать</button>
     </form>
     <table>
-      <thead><tr><th>ID</th><th>Имя</th><th>Admin</th><th></th></tr></thead>
+      <thead><tr><th>ID</th><th>Имя</th><th>Роль</th><th></th></tr></thead>
       <tbody>
       {{range .Users}}
       <tr>
         <td>{{.ID}}</td>
         <td>{{.Username}}</td>
-        <td>{{if .IsAdmin}}да{{else}}нет{{end}}</td>
+        <td>{{roleLabel .Role}}</td>
         <td>
           <div class="btn-row">
             {{if ne .ID $.CurrentUserID}}
-            <form method="post" action="/ui/admin/users/{{.ID}}/role" data-confirm="{{if .IsAdmin}}Снять права администратора с «{{.Username}}»?{{else}}Сделать «{{.Username}}» администратором?{{end}}">
+            <form method="post" action="/ui/admin/users/{{.ID}}/role" data-confirm="Изменить роль «{{.Username}}»?">
               <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
-              <input type="hidden" name="is_admin" value="{{if .IsAdmin}}0{{else}}1{{end}}">
-              <button class="btn btn-sm">{{if .IsAdmin}}Снять admin{{else}}Сделать admin{{end}}</button>
+              <select name="role">
+                <option value="reader"{{if eq .Role "reader"}} selected{{end}}>Читатель</option>
+                <option value="editor"{{if eq .Role "editor"}} selected{{end}}>Редактор</option>
+                <option value="admin"{{if eq .Role "admin"}} selected{{end}}>Администратор</option>
+              </select>
+              <button class="btn btn-sm">Сменить роль</button>
             </form>
             {{end}}
             <form method="post" action="/ui/admin/users/{{.ID}}/password" data-confirm="Задать новый пароль для «{{.Username}}»? Все его сессии будут завершены.">

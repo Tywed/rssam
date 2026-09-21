@@ -7,6 +7,8 @@ import (
 	"sync"
 	"time"
 
+	"rssam/internal/auth"
+
 	"rssam/internal/opml"
 )
 
@@ -131,7 +133,7 @@ func toImportJobDTO(j *importJob) importJobDTO {
 }
 
 func (s *Server) handleGetImportJob(w http.ResponseWriter, r *http.Request) {
-	p, ok := requireStore(w, r, true, s.importJobs != nil, "import jobs are not configured")
+	p, ok := requireStore(w, r, auth.RoleEditor, s.importJobs != nil, "import jobs are not configured")
 	if !ok {
 		return
 	}

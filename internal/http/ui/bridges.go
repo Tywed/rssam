@@ -146,7 +146,7 @@ func (h *Handler) handleSettingsTelegramRedirect(w http.ResponseWriter, r *http.
 
 func (h *Handler) requireAdminPrincipal(w http.ResponseWriter, r *http.Request) bool {
 	p, ok := auth.PrincipalFromContext(r.Context())
-	if !ok || !p.IsAdmin {
+	if !ok || !p.IsAdmin() {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return false
 	}
@@ -163,7 +163,7 @@ func (h *Handler) bridgeSettingsData(r *http.Request, section string) pageData {
 	if r.URL.Query().Get("saved") == "1" {
 		data.FlashMsg = "Настройки сохранены и применены"
 	}
-	if p, ok := auth.PrincipalFromContext(r.Context()); ok && p.IsAdmin {
+	if p, ok := auth.PrincipalFromContext(r.Context()); ok && p.IsAdmin() {
 		if counts, err := h.bridgeFeedCounts(r); err == nil {
 			data.BridgeFeedCounts = counts
 		}

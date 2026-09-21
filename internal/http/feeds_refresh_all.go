@@ -3,6 +3,8 @@ package httpserver
 import (
 	"net/http"
 
+	"rssam/internal/auth"
+
 	"rssam/internal/storage"
 )
 
@@ -15,7 +17,7 @@ type refreshAllResultDTO struct {
 }
 
 func (s *Server) handleRefreshAllFeeds(w http.ResponseWriter, r *http.Request) {
-	if _, ok := requireStore(w, r, true, s.refreshAll != nil, "job queue is not configured"); !ok {
+	if _, ok := requireStore(w, r, auth.RoleAdmin, s.refreshAll != nil, "job queue is not configured"); !ok {
 		return
 	}
 

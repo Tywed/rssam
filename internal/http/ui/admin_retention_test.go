@@ -103,7 +103,7 @@ func newRetentionTestHandler(t *testing.T, envPath string, cleanup func(context.
 	t.Helper()
 	h, err := NewHandler(Config{
 		Users: &uiMemUsers{user: storage.User{
-			ID: 1, Username: "alice", PasswordHash: mustHash(t, "secret"), IsAdmin: true,
+			ID: 1, Username: "alice", PasswordHash: mustHash(t, "secret"), Role: auth.RoleAdmin,
 		}},
 		Sessions:    &uiMemSessions{sessions: map[string]storage.Session{}},
 		Entries:     uiMemEntries{},
@@ -259,7 +259,7 @@ func TestAdminRetentionCleanupNow(t *testing.T) {
 func TestAdminRetentionRequiresAdmin(t *testing.T) {
 	h, err := NewHandler(Config{
 		Users: &uiMemUsers{user: storage.User{
-			ID: 2, Username: "alice", PasswordHash: mustHash(t, "secret"), IsAdmin: false,
+			ID: 2, Username: "alice", PasswordHash: mustHash(t, "secret"), Role: auth.RoleReader,
 		}},
 		Sessions:   &uiMemSessions{sessions: map[string]storage.Session{}},
 		Entries:    uiMemEntries{},

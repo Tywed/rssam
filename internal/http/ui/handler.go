@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"rssam/internal/audit"
+	"rssam/internal/auth"
 	"rssam/internal/bridgeconfig"
 	"rssam/internal/filter"
 	"rssam/internal/githubrel"
@@ -186,6 +187,15 @@ func parseTemplates() (*template.Template, error) {
 			return *f.CategoryID == catID
 		},
 		"hasPrefix": strings.HasPrefix,
+		"roleLabel": func(role string) string {
+			switch role {
+			case auth.RoleAdmin:
+				return "администратор"
+			case auth.RoleEditor:
+				return "редактор"
+			}
+			return "читатель"
+		},
 		"isReaderMode": func(nav string) bool {
 			return nav == "unread" || nav == "search" || nav == "label" || nav == "starred"
 		},
@@ -441,68 +451,68 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.Handle("POST /ui/entries/{id}/read", auth(http.HandlerFunc(h.handleEntryRead)))
 	mux.Handle("POST /ui/entries/{id}/star", auth(http.HandlerFunc(h.handleEntryStar)))
 
-	mux.Handle("GET /ui/feeds/detect-type", auth(h.requireAdmin(http.HandlerFunc(h.handleFeedDetectType))))
-	mux.Handle("GET /ui/feeds/suggest", auth(h.requireAdmin(http.HandlerFunc(h.handleFeedSuggest))))
+	mux.Handle("GET /ui/feeds/detect-type", auth(h.requireEditor(http.HandlerFunc(h.handleFeedDetectType))))
+	mux.Handle("GET /ui/feeds/suggest", auth(h.requireEditor(http.HandlerFunc(h.handleFeedSuggest))))
 	mux.Handle("GET /ui/feeds", auth(http.HandlerFunc(h.handleFeedsList)))
-	mux.Handle("GET /ui/feeds/new", auth(h.requireAdmin(http.HandlerFunc(h.handleFeedNew))))
-	mux.Handle("POST /ui/feeds", auth(h.requireAdmin(http.HandlerFunc(h.handleFeedCreate))))
-	mux.Handle("GET /ui/feeds/export", auth(h.requireAdmin(http.HandlerFunc(h.handleFeedsExport))))
-	mux.Handle("POST /ui/feeds/import", auth(h.requireAdmin(http.HandlerFunc(h.handleFeedsImport))))
+	mux.Handle("GET /ui/feeds/new", auth(h.requireEditor(http.HandlerFunc(h.handleFeedNew))))
+	mux.Handle("POST /ui/feeds", auth(h.requireEditor(http.HandlerFunc(h.handleFeedCreate))))
+	mux.Handle("GET /ui/feeds/export", auth(h.requireEditor(http.HandlerFunc(h.handleFeedsExport))))
+	mux.Handle("POST /ui/feeds/import", auth(h.requireEditor(http.HandlerFunc(h.handleFeedsImport))))
 	mux.Handle("GET /ui/feeds/{id}", auth(http.HandlerFunc(h.handleFeedShow)))
-	mux.Handle("GET /ui/feeds/{id}/edit", auth(h.requireAdmin(http.HandlerFunc(h.handleFeedEdit))))
-	mux.Handle("POST /ui/feeds/{id}", auth(h.requireAdmin(http.HandlerFunc(h.handleFeedUpdate))))
-	mux.Handle("POST /ui/feeds/{id}/delete", auth(h.requireAdmin(http.HandlerFunc(h.handleFeedDelete))))
+	mux.Handle("GET /ui/feeds/{id}/edit", auth(h.requireEditor(http.HandlerFunc(h.handleFeedEdit))))
+	mux.Handle("POST /ui/feeds/{id}", auth(h.requireEditor(http.HandlerFunc(h.handleFeedUpdate))))
+	mux.Handle("POST /ui/feeds/{id}/delete", auth(h.requireEditor(http.HandlerFunc(h.handleFeedDelete))))
 	mux.Handle("POST /ui/feeds/{id}/refresh", auth(http.HandlerFunc(h.handleFeedRefresh)))
 	mux.Handle("POST /ui/feeds/{feedID}/mark-read", auth(http.HandlerFunc(h.handleFeedMarkRead)))
 
-	mux.Handle("GET /ui/categories", auth(h.requireAdmin(http.HandlerFunc(h.handleCategoriesList))))
+	mux.Handle("GET /ui/categories", auth(http.HandlerFunc(h.handleCategoriesList)))
 	mux.Handle("GET /ui/sidebar/categories/{id}/feeds", auth(http.HandlerFunc(h.handleSidebarCategoryFeeds)))
 	mux.Handle("GET /ui/sidebar/uncategorized/feeds", auth(http.HandlerFunc(h.handleSidebarUncategorizedFeeds)))
 	mux.Handle("GET /ui/feeds/categories/{id}/tree", auth(http.HandlerFunc(h.handleFeedsCategoryTree)))
 	mux.Handle("GET /ui/feeds/uncategorized/tree", auth(http.HandlerFunc(h.handleFeedsUncategorizedTree)))
-	mux.Handle("POST /ui/categories", auth(h.requireAdmin(http.HandlerFunc(h.handleCategoryCreate))))
-	mux.Handle("POST /ui/categories/{id}", auth(h.requireAdmin(http.HandlerFunc(h.handleCategoryUpdate))))
-	mux.Handle("POST /ui/categories/{id}/delete", auth(h.requireAdmin(http.HandlerFunc(h.handleCategoryDelete))))
-	mux.Handle("POST /ui/categories/reorder", auth(h.requireAdmin(http.HandlerFunc(h.handleCategoryReorder))))
+	mux.Handle("POST /ui/categories", auth(http.HandlerFunc(h.handleCategoryCreate)))
+	mux.Handle("POST /ui/categories/{id}", auth(http.HandlerFunc(h.handleCategoryUpdate)))
+	mux.Handle("POST /ui/categories/{id}/delete", auth(http.HandlerFunc(h.handleCategoryDelete)))
+	mux.Handle("POST /ui/categories/reorder", auth(http.HandlerFunc(h.handleCategoryReorder)))
 	mux.Handle("POST /ui/categories/{categoryID}/mark-read", auth(http.HandlerFunc(h.handleCategoryMarkRead)))
-	mux.Handle("POST /ui/categories/{categoryID}/feeds/bulk-interval", auth(h.requireAdmin(http.HandlerFunc(h.handleCategoryBulkInterval))))
-	mux.Handle("POST /ui/categories/{categoryID}/feeds/bulk-webhook", auth(h.requireAdmin(http.HandlerFunc(h.handleCategoryBulkWebhook))))
-	mux.Handle("POST /ui/categories/{categoryID}/feeds/bulk-hash-only", auth(h.requireAdmin(http.HandlerFunc(h.handleCategoryBulkHashOnly))))
-	mux.Handle("POST /ui/categories/{categoryID}/feeds/bulk-adaptive", auth(h.requireAdmin(http.HandlerFunc(h.handleCategoryBulkAdaptive))))
-	mux.Handle("POST /ui/categories/{categoryID}/feeds/bulk-hash-entries", auth(h.requireAdmin(http.HandlerFunc(h.handleCategoryBulkHashEntries))))
-	mux.Handle("POST /ui/categories/{categoryID}/feeds/bulk-refresh", auth(h.requireAdmin(http.HandlerFunc(h.handleCategoryBulkRefresh))))
-	mux.Handle("POST /ui/categories/{categoryID}/feeds/bulk-pause", auth(h.requireAdmin(http.HandlerFunc(h.handleCategoryBulkPause))))
-	mux.Handle("POST /ui/categories/{categoryID}/feeds/bulk-move", auth(h.requireAdmin(http.HandlerFunc(h.handleCategoryBulkMove))))
+	mux.Handle("POST /ui/categories/{categoryID}/feeds/bulk-interval", auth(h.requireEditor(http.HandlerFunc(h.handleCategoryBulkInterval))))
+	mux.Handle("POST /ui/categories/{categoryID}/feeds/bulk-webhook", auth(h.requireEditor(http.HandlerFunc(h.handleCategoryBulkWebhook))))
+	mux.Handle("POST /ui/categories/{categoryID}/feeds/bulk-hash-only", auth(h.requireEditor(http.HandlerFunc(h.handleCategoryBulkHashOnly))))
+	mux.Handle("POST /ui/categories/{categoryID}/feeds/bulk-adaptive", auth(h.requireEditor(http.HandlerFunc(h.handleCategoryBulkAdaptive))))
+	mux.Handle("POST /ui/categories/{categoryID}/feeds/bulk-hash-entries", auth(h.requireEditor(http.HandlerFunc(h.handleCategoryBulkHashEntries))))
+	mux.Handle("POST /ui/categories/{categoryID}/feeds/bulk-refresh", auth(h.requireEditor(http.HandlerFunc(h.handleCategoryBulkRefresh))))
+	mux.Handle("POST /ui/categories/{categoryID}/feeds/bulk-pause", auth(h.requireEditor(http.HandlerFunc(h.handleCategoryBulkPause))))
+	mux.Handle("POST /ui/categories/{categoryID}/feeds/bulk-move", auth(h.requireEditor(http.HandlerFunc(h.handleCategoryBulkMove))))
 
-	mux.Handle("GET /ui/filters", auth(h.requireAdmin(http.HandlerFunc(h.handleFiltersList))))
-	mux.Handle("GET /ui/filters/new", auth(h.requireAdmin(http.HandlerFunc(h.handleFilterNew))))
-	mux.Handle("POST /ui/filters", auth(h.requireAdmin(http.HandlerFunc(h.handleFilterCreate))))
-	mux.Handle("GET /ui/filters/{id}", auth(h.requireAdmin(http.HandlerFunc(h.handleFilterEdit))))
-	mux.Handle("POST /ui/filters/{id}", auth(h.requireAdmin(http.HandlerFunc(h.handleFilterUpdate))))
-	mux.Handle("POST /ui/filters/{id}/delete", auth(h.requireAdmin(http.HandlerFunc(h.handleFilterDelete))))
-	mux.Handle("GET /ui/filters/{id}/matches", auth(h.requireAdmin(http.HandlerFunc(h.handleFilterMatches))))
-	mux.Handle("GET /ui/filters/{id}/test", auth(h.requireAdmin(http.HandlerFunc(h.handleFilterTest))))
+	mux.Handle("GET /ui/filters", auth(h.requireEditor(http.HandlerFunc(h.handleFiltersList))))
+	mux.Handle("GET /ui/filters/new", auth(h.requireEditor(http.HandlerFunc(h.handleFilterNew))))
+	mux.Handle("POST /ui/filters", auth(h.requireEditor(http.HandlerFunc(h.handleFilterCreate))))
+	mux.Handle("GET /ui/filters/{id}", auth(h.requireEditor(http.HandlerFunc(h.handleFilterEdit))))
+	mux.Handle("POST /ui/filters/{id}", auth(h.requireEditor(http.HandlerFunc(h.handleFilterUpdate))))
+	mux.Handle("POST /ui/filters/{id}/delete", auth(h.requireEditor(http.HandlerFunc(h.handleFilterDelete))))
+	mux.Handle("GET /ui/filters/{id}/matches", auth(h.requireEditor(http.HandlerFunc(h.handleFilterMatches))))
+	mux.Handle("GET /ui/filters/{id}/test", auth(h.requireEditor(http.HandlerFunc(h.handleFilterTest))))
 
-	mux.Handle("GET /ui/labels", auth(h.requireAdmin(http.HandlerFunc(h.handleLabelsList))))
+	mux.Handle("GET /ui/labels", auth(http.HandlerFunc(h.handleLabelsList)))
 	mux.Handle("GET /ui/labels/{id}", auth(http.HandlerFunc(h.handleLabelEntries)))
 	mux.Handle("POST /ui/labels/{id}/mark-read", auth(http.HandlerFunc(h.handleLabelMarkRead)))
-	mux.Handle("POST /ui/labels", auth(h.requireAdmin(http.HandlerFunc(h.handleLabelCreate))))
-	mux.Handle("POST /ui/labels/{id}", auth(h.requireAdmin(http.HandlerFunc(h.handleLabelUpdate))))
-	mux.Handle("POST /ui/labels/{id}/delete", auth(h.requireAdmin(http.HandlerFunc(h.handleLabelDelete))))
+	mux.Handle("POST /ui/labels", auth(http.HandlerFunc(h.handleLabelCreate)))
+	mux.Handle("POST /ui/labels/{id}", auth(http.HandlerFunc(h.handleLabelUpdate)))
+	mux.Handle("POST /ui/labels/{id}/delete", auth(http.HandlerFunc(h.handleLabelDelete)))
 
-	mux.Handle("GET /ui/webhooks", auth(h.requireAdmin(http.HandlerFunc(h.handleWebhooksList))))
-	mux.Handle("GET /ui/webhooks/new", auth(h.requireAdmin(http.HandlerFunc(h.handleWebhookNew))))
-	mux.Handle("POST /ui/webhooks", auth(h.requireAdmin(http.HandlerFunc(h.handleWebhookCreate))))
-	mux.Handle("GET /ui/webhooks/{id}", auth(h.requireAdmin(http.HandlerFunc(h.handleWebhookEdit))))
-	mux.Handle("POST /ui/webhooks/{id}", auth(h.requireAdmin(http.HandlerFunc(h.handleWebhookUpdate))))
-	mux.Handle("POST /ui/webhooks/{id}/delete", auth(h.requireAdmin(http.HandlerFunc(h.handleWebhookDelete))))
-	mux.Handle("POST /ui/webhooks/{id}/pause", auth(h.requireAdmin(http.HandlerFunc(h.handleWebhookPause))))
-	mux.Handle("POST /ui/webhooks/{id}/unpause", auth(h.requireAdmin(http.HandlerFunc(h.handleWebhookUnpause))))
-	mux.Handle("POST /ui/webhooks/{id}/test", auth(h.requireAdmin(http.HandlerFunc(h.handleWebhookTest))))
-	mux.Handle("GET /ui/webhooks/{id}/logs", auth(h.requireAdmin(http.HandlerFunc(h.handleWebhookLogs))))
-	mux.Handle("POST /ui/webhooks/{id}/retry-all", auth(h.requireAdmin(http.HandlerFunc(h.handleWebhookRetryAll))))
-	mux.Handle("POST /ui/webhooks/{id}/reset-stats", auth(h.requireAdmin(http.HandlerFunc(h.handleWebhookResetStats))))
-	mux.Handle("POST /ui/webhook-logs/{id}/retry", auth(h.requireAdmin(http.HandlerFunc(h.handleWebhookLogRetry))))
+	mux.Handle("GET /ui/webhooks", auth(h.requireEditor(http.HandlerFunc(h.handleWebhooksList))))
+	mux.Handle("GET /ui/webhooks/new", auth(h.requireEditor(http.HandlerFunc(h.handleWebhookNew))))
+	mux.Handle("POST /ui/webhooks", auth(h.requireEditor(http.HandlerFunc(h.handleWebhookCreate))))
+	mux.Handle("GET /ui/webhooks/{id}", auth(h.requireEditor(http.HandlerFunc(h.handleWebhookEdit))))
+	mux.Handle("POST /ui/webhooks/{id}", auth(h.requireEditor(http.HandlerFunc(h.handleWebhookUpdate))))
+	mux.Handle("POST /ui/webhooks/{id}/delete", auth(h.requireEditor(http.HandlerFunc(h.handleWebhookDelete))))
+	mux.Handle("POST /ui/webhooks/{id}/pause", auth(h.requireEditor(http.HandlerFunc(h.handleWebhookPause))))
+	mux.Handle("POST /ui/webhooks/{id}/unpause", auth(h.requireEditor(http.HandlerFunc(h.handleWebhookUnpause))))
+	mux.Handle("POST /ui/webhooks/{id}/test", auth(h.requireEditor(http.HandlerFunc(h.handleWebhookTest))))
+	mux.Handle("GET /ui/webhooks/{id}/logs", auth(h.requireEditor(http.HandlerFunc(h.handleWebhookLogs))))
+	mux.Handle("POST /ui/webhooks/{id}/retry-all", auth(h.requireEditor(http.HandlerFunc(h.handleWebhookRetryAll))))
+	mux.Handle("POST /ui/webhooks/{id}/reset-stats", auth(h.requireEditor(http.HandlerFunc(h.handleWebhookResetStats))))
+	mux.Handle("POST /ui/webhook-logs/{id}/retry", auth(h.requireEditor(http.HandlerFunc(h.handleWebhookLogRetry))))
 
 	mux.Handle("GET /ui/settings/bridges", auth(h.requireAdmin(http.HandlerFunc(h.handleSettingsBridges))))
 	mux.Handle("GET /ui/settings/bridges/telegram", auth(h.requireAdmin(http.HandlerFunc(h.handleSettingsBridgeTelegram))))

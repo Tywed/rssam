@@ -34,7 +34,7 @@ func TestUI_SharedReleaseClient(t *testing.T) {
 		t.Fatal(err)
 	}
 	h, err := NewHandler(Config{
-		Users:      &uiMemUsers{user: storage.User{ID: 1, Username: "alice", PasswordHash: hash, IsAdmin: true}},
+		Users:      &uiMemUsers{user: storage.User{ID: 1, Username: "alice", PasswordHash: hash, Role: auth.RoleAdmin}},
 		Sessions:   &uiMemSessions{sessions: map[string]storage.Session{}},
 		Entries:    uiMemEntries{},
 		CSRFSecret: "csrf-test",

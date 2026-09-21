@@ -14,6 +14,8 @@ import (
 	"strings"
 	"time"
 
+	"rssam/internal/auth"
+
 	"rssam/internal/ssrf"
 	"rssam/internal/storage"
 )
@@ -116,7 +118,7 @@ func providerConfigFromWrite(req webhookWriteRequest) (kind string, cfg []byte, 
 }
 
 func (s *Server) handleListWebhooks(w http.ResponseWriter, r *http.Request) {
-	p, ok := requireStore(w, r, true, s.webhooks != nil, "webhook storage is not configured")
+	p, ok := requireStore(w, r, auth.RoleEditor, s.webhooks != nil, "webhook storage is not configured")
 	if !ok {
 		return
 	}
@@ -139,7 +141,7 @@ func (s *Server) handleListWebhooks(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleCreateWebhook(w http.ResponseWriter, r *http.Request) {
-	p, ok := requireStore(w, r, true, s.webhooks != nil, "webhook storage is not configured")
+	p, ok := requireStore(w, r, auth.RoleEditor, s.webhooks != nil, "webhook storage is not configured")
 	if !ok {
 		return
 	}
@@ -212,7 +214,7 @@ func (s *Server) handleCreateWebhook(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleGetWebhook(w http.ResponseWriter, r *http.Request) {
-	p, id, ok := requireStoreID(w, r, true, s.webhooks != nil, "webhook storage is not configured")
+	p, id, ok := requireStoreID(w, r, auth.RoleEditor, s.webhooks != nil, "webhook storage is not configured")
 	if !ok {
 		return
 	}
@@ -225,7 +227,7 @@ func (s *Server) handleGetWebhook(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleUpdateWebhook(w http.ResponseWriter, r *http.Request) {
-	p, id, ok := requireStoreID(w, r, true, s.webhooks != nil, "webhook storage is not configured")
+	p, id, ok := requireStoreID(w, r, auth.RoleEditor, s.webhooks != nil, "webhook storage is not configured")
 	if !ok {
 		return
 	}
@@ -295,7 +297,7 @@ func (s *Server) handleUpdateWebhook(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleDeleteWebhook(w http.ResponseWriter, r *http.Request) {
-	p, id, ok := requireStoreID(w, r, true, s.webhooks != nil, "webhook storage is not configured")
+	p, id, ok := requireStoreID(w, r, auth.RoleEditor, s.webhooks != nil, "webhook storage is not configured")
 	if !ok {
 		return
 	}
@@ -314,7 +316,7 @@ type webhookTestResult struct {
 }
 
 func (s *Server) handleTestWebhook(w http.ResponseWriter, r *http.Request) {
-	p, id, ok := requireStoreID(w, r, true, s.webhooks != nil, "webhook storage is not configured")
+	p, id, ok := requireStoreID(w, r, auth.RoleEditor, s.webhooks != nil, "webhook storage is not configured")
 	if !ok {
 		return
 	}
@@ -486,7 +488,7 @@ type webhookLogDTO struct {
 }
 
 func (s *Server) handleListWebhookLogs(w http.ResponseWriter, r *http.Request) {
-	p, id, ok := requireStoreID(w, r, true, s.webhookLogs != nil && s.webhooks != nil, "webhook log storage is not configured")
+	p, id, ok := requireStoreID(w, r, auth.RoleEditor, s.webhookLogs != nil && s.webhooks != nil, "webhook log storage is not configured")
 	if !ok {
 		return
 	}
@@ -526,7 +528,7 @@ func (s *Server) handleListWebhookLogs(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleRetryWebhookLog(w http.ResponseWriter, r *http.Request) {
-	p, ok := requireStore(w, r, true, s.webhookLogs != nil, "webhook log storage is not configured")
+	p, ok := requireStore(w, r, auth.RoleEditor, s.webhookLogs != nil, "webhook log storage is not configured")
 	if !ok {
 		return
 	}

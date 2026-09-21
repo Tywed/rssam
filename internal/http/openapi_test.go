@@ -12,6 +12,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"rssam/internal/auth"
 )
 
 // openAPIOps returns "METHOD /path" for every operation in openapi.json.
@@ -163,7 +165,7 @@ func TestOpenAPI_Served(t *testing.T) {
 
 var rbacProbeBodies = map[string]string{
 	"/v1/users":                            `{"username":"x","password":"Str0ng-Passw0rd!"}`,
-	"/v1/users/{id}":                       `{"is_admin":true}`,
+	"/v1/users/{id}":                       `{"role":"admin"}`,
 	"/v1/me":                               `{"current_password":"a","password":"b"}`,
 	"/v1/me/api-keys":                      `{"name":"n"}`,
 	"/v1/categories":                       `{"title":"t"}`,
@@ -179,34 +181,51 @@ var rbacProbeBodies = map[string]string{
 	"/v1/webhooks/{id}":                    `{"name":"w"}`,
 }
 
-// Admin-only handlers are documented as such: a non-admin principal gets 403
-// exactly on the operations whose description says "Requires an admin
-// principal", and 2xx/4xx-other elsewhere.
-func TestOpenAPI_AdminMarkersMatchRBAC(t *testing.T) {
+// Role markers in the spec match the handlers: for every /v1 operation the
+// reader, editor and admin principals get 403 exactly when the description
+// names a higher role ("Requires an editor principal" / "Requires an admin
+// principal").
+func TestOpenAPI_RoleMarkersMatchRBAC(t *testing.T) {
 	ops, keys := openAPIOps(t)
 	env := newRouterEnv(t, nil)
 	param := regexp.MustCompile(`\{[^}]+}`)
+	callers := []struct {
+		role string
+		key  string
+	}{
+		{auth.RoleReader, env.bobKey},
+		{auth.RoleEditor, env.editorKey},
+		{auth.RoleAdmin, env.adminKey},
+	}
 	for _, k := range keys {
 		method, path, _ := strings.Cut(k, " ")
 		if !strings.HasPrefix(path, "/v1/") {
 			continue
 		}
 		desc, _ := ops[k]["description"].(string)
-		adminDocumented := strings.Contains(desc, "Requires an admin principal")
+		required := auth.RoleReader
+		switch {
+		case strings.Contains(desc, "Requires an admin principal"):
+			required = auth.RoleAdmin
+		case strings.Contains(desc, "Requires an editor principal"):
+			required = auth.RoleEditor
+		}
 		if k == "PUT /v1/me" {
 			// 403 here means "current_password is incorrect", not RBAC.
 			continue
 		}
 		// Some handlers decode the body (DisallowUnknownFields) before the
-		// admin check; send a valid one so 400 cannot mask the RBAC verdict.
+		// role check; send a valid one so 400 cannot mask the RBAC verdict.
 		body := ""
 		if method == http.MethodPost || method == http.MethodPut {
 			body = rbacProbeBodies[path]
 		}
-		rec := env.do(method, param.ReplaceAllString(path, "1"), env.bobKey, body)
-		gotForbidden := rec.Code == http.StatusForbidden
-		if adminDocumented != gotForbidden {
-			t.Errorf("%s: spec admin=%v but non-admin got %d (%s)", k, adminDocumented, rec.Code, strings.TrimSpace(rec.Body.String()))
+		for _, c := range callers {
+			rec := env.do(method, param.ReplaceAllString(path, "1"), c.key, body)
+			wantForbidden := !auth.RoleAtLeast(c.role, required)
+			if gotForbidden := rec.Code == http.StatusForbidden; wantForbidden != gotForbidden {
+				t.Errorf("%s as %s: spec requires %s but got %d (%s)", k, c.role, required, rec.Code, strings.TrimSpace(rec.Body.String()))
+			}
 		}
 	}
 }

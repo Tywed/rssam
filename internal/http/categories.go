@@ -41,7 +41,7 @@ func (s *Server) applyCategoryPollHours(r *http.Request, userID int64, c *storag
 }
 
 func (s *Server) handleListCategories(w http.ResponseWriter, r *http.Request) {
-	p, ok := requireStore(w, r, false, s.categories != nil, "category storage is not configured")
+	p, ok := requireStore(w, r, "", s.categories != nil, "category storage is not configured")
 	if !ok {
 		return
 	}
@@ -69,7 +69,7 @@ func (s *Server) handleListCategories(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleCreateCategory(w http.ResponseWriter, r *http.Request) {
-	p, ok := requireStore(w, r, true, s.categories != nil, "category storage is not configured")
+	p, ok := requireStore(w, r, "", s.categories != nil, "category storage is not configured")
 	if !ok {
 		return
 	}
@@ -107,7 +107,7 @@ func (s *Server) handleCreateCategory(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleUpdateCategory(w http.ResponseWriter, r *http.Request) {
-	p, id, ok := requireStoreID(w, r, true, s.categories != nil, "category storage is not configured")
+	p, id, ok := requireStoreID(w, r, "", s.categories != nil, "category storage is not configured")
 	if !ok {
 		return
 	}
@@ -144,7 +144,7 @@ func (s *Server) handleUpdateCategory(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleDeleteCategory(w http.ResponseWriter, r *http.Request) {
-	p, id, ok := requireStoreID(w, r, true, s.categories != nil, "category storage is not configured")
+	p, id, ok := requireStoreID(w, r, "", s.categories != nil, "category storage is not configured")
 	if !ok {
 		return
 	}

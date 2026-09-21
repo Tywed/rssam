@@ -9,16 +9,25 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"rssam/internal/auth"
 )
 
 // DeleteUser must never remove the last admin that can log in, including
 // when two deletions race each other.
+func roleFor(admin bool) string {
+	if admin {
+		return auth.RoleAdmin
+	}
+	return auth.RoleReader
+}
+
 func TestDeleteUser_LastAdminGuard(t *testing.T) {
 	store := testStore(t)
 	ctx := context.Background()
 
 	var external int
-	if err := store.db.QueryRow(ctx, `SELECT count(*) FROM users WHERE is_admin AND password_hash <> ''`).Scan(&external); err != nil {
+	if err := store.db.QueryRow(ctx, `SELECT count(*) FROM users WHERE role = 'admin' AND password_hash <> ''`).Scan(&external); err != nil {
 		t.Fatal(err)
 	}
 	if external > 0 {
@@ -28,7 +37,7 @@ func TestDeleteUser_LastAdminGuard(t *testing.T) {
 	suffix := fmt.Sprintf("%d", time.Now().UnixNano())
 	mk := func(name string, admin bool) User {
 		t.Helper()
-		u, err := store.CreateUser(ctx, CreateUserParams{Username: name + "_" + suffix, PasswordHash: "x", IsAdmin: admin})
+		u, err := store.CreateUser(ctx, CreateUserParams{Username: name + "_" + suffix, PasswordHash: "x", Role: roleFor(admin)})
 		if err != nil {
 			t.Fatalf("create %s: %v", name, err)
 		}
@@ -90,7 +99,7 @@ func TestDeleteUser_LastAdminGuard(t *testing.T) {
 			t.Fatalf("round %d: errs=%v, want exactly one success and one ErrLastAdmin", i, errs)
 		}
 		var remaining int
-		if err := store.db.QueryRow(ctx, `SELECT count(*) FROM users WHERE is_admin AND password_hash <> ''`).Scan(&remaining); err != nil {
+		if err := store.db.QueryRow(ctx, `SELECT count(*) FROM users WHERE role = 'admin' AND password_hash <> ''`).Scan(&remaining); err != nil {
 			t.Fatal(err)
 		}
 		if remaining != 1 {

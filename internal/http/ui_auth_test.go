@@ -40,13 +40,13 @@ func TestAuthenticateSessionCookie(t *testing.T) {
 
 	s := &Server{
 		sessions: sessions,
-		users:    &uiMemUsersWS{user: storage.User{ID: 42, IsAdmin: true}},
+		users:    &uiMemUsersWS{user: storage.User{ID: 42, Role: auth.RoleAdmin}},
 	}
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/me", nil)
 	req.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: "sess42"})
 	p, ok := s.authenticateRequest(req.Context(), req)
-	if !ok || p.UserID != 42 || !p.IsAdmin {
+	if !ok || p.UserID != 42 || !p.IsAdmin() {
 		t.Fatalf("session auth failed: ok=%v p=%+v", ok, p)
 	}
 }

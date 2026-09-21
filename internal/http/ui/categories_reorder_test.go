@@ -20,7 +20,7 @@ func newCategoryReorderTestHandler(t *testing.T, admin bool) (http.Handler, *uiM
 	}}
 	h, err := NewHandler(Config{
 		Users: &uiMemUsers{user: storage.User{
-			ID: 1, Username: "alice", PasswordHash: mustHash(t, "secret"), IsAdmin: admin,
+			ID: 1, Username: "alice", PasswordHash: mustHash(t, "secret"), Role: roleFor(admin),
 		}},
 		Sessions:   &uiMemSessions{sessions: map[string]storage.Session{}},
 		Entries:    uiMemEntries{},
@@ -33,25 +33,6 @@ func newCategoryReorderTestHandler(t *testing.T, admin bool) (http.Handler, *uiM
 	mux := http.NewServeMux()
 	h.Register(mux)
 	return mux, catStore
-}
-
-func TestCategoryReorderRequiresAdmin(t *testing.T) {
-	mux, catStore := newCategoryReorderTestHandler(t, false)
-	sid := uiSessionCookie(t, nil, mux)
-	token := auth.CSRFToken("csrf-test", sid)
-
-	form := url.Values{"csrf_token": {token}, "order": {"3", "1", "2"}}
-	req := httptest.NewRequest(http.MethodPost, "/ui/categories/reorder", strings.NewReader(form.Encode()))
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: sid})
-	rec := httptest.NewRecorder()
-	mux.ServeHTTP(rec, req)
-	if rec.Code != http.StatusForbidden {
-		t.Fatalf("non-admin reorder: status=%d", rec.Code)
-	}
-	if catStore.cats[0].ID != 1 {
-		t.Fatal("order should be unchanged for non-admin")
-	}
 }
 
 func TestCategoryReorder(t *testing.T) {

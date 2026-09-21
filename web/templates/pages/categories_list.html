@@ -3,10 +3,9 @@
   {{template "settings_nav" .}}
   <div class="settings-content">
     <h1>Категории</h1>
-    {{if and .IsAdmin (gt (len .Categories) 1)}}
+    {{if gt (len .Categories) 1}}
     <p class="meta">Перетащите строки за ручку слева, чтобы изменить порядок в боковой панели.</p>
     {{end}}
-    {{if .IsAdmin}}
     <form method="post" action="/ui/categories" class="card">
       <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
       <div class="form-row">
@@ -16,16 +15,14 @@
       </div>
       <button type="submit" class="btn btn-primary">Создать</button>
     </form>
-    {{end}}
     <table>
-      <thead><tr>{{if .IsAdmin}}<th class="cat-drag-col"></th>{{end}}<th></th><th>Название</th><th>Цвет</th><th></th></tr></thead>
-      <tbody id="categories-sortable"{{if .IsAdmin}} data-reorder="1"{{end}}>
+      <thead><tr><th class="cat-drag-col"></th><th></th><th>Название</th><th>Цвет</th><th></th></tr></thead>
+      <tbody id="categories-sortable" data-reorder="1">
       {{range .Categories}}
-      <tr data-category-id="{{.ID}}"{{if $.IsAdmin}} draggable="true"{{end}}>
-        {{if $.IsAdmin}}<td class="cat-drag-handle" title="Перетащите для сортировки" aria-label="Перетащите для сортировки">⋮⋮</td>{{end}}
+      <tr data-category-id="{{.ID}}" draggable="true">
+        <td class="cat-drag-handle" title="Перетащите для сортировки" aria-label="Перетащите для сортировки">⋮⋮</td>
         <td data-cat-color="{{.ID}}"><span class="cat-dot"></span></td>
         <td colspan="2">
-          {{if $.IsAdmin}}
           <form method="post" action="/ui/categories/{{.ID}}" class="cat-edit-form">
             <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
             <input name="title" value="{{.Title}}">
@@ -33,21 +30,16 @@
             {{if $.CategoryPollHours}}<input name="poll_hours" value="{{.PollHours}}" placeholder="часы опроса" size="12" pattern="\s*\d{1,2}:\d{2}\s*-\s*\d{1,2}:\d{2}\s*|" title="Окно опроса по времени сервера, например 08:00-22:00; пусто — круглосуточно">{{end}}
             <button class="btn btn-sm">Сохранить</button>
           </form>
-          {{else}}
-          <span>{{.Title}}</span>
-          {{end}}
         </td>
         <td>
-          {{if $.IsAdmin}}
           <form method="post" action="/ui/categories/{{.ID}}/delete" data-confirm="Удалить?">
             <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
             <button class="btn btn-sm btn-danger">×</button>
           </form>
-          {{end}}
         </td>
       </tr>
       {{else}}
-      <tr><td colspan="{{if .IsAdmin}}5{{else}}4{{end}}" class="meta">Нет категорий</td></tr>
+      <tr><td colspan="5" class="meta">Нет категорий</td></tr>
       {{end}}
       </tbody>
     </table>

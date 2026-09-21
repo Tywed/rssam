@@ -39,7 +39,7 @@ func TestUI_FeedDetectAndCreateUseDiscoveredURL(t *testing.T) {
 		return reader.Discovery{}, errors.New("unexpected " + feedURL)
 	}
 	h, err := NewHandler(Config{
-		Users:        &uiMemUsers{user: storage.User{ID: 1, Username: "alice", PasswordHash: mustHash(t, "secret"), IsAdmin: true}},
+		Users:        &uiMemUsers{user: storage.User{ID: 1, Username: "alice", PasswordHash: mustHash(t, "secret"), Role: auth.RoleAdmin}},
 		Sessions:     &uiMemSessions{sessions: map[string]storage.Session{}},
 		Entries:      uiMemEntries{},
 		Feeds:        feeds,

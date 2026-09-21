@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"testing"
 
+	"rssam/internal/auth"
+
 	"rssam/internal/storage"
 )
 
@@ -15,11 +17,11 @@ import (
 func TestDeleteUser_LastAdminRefused(t *testing.T) {
 	users := newMemUserStore()
 	ctx := context.Background()
-	root, err := users.CreateUser(ctx, storage.CreateUserParams{Username: "root", PasswordHash: "h", IsAdmin: true})
+	root, err := users.CreateUser(ctx, storage.CreateUserParams{Username: "root", PasswordHash: "h", Role: auth.RoleAdmin})
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := users.CreateUser(ctx, storage.CreateUserParams{Username: "second", PasswordHash: "h", IsAdmin: true})
+	second, err := users.CreateUser(ctx, storage.CreateUserParams{Username: "second", PasswordHash: "h", Role: auth.RoleAdmin})
 	if err != nil {
 		t.Fatal(err)
 	}

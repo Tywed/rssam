@@ -8,7 +8,7 @@ import (
 )
 
 func (s *Server) handleMarkCategoryAllRead(w http.ResponseWriter, r *http.Request) {
-	p, ok := requireStore(w, r, false, s.entries != nil, "entry storage is not configured")
+	p, ok := requireStore(w, r, "", s.entries != nil, "entry storage is not configured")
 	if !ok {
 		return
 	}
@@ -30,7 +30,7 @@ func (s *Server) handleMarkCategoryAllRead(w http.ResponseWriter, r *http.Reques
 }
 
 func (s *Server) handleGetFeedEntry(w http.ResponseWriter, r *http.Request) {
-	p, ok := requireStore(w, r, false, s.entries != nil, "entry storage is not configured")
+	p, ok := requireStore(w, r, "", s.entries != nil, "entry storage is not configured")
 	if !ok {
 		return
 	}
@@ -66,7 +66,7 @@ type updateEntryRequest struct {
 }
 
 func (s *Server) handleUpdateFeedEntry(w http.ResponseWriter, r *http.Request) {
-	p, ok := requireStore(w, r, false, s.entries != nil, "entry storage is not configured")
+	p, ok := requireStore(w, r, "", s.entries != nil, "entry storage is not configured")
 	if !ok {
 		return
 	}

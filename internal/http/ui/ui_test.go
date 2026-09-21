@@ -151,6 +151,13 @@ func (uiMemEntries) MarkAllLabelEntriesRead(context.Context, int64, int64) (int,
 func (uiMemEntries) MarkAllEntriesRead(context.Context, int64) (int, error)          { return 0, nil }
 func (uiMemEntries) MarkEntriesRemoved(context.Context, int64, []int64) (int, error) { return 0, nil }
 
+func roleFor(admin bool) string {
+	if admin {
+		return auth.RoleAdmin
+	}
+	return auth.RoleReader
+}
+
 func newTestUIHandler(t *testing.T, admin bool) *Handler {
 	t.Helper()
 	hash, err := auth.HashPassword("secret")
@@ -162,7 +169,7 @@ func newTestUIHandler(t *testing.T, admin bool) *Handler {
 			ID:           1,
 			Username:     "alice",
 			PasswordHash: hash,
-			IsAdmin:      admin,
+			Role:         roleFor(admin),
 		}},
 		Sessions:   &uiMemSessions{sessions: map[string]storage.Session{}},
 		Entries:    uiMemEntries{},

@@ -164,7 +164,7 @@ func TestRefreshAllFeedsRequiresAdmin(t *testing.T) {
 	})
 
 	req := httptest.NewRequest(http.MethodPost, "/v1/feeds/refresh", nil)
-	req = req.WithContext(auth.WithPrincipal(req.Context(), auth.Principal{UserID: 2, IsAdmin: false}))
+	req = req.WithContext(auth.WithPrincipal(req.Context(), auth.Principal{UserID: 2, Role: auth.RoleReader}))
 	rec := httptest.NewRecorder()
 	s.handleRefreshAllFeeds(rec, req)
 	if rec.Code != http.StatusForbidden {
@@ -172,7 +172,7 @@ func TestRefreshAllFeedsRequiresAdmin(t *testing.T) {
 	}
 
 	req2 := httptest.NewRequest(http.MethodPost, "/v1/feeds/refresh", nil)
-	req2 = req2.WithContext(auth.WithPrincipal(req2.Context(), auth.Principal{UserID: 1, IsAdmin: true}))
+	req2 = req2.WithContext(auth.WithPrincipal(req2.Context(), auth.Principal{UserID: 1, Role: auth.RoleAdmin}))
 	rec2 := httptest.NewRecorder()
 	s.handleRefreshAllFeeds(rec2, req2)
 	if rec2.Code != http.StatusOK {

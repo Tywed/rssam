@@ -198,18 +198,20 @@ func (m *memWebhookLogStore) RetryWebhookLogNow(_ context.Context, userID, logID
 // ---- helpers ---------------------------------------------------------------
 
 type routerEnv struct {
-	t        *testing.T
-	h        http.Handler
-	users    *memUserStore
-	adminKey string // API key of user 1 (admin)
-	bobKey   string // API key of a non-admin user
-	bobID    int64
+	t         *testing.T
+	h         http.Handler
+	users     *memUserStore
+	adminKey  string // API key of user 1 (admin)
+	editorKey string // API key of eve (editor)
+	bobKey    string // API key of bob (reader)
+	bobID     int64
+	editorID  int64
 }
 
-// newRouterEnv builds a Server with in-memory users (1=admin, bob=non-admin)
-// plus whatever extra stores the caller supplies, and returns the full
-// Handler(). API keys are used for auth so that both principals go through the
-// real LookupAPIKey path.
+// newRouterEnv builds a Server with in-memory users (1=admin, eve=editor,
+// bob=reader) plus whatever extra stores the caller supplies, and returns the
+// full Handler(). API keys are used for auth so that every principal goes
+// through the real LookupAPIKey path.
 func newRouterEnv(t *testing.T, mutate func(*Dependencies)) *routerEnv {
 	t.Helper()
 	users := newMemUserStore()
@@ -222,7 +224,11 @@ func newRouterEnv(t *testing.T, mutate func(*Dependencies)) *routerEnv {
 	}
 	s := New(dep)
 
-	bob, err := users.CreateUser(context.Background(), storage.CreateUserParams{Username: "bob", IsAdmin: false})
+	bob, err := users.CreateUser(context.Background(), storage.CreateUserParams{Username: "bob", Role: auth.RoleReader})
+	if err != nil {
+		t.Fatal(err)
+	}
+	eve, err := users.CreateUser(context.Background(), storage.CreateUserParams{Username: "eve", Role: auth.RoleEditor})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -237,12 +243,14 @@ func newRouterEnv(t *testing.T, mutate func(*Dependencies)) *routerEnv {
 		return raw
 	}
 	return &routerEnv{
-		t:        t,
-		h:        s.Handler(),
-		users:    users,
-		adminKey: mkKey(1),
-		bobKey:   mkKey(bob.ID),
-		bobID:    bob.ID,
+		t:         t,
+		h:         s.Handler(),
+		users:     users,
+		adminKey:  mkKey(1),
+		editorKey: mkKey(eve.ID),
+		bobKey:    mkKey(bob.ID),
+		bobID:     bob.ID,
+		editorID:  eve.ID,
 	}
 }
 
@@ -291,7 +299,7 @@ func TestRouter_UsersAndMe(t *testing.T) {
 	env.want(env.do(http.MethodGet, "/v1/users", "", ""), http.StatusUnauthorized)
 	rec := env.want(env.do(http.MethodGet, "/v1/users", env.adminKey, ""), http.StatusOK)
 	list, total := decodeData[[]userDTO](t, rec)
-	if total != 2 || len(list) != 2 {
+	if total != 3 || len(list) != 3 {
 		t.Fatalf("users: total=%d len=%d", total, len(list))
 	}
 	env.want(env.do(http.MethodGet, "/v1/users?limit=abc", env.adminKey, ""), http.StatusBadRequest)
@@ -299,12 +307,12 @@ func TestRouter_UsersAndMe(t *testing.T) {
 	// GET /v1/me reflects the caller, not user 1.
 	rec = env.want(env.do(http.MethodGet, "/v1/me", env.bobKey, ""), http.StatusOK)
 	me, _ := decodeData[userDTO](t, rec)
-	if me.ID != env.bobID || me.Username != "bob" || me.IsAdmin {
+	if me.ID != env.bobID || me.Username != "bob" || me.IsAdmin || me.Role != auth.RoleReader {
 		t.Fatalf("me: %+v", me)
 	}
 	rec = env.want(env.do(http.MethodGet, "/v1/me", env.adminKey, ""), http.StatusOK)
 	me, _ = decodeData[userDTO](t, rec)
-	if me.ID != 1 || !me.IsAdmin {
+	if me.ID != 1 || !me.IsAdmin || me.Role != auth.RoleAdmin {
 		t.Fatalf("me as admin: %+v", me)
 	}
 	env.want(env.do(http.MethodGet, "/v1/me", "secret", ""), http.StatusUnauthorized)

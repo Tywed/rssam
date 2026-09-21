@@ -5,7 +5,7 @@
     <h1>Настройки</h1>
     <div class="card">
       <h2>Профиль</h2>
-      <p>Имя: <strong>{{.Username}}</strong>{{if .IsAdmin}} (admin){{end}}</p>
+      <p>Имя: <strong>{{.Username}}</strong>{{if .IsAdmin}} (администратор){{else if .CanEdit}} (редактор){{end}}</p>
       <form method="post" action="/ui/settings/password">
         <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
         <div class="form-group"><label>Текущий пароль</label><input name="current_password" type="password" autocomplete="current-password"></div>

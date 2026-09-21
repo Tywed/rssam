@@ -9,19 +9,30 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+
+	"rssam/internal/auth"
 )
 
 var (
 	ErrDuplicateUsername = errors.New("username already exists")
 	ErrDuplicateAPIKey   = errors.New("api key name conflict")
+	ErrInvalidRole       = errors.New("invalid role")
 )
 
 type User struct {
 	ID           int64
 	Username     string
 	PasswordHash string
-	IsAdmin      bool
+	Role         string
 	CreatedAt    time.Time
+}
+
+func (u User) IsAdmin() bool { return u.Role == auth.RoleAdmin }
+
+const userColumns = `id, username, password_hash, role, created_at`
+
+func scanUser(row pgx.Row, u *User, extra ...any) error {
+	return row.Scan(append([]any{&u.ID, &u.Username, &u.PasswordHash, &u.Role, &u.CreatedAt}, extra...)...)
 }
 
 type APIKey struct {
@@ -48,13 +59,14 @@ type APIKeyWithToken struct {
 type CreateUserParams struct {
 	Username     string
 	PasswordHash string
-	IsAdmin      bool
+	// Role defaults to reader.
+	Role string
 }
 
 type UpdateUserParams struct {
 	ID           int64
 	PasswordHash *string
-	IsAdmin      *bool
+	Role         *string
 }
 
 type CreateAPIKeyParams struct {
@@ -75,11 +87,11 @@ type UserStore interface {
 	GetUser(ctx context.Context, id int64) (User, error)
 	GetUserByUsername(ctx context.Context, username string) (User, error)
 	CreateUser(ctx context.Context, params CreateUserParams) (User, error)
-	// UpdateUser changes the password and/or the admin flag; nil fields are
-	// left alone. Demoting the only login-capable admin returns ErrLastAdmin.
+	// UpdateUser changes the password and/or the role; nil fields are left
+	// alone. Demoting the only login-capable admin returns ErrLastAdmin.
 	UpdateUser(ctx context.Context, params UpdateUserParams) (User, error)
 	// DeleteUser returns ErrLastAdmin when the user is the only admin that
-	// can log in (is_admin with a non-empty password_hash).
+	// can log in (role admin with a non-empty password_hash).
 	DeleteUser(ctx context.Context, id int64) error
 
 	LookupAPIKey(ctx context.Context, tokenHash string) (APIKey, error)
@@ -110,7 +122,7 @@ func (s *PostgresStore) ListUsers(ctx context.Context, limit, offset int) ([]Use
 		limit = 100
 	}
 	const q = `
-SELECT id, username, password_hash, is_admin, created_at, count(*) OVER()
+SELECT ` + userColumns + `, count(*) OVER()
 FROM users
 ORDER BY id ASC
 LIMIT $1 OFFSET $2`
@@ -124,7 +136,7 @@ LIMIT $1 OFFSET $2`
 	total := 0
 	for rows.Next() {
 		var u User
-		if err := rows.Scan(&u.ID, &u.Username, &u.PasswordHash, &u.IsAdmin, &u.CreatedAt, &total); err != nil {
+		if err := scanUser(rows, &u, &total); err != nil {
 			return nil, 0, fmt.Errorf("scan user: %w", err)
 		}
 		out = append(out, u)
@@ -136,9 +148,9 @@ LIMIT $1 OFFSET $2`
 }
 
 func (s *PostgresStore) GetUser(ctx context.Context, id int64) (User, error) {
-	const q = `SELECT id, username, password_hash, is_admin, created_at FROM users WHERE id = $1`
+	const q = `SELECT ` + userColumns + ` FROM users WHERE id = $1`
 	var u User
-	err := s.db.QueryRow(ctx, q, id).Scan(&u.ID, &u.Username, &u.PasswordHash, &u.IsAdmin, &u.CreatedAt)
+	err := scanUser(s.db.QueryRow(ctx, q, id), &u)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return User{}, ErrNotFound
@@ -149,9 +161,9 @@ func (s *PostgresStore) GetUser(ctx context.Context, id int64) (User, error) {
 }
 
 func (s *PostgresStore) GetUserByUsername(ctx context.Context, username string) (User, error) {
-	const q = `SELECT id, username, password_hash, is_admin, created_at FROM users WHERE username = $1`
+	const q = `SELECT ` + userColumns + ` FROM users WHERE username = $1`
 	var u User
-	err := s.db.QueryRow(ctx, q, strings.TrimSpace(username)).Scan(&u.ID, &u.Username, &u.PasswordHash, &u.IsAdmin, &u.CreatedAt)
+	err := scanUser(s.db.QueryRow(ctx, q, strings.TrimSpace(username)), &u)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return User{}, ErrNotFound
@@ -166,13 +178,19 @@ func (s *PostgresStore) CreateUser(ctx context.Context, params CreateUserParams)
 	if username == "" {
 		return User{}, errors.New("username is required")
 	}
+	role := params.Role
+	if role == "" {
+		role = auth.RoleReader
+	}
+	if !auth.IsValidRole(role) {
+		return User{}, ErrInvalidRole
+	}
 	const q = `
-INSERT INTO users(username, password_hash, is_admin)
+INSERT INTO users(username, password_hash, role)
 VALUES ($1, $2, $3)
-RETURNING id, username, password_hash, is_admin, created_at`
+RETURNING ` + userColumns
 	var u User
-	err := s.db.QueryRow(ctx, q, username, params.PasswordHash, params.IsAdmin).
-		Scan(&u.ID, &u.Username, &u.PasswordHash, &u.IsAdmin, &u.CreatedAt)
+	err := scanUser(s.db.QueryRow(ctx, q, username, params.PasswordHash, role), &u)
 	if err != nil {
 		if isDuplicateUsername(err) {
 			return User{}, ErrDuplicateUsername
@@ -183,12 +201,15 @@ RETURNING id, username, password_hash, is_admin, created_at`
 }
 
 func (s *PostgresStore) UpdateUser(ctx context.Context, params UpdateUserParams) (User, error) {
-	if params.PasswordHash == nil && params.IsAdmin == nil {
+	if params.PasswordHash == nil && params.Role == nil {
 		return s.GetUser(ctx, params.ID)
+	}
+	if params.Role != nil && !auth.IsValidRole(*params.Role) {
+		return User{}, ErrInvalidRole
 	}
 	var u User
 	err := withTx(ctx, s.db, func(tx pgx.Tx) error {
-		if params.IsAdmin != nil && !*params.IsAdmin {
+		if params.Role != nil && *params.Role != auth.RoleAdmin {
 			if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock($1)`, userAdminLockKey); err != nil {
 				return fmt.Errorf("update user: lock: %w", err)
 			}
@@ -203,11 +224,10 @@ func (s *PostgresStore) UpdateUser(ctx context.Context, params UpdateUserParams)
 		const q = `
 UPDATE users
 SET password_hash = COALESCE($2, password_hash),
-    is_admin = COALESCE($3, is_admin)
+    role = COALESCE($3, role)
 WHERE id = $1
-RETURNING id, username, password_hash, is_admin, created_at`
-		err := tx.QueryRow(ctx, q, params.ID, params.PasswordHash, params.IsAdmin).
-			Scan(&u.ID, &u.Username, &u.PasswordHash, &u.IsAdmin, &u.CreatedAt)
+RETURNING ` + userColumns
+		err := scanUser(tx.QueryRow(ctx, q, params.ID, params.PasswordHash, params.Role), &u)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return ErrNotFound
 		}
@@ -230,22 +250,21 @@ const userAdminLockKey int64 = 0x7273616d5f61646d // "rsam_adm"
 // isLastLoginCapableAdmin reports whether id is an admin with a password
 // and no other such admin exists. Callers hold userAdminLockKey.
 func isLastLoginCapableAdmin(ctx context.Context, tx pgx.Tx, id int64) (bool, error) {
-	var isAdmin bool
-	var hash string
-	err := tx.QueryRow(ctx, `SELECT is_admin, password_hash FROM users WHERE id = $1 FOR UPDATE`, id).Scan(&isAdmin, &hash)
+	var role, hash string
+	err := tx.QueryRow(ctx, `SELECT role, password_hash FROM users WHERE id = $1 FOR UPDATE`, id).Scan(&role, &hash)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return false, ErrNotFound
 	}
 	if err != nil {
 		return false, fmt.Errorf("load user: %w", err)
 	}
-	if !isAdmin || hash == "" {
+	if role != auth.RoleAdmin || hash == "" {
 		return false, nil
 	}
 	var others int
 	err = tx.QueryRow(ctx, `
 SELECT count(*) FROM users
-WHERE is_admin AND password_hash <> '' AND id <> $1`, id).Scan(&others)
+WHERE role = 'admin' AND password_hash <> '' AND id <> $1`, id).Scan(&others)
 	if err != nil {
 		return false, fmt.Errorf("count admins: %w", err)
 	}
@@ -410,7 +429,7 @@ func (s *PostgresStore) EnsureBootstrapAdmin(ctx context.Context, username, pass
 	_, err = s.CreateUser(ctx, CreateUserParams{
 		Username:     username,
 		PasswordHash: hash,
-		IsAdmin:      true,
+		Role:         auth.RoleAdmin,
 	})
 	if errors.Is(err, ErrDuplicateUsername) {
 		return nil
@@ -421,7 +440,7 @@ func (s *PostgresStore) EnsureBootstrapAdmin(ctx context.Context, username, pass
 func (s *PostgresStore) adoptPlaceholderAdmin(ctx context.Context, id int64, username, hash string) error {
 	const q = `
 UPDATE users
-SET username = $2, password_hash = $3, is_admin = TRUE
+SET username = $2, password_hash = $3, role = 'admin'
 WHERE id = $1 AND password_hash = ''`
 	if _, err := s.db.Exec(ctx, q, id, username, hash); err != nil {
 		return fmt.Errorf("bootstrap admin: adopt placeholder user: %w", err)

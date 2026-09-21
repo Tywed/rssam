@@ -40,7 +40,7 @@ func (h *Handler) renderFeedsListFlash(w http.ResponseWriter, r *http.Request, f
 	data.FlashMsg = flash
 	filter := feedsFilterFromForm(r)
 	_ = h.loadFeedsListPage(r, &data, p.UserID, filter)
-	if p.IsAdmin {
+	if p.CanEdit() {
 		h.loadFeedFormWebhooks(r, &data)
 	}
 	data.Title = "Ленты"

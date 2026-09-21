@@ -68,9 +68,6 @@ func (h *Handler) loadAdminWebhooksDashboard(r *http.Request, userID int64) (pag
 }
 
 func (h *Handler) handleWebhooksList(w http.ResponseWriter, r *http.Request) {
-	if !h.requireAdminPrincipal(w, r) {
-		return
-	}
 	p, _ := principal(r)
 	data, err := h.loadAdminWebhooksDashboard(r, p.UserID)
 	if err != nil {
@@ -81,9 +78,6 @@ func (h *Handler) handleWebhooksList(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) handleWebhookNew(w http.ResponseWriter, r *http.Request) {
-	if !h.requireAdminPrincipal(w, r) {
-		return
-	}
 	data := h.baseData(r, "settings")
 	data.SettingsSection = "webhooks"
 	data.Webhook.Method = "POST"
@@ -133,9 +127,6 @@ func (h *Handler) loadWebhookDetail(r *http.Request, userID, id int64) (pageData
 }
 
 func (h *Handler) handleWebhookEdit(w http.ResponseWriter, r *http.Request) {
-	if !h.requireAdminPrincipal(w, r) {
-		return
-	}
 	p, _ := principal(r)
 	id, err := parsePathID(r)
 	if err != nil {
@@ -155,7 +146,7 @@ func (h *Handler) handleWebhookEdit(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) handleWebhookCreate(w http.ResponseWriter, r *http.Request) {
-	if !h.requireAdminPrincipal(w, r) || !h.validateCSRF(r) {
+	if !h.validateCSRF(r) {
 		return
 	}
 	p, _ := principal(r)
@@ -173,7 +164,7 @@ func (h *Handler) handleWebhookCreate(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) handleWebhookUpdate(w http.ResponseWriter, r *http.Request) {
-	if !h.requireAdminPrincipal(w, r) || !h.validateCSRF(r) {
+	if !h.validateCSRF(r) {
 		return
 	}
 	p, _ := principal(r)
@@ -210,7 +201,7 @@ func (h *Handler) handleWebhookUpdate(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) handleWebhookDelete(w http.ResponseWriter, r *http.Request) {
-	if !h.requireAdminPrincipal(w, r) || !h.validateCSRF(r) {
+	if !h.validateCSRF(r) {
 		return
 	}
 	p, _ := principal(r)
@@ -246,7 +237,7 @@ func (h *Handler) handleWebhookUnpause(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) setWebhookEnabled(w http.ResponseWriter, r *http.Request, enabled bool) {
-	if !h.requireAdminPrincipal(w, r) || !h.validateCSRF(r) {
+	if !h.validateCSRF(r) {
 		return
 	}
 	p, _ := principal(r)
@@ -267,7 +258,7 @@ func (h *Handler) setWebhookEnabled(w http.ResponseWriter, r *http.Request, enab
 }
 
 func (h *Handler) handleWebhookTest(w http.ResponseWriter, r *http.Request) {
-	if !h.requireAdminPrincipal(w, r) || !h.validateCSRF(r) {
+	if !h.validateCSRF(r) {
 		return
 	}
 	p, _ := principal(r)
@@ -299,7 +290,7 @@ func (h *Handler) handleWebhookTest(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) handleWebhookRetryAll(w http.ResponseWriter, r *http.Request) {
-	if !h.requireAdminPrincipal(w, r) || !h.validateCSRF(r) {
+	if !h.validateCSRF(r) {
 		return
 	}
 	p, _ := principal(r)
@@ -325,9 +316,6 @@ func (h *Handler) handleWebhookRetryAll(w http.ResponseWriter, r *http.Request) 
 // handleWebhookResetStats clears the persistent delivery counters of a webhook
 // (sent/failed totals, last error). Delivery logs are not touched.
 func (h *Handler) handleWebhookResetStats(w http.ResponseWriter, r *http.Request) {
-	if !h.requireAdminPrincipal(w, r) {
-		return
-	}
 	if !h.validateCSRF(r) {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
@@ -354,9 +342,6 @@ func (h *Handler) handleWebhookResetStats(w http.ResponseWriter, r *http.Request
 }
 
 func (h *Handler) handleWebhookLogs(w http.ResponseWriter, r *http.Request) {
-	if !h.requireAdminPrincipal(w, r) {
-		return
-	}
 	p, _ := principal(r)
 	id, err := parsePathID(r)
 	if err != nil {
@@ -396,7 +381,7 @@ func (h *Handler) handleWebhookLogs(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) handleWebhookLogRetry(w http.ResponseWriter, r *http.Request) {
-	if !h.requireAdminPrincipal(w, r) || !h.validateCSRF(r) {
+	if !h.validateCSRF(r) {
 		return
 	}
 	id, err := parsePathID(r)

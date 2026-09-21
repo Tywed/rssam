@@ -39,7 +39,14 @@ func (h *Handler) handleAdminUserCreate(w http.ResponseWriter, r *http.Request) 
 	}
 	username := stringsTrim(r.FormValue("username"))
 	password := r.FormValue("password")
-	isAdmin := r.FormValue("is_admin") == "1"
+	role := r.FormValue("role")
+	if role == "" {
+		role = auth.RoleReader
+	}
+	if !auth.IsValidRole(role) {
+		http.Error(w, "invalid role", http.StatusBadRequest)
+		return
+	}
 	if err := auth.ValidateNewPassword(password); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -52,13 +59,13 @@ func (h *Handler) handleAdminUserCreate(w http.ResponseWriter, r *http.Request) 
 	u, err := h.cfg.Users.CreateUser(r.Context(), storage.CreateUserParams{
 		Username:     username,
 		PasswordHash: hash,
-		IsAdmin:      isAdmin,
+		Role:         role,
 	})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	h.cfg.Audit.Record(r, storage.AuditUserCreate, "user", u.ID, map[string]any{"username": username, "is_admin": isAdmin})
+	h.cfg.Audit.Record(r, storage.AuditUserCreate, "user", u.ID, map[string]any{"username": username, "role": role})
 	http.Redirect(w, r, "/ui/admin/users", http.StatusFound)
 }
 
@@ -73,12 +80,16 @@ func (h *Handler) handleAdminUserRole(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	isAdmin := r.FormValue("is_admin") == "1"
-	if id == p.UserID && !isAdmin {
+	role := r.FormValue("role")
+	if !auth.IsValidRole(role) {
+		http.Error(w, "invalid role", http.StatusBadRequest)
+		return
+	}
+	if id == p.UserID && role != auth.RoleAdmin {
 		http.Error(w, "нельзя снять права администратора с себя", http.StatusBadRequest)
 		return
 	}
-	if _, err := h.cfg.Users.UpdateUser(r.Context(), storage.UpdateUserParams{ID: id, IsAdmin: &isAdmin}); err != nil {
+	if _, err := h.cfg.Users.UpdateUser(r.Context(), storage.UpdateUserParams{ID: id, Role: &role}); err != nil {
 		switch {
 		case errors.Is(err, storage.ErrNotFound):
 			http.NotFound(w, r)
@@ -89,7 +100,7 @@ func (h *Handler) handleAdminUserRole(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	h.cfg.Audit.Record(r, storage.AuditUserUpdate, "user", id, map[string]any{"is_admin": isAdmin})
+	h.cfg.Audit.Record(r, storage.AuditUserUpdate, "user", id, map[string]any{"role": role})
 	http.Redirect(w, r, "/ui/admin/users", http.StatusFound)
 }
 

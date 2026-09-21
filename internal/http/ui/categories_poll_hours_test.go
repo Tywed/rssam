@@ -32,7 +32,7 @@ func TestUI_CategoryPollHoursForm(t *testing.T) {
 	cats := &uiMemCategories{cats: []storage.Category{{ID: 1, Title: "Night", PollHours: "22:00-06:00"}}}
 	ph := &uiMemPollHours{}
 	h, err := NewHandler(Config{
-		Users:             &uiMemUsers{user: storage.User{ID: 1, Username: "alice", PasswordHash: mustHash(t, "secret"), IsAdmin: true}},
+		Users:             &uiMemUsers{user: storage.User{ID: 1, Username: "alice", PasswordHash: mustHash(t, "secret"), Role: auth.RoleAdmin}},
 		Sessions:          &uiMemSessions{sessions: map[string]storage.Session{}},
 		Entries:           uiMemEntries{},
 		Categories:        cats,
