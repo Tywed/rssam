@@ -15,6 +15,10 @@ import (
 func TestIntegration_Migration0046_LegacyWebhookBinding(t *testing.T) {
 	store := isolatedStore(t)
 	ctx := context.Background()
+	// 0048 has dropped the column by now; restore the pre-0046 shape.
+	if _, err := store.db.Exec(ctx, `ALTER TABLE webhooks ADD COLUMN IF NOT EXISTS filter_id BIGINT REFERENCES filters(id) ON DELETE CASCADE`); err != nil {
+		t.Fatal(err)
+	}
 	owner := newIntegrationUser(t, store, "m46")
 	wh, err := store.CreateWebhook(ctx, CreateWebhookParams{UserID: owner.ID, Name: "legacy", URL: "https://example.com/l", Headers: []byte(`{}`), Enabled: true})
 	if err != nil {

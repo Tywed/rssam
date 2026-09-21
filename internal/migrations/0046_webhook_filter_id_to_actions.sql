@@ -1,6 +1,6 @@
 -- Legacy webhook↔filter binding (webhooks.filter_id, 0006) becomes a regular
 -- filter action; the refresher no longer has a second routing path. The
--- column stays (unused, always NULL) until 0.2.0.
+-- column stays (unused, always NULL) until 0048.
 INSERT INTO filter_actions (filter_id, action_type, action_param, priority)
 SELECT w.filter_id, 'webhook', w.id::text, 0
 FROM webhooks w
