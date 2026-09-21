@@ -126,6 +126,7 @@ func (s *Server) handleCreateFeed(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
+	s.audit.Record(r, storage.AuditFeedCreate, "feed", feed.ID, map[string]any{"url": feed.FeedURL})
 	writeJSON(w, http.StatusCreated, listResponse[feedDTO]{Data: toFeedDTO(feed), Total: 1})
 }
 
@@ -195,6 +196,7 @@ func (s *Server) handleUpdateFeed(w http.ResponseWriter, r *http.Request) {
 	if s.refresher != nil {
 		_ = s.refresher.RescheduleFeed(r.Context(), id, params.IntervalMinutes)
 	}
+	s.audit.Record(r, storage.AuditFeedUpdate, "feed", feed.ID, map[string]any{"url": feed.FeedURL})
 	writeJSON(w, http.StatusOK, listResponse[feedDTO]{Data: toFeedDTO(feed), Total: 1})
 }
 
@@ -207,6 +209,7 @@ func (s *Server) handleDeleteFeed(w http.ResponseWriter, r *http.Request) {
 		s.storeError(w, r, err, "feed not found", "delete feed failed")
 		return
 	}
+	s.audit.Record(r, storage.AuditFeedDelete, "feed", id, nil)
 	writeJSON(w, http.StatusOK, listResponse[deletedDTO]{Data: deletedDTO{Deleted: true}, Total: 1})
 }
 

@@ -421,6 +421,7 @@ func (h *Handler) handleAdminFeedDelete(w http.ResponseWriter, r *http.Request) 
 		http.NotFound(w, r)
 		return
 	}
+	h.cfg.Audit.Record(r, storage.AuditFeedDelete, "feed", id, map[string]any{"url": feed.FeedURL, "owner_id": feed.UserID})
 	http.Redirect(w, r, adminFeedsRedirect(r), http.StatusFound)
 }
 

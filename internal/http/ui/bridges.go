@@ -11,25 +11,20 @@ import (
 )
 
 func (h *Handler) handleSettingsBridges(w http.ResponseWriter, r *http.Request) {
-	if !h.requireAdminPrincipal(w, r) {
-		return
-	}
 	data := h.bridgeSettingsData(r, "overview")
 	data.Title = "Мосты"
 	h.render(w, r, "settings_bridges", data)
 }
 
 func (h *Handler) handleSettingsBridgeTelegram(w http.ResponseWriter, r *http.Request) {
-	if !h.requireAdminPrincipal(w, r) {
-		return
-	}
 	data := h.bridgeSettingsData(r, "telegram")
 	data.Title = "Telegram"
 	h.render(w, r, "settings_bridge_telegram", data)
 }
 
 func (h *Handler) handleSettingsBridgeTelegramSave(w http.ResponseWriter, r *http.Request) {
-	if !h.requireAdminPrincipal(w, r) || !h.validateCSRF(r) {
+	if !h.validateCSRF(r) {
+		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
 	stored := h.currentBridgeStored(r)
@@ -55,16 +50,14 @@ func (h *Handler) handleSettingsBridgeTelegramSave(w http.ResponseWriter, r *htt
 }
 
 func (h *Handler) handleSettingsBridgeMax(w http.ResponseWriter, r *http.Request) {
-	if !h.requireAdminPrincipal(w, r) {
-		return
-	}
 	data := h.bridgeSettingsData(r, "max")
 	data.Title = "Max"
 	h.render(w, r, "settings_bridge_max", data)
 }
 
 func (h *Handler) handleSettingsBridgeMaxSave(w http.ResponseWriter, r *http.Request) {
-	if !h.requireAdminPrincipal(w, r) || !h.validateCSRF(r) {
+	if !h.validateCSRF(r) {
+		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
 	stored := h.currentBridgeStored(r)
@@ -86,16 +79,14 @@ func (h *Handler) handleSettingsBridgeMaxSave(w http.ResponseWriter, r *http.Req
 }
 
 func (h *Handler) handleSettingsBridgeVK(w http.ResponseWriter, r *http.Request) {
-	if !h.requireAdminPrincipal(w, r) {
-		return
-	}
 	data := h.bridgeSettingsData(r, "vk")
 	data.Title = "VK Search"
 	h.render(w, r, "settings_bridge_vk", data)
 }
 
 func (h *Handler) handleSettingsBridgeVKSave(w http.ResponseWriter, r *http.Request) {
-	if !h.requireAdminPrincipal(w, r) || !h.validateCSRF(r) {
+	if !h.validateCSRF(r) {
+		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
 	stored := h.currentBridgeStored(r)
@@ -117,16 +108,14 @@ func (h *Handler) handleSettingsBridgeVKSave(w http.ResponseWriter, r *http.Requ
 }
 
 func (h *Handler) handleSettingsBridgeRutube(w http.ResponseWriter, r *http.Request) {
-	if !h.requireAdminPrincipal(w, r) {
-		return
-	}
 	data := h.bridgeSettingsData(r, "rutube")
 	data.Title = "Rutube"
 	h.render(w, r, "settings_bridge_rutube", data)
 }
 
 func (h *Handler) handleSettingsBridgeRutubeSave(w http.ResponseWriter, r *http.Request) {
-	if !h.requireAdminPrincipal(w, r) || !h.validateCSRF(r) {
+	if !h.validateCSRF(r) {
+		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
 	stored := h.currentBridgeStored(r)
@@ -142,15 +131,6 @@ func (h *Handler) handleSettingsBridgeRutubeSave(w http.ResponseWriter, r *http.
 
 func (h *Handler) handleSettingsTelegramRedirect(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/ui/settings/bridges/telegram", http.StatusFound)
-}
-
-func (h *Handler) requireAdminPrincipal(w http.ResponseWriter, r *http.Request) bool {
-	p, ok := auth.PrincipalFromContext(r.Context())
-	if !ok || !p.IsAdmin() {
-		http.Error(w, "forbidden", http.StatusForbidden)
-		return false
-	}
-	return true
 }
 
 func (h *Handler) bridgeSettingsData(r *http.Request, section string) pageData {

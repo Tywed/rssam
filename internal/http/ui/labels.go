@@ -88,6 +88,7 @@ func (h *Handler) handleLabelMarkRead(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) handleLabelCreate(w http.ResponseWriter, r *http.Request) {
 	if !h.validateCSRF(r) {
+		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
 	p, _ := principal(r)
@@ -116,6 +117,7 @@ func (h *Handler) handleLabelCreate(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) handleLabelUpdate(w http.ResponseWriter, r *http.Request) {
 	if !h.validateCSRF(r) {
+		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
 	p, _ := principal(r)
@@ -145,6 +147,7 @@ func (h *Handler) handleLabelUpdate(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) handleLabelDelete(w http.ResponseWriter, r *http.Request) {
 	if !h.validateCSRF(r) {
+		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
 	p, _ := principal(r)

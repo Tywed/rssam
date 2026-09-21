@@ -24,6 +24,16 @@ const (
 	AuditServiceRestart   = "service.restart"
 	AuditServiceUpdate    = "service.update"
 	AuditFeedsRefreshAll  = "feeds.refresh_all"
+	AuditFeedCreate       = "feed.create"
+	AuditFeedUpdate       = "feed.update"
+	AuditFeedDelete       = "feed.delete"
+	AuditOPMLImport       = "opml.import"
+	AuditFilterCreate     = "filter.create"
+	AuditFilterUpdate     = "filter.update"
+	AuditFilterDelete     = "filter.delete"
+	AuditWebhookCreate    = "webhook.create"
+	AuditWebhookUpdate    = "webhook.update"
+	AuditWebhookDelete    = "webhook.delete"
 	AuditEntriesCollapse  = "entries.collapse"
 	AuditRetentionCleanup = "retention.cleanup"
 	// AuditSystemAlert is written by the worker (no actor) for every system
@@ -38,6 +48,9 @@ var AuditActions = []string{
 	AuditEnvUpdate, AuditBridgeUpdate,
 	AuditWorkersPause, AuditWorkersResume, AuditServiceRestart, AuditServiceUpdate,
 	AuditFeedsRefreshAll, AuditEntriesCollapse, AuditRetentionCleanup,
+	AuditFeedCreate, AuditFeedUpdate, AuditFeedDelete, AuditOPMLImport,
+	AuditFilterCreate, AuditFilterUpdate, AuditFilterDelete,
+	AuditWebhookCreate, AuditWebhookUpdate, AuditWebhookDelete,
 	AuditSystemAlert,
 }
 

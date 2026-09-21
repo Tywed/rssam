@@ -122,11 +122,12 @@ func (h *Handler) handleFeedCreate(w http.ResponseWriter, r *http.Request) {
 	if params.Title == "" {
 		params.Title = params.FeedURL
 	}
-	_, err = h.cfg.Feeds.CreateFeed(r.Context(), p.UserID, params)
+	feed, err := h.cfg.Feeds.CreateFeed(r.Context(), p.UserID, params)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	h.cfg.Audit.Record(r, storage.AuditFeedCreate, "feed", feed.ID, map[string]any{"url": feed.FeedURL})
 	http.Redirect(w, r, "/ui/feeds", http.StatusFound)
 }
 
@@ -223,6 +224,7 @@ func (h *Handler) handleFeedUpdate(w http.ResponseWriter, r *http.Request) {
 			h.log.WarnContext(r.Context(), "reschedule feed failed", "feed_id", id, "err", err)
 		}
 	}
+	h.cfg.Audit.Record(r, storage.AuditFeedUpdate, "feed", id, map[string]any{"url": params.FeedURL})
 	http.Redirect(w, r, "/ui/feeds/"+strconv.FormatInt(id, 10), http.StatusFound)
 }
 
@@ -241,6 +243,7 @@ func (h *Handler) handleFeedDelete(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
+	h.cfg.Audit.Record(r, storage.AuditFeedDelete, "feed", id, nil)
 	http.Redirect(w, r, "/ui/feeds", http.StatusFound)
 }
 

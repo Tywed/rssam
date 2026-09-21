@@ -210,6 +210,7 @@ func (s *Server) handleCreateWebhook(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	s.audit.Record(r, storage.AuditWebhookCreate, "webhook", wh.ID, map[string]any{"name": wh.Name, "kind": wh.Kind})
 	writeJSON(w, http.StatusCreated, listResponse[webhookDTO]{Data: toWebhookDTO(wh), Total: 1})
 }
 
@@ -293,6 +294,7 @@ func (s *Server) handleUpdateWebhook(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	s.audit.Record(r, storage.AuditWebhookUpdate, "webhook", wh.ID, map[string]any{"name": wh.Name, "kind": wh.Kind})
 	writeJSON(w, http.StatusOK, listResponse[webhookDTO]{Data: toWebhookDTO(wh), Total: 1})
 }
 
@@ -305,6 +307,7 @@ func (s *Server) handleDeleteWebhook(w http.ResponseWriter, r *http.Request) {
 		s.storeError(w, r, err, "webhook not found", "delete webhook failed")
 		return
 	}
+	s.audit.Record(r, storage.AuditWebhookDelete, "webhook", id, nil)
 	writeJSON(w, http.StatusOK, listResponse[deletedDTO]{Data: deletedDTO{Deleted: true}, Total: 1})
 }
 

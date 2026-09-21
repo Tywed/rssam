@@ -335,6 +335,9 @@ func (s *Server) importOPML(r *http.Request, doc *opml.Document, userID int64, j
 		_ = feed
 	}
 
+	s.audit.Record(r, storage.AuditOPMLImport, "", 0, map[string]any{
+		"created": report.FeedsCreated, "skipped": report.FeedsSkipped, "errors": len(report.Errors),
+	})
 	return report
 }
 

@@ -109,6 +109,7 @@ func scopeIDMaps(items []storage.FilterScopeItem) (feeds map[int64]bool, cats ma
 
 func (h *Handler) handleFilterCreate(w http.ResponseWriter, r *http.Request) {
 	if !h.validateCSRF(r) {
+		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
 	p, _ := principal(r)
@@ -124,18 +125,21 @@ func (h *Handler) handleFilterCreate(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	params.UserID = p.UserID
-	if _, err := h.cfg.Filters.CreateFilter(r.Context(), params); err != nil {
+	f, err := h.cfg.Filters.CreateFilter(r.Context(), params)
+	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 	if h.cfg.Refresher != nil {
 		h.cfg.Refresher.InvalidateFilterCache(p.UserID)
 	}
+	h.cfg.Audit.Record(r, storage.AuditFilterCreate, "filter", f.ID, map[string]any{"name": f.Name})
 	http.Redirect(w, r, "/ui/filters", http.StatusFound)
 }
 
 func (h *Handler) handleFilterUpdate(w http.ResponseWriter, r *http.Request) {
 	if !h.validateCSRF(r) {
+		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
 	p, _ := principal(r)
@@ -175,11 +179,13 @@ func (h *Handler) handleFilterUpdate(w http.ResponseWriter, r *http.Request) {
 	if h.cfg.Refresher != nil {
 		h.cfg.Refresher.InvalidateFilterCache(p.UserID)
 	}
+	h.cfg.Audit.Record(r, storage.AuditFilterUpdate, "filter", id, map[string]any{"name": params.Name})
 	http.Redirect(w, r, "/ui/filters/"+strings.TrimSpace(r.PathValue("id")), http.StatusFound)
 }
 
 func (h *Handler) handleFilterDelete(w http.ResponseWriter, r *http.Request) {
 	if !h.validateCSRF(r) {
+		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
 	p, _ := principal(r)
@@ -195,6 +201,7 @@ func (h *Handler) handleFilterDelete(w http.ResponseWriter, r *http.Request) {
 	if h.cfg.Refresher != nil {
 		h.cfg.Refresher.InvalidateFilterCache(p.UserID)
 	}
+	h.cfg.Audit.Record(r, storage.AuditFilterDelete, "filter", id, nil)
 	http.Redirect(w, r, "/ui/filters", http.StatusFound)
 }
 

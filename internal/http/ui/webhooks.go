@@ -147,6 +147,7 @@ func (h *Handler) handleWebhookEdit(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) handleWebhookCreate(w http.ResponseWriter, r *http.Request) {
 	if !h.validateCSRF(r) {
+		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
 	p, _ := principal(r)
@@ -156,15 +157,18 @@ func (h *Handler) handleWebhookCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	params.UserID = p.UserID
-	if _, err := h.cfg.Webhooks.CreateWebhook(r.Context(), params); err != nil {
+	wh, err := h.cfg.Webhooks.CreateWebhook(r.Context(), params)
+	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	h.cfg.Audit.Record(r, storage.AuditWebhookCreate, "webhook", wh.ID, map[string]any{"name": wh.Name, "kind": wh.Kind})
 	http.Redirect(w, r, "/ui/webhooks", http.StatusFound)
 }
 
 func (h *Handler) handleWebhookUpdate(w http.ResponseWriter, r *http.Request) {
 	if !h.validateCSRF(r) {
+		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
 	p, _ := principal(r)
@@ -197,11 +201,13 @@ func (h *Handler) handleWebhookUpdate(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	h.cfg.Audit.Record(r, storage.AuditWebhookUpdate, "webhook", id, map[string]any{"name": params.Name, "kind": params.Kind})
 	http.Redirect(w, r, "/ui/webhooks/"+strconv.FormatInt(id, 10), http.StatusFound)
 }
 
 func (h *Handler) handleWebhookDelete(w http.ResponseWriter, r *http.Request) {
 	if !h.validateCSRF(r) {
+		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
 	p, _ := principal(r)
@@ -214,6 +220,7 @@ func (h *Handler) handleWebhookDelete(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
+	h.cfg.Audit.Record(r, storage.AuditWebhookDelete, "webhook", id, nil)
 	http.Redirect(w, r, "/ui/webhooks", http.StatusFound)
 }
 
@@ -238,6 +245,7 @@ func (h *Handler) handleWebhookUnpause(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) setWebhookEnabled(w http.ResponseWriter, r *http.Request, enabled bool) {
 	if !h.validateCSRF(r) {
+		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
 	p, _ := principal(r)
@@ -259,6 +267,7 @@ func (h *Handler) setWebhookEnabled(w http.ResponseWriter, r *http.Request, enab
 
 func (h *Handler) handleWebhookTest(w http.ResponseWriter, r *http.Request) {
 	if !h.validateCSRF(r) {
+		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
 	p, _ := principal(r)
@@ -291,6 +300,7 @@ func (h *Handler) handleWebhookTest(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) handleWebhookRetryAll(w http.ResponseWriter, r *http.Request) {
 	if !h.validateCSRF(r) {
+		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
 	p, _ := principal(r)
@@ -382,6 +392,7 @@ func (h *Handler) handleWebhookLogs(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) handleWebhookLogRetry(w http.ResponseWriter, r *http.Request) {
 	if !h.validateCSRF(r) {
+		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
 	id, err := parsePathID(r)

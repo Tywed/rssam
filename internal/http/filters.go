@@ -133,6 +133,7 @@ func (s *Server) handleCreateFilter(w http.ResponseWriter, r *http.Request) {
 	if s.refresher != nil {
 		s.refresher.InvalidateFilterCache(p.UserID)
 	}
+	s.audit.Record(r, storage.AuditFilterCreate, "filter", f.ID, map[string]any{"name": f.Name})
 	writeJSON(w, http.StatusCreated, listResponse[filterDTO]{Data: toFilterDTO(f), Total: 1})
 }
 
@@ -176,6 +177,7 @@ func (s *Server) handleUpdateFilter(w http.ResponseWriter, r *http.Request) {
 	if s.refresher != nil {
 		s.refresher.InvalidateFilterCache(p.UserID)
 	}
+	s.audit.Record(r, storage.AuditFilterUpdate, "filter", f.ID, map[string]any{"name": f.Name})
 	writeJSON(w, http.StatusOK, listResponse[filterDTO]{Data: toFilterDTO(f), Total: 1})
 }
 
@@ -191,6 +193,7 @@ func (s *Server) handleDeleteFilter(w http.ResponseWriter, r *http.Request) {
 	if s.refresher != nil {
 		s.refresher.InvalidateFilterCache(p.UserID)
 	}
+	s.audit.Record(r, storage.AuditFilterDelete, "filter", id, nil)
 	writeJSON(w, http.StatusOK, listResponse[deletedDTO]{Data: deletedDTO{Deleted: true}, Total: 1})
 }
 
