@@ -2,11 +2,8 @@ package storage
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"time"
-
-	"github.com/jackc/pgx/v5"
 )
 
 // FeedPollLogEntry is one poll *event* of a feed: a state change or a streak
@@ -47,14 +44,6 @@ const MaxFeedPollLogError = 2000
 // admin UI). Older rows are deleted on insert, not on a timer.
 const MaxFeedPollLogPerFeed = 30
 
-type pollLogAction int
-
-const (
-	pollLogInsert pollLogAction = iota
-	pollLogSkip
-	pollLogCoalesce
-)
-
 func capPollLogError(errText string) string {
 	if len(errText) > MaxFeedPollLogError {
 		return errText[:MaxFeedPollLogError]
@@ -73,82 +62,51 @@ func pollLogDurationMS(d time.Duration) int32 {
 	return int32(durMS)
 }
 
-// decidePollLog: consecutive successes are dropped (feeds.last_checked_at
-// already moves); consecutive identical failures bump repeat_count; anything
-// else is a new event row.
-func decidePollLog(latest *FeedPollLogEntry, ok bool, errText string) pollLogAction {
-	if latest == nil {
-		return pollLogInsert
-	}
-	if latest.OK == ok && latest.Error == errText {
-		if ok {
-			return pollLogSkip
-		}
-		return pollLogCoalesce
-	}
-	return pollLogInsert
-}
-
+// RecordFeedPoll is one statement: the latest row of the feed is read and
+// then updated (same failure again: repeat_count), left alone (success
+// after success — feeds.last_checked_at already moves) or followed by a new
+// row (any other change), which also trims the feed to
+// MaxFeedPollLogPerFeed. The common case, a healthy feed, therefore touches
+// nothing: the former BEGIN / SELECT … FOR UPDATE / COMMIT round trips
+// assigned a transaction id for the row lock and wrote 96 B of WAL per poll
+// for a no-op. The trimming DELETE does not see the row added in the same
+// statement, hence OFFSET cap-1.
 func (s *PostgresStore) RecordFeedPoll(ctx context.Context, params RecordFeedPollParams) error {
 	at := params.At
 	if at.IsZero() {
 		at = time.Now()
 	}
-	errText := capPollLogError(params.Error)
-	durMS := pollLogDurationMS(params.Duration)
-
-	tx, err := s.db.Begin(ctx)
-	if err != nil {
-		return fmt.Errorf("record feed poll: begin: %w", err)
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-
-	var latest FeedPollLogEntry
-	err = tx.QueryRow(ctx, `
-SELECT id, ok, error
-FROM feed_poll_log
-WHERE feed_id = $1
-ORDER BY at DESC, id DESC
-LIMIT 1
-FOR UPDATE`, params.FeedID).Scan(&latest.ID, &latest.OK, &latest.Error)
-	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
-		return fmt.Errorf("record feed poll: latest: %w", err)
-	}
-	var latestPtr *FeedPollLogEntry
-	if err == nil {
-		latestPtr = &latest
-	}
-
-	switch decidePollLog(latestPtr, params.OK, errText) {
-	case pollLogSkip:
-		return tx.Commit(ctx)
-	case pollLogCoalesce:
-		if _, err := tx.Exec(ctx, `
-UPDATE feed_poll_log
-SET at = $2, inserted = $3, duration_ms = $4, repeat_count = repeat_count + 1
-WHERE id = $1`, latest.ID, at.UTC(), params.Inserted, durMS); err != nil {
-			return fmt.Errorf("record feed poll: coalesce: %w", err)
-		}
-	default:
-		if _, err := tx.Exec(ctx, `
-INSERT INTO feed_poll_log (feed_id, at, ok, error, inserted, duration_ms, repeat_count)
-VALUES ($1, $2, $3, $4, $5, $6, 1)`,
-			params.FeedID, at.UTC(), params.OK, errText, params.Inserted, durMS); err != nil {
-			return fmt.Errorf("record feed poll: insert: %w", err)
-		}
-		if _, err := tx.Exec(ctx, `
-DELETE FROM feed_poll_log
-WHERE id IN (
-  SELECT id FROM feed_poll_log
+	const q = `
+WITH latest AS (
+  SELECT id, ok, error FROM feed_poll_log
   WHERE feed_id = $1
   ORDER BY at DESC, id DESC
-  OFFSET $2
-)`, params.FeedID, MaxFeedPollLogPerFeed); err != nil {
-			return fmt.Errorf("record feed poll: trim: %w", err)
-		}
-	}
-	if err := tx.Commit(ctx); err != nil {
-		return fmt.Errorf("record feed poll: commit: %w", err)
+  LIMIT 1
+),
+coalesced AS (
+  UPDATE feed_poll_log l
+  SET at = $2, inserted = $5, duration_ms = $6, repeat_count = l.repeat_count + 1
+  FROM latest
+  WHERE l.id = latest.id AND NOT $3 AND latest.ok = $3 AND latest.error = $4
+  RETURNING l.id
+),
+added AS (
+  INSERT INTO feed_poll_log (feed_id, at, ok, error, inserted, duration_ms, repeat_count)
+  SELECT $1, $2, $3, $4, $5, $6, 1
+  WHERE NOT EXISTS (SELECT 1 FROM latest WHERE latest.ok = $3 AND latest.error = $4)
+  RETURNING id
+)
+DELETE FROM feed_poll_log
+WHERE EXISTS (SELECT 1 FROM added)
+  AND id IN (
+    SELECT id FROM feed_poll_log
+    WHERE feed_id = $1
+    ORDER BY at DESC, id DESC
+    OFFSET $7 - 1
+  )`
+	if _, err := s.db.Exec(ctx, q, params.FeedID, at.UTC(), params.OK, capPollLogError(params.Error),
+		params.Inserted, pollLogDurationMS(params.Duration), MaxFeedPollLogPerFeed); err != nil {
+		return fmt.Errorf("record feed poll: %w", err)
 	}
 	return nil
 }
