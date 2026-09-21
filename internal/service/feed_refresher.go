@@ -453,7 +453,17 @@ func (r *FeedRefresher) adaptiveNextCheck(ctx context.Context, feed storage.Feed
 		r.logger().Warn("count feed items failed; adaptive interval skipped", "feed_id", feed.ID, "err", err)
 		return time.Time{}
 	}
-	return now.Add(storage.AdaptivePollInterval(base, items, ceiling))
+	var silentFor time.Duration
+	if items == 0 {
+		lastItem := feed.CreatedAt
+		if feed.LastEntryAt != nil {
+			lastItem = *feed.LastEntryAt
+		}
+		if !lastItem.IsZero() {
+			silentFor = now.Sub(lastItem)
+		}
+	}
+	return now.Add(storage.AdaptivePollInterval(base, items, silentFor, ceiling, max))
 }
 
 // queryHitsBestEffort runs one SQL for all `query` rules of the batch; on

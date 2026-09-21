@@ -60,7 +60,7 @@ func TestAdaptivePollInterval(t *testing.T) {
 		{100000, base},          // firehose → floor
 	}
 	for _, tc := range cases {
-		got := AdaptivePollInterval(base, tc.items, max)
+		got := AdaptivePollInterval(base, tc.items, 0, max, 24*time.Hour)
 		want := tc.want
 		if tc.items == 14 {
 			want = 6 * time.Hour
@@ -69,10 +69,39 @@ func TestAdaptivePollInterval(t *testing.T) {
 			t.Errorf("items=%d: got %s want %s", tc.items, got, want)
 		}
 	}
-	if got := AdaptivePollInterval(time.Hour, 0, time.Hour); got != time.Hour {
+	if got := AdaptivePollInterval(time.Hour, 0, 0, time.Hour, 24*time.Hour); got != time.Hour {
 		t.Errorf("max<=base must return base, got %s", got)
 	}
-	if got := AdaptivePollInterval(time.Hour, 3, 30*time.Minute); got != time.Hour {
+	if got := AdaptivePollInterval(time.Hour, 3, 0, 30*time.Minute, 24*time.Hour); got != time.Hour {
 		t.Errorf("max<base must return base, got %s", got)
+	}
+}
+
+func TestAdaptivePollInterval_SilenceDoublesTowardsHardMax(t *testing.T) {
+	const base, max, hardMax = 15 * time.Minute, 6 * time.Hour, 24 * time.Hour
+	day := 24 * time.Hour
+	cases := []struct {
+		silent time.Duration
+		want   time.Duration
+	}{
+		{0, max},        // count 0 but silence unknown → ceiling
+		{6 * day, max},  // inside the first silent week
+		{13 * day, max}, // still one full week
+		{14 * day, 12 * time.Hour},
+		{21 * day, hardMax},  // 6h → 12h → 24h
+		{365 * day, hardMax}, // never past MAX_POLL_INTERVAL
+	}
+	for _, tc := range cases {
+		if got := AdaptivePollInterval(base, 0, tc.silent, max, hardMax); got != tc.want {
+			t.Errorf("silent=%s: got %s want %s", tc.silent, got, tc.want)
+		}
+	}
+	// A hard max below the ceiling never lowers it.
+	if got := AdaptivePollInterval(base, 0, 30*day, max, time.Hour); got != max {
+		t.Errorf("hardMax<max: got %s want %s", got, max)
+	}
+	// One item in the window disables the silence stretch.
+	if got := AdaptivePollInterval(base, 1, 30*day, max, hardMax); got != max {
+		t.Errorf("items=1: got %s want %s", got, max)
 	}
 }

@@ -50,15 +50,28 @@ const AdaptivePollWindow = 7 * 24 * time.Hour
 // AdaptivePollInterval stretches base towards max for feeds that publish
 // rarely: the interval is half the average gap between items over the last
 // week (so a new item waits at most ~half a gap on average), never below
-// base and never above max. A feed with no items in the window sits at max;
-// max <= base disables the stretch.
-func AdaptivePollInterval(base time.Duration, weeklyItems int, max time.Duration) time.Duration {
+// base and never above max. max <= base disables the stretch.
+//
+// A feed with no items in the window sits at max for its first silent
+// week and doubles per further week of silence (silentFor counts from
+// the last item) up to hardMax, the instance-wide MAX_POLL_INTERVAL: a
+// source that has been quiet for a month is checked once a day with the
+// defaults (6h → 12h → 24h) instead of four times. The next item resets
+// it, because the weekly count is then non-zero again.
+func AdaptivePollInterval(base time.Duration, weeklyItems int, silentFor, max, hardMax time.Duration) time.Duration {
 	if max <= base {
 		return base
 	}
-	if weeklyItems <= 0 {
-		return max
+	if weeklyItems > 0 {
+		d := time.Duration(int64(AdaptivePollWindow) / int64(weeklyItems) / 2)
+		return clampPollDuration(d, base, max)
 	}
-	d := time.Duration(int64(AdaptivePollWindow) / int64(weeklyItems) / 2)
-	return clampPollDuration(d, base, max)
+	if hardMax < max {
+		hardMax = max
+	}
+	d := max
+	for weeks := int64(silentFor / AdaptivePollWindow); weeks > 1 && d < hardMax; weeks-- {
+		d *= 2
+	}
+	return clampPollDuration(d, base, hardMax)
 }

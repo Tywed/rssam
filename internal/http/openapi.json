@@ -3135,7 +3135,7 @@
           },
           "adaptive_interval": {
             "type": "boolean",
-            "description": "Stretch the poll interval up to ADAPTIVE_MAX_INTERVAL when the feed publishes rarely."
+            "description": "Stretch the poll interval up to ADAPTIVE_MAX_INTERVAL when the feed publishes rarely; a feed silent for a week doubles it per further silent week, up to MAX_POLL_INTERVAL."
           },
           "entry_retention_days": {
             "type": "integer"
@@ -3206,7 +3206,7 @@
           },
           "adaptive_interval": {
             "type": "boolean",
-            "description": "Stretch the poll interval up to ADAPTIVE_MAX_INTERVAL when the feed publishes rarely."
+            "description": "Stretch the poll interval up to ADAPTIVE_MAX_INTERVAL when the feed publishes rarely; a feed silent for a week doubles it per further silent week, up to MAX_POLL_INTERVAL."
           },
           "entry_retention_days": {
             "type": "integer",

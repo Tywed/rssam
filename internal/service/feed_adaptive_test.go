@@ -66,6 +66,35 @@ func TestRefreshLoadedFeed_AdaptiveInterval(t *testing.T) {
 		}
 	})
 
+	t.Run("three silent weeks reach MAX_POLL_INTERVAL", func(t *testing.T) {
+		silent := feed
+		last := time.Now().Add(-21 * 24 * time.Hour)
+		silent.LastEntryAt = &last
+		r, fs, _, _ := newStatusRefresher(h, silent)
+		r.Activity, r.AdaptiveMaxInterval = &memActivity{items: 0}, 6*time.Hour
+		if d := nextDelay(t, r, fs, silent); d != 24*time.Hour {
+			t.Fatalf("delay=%s want 24h", d)
+		}
+		r.MaxPollInterval = 12 * time.Hour
+		if d := nextDelay(t, r, fs, silent); d != 12*time.Hour {
+			t.Fatalf("delay=%s want 12h", d)
+		}
+	})
+
+	t.Run("silence counts from creation when nothing ever arrived", func(t *testing.T) {
+		young := feed
+		young.CreatedAt = time.Now().Add(-10 * 24 * time.Hour)
+		r, fs, _, _ := newStatusRefresher(h, young)
+		r.Activity, r.AdaptiveMaxInterval = &memActivity{items: 0}, 6*time.Hour
+		if d := nextDelay(t, r, fs, young); d != 6*time.Hour {
+			t.Fatalf("delay=%s want 6h", d)
+		}
+		young.CreatedAt = time.Now().Add(-15 * 24 * time.Hour)
+		if d := nextDelay(t, r, fs, young); d != 12*time.Hour {
+			t.Fatalf("delay=%s want 12h", d)
+		}
+	})
+
 	t.Run("hourly feed polls every 30m", func(t *testing.T) {
 		r, fs, _, _ := newStatusRefresher(h, feed)
 		r.Activity, r.AdaptiveMaxInterval = &memActivity{items: 168}, 6*time.Hour
