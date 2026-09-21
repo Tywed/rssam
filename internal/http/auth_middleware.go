@@ -2,7 +2,6 @@ package httpserver
 
 import (
 	"context"
-	"crypto/subtle"
 	"net/http"
 	"strings"
 	"time"
@@ -43,18 +42,6 @@ func (s *Server) authenticateRequestSource(ctx context.Context, r *http.Request)
 				return auth.Principal{UserID: u.ID, IsAdmin: u.IsAdmin, Username: u.Username, Scope: key.Scope}, true, false
 			}
 		}
-	}
-
-	// Dev/migration fallback: global AUTH_TOKEN maps to default user (id=1).
-	if s.authToken != "" && subtle.ConstantTimeCompare([]byte(token), []byte(s.authToken)) == 1 {
-		isAdmin := true
-		if s.users != nil {
-			if u, err := s.users.GetUser(ctx, 1); err == nil {
-				isAdmin = u.IsAdmin
-				return auth.Principal{UserID: u.ID, IsAdmin: isAdmin, Username: u.Username}, true, false
-			}
-		}
-		return auth.Principal{UserID: 1, IsAdmin: isAdmin}, true, false
 	}
 
 	// Invalid header token: fall back to the cookie (a browser tab may also

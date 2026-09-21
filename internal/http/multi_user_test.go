@@ -34,6 +34,19 @@ func newMemUserStore() *memUserStore {
 	}
 }
 
+// secretTokenUsers is a user store where the raw API token "secret"
+// authenticates user 1 (admin) — the fixture for handler tests that only need
+// one authenticated caller.
+func secretTokenUsers() *memUserStore {
+	users := newMemUserStore()
+	if _, err := users.CreateAPIKey(context.Background(), storage.CreateAPIKeyParams{
+		UserID: 1, Name: "secret", TokenHash: auth.HashToken("secret"),
+	}); err != nil {
+		panic(err)
+	}
+	return users
+}
+
 func (m *memUserStore) CountUsers(_ context.Context) (int, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

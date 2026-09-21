@@ -39,7 +39,7 @@ func (b *bulkEntryStore) MarkAllFeedEntriesRead(_ context.Context, _, feedID int
 
 func TestBulkUpdateEntries(t *testing.T) {
 	store := &bulkEntryStore{}
-	s := New(Dependencies{AuthToken: "secret", EntryStore: store})
+	s := New(Dependencies{UserStore: secretTokenUsers(), EntryStore: store})
 	mux := http.NewServeMux()
 	mux.Handle("/v1/", s.wrapAPI(http.HandlerFunc(s.handleBulkUpdateEntries)))
 
@@ -68,7 +68,7 @@ func TestBulkUpdateEntries(t *testing.T) {
 
 func TestBulkUpdateEntriesStarred(t *testing.T) {
 	store := &bulkEntryStore{}
-	s := New(Dependencies{AuthToken: "secret", EntryStore: store})
+	s := New(Dependencies{UserStore: secretTokenUsers(), EntryStore: store})
 	mux := http.NewServeMux()
 	mux.Handle("/v1/", s.wrapAPI(http.HandlerFunc(s.handleBulkUpdateEntries)))
 
@@ -89,7 +89,7 @@ func TestBulkUpdateEntriesStarred(t *testing.T) {
 
 func TestMarkFeedAllRead(t *testing.T) {
 	store := &bulkEntryStore{}
-	s := New(Dependencies{AuthToken: "secret", EntryStore: store})
+	s := New(Dependencies{UserStore: secretTokenUsers(), EntryStore: store})
 	api := http.NewServeMux()
 	api.HandleFunc("PUT /v1/feeds/{feedID}/mark-all-as-read", s.handleMarkFeedAllRead)
 	mux := http.NewServeMux()
@@ -129,7 +129,7 @@ func (c *categoryMarkStore) MarkAllCategoryEntriesRead(_ context.Context, _, cat
 
 func TestMarkCategoryAllRead(t *testing.T) {
 	store := &categoryMarkStore{}
-	s := New(Dependencies{AuthToken: "secret", EntryStore: store})
+	s := New(Dependencies{UserStore: secretTokenUsers(), EntryStore: store})
 	api := http.NewServeMux()
 	api.HandleFunc("PUT /v1/categories/{categoryID}/mark-all-as-read", s.handleMarkCategoryAllRead)
 	mux := http.NewServeMux()

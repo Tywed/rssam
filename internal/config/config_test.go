@@ -314,32 +314,15 @@ func TestLoad_RejectsMalformedNumbers(t *testing.T) {
 	}
 }
 
-func TestLoad_RefusesPlaceholderAuthToken(t *testing.T) {
+func TestLoad_RefusesAuthToken(t *testing.T) {
 	t.Setenv("DATABASE_URL", "postgres://u:p@localhost:5432/db?sslmode=disable")
-	t.Setenv("AUTH_TOKEN", "dev-token")
-	os.Unsetenv("ALLOW_DEV_TOKEN")
-	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "AUTH_TOKEN") || !strings.Contains(err.Error(), "ALLOW_DEV_TOKEN") {
-		t.Fatalf("dev-token must be refused with a hint, got %v", err)
+	t.Setenv("AUTH_TOKEN", "s3cret-real-token")
+	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "AUTH_TOKEN") || !strings.Contains(err.Error(), "API key") {
+		t.Fatalf("AUTH_TOKEN must be refused with a hint, got %v", err)
 	}
-	t.Setenv("AUTH_TOKEN", " Dev-Token ")
-	if _, err := Load(); err == nil {
-		t.Fatal("placeholder check must be case/space-insensitive")
-	}
-
-	t.Setenv("ALLOW_DEV_TOKEN", "true")
-	cfg, err := Load()
-	if err != nil || cfg.AuthToken != "Dev-Token" || !cfg.AllowDevToken {
-		t.Fatalf("ALLOW_DEV_TOKEN=true must permit it: cfg=%+v err=%v", cfg.AuthToken, err)
-	}
-
-	os.Unsetenv("ALLOW_DEV_TOKEN")
 	t.Setenv("AUTH_TOKEN", "")
 	if _, err := Load(); err != nil {
 		t.Fatalf("empty AUTH_TOKEN is fine: %v", err)
-	}
-	t.Setenv("AUTH_TOKEN", "s3cret-real-token")
-	if _, err := Load(); err != nil {
-		t.Fatalf("real token is fine: %v", err)
 	}
 }
 

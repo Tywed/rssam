@@ -153,8 +153,8 @@ func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 	// not subject to the policy; every other new password is.
 	envBootstrap := false
 	if p, authed := principalFromRequest(r); authed && p.UserID > 0 {
-		// Authenticated caller (session, API key or AUTH_TOKEN): admin only,
-		// is_admin is honoured as requested.
+		// Authenticated caller (session or API key): admin only, the role
+		// is honoured as requested.
 		if _, ok := requireAdmin(w, r); !ok {
 			return
 		}
@@ -324,12 +324,11 @@ func (s *Server) handleUpdateMe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if cur.PasswordHash == "" {
-		// A password-less account (the AUTH_TOKEN placeholder) may set its
-		// first password only while nobody can log in yet — that is how an
-		// instance without ADMIN_USERNAME/ADMIN_PASSWORD bootstraps its UI
-		// login. Once a login-capable user exists, only an admin may give
-		// such an account a password (PUT /v1/users/{id}); otherwise the
-		// dev token alone would mint a persistent admin login.
+		// A password-less account (the migration 0009 placeholder, reachable
+		// only through an API key issued earlier) may set its first password
+		// without proof only while nobody can log in yet; once a
+		// login-capable user exists, only an admin may give such an account
+		// a password (PUT /v1/users/{id}).
 		n, err := s.users.CountLoginCapableUsers(r.Context())
 		if err != nil {
 			s.log.ErrorContext(r.Context(), "update me: count users failed", "err", err)

@@ -74,9 +74,7 @@ type Config struct {
 	WebhookWorkerPoolSize int
 	FetchTimeoutSeconds   int
 	EnvFilePath           string
-	// AuthTokenSet shows the deprecation banner on the system page.
-	AuthTokenSet bool
-	DatabaseURL  string
+	DatabaseURL           string
 	// DatabaseLocale drives the "Cyrillic case folding is broken" banner on
 	// the system page; a zero value (tests) shows nothing.
 	DatabaseLocale storage.DatabaseLocale

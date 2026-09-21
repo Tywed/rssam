@@ -68,7 +68,7 @@ func TestRefreshFeed_Smoke(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := New(Dependencies{
-		AuthToken:            "secret",
+		UserStore:            secretTokenUsers(),
 		FeedStore:            fs,
 		EntryStore:           es,
 		CategoryStore:        &fakeCategoryStore{},

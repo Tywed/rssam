@@ -69,8 +69,7 @@ type UserStore interface {
 	CountUsers(ctx context.Context) (int, error)
 	// CountLoginCapableUsers counts users that have a password set and can
 	// actually sign in. Migration 0009 seeds a placeholder user "default" with
-	// an empty password_hash (the AUTH_TOKEN principal), which must not count as
-	// a bootstrapped admin.
+	// an empty password_hash, which must not count as a bootstrapped admin.
 	CountLoginCapableUsers(ctx context.Context) (int, error)
 	ListUsers(ctx context.Context, limit, offset int) ([]User, int, error)
 	GetUser(ctx context.Context, id int64) (User, error)
@@ -367,15 +366,14 @@ func isDuplicateUsername(err error) bool {
 
 // EnsureBootstrapAdmin creates the first admin when no user can sign in yet.
 //
-// Migration 0009 seeds users(id=1, username=default) with an empty password_hash
-// so AUTH_TOKEN has a principal. That row must not count as a bootstrapped
-// admin, otherwise ADMIN_USERNAME/ADMIN_PASSWORD are ignored and UI login fails.
+// Migration 0009 seeds users(id=1, username=default) with an empty
+// password_hash. That row must not count as a bootstrapped admin, otherwise
+// ADMIN_USERNAME/ADMIN_PASSWORD are ignored and UI login fails.
 //
 // When the only rows are password-less placeholders, the env admin is written
-// onto id=1 (rename + password) so AUTH_TOKEN and the UI share the same tenant
-// and existing feeds stay visible. A password-less row that already has the
-// requested username is adopted in place. Only if neither exists is a new user
-// inserted.
+// onto id=1 (rename + password) so the data already owned by id=1 stays
+// visible. A password-less row that already has the requested username is
+// adopted in place. Only if neither exists is a new user inserted.
 func (s *PostgresStore) EnsureBootstrapAdmin(ctx context.Context, username, password string) error {
 	username = strings.TrimSpace(username)
 	password = strings.TrimSpace(password)

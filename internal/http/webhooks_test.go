@@ -181,7 +181,7 @@ func TestWebhooksAPI_CreateAndTest_Smoke(t *testing.T) {
 	}
 	ws := newMemWebhookStore()
 	s := New(Dependencies{
-		AuthToken:            "secret",
+		UserStore:            secretTokenUsers(),
 		WebhookStore:         ws,
 		WebhookHTTPClient:    guard.HTTPClient(2 * time.Second),
 		FetchAllowPrivateNet: true,
@@ -271,7 +271,7 @@ func TestWebhooksAPI_CreateTelegram(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := New(Dependencies{
-		AuthToken:            "secret",
+		UserStore:            secretTokenUsers(),
 		WebhookStore:         newMemWebhookStore(),
 		WebhookHTTPClient:    guard.HTTPClient(2 * time.Second),
 		FetchAllowPrivateNet: true,
@@ -350,7 +350,7 @@ func TestWebhooksAPI_TestMaxAndTelegramReject(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := New(Dependencies{
-		AuthToken:            "secret",
+		UserStore:            secretTokenUsers(),
 		WebhookStore:         newMemWebhookStore(),
 		WebhookHTTPClient:    guard.HTTPClient(2 * time.Second),
 		FetchAllowPrivateNet: true,

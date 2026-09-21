@@ -46,7 +46,6 @@ type Dependencies struct {
 	SessionStore     storage.SessionStore
 	FilterEngine     *filter.Engine
 
-	AuthToken     string
 	AdminUsername string
 	AdminPassword string
 	MetricsToken  string
@@ -147,7 +146,6 @@ type Server struct {
 	filterEngine  *filter.Engine
 	queryMatcher  filter.QueryMatcher
 	pollHours     storage.CategoryPollHoursStore
-	authToken     string
 	adminUsername string
 	adminPassword string
 	metricsToken  string
@@ -384,7 +382,6 @@ func New(dep Dependencies) *Server {
 		filterEngine:       dep.FilterEngine,
 		queryMatcher:       queryMatcher,
 		pollHours:          categoryPollHours,
-		authToken:          dep.AuthToken,
 		adminUsername:      dep.AdminUsername,
 		adminPassword:      dep.AdminPassword,
 		metricsToken:       dep.MetricsToken,

@@ -154,10 +154,6 @@ func main() {
 	if cfg.FetchTLSInsecureSkipVerify {
 		log.Warn("FETCH_TLS_INSECURE is enabled: TLS certificate verification is disabled for outbound fetches")
 	}
-	if cfg.AuthToken != "" {
-		log.Warn("AUTH_TOKEN is set: it authenticates as user 1 with full access and cannot be scoped or expired; create per-client API keys in Settings and remove AUTH_TOKEN (planned removal in 0.2.0)")
-	}
-
 	httpClient := ssrfGuard.HTTPClient(fetchTimeout)
 	webhookClient := ssrfGuard.HTTPClient(cfg.WebhookTimeout)
 
@@ -357,7 +353,6 @@ func main() {
 		WebhookStore:           pgStore,
 		WebhookLogStore:        pgStore,
 		FilterEngine:           filterEngine,
-		AuthToken:              cfg.AuthToken,
 		MetricsToken:           cfg.MetricsToken,
 		AdminUsername:          cfg.AdminUsername,
 		AdminPassword:          cfg.AdminPassword,

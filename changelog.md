@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Аутентификация: общий `AUTH_TOKEN` удалён. Если переменная задана, сервис не стартует с подсказкой «AUTH_TOKEN is no longer supported: remove it from .env and use a personal API key»; `ALLOW_DEV_TOKEN` теперь касается только `ADMIN_PASSWORD=changeme`. Пользователь #1 — обычный администратор с паролем; скрипты ходят с персональными API-ключами (`POST /v1/me/api-keys`, область `read`/`write`/`admin`, срок действия), которые можно отозвать по одному. Баннер об устаревшем токене на странице «Система» снят.
+
 ## 0.1.19
 
 Миграция 0048 применяется только с `RUN_MIGRATIONS=true`: удаляет колонку `webhooks.filter_id`, пустую с 0.1.18.

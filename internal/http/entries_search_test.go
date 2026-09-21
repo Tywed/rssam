@@ -48,7 +48,7 @@ func TestListEntriesUsesFTSWhenQueryPresent(t *testing.T) {
 		total: 1,
 	}
 	srv := New(Dependencies{
-		AuthToken:  "secret",
+		UserStore:  secretTokenUsers(),
 		EntryStore: store,
 	})
 	h := srv.wrapAPI(http.HandlerFunc(srv.handleListEntries))
@@ -91,7 +91,7 @@ func TestListEntriesUsesFTSWhenQueryPresent(t *testing.T) {
 
 func TestListEntriesWithoutQueryUsesList(t *testing.T) {
 	store := &searchEntryStore{}
-	srv := New(Dependencies{AuthToken: "secret", EntryStore: store})
+	srv := New(Dependencies{UserStore: secretTokenUsers(), EntryStore: store})
 	h := srv.wrapAPI(http.HandlerFunc(srv.handleListEntries))
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/entries?limit=5", nil)

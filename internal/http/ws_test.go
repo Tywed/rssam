@@ -16,7 +16,7 @@ import (
 func TestWSUnauthorized(t *testing.T) {
 	hub := ws.NewHub(10, time.Second)
 	s := New(Dependencies{
-		AuthToken:     "secret",
+		UserStore:     secretTokenUsers(),
 		WSEnabled:     true,
 		WSHub:         hub,
 		CategoryStore: &fakeCategoryStore{},
@@ -44,7 +44,7 @@ func TestWSUnauthorized(t *testing.T) {
 func TestWSConnectAndReceiveNewEntry(t *testing.T) {
 	hub := ws.NewHub(10, time.Second)
 	s := New(Dependencies{
-		AuthToken:      "secret",
+		UserStore:      secretTokenUsers(),
 		WSEnabled:      true,
 		WSHub:          hub,
 		WSClientBuffer: 10,

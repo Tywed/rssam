@@ -17,11 +17,10 @@ type Config struct {
 	LogFormat        string
 	RunMigrations    bool
 
-	AuthToken string
-	// AllowDevToken permits the well-known placeholders from .env.example
-	// (AUTH_TOKEN=dev-token, ADMIN_PASSWORD=changeme on a fresh database)
-	// when ALLOW_DEV_TOKEN=true. Off by default: a copied example file must
-	// not become a production credential by accident.
+	// AllowDevToken permits the ADMIN_PASSWORD=changeme placeholder from
+	// .env.example on a fresh database when ALLOW_DEV_TOKEN=true. Off by
+	// default: a copied example file must not become a production
+	// credential by accident.
 	AllowDevToken bool
 	MetricsToken  string
 
@@ -162,7 +161,6 @@ func Load() (Config, error) {
 		LogFormat:        strings.ToLower(getEnv("LOG_FORMAT", "json")), // json|text
 		RunMigrations:    parseBool(os.Getenv("RUN_MIGRATIONS")),
 
-		AuthToken:     strings.TrimSpace(os.Getenv("AUTH_TOKEN")),
 		AllowDevToken: parseBool(os.Getenv("ALLOW_DEV_TOKEN")),
 		MetricsToken:  strings.TrimSpace(os.Getenv("METRICS_TOKEN")),
 
@@ -272,6 +270,9 @@ func Load() (Config, error) {
 
 	cfg.WebhookWorkerPoolSize = env.int("WEBHOOK_WORKER_POOL_SIZE", cfg.WorkerPoolSize)
 	cfg.Warnings = env.warns
+	if strings.TrimSpace(os.Getenv("AUTH_TOKEN")) != "" {
+		env.errs = append(env.errs, errors.New("AUTH_TOKEN is no longer supported: remove it from .env and use a personal API key (Settings → API keys or POST /v1/me/api-keys)"))
+	}
 
 	if err := errors.Join(env.errs...); err != nil {
 		return Config{}, err
@@ -293,9 +294,6 @@ func (c Config) Validate() error {
 	}
 	if strings.TrimSpace(c.ListenAddr) == "" {
 		errs = append(errs, errors.New("LISTEN_ADDR must not be empty"))
-	}
-	if IsPlaceholderAuthToken(c.AuthToken) && !c.AllowDevToken {
-		errs = append(errs, fmt.Errorf("AUTH_TOKEN=%q is the placeholder from .env.example and grants admin access to anyone who reads the example; set a real secret, leave it empty (UI login + API keys), or set ALLOW_DEV_TOKEN=true for local development", c.AuthToken))
 	}
 	switch c.LogFormat {
 	case "json", "text":
@@ -553,18 +551,6 @@ func parseCSV(v string) []string {
 		out = append(out, p)
 	}
 	return out
-}
-
-// placeholderAuthTokens are the values shipped in .env.example / docs that
-// people copy verbatim. They are refused at start unless ALLOW_DEV_TOKEN=true.
-var placeholderAuthTokens = map[string]struct{}{
-	"dev-token": {},
-}
-
-// IsPlaceholderAuthToken reports whether token is a well-known example value.
-func IsPlaceholderAuthToken(token string) bool {
-	_, ok := placeholderAuthTokens[strings.ToLower(strings.TrimSpace(token))]
-	return ok
 }
 
 // IsPlaceholderPassword reports whether password is the ADMIN_PASSWORD value

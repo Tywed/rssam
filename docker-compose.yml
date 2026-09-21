@@ -20,8 +20,8 @@ services:
     environment:
       # Hostname postgres inside compose network ( .env uses localhost for host runs )
       DATABASE_URL: postgres://rssam:rssam@postgres:5432/rssam?sslmode=disable
-      # Dev stack: lets the placeholders from .env.example (ADMIN_PASSWORD=changeme,
-      # AUTH_TOKEN=dev-token) through. Never set this on a public host.
+      # Dev stack: lets the placeholder ADMIN_PASSWORD=changeme from .env.example
+      # through. Never set this on a public host.
       ALLOW_DEV_TOKEN: "true"
     ports:
       - "8080:8080"

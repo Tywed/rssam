@@ -51,7 +51,12 @@ func TestAuthenticateSessionCookie(t *testing.T) {
 	}
 }
 
-type uiMemUsersWS struct{ user storage.User }
+// uiMemUsersWS serves one user; when token is set, that raw API token
+// authenticates it.
+type uiMemUsersWS struct {
+	user  storage.User
+	token string
+}
 
 func (u *uiMemUsersWS) CountUsers(context.Context) (int, error)             { return 1, nil }
 func (u *uiMemUsersWS) CountLoginCapableUsers(context.Context) (int, error) { return 1, nil }
@@ -74,7 +79,10 @@ func (u *uiMemUsersWS) UpdateUser(context.Context, storage.UpdateUserParams) (st
 	return u.user, nil
 }
 func (u *uiMemUsersWS) DeleteUser(context.Context, int64) error { return nil }
-func (u *uiMemUsersWS) LookupAPIKey(context.Context, string) (storage.APIKey, error) {
+func (u *uiMemUsersWS) LookupAPIKey(_ context.Context, hash string) (storage.APIKey, error) {
+	if u.token != "" && hash == auth.HashToken(u.token) {
+		return storage.APIKey{ID: 1, UserID: u.user.ID, TokenHash: hash, Scope: auth.ScopeAdmin}, nil
+	}
 	return storage.APIKey{}, storage.ErrNotFound
 }
 func (u *uiMemUsersWS) TouchAPIKeyUsed(context.Context, int64) error { return nil }
@@ -101,7 +109,7 @@ func TestWSAuthSessionCookie(t *testing.T) {
 }
 
 func TestAuthenticateRejectsQueryToken(t *testing.T) {
-	s := New(Dependencies{AuthToken: "secret"})
+	s := New(Dependencies{UserStore: secretTokenUsers()})
 	req := httptest.NewRequest(http.MethodGet, "/v1/me?token=secret", nil)
 	if _, ok := s.authenticateRequest(req.Context(), req); ok {
 		t.Fatal("query token must not authenticate API requests")
@@ -109,7 +117,7 @@ func TestAuthenticateRejectsQueryToken(t *testing.T) {
 }
 
 func TestAuthenticateBearerHeader(t *testing.T) {
-	s := New(Dependencies{AuthToken: "secret"})
+	s := New(Dependencies{UserStore: secretTokenUsers()})
 	req := httptest.NewRequest(http.MethodGet, "/v1/me", nil)
 	req.Header.Set("Authorization", "Bearer secret")
 	p, ok := s.authenticateRequest(req.Context(), req)

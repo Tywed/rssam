@@ -101,7 +101,7 @@ func TestFetchEntryContent_Smoke(t *testing.T) {
 	}
 
 	s := New(Dependencies{
-		AuthToken:      "secret",
+		UserStore:      secretTokenUsers(),
 		FeedStore:      fs,
 		EntryStore:     es,
 		HTTPClient:     client,

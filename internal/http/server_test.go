@@ -59,7 +59,7 @@ func (f *fakeFeedStore) UpdateFeed(_ context.Context, _ int64, params storage.Up
 
 func TestCreateFeedValidation(t *testing.T) {
 	s := New(Dependencies{
-		AuthToken:     "secret",
+		UserStore:     secretTokenUsers(),
 		CategoryStore: &fakeCategoryStore{},
 		FeedStore:     &fakeFeedStore{},
 	})
@@ -93,7 +93,7 @@ func testSSRFGuard(t *testing.T) *ssrf.Guard {
 
 func TestCreateFeedDuplicate(t *testing.T) {
 	s := New(Dependencies{
-		AuthToken:     "secret",
+		UserStore:     secretTokenUsers(),
 		CategoryStore: &fakeCategoryStore{},
 		FeedStore:     &fakeFeedStore{createErr: storage.ErrDuplicateFeedURL},
 		SSRFGuard:     testSSRFGuard(t),
@@ -112,7 +112,7 @@ func TestCreateFeedDuplicate(t *testing.T) {
 
 func TestCreateFeedSuccessContract(t *testing.T) {
 	s := New(Dependencies{
-		AuthToken:     "secret",
+		UserStore:     secretTokenUsers(),
 		CategoryStore: &fakeCategoryStore{},
 		FeedStore:     &fakeFeedStore{},
 		SSRFGuard:     testSSRFGuard(t),
@@ -144,7 +144,7 @@ func TestCreateFeedSuccessContract(t *testing.T) {
 
 func TestCreateFeedIntervalValidation(t *testing.T) {
 	s := New(Dependencies{
-		AuthToken:     "secret",
+		UserStore:     secretTokenUsers(),
 		CategoryStore: &fakeCategoryStore{},
 		FeedStore:     &fakeFeedStore{},
 		SSRFGuard:     testSSRFGuard(t),

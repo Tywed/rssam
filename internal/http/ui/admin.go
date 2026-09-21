@@ -199,7 +199,6 @@ type adminSystemInfo struct {
 	DatabaseHost  string
 	InDocker      bool
 	DualWarning   string
-	AuthTokenSet  bool
 	LocaleWarning string
 	CanRestart    bool
 	RestartHint   string
@@ -238,7 +237,6 @@ func (h *Handler) handleAdminSystem(w http.ResponseWriter, r *http.Request) {
 		DatabaseHost:  ops.RedactDatabaseURL(h.cfg.DatabaseURL),
 		InDocker:      ops.InDocker(),
 		DualWarning:   ops.DualProcessWarning(),
-		AuthTokenSet:  h.cfg.AuthTokenSet,
 		LocaleWarning: localeWarning(h.cfg.DatabaseLocale),
 		CanRestart:    canR,
 		RestartHint:   rHint,

@@ -214,7 +214,6 @@ func newRouterEnv(t *testing.T, mutate func(*Dependencies)) *routerEnv {
 	t.Helper()
 	users := newMemUserStore()
 	dep := Dependencies{
-		AuthToken: "secret",
 		UserStore: users,
 		SSRFGuard: testSSRFGuard(t),
 	}
@@ -303,11 +302,12 @@ func TestRouter_UsersAndMe(t *testing.T) {
 	if me.ID != env.bobID || me.Username != "bob" || me.IsAdmin {
 		t.Fatalf("me: %+v", me)
 	}
-	rec = env.want(env.do(http.MethodGet, "/v1/me", "secret", ""), http.StatusOK)
+	rec = env.want(env.do(http.MethodGet, "/v1/me", env.adminKey, ""), http.StatusOK)
 	me, _ = decodeData[userDTO](t, rec)
 	if me.ID != 1 || !me.IsAdmin {
-		t.Fatalf("me via AUTH_TOKEN: %+v", me)
+		t.Fatalf("me as admin: %+v", me)
 	}
+	env.want(env.do(http.MethodGet, "/v1/me", "secret", ""), http.StatusUnauthorized)
 }
 
 func TestRouter_APIKeysLifecycle(t *testing.T) {

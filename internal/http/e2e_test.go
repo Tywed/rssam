@@ -10,7 +10,7 @@ import (
 )
 
 func TestE2E_HealthzAndSystemInfo(t *testing.T) {
-	s := New(Dependencies{AuthToken: "secret"})
+	s := New(Dependencies{UserStore: secretTokenUsers()})
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", s.handleHealthz)
 	api := http.NewServeMux()
@@ -38,7 +38,7 @@ func TestE2E_HealthzAndSystemInfo(t *testing.T) {
 
 func TestE2E_CategoryCRUD(t *testing.T) {
 	s := New(Dependencies{
-		AuthToken:     "secret",
+		UserStore:     secretTokenUsers(),
 		CategoryStore: &fakeCategoryStore{},
 	})
 	api := http.NewServeMux()
@@ -105,7 +105,7 @@ func (m *memCategoryPollHours) SetCategoryPollHours(_ context.Context, _ int64, 
 func TestE2E_CategoryPollHours(t *testing.T) {
 	ph := &memCategoryPollHours{}
 	s := New(Dependencies{
-		AuthToken:         "secret",
+		UserStore:         secretTokenUsers(),
 		CategoryStore:     ph,
 		CategoryPollHours: ph,
 	})

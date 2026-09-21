@@ -19,7 +19,7 @@ import (
 func TestWSUpgradeThroughFullMiddlewareChain(t *testing.T) {
 	hub := ws.NewHub(10, time.Second)
 	s := New(Dependencies{
-		AuthToken:      "secret",
+		UserStore:      secretTokenUsers(),
 		WSEnabled:      true,
 		WSHub:          hub,
 		WSClientBuffer: 10,

@@ -158,7 +158,7 @@ func TestOPMLImportExportRoundtrip(t *testing.T) {
 	cats := newOpmlCategoryStore()
 	feeds := newOpmlFeedStore()
 	s := New(Dependencies{
-		AuthToken:      "secret",
+		UserStore:      secretTokenUsers(),
 		CategoryStore:  cats,
 		FeedStore:      feeds,
 		SSRFGuard:      guard,
@@ -217,7 +217,7 @@ func TestOPMLImportMultipart(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := New(Dependencies{
-		AuthToken:      "secret",
+		UserStore:      secretTokenUsers(),
 		CategoryStore:  newOpmlCategoryStore(),
 		FeedStore:      newOpmlFeedStore(),
 		SSRFGuard:      guard,
@@ -255,7 +255,7 @@ func TestOPMLImportDuplicateSkipped(t *testing.T) {
 		IntervalMinutes: 60,
 	})
 	s := New(Dependencies{
-		AuthToken:      "secret",
+		UserStore:      secretTokenUsers(),
 		CategoryStore:  newOpmlCategoryStore(),
 		FeedStore:      fs,
 		SSRFGuard:      guard,
@@ -293,7 +293,7 @@ func TestOPMLSettingsRoundtrip(t *testing.T) {
 
 	newServer := func(feeds *opmlFeedStore) http.Handler {
 		s := New(Dependencies{
-			AuthToken:      "secret",
+			UserStore:      secretTokenUsers(),
 			CategoryStore:  newOpmlCategoryStore(),
 			FeedStore:      feeds,
 			WebhookStore:   webhooks,

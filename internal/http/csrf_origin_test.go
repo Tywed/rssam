@@ -78,8 +78,7 @@ func newCSRFTestServer(t *testing.T) (*Server, http.Handler) {
 	t.Helper()
 	sessions := &memSessionStore{s: storage.Session{UserID: 1, SessionID: "sess1", ExpiresAt: time.Now().Add(time.Hour)}}
 	s := New(Dependencies{
-		AuthToken:     "tok",
-		UserStore:     &uiMemUsersWS{user: storage.User{ID: 1, IsAdmin: true}},
+		UserStore:     &uiMemUsersWS{user: storage.User{ID: 1, IsAdmin: true}, token: "tok"},
 		SessionStore:  sessions,
 		CategoryStore: &fakeCategoryStore{},
 	})
@@ -164,8 +163,7 @@ func TestHandleWS_CookieAuthRequiresSameOrigin(t *testing.T) {
 	sessions := &memSessionStore{s: storage.Session{UserID: 1, SessionID: "sess1", ExpiresAt: time.Now().Add(time.Hour)}}
 	hub := ws.NewHub(10, time.Second)
 	s := New(Dependencies{
-		AuthToken:      "tok",
-		UserStore:      &uiMemUsersWS{user: storage.User{ID: 1, IsAdmin: true}},
+		UserStore:      &uiMemUsersWS{user: storage.User{ID: 1, IsAdmin: true}, token: "tok"},
 		SessionStore:   sessions,
 		WSEnabled:      true,
 		WSHub:          hub,

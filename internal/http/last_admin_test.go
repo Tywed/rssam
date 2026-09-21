@@ -27,7 +27,7 @@ func TestDeleteUser_LastAdminRefused(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Caller is the password-less placeholder id=1 (AUTH_TOKEN principal), so
+	// Caller is the password-less placeholder id=1 (API key only), so
 	// it never counts as a login-capable admin and can target every other row.
 	tok := issueAPIToken(t, users, 1)
 

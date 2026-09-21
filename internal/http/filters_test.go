@@ -141,7 +141,7 @@ func TestFiltersAPI_CreateAndTest_Smoke(t *testing.T) {
 	fs := newMemFilterStore()
 	eng := filter.New(filter.Config{MaxRulesPerFilter: 50, MaxRegexLength: 2048})
 	s := New(Dependencies{
-		AuthToken:        "secret",
+		UserStore:        secretTokenUsers(),
 		FilterStore:      fs,
 		FilterMatchStore: &noopMatchStore{},
 		FilterEngine:     eng,
@@ -234,7 +234,7 @@ func TestFiltersAPI_QueryRule(t *testing.T) {
 		t.Helper()
 		fs := newMemFilterStore()
 		s := New(Dependencies{
-			AuthToken:        "secret",
+			UserStore:        secretTokenUsers(),
 			FilterStore:      fs,
 			FilterMatchStore: &noopMatchStore{},
 			FilterEngine:     filter.New(filter.Config{MaxRulesPerFilter: 50, MaxRegexLength: 2048}),
