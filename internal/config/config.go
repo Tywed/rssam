@@ -111,6 +111,11 @@ type Config struct {
 	MaxFilterRulesPerFilter int
 	MaxRegexLength          int
 
+	// Editor quotas (0 = unlimited; admins are exempt).
+	MaxFeedsPerEditor     int
+	MaxWebhooksPerEditor  int
+	EditorMinPollInterval time.Duration
+
 	WebhookMaxAttempts int
 	WebhookTimeout     time.Duration
 	WebhookRetryBase   time.Duration
@@ -238,6 +243,9 @@ func Load() (Config, error) {
 
 		MaxFilterRulesPerFilter: env.int("MAX_FILTER_RULES_PER_FILTER", 50),
 		MaxRegexLength:          env.int("MAX_REGEX_LENGTH", 2048),
+		MaxFeedsPerEditor:       env.int("MAX_FEEDS_PER_EDITOR", 0),
+		MaxWebhooksPerEditor:    env.int("MAX_WEBHOOKS_PER_EDITOR", 0),
+		EditorMinPollInterval:   env.duration("EDITOR_MIN_POLL_INTERVAL", 0),
 
 		WebhookMaxAttempts: env.int("WEBHOOK_MAX_ATTEMPTS", 10),
 		WebhookTimeout:     env.duration("WEBHOOK_TIMEOUT", 10*time.Second),
@@ -422,6 +430,15 @@ func (c Config) Validate() error {
 	}
 	if c.MaxRegexLength <= 0 || c.MaxRegexLength > 1048576 {
 		errs = append(errs, fmt.Errorf("MAX_REGEX_LENGTH must be between 1 and 1048576, got %d", c.MaxRegexLength))
+	}
+	if c.MaxFeedsPerEditor < 0 || c.MaxFeedsPerEditor > 100000 {
+		errs = append(errs, fmt.Errorf("MAX_FEEDS_PER_EDITOR must be between 0 and 100000, got %d", c.MaxFeedsPerEditor))
+	}
+	if c.MaxWebhooksPerEditor < 0 || c.MaxWebhooksPerEditor > 10000 {
+		errs = append(errs, fmt.Errorf("MAX_WEBHOOKS_PER_EDITOR must be between 0 and 10000, got %d", c.MaxWebhooksPerEditor))
+	}
+	if c.EditorMinPollInterval < 0 || c.EditorMinPollInterval > c.MaxPollInterval {
+		errs = append(errs, fmt.Errorf("EDITOR_MIN_POLL_INTERVAL must be between 0 and MAX_POLL_INTERVAL, got %s", c.EditorMinPollInterval))
 	}
 	if c.WebhookMaxAttempts <= 0 || c.WebhookMaxAttempts > 1000 {
 		errs = append(errs, fmt.Errorf("WEBHOOK_MAX_ATTEMPTS must be between 1 and 1000, got %d", c.WebhookMaxAttempts))

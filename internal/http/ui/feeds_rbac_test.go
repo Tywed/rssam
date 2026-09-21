@@ -6,8 +6,10 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"rssam/internal/auth"
+	"rssam/internal/quota"
 	"rssam/internal/storage"
 )
 
@@ -17,9 +19,14 @@ func newFeedsRBACHandler(t *testing.T, admin bool) http.Handler {
 }
 
 func newFeedsRBACHandlerRole(t *testing.T, role string) http.Handler {
+	return newFeedsRBACHandlerQuota(t, role, quota.Limits{})
+}
+
+func newFeedsRBACHandlerQuota(t *testing.T, role string, limits quota.Limits) http.Handler {
 	t.Helper()
 	catID := int64(10)
 	h, err := NewHandler(Config{
+		Quotas: limits,
 		Users: &uiMemUsers{user: storage.User{
 			ID: 1, Username: "alice", PasswordHash: mustHash(t, "secret"), Role: role,
 		}},
@@ -197,6 +204,36 @@ func TestFeedsRBAC_EditorManagesCatalogOnly(t *testing.T) {
 	} {
 		if rec := get(path); rec.Code != want {
 			t.Fatalf("%s: status=%d want=%d", path, rec.Code, want)
+		}
+	}
+}
+
+// The feed form applies the editor quotas: the interval floor and the feed
+// count come back as a form error / 4xx, admins pass.
+func TestFeedsRBAC_EditorQuotasOnForm(t *testing.T) {
+	limits := quota.Limits{MaxFeedsPerEditor: 1, EditorMinPollInterval: 10 * time.Minute}
+	for _, role := range []string{auth.RoleEditor, auth.RoleAdmin} {
+		mux := newFeedsRBACHandlerQuota(t, role, limits)
+		sid := uiSessionCookie(t, nil, mux)
+		token := auth.CSRFToken("csrf-test", sid)
+		rec := postForm(t, mux, sid, "/ui/feeds", url.Values{"csrf_token": {token}, "feed_url": {"https://example.com/x.xml"}, "interval_minutes": {"60"}})
+		if role == auth.RoleAdmin {
+			if rec.Code != http.StatusFound {
+				t.Fatalf("admin create: status=%d body=%s", rec.Code, rec.Body.String())
+			}
+			continue
+		}
+		// The fixture already holds one feed, so the count limit is hit.
+		if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "feed limit reached (1 per editor)") {
+			t.Fatalf("editor create: status=%d", rec.Code)
+		}
+		rec = postForm(t, mux, sid, "/ui/feeds/1", url.Values{"csrf_token": {token}, "feed_url": {"https://example.com/x.xml"}, "interval_minutes": {"5"}})
+		if rec.Code != http.StatusUnprocessableEntity {
+			t.Fatalf("editor update below floor: status=%d", rec.Code)
+		}
+		rec = postForm(t, mux, sid, "/ui/feeds/1", url.Values{"csrf_token": {token}, "feed_url": {"https://example.com/x.xml"}, "interval_minutes": {"10"}})
+		if rec.Code != http.StatusFound {
+			t.Fatalf("editor update at floor: status=%d body=%s", rec.Code, rec.Body.String())
 		}
 	}
 }

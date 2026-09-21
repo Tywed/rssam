@@ -396,3 +396,27 @@ func TestLoad_MaxDurationAliases(t *testing.T) {
 		t.Fatalf("raw milliseconds must be rejected, got %v", err)
 	}
 }
+
+func TestLoad_EditorQuotas(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://u:p@localhost:5432/db?sslmode=disable")
+	cfg, err := Load()
+	if err != nil || cfg.MaxFeedsPerEditor != 0 || cfg.MaxWebhooksPerEditor != 0 || cfg.EditorMinPollInterval != 0 {
+		t.Fatalf("defaults must be unlimited: %+v err=%v", cfg, err)
+	}
+	t.Setenv("MAX_FEEDS_PER_EDITOR", "200")
+	t.Setenv("MAX_WEBHOOKS_PER_EDITOR", "5")
+	t.Setenv("EDITOR_MIN_POLL_INTERVAL", "15m")
+	cfg, err = Load()
+	if err != nil || cfg.MaxFeedsPerEditor != 200 || cfg.MaxWebhooksPerEditor != 5 || cfg.EditorMinPollInterval != 15*time.Minute {
+		t.Fatalf("cfg=%+v err=%v", cfg, err)
+	}
+	t.Setenv("EDITOR_MIN_POLL_INTERVAL", "48h")
+	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "EDITOR_MIN_POLL_INTERVAL") {
+		t.Fatalf("floor above MAX_POLL_INTERVAL must be rejected: %v", err)
+	}
+	t.Setenv("EDITOR_MIN_POLL_INTERVAL", "1m")
+	t.Setenv("MAX_FEEDS_PER_EDITOR", "-1")
+	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "MAX_FEEDS_PER_EDITOR") {
+		t.Fatalf("negative limit must be rejected: %v", err)
+	}
+}

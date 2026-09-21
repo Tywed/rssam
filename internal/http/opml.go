@@ -191,6 +191,10 @@ func (s *Server) importOPML(r *http.Request, doc *opml.Document, userID int64, j
 	for _, f := range existingFeeds {
 		knownFeedURLs[strings.ToLower(strings.TrimSpace(f.FeedURL))] = struct{}{}
 	}
+	// The importer runs under the request's principal; the quota is checked
+	// against the count before the import plus what this import created.
+	p, _ := auth.PrincipalFromContext(ctx)
+	feedCount := len(existingFeeds)
 
 	existingCats, _, _ := s.categories.ListCategories(ctx, userID, 10000, 0)
 	categoryByTitle := make(map[string]int64, len(existingCats))
@@ -309,6 +313,14 @@ func (s *Server) importOPML(r *http.Request, doc *opml.Document, userID int64, j
 		for _, note := range notes {
 			report.Errors = append(report.Errors, importErrorDTO{FeedURL: feedURL, Title: entry.Title, Reason: note})
 		}
+		if err := s.quotas.Feeds(p, feedCount); err != nil {
+			report.Errors = append(report.Errors, importErrorDTO{Reason: err.Error()})
+			break
+		}
+		if err := s.quotas.PollInterval(p, params.IntervalMinutes); err != nil {
+			report.Errors = append(report.Errors, importErrorDTO{FeedURL: feedURL, Title: entry.Title, Reason: err.Error()})
+			continue
+		}
 
 		feed, err := s.feeds.CreateFeed(ctx, userID, params)
 		if err != nil {
@@ -331,6 +343,7 @@ func (s *Server) importOPML(r *http.Request, doc *opml.Document, userID int64, j
 		}
 
 		report.FeedsCreated++
+		feedCount++
 		knownFeedURLs[normURL] = struct{}{}
 		_ = feed
 	}

@@ -15,6 +15,7 @@ import (
 	"rssam/internal/githubrel"
 	"rssam/internal/http/middleware"
 	"rssam/internal/http/ui"
+	"rssam/internal/quota"
 	"rssam/internal/reader"
 	"rssam/internal/scraper"
 	"rssam/internal/service"
@@ -82,6 +83,7 @@ type Dependencies struct {
 	MaxRequestBodyBytes int64
 	CompressEnabled     bool
 	MaxImportFeeds      int
+	Quotas              quota.Limits
 
 	WorkerPoolSize        int
 	WebhookWorkerPoolSize int
@@ -168,6 +170,7 @@ type Server struct {
 	hstsEnabled           bool
 	sessionMaxAge         time.Duration
 	maxImportFeeds        int
+	quotas                quota.Limits
 	importJobs            *importJobManager
 	uiEnabled             bool
 	csrfSecret            string
@@ -402,6 +405,7 @@ func New(dep Dependencies) *Server {
 		hstsEnabled:           dep.HSTSEnabled,
 		sessionMaxAge:         dep.SessionMaxAge,
 		maxImportFeeds:        dep.MaxImportFeeds,
+		quotas:                dep.Quotas,
 		importJobs:            newImportJobManager(),
 		uiEnabled:             dep.UIEnabled,
 		csrfSecret:            dep.CSRFSecret,

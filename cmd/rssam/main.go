@@ -23,6 +23,7 @@ import (
 	"rssam/internal/metrics"
 	"rssam/internal/migrations"
 	"rssam/internal/proxy"
+	"rssam/internal/quota"
 	"rssam/internal/reader"
 	"rssam/internal/service"
 	"rssam/internal/ssrf"
@@ -374,15 +375,20 @@ func main() {
 		WSClientBuffer:         cfg.WSClientBuffer,
 		WSPingInterval:         cfg.WSPingInterval,
 
-		HSTSEnabled:             cfg.HSTSEnabled,
-		SessionMaxAge:           cfg.SessionMaxAge,
-		RateLimitEnabled:        cfg.RateLimitEnabled,
-		RateLimitRPS:            cfg.RateLimitRPS,
-		RateLimitBurst:          cfg.RateLimitBurst,
-		LoginRateLimitRPS:       cfg.LoginRateLimitRPS,
-		LoginRateLimitBurst:     cfg.LoginRateLimitBurst,
-		MaxRequestBodyBytes:     cfg.MaxRequestBodyBytes,
-		MaxImportFeeds:          cfg.MaxImportFeeds,
+		HSTSEnabled:         cfg.HSTSEnabled,
+		SessionMaxAge:       cfg.SessionMaxAge,
+		RateLimitEnabled:    cfg.RateLimitEnabled,
+		RateLimitRPS:        cfg.RateLimitRPS,
+		RateLimitBurst:      cfg.RateLimitBurst,
+		LoginRateLimitRPS:   cfg.LoginRateLimitRPS,
+		LoginRateLimitBurst: cfg.LoginRateLimitBurst,
+		MaxRequestBodyBytes: cfg.MaxRequestBodyBytes,
+		MaxImportFeeds:      cfg.MaxImportFeeds,
+		Quotas: quota.Limits{
+			MaxFeedsPerEditor:     cfg.MaxFeedsPerEditor,
+			MaxWebhooksPerEditor:  cfg.MaxWebhooksPerEditor,
+			EditorMinPollInterval: cfg.EditorMinPollInterval,
+		},
 		CompressEnabled:         cfg.CompressEnabled,
 		UIEnabled:               cfg.UIEnabled,
 		CSRFSecret:              csrfSecret,

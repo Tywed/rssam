@@ -20,6 +20,7 @@ import (
 	"rssam/internal/bridgeconfig"
 	"rssam/internal/filter"
 	"rssam/internal/githubrel"
+	"rssam/internal/quota"
 	"rssam/internal/reader"
 	"rssam/internal/service"
 	"rssam/internal/ssrf"
@@ -52,6 +53,7 @@ type Config struct {
 	HSTSEnabled       bool
 	SessionMaxAge     time.Duration
 	MaxImportFeeds    int
+	Quotas            quota.Limits
 	RateLimit         func(http.Handler) http.Handler
 	OPMLImport        func(r *http.Request, userID int64, data []byte) ImportReport
 	OPMLExport        func(w http.ResponseWriter, r *http.Request, userID int64) error

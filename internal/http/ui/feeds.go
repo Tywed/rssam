@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 
+	"rssam/internal/auth"
 	"rssam/internal/reader"
 	"rssam/internal/storage"
 )
@@ -111,6 +112,10 @@ func (h *Handler) handleFeedCreate(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	if err := h.feedQuota(r, p, params.IntervalMinutes, true); err != nil {
+		h.renderFeedFormError(w, r, params, err.Error())
+		return
+	}
 	params.FeedType = reader.DetectFeedTypeFromURL(params.FeedURL)
 	if err := resolveFeedBeforeCreate(r.Context(), h, &params); err != nil {
 		h.renderFeedFormError(w, r, params, err.Error())
@@ -193,6 +198,10 @@ func (h *Handler) handleFeedUpdate(w http.ResponseWriter, r *http.Request) {
 	params, err := feedParamsFromForm(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if err := h.feedQuota(r, p, params.IntervalMinutes, false); err != nil {
+		http.Error(w, err.Error(), http.StatusUnprocessableEntity)
 		return
 	}
 	existing, _ := h.cfg.Feeds.GetFeed(r.Context(), p.UserID, id)
@@ -344,6 +353,22 @@ func (h *Handler) handleFeedsExport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.Error(w, "export unavailable", http.StatusServiceUnavailable)
+}
+
+// feedQuota applies the editor quotas to a feed form; the feed count is
+// read only when a limit is set and the caller is not an admin.
+func (h *Handler) feedQuota(r *http.Request, p auth.Principal, intervalMinutes int, creating bool) error {
+	if err := h.cfg.Quotas.PollInterval(p, intervalMinutes); err != nil {
+		return err
+	}
+	if !creating || h.cfg.Quotas.MaxFeedsPerEditor <= 0 || p.IsAdmin() {
+		return nil
+	}
+	_, total, err := h.cfg.Feeds.ListFeeds(r.Context(), p.UserID, 1, 0)
+	if err != nil {
+		return err
+	}
+	return h.cfg.Quotas.Feeds(p, total)
 }
 
 func feedParamsFromForm(r *http.Request) (storage.CreateFeedParams, error) {

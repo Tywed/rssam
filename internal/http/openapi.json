@@ -3,7 +3,7 @@
   "info": {
     "title": "rssam API",
     "version": "0.0.0-dev",
-    "description": "REST API of the rssam RSS aggregator.\n\n**Authentication.** Every `/v1` endpoint takes `X-Auth-Token: <token>` where the token is a personal API key (`POST /v1/me/api-keys`, with a `scope` of `read`/`write`/`admin` and an optional expiry). A request outside the key's scope is rejected with 403. A browser session cookie is also accepted, but state-changing requests authenticated only by the cookie must pass the same-origin check (`Sec-Fetch-Site`/`Origin`), otherwise 403.\n\n**Envelope.** Successful JSON responses are `{\"data\": ..., \"total\": n}`; errors are `{\"error_message\": \"...\"}`. Lists take `limit`/`offset`; `total` is the full row count.\n\n**Roles.** Every user has one of three roles, each including the previous one: `reader` — reads entries, changes read/starred state, manages own categories and labels; `editor` — additionally creates, edits and deletes feeds (including bridges), imports/exports OPML, manages filters and webhooks; `admin` — additionally manages users (`/v1/users`), triggers refresh-all and reads `/v1/system/info`. Endpoints marked \"Requires an editor principal\" / \"Requires an admin principal\" return 403 for lower roles. Objects are scoped to the calling user; reading another user's object yields 404.\n\n**Request id.** Every response carries `X-Request-Id` (echoed from the request when a proxy set it, generated otherwise); quote it when reporting 5xx errors.\n\n**Limits.** Request bodies are capped (MAX_REQUEST_BODY_BYTES, default 1 MiB) → 413; per-IP rate limits on authentication failures and sensitive routes → 429."
+    "description": "REST API of the rssam RSS aggregator.\n\n**Authentication.** Every `/v1` endpoint takes `X-Auth-Token: <token>` where the token is a personal API key (`POST /v1/me/api-keys`, with a `scope` of `read`/`write`/`admin` and an optional expiry). A request outside the key's scope is rejected with 403. A browser session cookie is also accepted, but state-changing requests authenticated only by the cookie must pass the same-origin check (`Sec-Fetch-Site`/`Origin`), otherwise 403.\n\n**Envelope.** Successful JSON responses are `{\"data\": ..., \"total\": n}`; errors are `{\"error_message\": \"...\"}`. Lists take `limit`/`offset`; `total` is the full row count.\n\n**Roles.** Every user has one of three roles, each including the previous one: `reader` — reads entries, changes read/starred state, manages own categories and labels; `editor` — additionally creates, edits and deletes feeds (including bridges), imports/exports OPML, manages filters and webhooks; `admin` — additionally manages users (`/v1/users`), triggers refresh-all and reads `/v1/system/info`. Endpoints marked \"Requires an editor principal\" / \"Requires an admin principal\" return 403 for lower roles. Objects are scoped to the calling user; reading another user's object yields 404.\n\n**Request id.** Every response carries `X-Request-Id` (echoed from the request when a proxy set it, generated otherwise); quote it when reporting 5xx errors.\n\n**Limits.** Request bodies are capped (MAX_REQUEST_BODY_BYTES, default 1 MiB) → 413; per-IP rate limits on authentication failures and sensitive routes → 429. Editor quotas (admins exempt; 0 = unlimited): MAX_FEEDS_PER_EDITOR and MAX_WEBHOOKS_PER_EDITOR → 429 on create, EDITOR_MIN_POLL_INTERVAL → 422 on a feed write with a shorter interval."
   },
   "servers": [
     {
@@ -540,8 +540,25 @@
           "409": {
             "$ref": "#/components/responses/Conflict"
           },
+          "422": {
+            "description": "Editor quota: interval_minutes is below EDITOR_MIN_POLL_INTERVAL.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
           "429": {
-            "$ref": "#/components/responses/TooManyRequests"
+            "description": "Rate limit exceeded, or the editor quota MAX_FEEDS_PER_EDITOR is reached (message says which).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "500": {
             "$ref": "#/components/responses/InternalError"
@@ -559,7 +576,7 @@
         ],
         "summary": "Import OPML",
         "operationId": "importFeeds",
-        "description": "Body is either raw OPML or a multipart form with a `file` field. Existing feed URLs are skipped; categories are created on demand (MAX_IMPORT_FEEDS caps the total). Requires an editor principal.",
+        "description": "Body is either raw OPML or a multipart form with a `file` field. Existing feed URLs are skipped; categories are created on demand (MAX_IMPORT_FEEDS caps the total). Requires an editor principal. Editor quotas apply: feeds beyond MAX_FEEDS_PER_EDITOR are reported in `errors` and the import stops; a feed whose rssam:interval is below EDITOR_MIN_POLL_INTERVAL is skipped with a reason.",
         "parameters": [
           {
             "name": "async",
@@ -867,6 +884,16 @@
           },
           "409": {
             "description": "Another feed already uses this URL.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Editor quota: interval_minutes is below EDITOR_MIN_POLL_INTERVAL.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1999,7 +2026,14 @@
             "$ref": "#/components/responses/Forbidden"
           },
           "429": {
-            "$ref": "#/components/responses/TooManyRequests"
+            "description": "Rate limit exceeded, or the editor quota MAX_WEBHOOKS_PER_EDITOR is reached (message says which).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"

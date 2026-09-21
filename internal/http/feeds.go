@@ -99,6 +99,9 @@ func (s *Server) handleCreateFeed(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	if !s.feedQuotaOK(w, r, p, params.IntervalMinutes, true) {
+		return
+	}
 	if params.Title == "" && s.titleResolver != nil {
 		// One fetch gives both the title and, for a site page or a moved
 		// feed, the address that really serves it.
@@ -158,6 +161,9 @@ func (s *Server) handleUpdateFeed(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	if !s.feedQuotaOK(w, r, p, params.IntervalMinutes, false) {
+		return
+	}
 	feed, err := s.feeds.UpdateFeed(r.Context(), p.UserID, storage.UpdateFeedParams{
 		ID:                 id,
 		FeedURL:            params.FeedURL,
@@ -211,6 +217,31 @@ func (s *Server) handleDeleteFeed(w http.ResponseWriter, r *http.Request) {
 	}
 	s.audit.Record(r, storage.AuditFeedDelete, "feed", id, nil)
 	writeJSON(w, http.StatusOK, listResponse[deletedDTO]{Data: deletedDTO{Deleted: true}, Total: 1})
+}
+
+// feedQuotaOK applies the editor quotas to a feed write and answers the
+// request itself when one is exceeded: 422 for the interval floor, 429 for
+// the feed count. The count is read only when a limit is set and the caller
+// is not an admin.
+func (s *Server) feedQuotaOK(w http.ResponseWriter, r *http.Request, p auth.Principal, intervalMinutes int, creating bool) bool {
+	if err := s.quotas.PollInterval(p, intervalMinutes); err != nil {
+		writeError(w, http.StatusUnprocessableEntity, err.Error())
+		return false
+	}
+	if !creating || s.quotas.MaxFeedsPerEditor <= 0 || p.IsAdmin() {
+		return true
+	}
+	_, total, err := s.feeds.ListFeeds(r.Context(), p.UserID, 1, 0)
+	if err != nil {
+		s.log.ErrorContext(r.Context(), "count feeds failed", "err", err)
+		writeError(w, http.StatusInternalServerError, "internal server error")
+		return false
+	}
+	if err := s.quotas.Feeds(p, total); err != nil {
+		writeError(w, http.StatusTooManyRequests, err.Error())
+		return false
+	}
+	return true
 }
 
 func validateFeedWriteRequest(req feedWriteRequest, guard *ssrf.Guard) (storage.CreateFeedParams, error) {

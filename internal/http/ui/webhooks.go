@@ -157,6 +157,17 @@ func (h *Handler) handleWebhookCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	params.UserID = p.UserID
+	if h.cfg.Quotas.MaxWebhooksPerEditor > 0 && !p.IsAdmin() {
+		_, total, err := h.cfg.Webhooks.ListWebhooks(r.Context(), p.UserID, 1, 0)
+		if err != nil {
+			http.Error(w, "list webhooks failed", http.StatusInternalServerError)
+			return
+		}
+		if err := h.cfg.Quotas.Webhooks(p, total); err != nil {
+			http.Error(w, err.Error(), http.StatusTooManyRequests)
+			return
+		}
+	}
 	wh, err := h.cfg.Webhooks.CreateWebhook(r.Context(), params)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)

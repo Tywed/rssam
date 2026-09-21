@@ -155,6 +155,18 @@ func (s *Server) handleCreateWebhook(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	if s.quotas.MaxWebhooksPerEditor > 0 && !p.IsAdmin() {
+		_, total, err := s.webhooks.ListWebhooks(r.Context(), p.UserID, 1, 0)
+		if err != nil {
+			s.log.ErrorContext(r.Context(), "count webhooks failed", "err", err)
+			writeError(w, http.StatusInternalServerError, "internal server error")
+			return
+		}
+		if err := s.quotas.Webhooks(p, total); err != nil {
+			writeError(w, http.StatusTooManyRequests, err.Error())
+			return
+		}
+	}
 	url := strings.TrimSpace(req.URL)
 	if kind == storage.WebhookKindHTTP {
 		url, err = validateWebhookURL(req.URL, s.ssrfGuard)
