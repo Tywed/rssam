@@ -17,13 +17,14 @@ func NormalizeEntrySort(s string) string {
 	}
 }
 
-// entrySortExpr must stay textually identical to the expression indexed by
-// migration 0034, otherwise the planner falls back to sorting the whole set.
-const entrySortExpr = "COALESCE(published_at, created_at)"
+// entrySortExpr is user_entries.sort_at = COALESCE(published_at, created_at)
+// frozen at insert; the user_entries_* indexes of migration 0050 order by
+// it, so a page is an index range, never a sort of the whole set.
+const entrySortExpr = "ue.sort_at"
 
 func entryOrderClause(sort string) string {
 	if NormalizeEntrySort(sort) == EntrySortOldest {
-		return entrySortExpr + " ASC NULLS FIRST, id ASC"
+		return entrySortExpr + " ASC, ue.entry_id ASC"
 	}
-	return entrySortExpr + " DESC NULLS LAST, id DESC"
+	return entrySortExpr + " DESC, ue.entry_id DESC"
 }

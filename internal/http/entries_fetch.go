@@ -48,7 +48,7 @@ func (s *Server) handleFetchEntryContent(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	dto, err := s.entryToDTO(r.Context(), p.UserID, entry)
+	dto, err := s.entryToDTO(r.Context(), entry)
 	if err != nil {
 		s.log.ErrorContext(r.Context(), "load entry enclosures failed", "err", err)
 		writeError(w, http.StatusInternalServerError, "internal server error")

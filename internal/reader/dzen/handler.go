@@ -108,7 +108,6 @@ func entryFromNewsItem(item NewsItem, now time.Time) storage.CreateEntryParams {
 		Author:      authorPtr,
 		PublishedAt: pub,
 		Hash:        hash,
-		Status:      storage.EntryStatusUnread,
 	}
 }
 

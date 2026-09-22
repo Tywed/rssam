@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"rssam/internal/model"
-	"rssam/internal/storage"
 )
 
 const sampleRSS = `<?xml version="1.0" encoding="UTF-8" ?>
@@ -57,9 +56,6 @@ func TestRSSFetcher_FetchAndNormalize(t *testing.T) {
 		t.Fatalf("entries=%d", len(res.Entries))
 	}
 	e := res.Entries[0]
-	if e.Status != storage.EntryStatusUnread {
-		t.Fatalf("status=%q", e.Status)
-	}
 	if e.URL != model.NormalizeURL("https://example.com/a#frag") {
 		t.Fatalf("url=%q", e.URL)
 	}

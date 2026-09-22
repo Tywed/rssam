@@ -54,7 +54,6 @@ func (s *PostgresStore) SearchFeeds(ctx context.Context, userID int64, filter Se
 		args  []any
 	)
 	argN := 1
-	where = append(where, fmt.Sprintf("user_id = $%d", argN))
 	args = append(args, userID)
 	argN++
 
@@ -67,19 +66,19 @@ func (s *PostgresStore) SearchFeeds(ctx context.Context, userID int64, filter Se
 	}
 	if hasCategory {
 		if *filter.CategoryID == 0 {
-			where = append(where, "category_id IS NULL")
+			where = append(where, "s.category_id IS NULL")
 		} else {
-			where = append(where, fmt.Sprintf("category_id = $%d", argN))
+			where = append(where, fmt.Sprintf("s.category_id = $%d", argN))
 			args = append(args, *filter.CategoryID)
 			argN++
 		}
 	}
 
 	sql := `
-SELECT id, user_id, feed_url, feed_type, title, category_id, interval_minutes, next_check_at, created_at, updated_at
-FROM feeds
+SELECT ` + feedColumns + `
+FROM feeds f ` + subscribedJoin + `
 WHERE ` + strings.Join(where, " AND ") + `
-ORDER BY title ASC, id ASC
+ORDER BY f.title ASC, f.id ASC
 LIMIT $` + fmt.Sprint(argN)
 	args = append(args, limit)
 
@@ -87,18 +86,9 @@ LIMIT $` + fmt.Sprint(argN)
 	if err != nil {
 		return nil, fmt.Errorf("search feeds: %w", err)
 	}
-	defer rows.Close()
-
-	out := make([]Feed, 0, limit)
-	for rows.Next() {
-		var f Feed
-		if err := rows.Scan(&f.ID, &f.UserID, &f.FeedURL, &f.FeedType, &f.Title, &f.CategoryID, &f.IntervalMinutes, &f.NextCheckAt, &f.CreatedAt, &f.UpdatedAt); err != nil {
-			return nil, fmt.Errorf("scan search feeds: %w", err)
-		}
-		out = append(out, f)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate search feeds: %w", err)
+	out, err := scanFeedRows(rows)
+	if err != nil {
+		return nil, fmt.Errorf("search feeds: %w", err)
 	}
 	return out, nil
 }
@@ -110,27 +100,21 @@ func (s *PostgresStore) ListFeedsByIDs(ctx context.Context, userID int64, ids []
 	if len(ids) > MaxListFeedsByIDs {
 		ids = ids[:MaxListFeedsByIDs]
 	}
-	const q = `
-SELECT id, user_id, feed_url, feed_type, title, category_id, interval_minutes, next_check_at, created_at, updated_at
-FROM feeds
-WHERE user_id = $1 AND id = ANY($2)
-ORDER BY title ASC, id ASC`
+	q := `
+SELECT ` + feedColumns + `
+FROM feeds f ` + subscribedJoin + `
+WHERE f.id = ANY($2)`
 	rows, err := s.db.Query(ctx, q, userID, ids)
 	if err != nil {
 		return nil, fmt.Errorf("list feeds by ids: %w", err)
 	}
-	defer rows.Close()
-
-	byID := make(map[int64]Feed, len(ids))
-	for rows.Next() {
-		var f Feed
-		if err := rows.Scan(&f.ID, &f.UserID, &f.FeedURL, &f.FeedType, &f.Title, &f.CategoryID, &f.IntervalMinutes, &f.NextCheckAt, &f.CreatedAt, &f.UpdatedAt); err != nil {
-			return nil, fmt.Errorf("scan feeds by ids: %w", err)
-		}
-		byID[f.ID] = f
+	feeds, err := scanFeedRows(rows)
+	if err != nil {
+		return nil, fmt.Errorf("list feeds by ids: %w", err)
 	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate feeds by ids: %w", err)
+	byID := make(map[int64]Feed, len(feeds))
+	for _, f := range feeds {
+		byID[f.ID] = f
 	}
 
 	out := make([]Feed, 0, len(ids))

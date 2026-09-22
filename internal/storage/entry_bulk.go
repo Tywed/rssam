@@ -9,14 +9,18 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-const entrySelectColumns = `id, feed_id, title, url, content, original_content, content_fetched, author, published_at, hash, status, starred, created_at, updated_at`
+// entrySelectColumns reads an entry together with the per-user state of the
+// user_entries row aliased ue (entryFromUser, or an UPDATE ... FROM pair).
+const entrySelectColumns = `e.id, e.feed_id, e.title, e.url, e.content, e.original_content, e.content_fetched, e.author, e.published_at, e.hash, ue.status, ue.starred, e.created_at, e.updated_at`
+
+const entryFromUser = `FROM user_entries ue JOIN entries e ON e.id = ue.entry_id`
 
 // entryListColumns is entrySelectColumns with the two body columns replaced
 // by empty literals, so the same scanner serves list pages that never render
 // a body (the reader loads it per entry). On typical feeds the bodies are
 // ~3 kB per row — 150 kB per 50-row page that was read from TOAST, sent and
 // dropped.
-const entryListColumns = `id, feed_id, title, url, '' AS content, '' AS original_content, content_fetched, author, published_at, hash, status, starred, created_at, updated_at`
+const entryListColumns = `e.id, e.feed_id, e.title, e.url, '' AS content, '' AS original_content, e.content_fetched, e.author, e.published_at, e.hash, ue.status, ue.starred, e.created_at, e.updated_at`
 
 func entryColumns(withoutBody bool) string {
 	if withoutBody {
@@ -25,7 +29,9 @@ func entryColumns(withoutBody bool) string {
 	return entrySelectColumns
 }
 
-// BulkUpdateEntries updates status and/or starred for entries owned by userID.
+// BulkUpdateEntries updates the user's status and/or starred flag. Rows
+// that already have the requested values are skipped: a repeated "mark
+// read" writes nothing.
 func (s *PostgresStore) BulkUpdateEntries(ctx context.Context, userID int64, entryIDs []int64, update BulkEntryUpdate) (int, error) {
 	if len(entryIDs) == 0 {
 		return 0, nil
@@ -35,6 +41,7 @@ func (s *PostgresStore) BulkUpdateEntries(ctx context.Context, userID int64, ent
 	}
 
 	setParts := make([]string, 0, 2)
+	changed := make([]string, 0, 2)
 	args := []any{userID, entryIDs}
 	argN := 3
 
@@ -44,19 +51,22 @@ func (s *PostgresStore) BulkUpdateEntries(ctx context.Context, userID int64, ent
 			return 0, fmt.Errorf("invalid entry status: %q", status)
 		}
 		setParts = append(setParts, fmt.Sprintf("status = $%d", argN))
+		changed = append(changed, fmt.Sprintf("status <> $%d", argN))
 		args = append(args, status)
 		argN++
 	}
 	if update.Starred != nil {
 		setParts = append(setParts, fmt.Sprintf("starred = $%d", argN))
+		changed = append(changed, fmt.Sprintf("starred <> $%d", argN))
 		args = append(args, *update.Starred)
 	}
 	setParts = append(setParts, "updated_at = now()")
 
 	q := `
-UPDATE entries
+UPDATE user_entries
 SET ` + strings.Join(setParts, ", ") + `
-WHERE user_id = $1 AND id = ANY($2::bigint[]) AND status <> '` + EntryStatusRemoved + `'`
+WHERE user_id = $1 AND entry_id = ANY($2::bigint[]) AND status <> '` + EntryStatusRemoved + `'
+  AND (` + strings.Join(changed, " OR ") + `)`
 
 	cmd, err := s.db.Exec(ctx, q, args...)
 	if err != nil {
@@ -74,10 +84,10 @@ func (s *PostgresStore) MarkEntriesRemoved(ctx context.Context, userID int64, en
 		return 0, nil
 	}
 	const q = `
-UPDATE entries
+UPDATE user_entries
 SET status = $3,
     updated_at = now()
-WHERE user_id = $1 AND id = ANY($2::bigint[]) AND status <> $3`
+WHERE user_id = $1 AND entry_id = ANY($2::bigint[]) AND status <> $3`
 	cmd, err := s.db.Exec(ctx, q, userID, entryIDs, EntryStatusRemoved)
 	if err != nil {
 		return 0, fmt.Errorf("mark entries removed: %w", err)
@@ -91,7 +101,7 @@ func (s *PostgresStore) MarkAllFeedEntriesRead(ctx context.Context, userID, feed
 		return 0, err
 	}
 	const q = `
-UPDATE entries
+UPDATE user_entries
 SET status = $4, updated_at = now()
 WHERE feed_id = $1 AND user_id = $2 AND status = $3`
 	cmd, err := s.db.Exec(ctx, q, feedID, userID, EntryStatusUnread, EntryStatusRead)
@@ -112,13 +122,14 @@ func (s *PostgresStore) MarkAllCategoryEntriesRead(ctx context.Context, userID, 
 		return 0, fmt.Errorf("lookup category: %w", err)
 	}
 	const q = `
-UPDATE entries e
+UPDATE user_entries ue
 SET status = $4, updated_at = now()
-FROM feeds f
-WHERE e.feed_id = f.id
-  AND f.category_id = $1
-  AND e.user_id = $2
-  AND e.status = $3`
+FROM subscriptions s
+WHERE s.user_id = $2
+  AND s.category_id = $1
+  AND ue.user_id = $2
+  AND ue.feed_id = s.feed_id
+  AND ue.status = $3`
 	cmd, err := s.db.Exec(ctx, q, categoryID, userID, EntryStatusUnread, EntryStatusRead)
 	if err != nil {
 		return 0, fmt.Errorf("mark all category entries read: %w", err)
@@ -137,13 +148,13 @@ func (s *PostgresStore) MarkAllLabelEntriesRead(ctx context.Context, userID, lab
 		return 0, fmt.Errorf("lookup label: %w", err)
 	}
 	const q = `
-UPDATE entries e
+UPDATE user_entries ue
 SET status = $4, updated_at = now()
 FROM entry_labels el
-WHERE el.entry_id = e.id
+WHERE el.entry_id = ue.entry_id
   AND el.label_id = $1
-  AND e.user_id = $2
-  AND e.status = $3`
+  AND ue.user_id = $2
+  AND ue.status = $3`
 	cmd, err := s.db.Exec(ctx, q, labelID, userID, EntryStatusUnread, EntryStatusRead)
 	if err != nil {
 		return 0, fmt.Errorf("mark all label entries read: %w", err)
@@ -154,7 +165,7 @@ WHERE el.entry_id = e.id
 // MarkAllEntriesRead marks all unread entries for a user as read.
 func (s *PostgresStore) MarkAllEntriesRead(ctx context.Context, userID int64) (int, error) {
 	const q = `
-UPDATE entries
+UPDATE user_entries
 SET status = $2, updated_at = now()
 WHERE user_id = $1 AND status = $3`
 	cmd, err := s.db.Exec(ctx, q, userID, EntryStatusRead, EntryStatusUnread)
@@ -190,9 +201,10 @@ func (s *PostgresStore) UpdateEntry(ctx context.Context, userID, feedID, entryID
 	setParts = append(setParts, "updated_at = now()")
 
 	q := `
-UPDATE entries
+UPDATE user_entries ue
 SET ` + strings.Join(setParts, ", ") + `
-WHERE id = $1 AND user_id = $2 AND feed_id = $3
+FROM entries e
+WHERE e.id = ue.entry_id AND ue.entry_id = $1 AND ue.user_id = $2 AND ue.feed_id = $3
 RETURNING ` + entrySelectColumns
 
 	return s.scanEntry(s.db.QueryRow(ctx, q, args...))
@@ -200,6 +212,6 @@ RETURNING ` + entrySelectColumns
 
 // GetFeedEntry returns an entry scoped to feed and user.
 func (s *PostgresStore) GetFeedEntry(ctx context.Context, userID, feedID, entryID int64) (Entry, error) {
-	q := `SELECT ` + entrySelectColumns + ` FROM entries WHERE id = $1 AND user_id = $2 AND feed_id = $3`
+	q := `SELECT ` + entrySelectColumns + ` ` + entryFromUser + ` WHERE ue.entry_id = $1 AND ue.user_id = $2 AND ue.feed_id = $3`
 	return s.scanEntry(s.db.QueryRow(ctx, q, entryID, userID, feedID))
 }

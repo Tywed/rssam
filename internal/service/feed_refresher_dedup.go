@@ -18,13 +18,18 @@ func entryFromCreateParams(feedID int64, p storage.CreateEntryParams) storage.En
 		Author:      p.Author,
 		PublishedAt: p.PublishedAt,
 		Hash:        p.Hash,
-		Status:      p.Status,
+		Status:      storage.EntryStatusUnread,
 	}
 }
 
+// processEntriesDedupOnly is the hash-only path: a new item becomes an
+// entry only when it matches a filter of at least one subscriber (the
+// entry is then shared by all of them and the actions run in
+// applyFiltersBestEffort); otherwise only its hash is kept.
 func (r *FeedRefresher) processEntriesDedupOnly(
 	ctx context.Context,
 	feed storage.Feed,
+	subs []storage.Subscription,
 	entries []storage.CreateEntryParams,
 ) (inserted int, insertedEntries []storage.Entry, fresh int, err error) {
 	if r.Dedup == nil {
@@ -34,7 +39,6 @@ func (r *FeedRefresher) processEntriesDedupOnly(
 		return 0, nil, 0, nil
 	}
 	feedID := feed.ID
-	userID := feed.UserID
 
 	hashes := make([]string, 0, len(entries))
 	for _, e := range entries {
@@ -47,14 +51,26 @@ func (r *FeedRefresher) processEntriesDedupOnly(
 		return 0, nil, 0, err
 	}
 
-	var filters []storage.Filter
+	type subscriberFilters struct {
+		filters  []storage.Filter
+		matchCtx filter.MatchContext
+	}
+	var perSub []subscriberFilters
 	if r.Filters != nil && r.Engine != nil {
-		filters, err = r.listEnabledFiltersCached(ctx, userID)
-		if err != nil {
-			return 0, nil, 0, fmt.Errorf("list filters: %w", err)
+		for _, sub := range subs {
+			filters, err := r.listEnabledFiltersCached(ctx, sub.UserID)
+			if err != nil {
+				return 0, nil, 0, fmt.Errorf("list filters: %w", err)
+			}
+			if len(filters) == 0 {
+				continue
+			}
+			perSub = append(perSub, subscriberFilters{
+				filters:  filters,
+				matchCtx: filter.MatchContext{FeedID: feedID, CategoryID: sub.CategoryID},
+			})
 		}
 	}
-	matchCtx := filter.MatchContext{FeedID: feedID, CategoryID: feed.CategoryID}
 
 	var toDedup []storage.FeedEntryDedupParams
 	freshParams := make([]storage.CreateEntryParams, 0, len(entries))
@@ -71,25 +87,26 @@ func (r *FeedRefresher) processEntriesDedupOnly(
 		freshEntries = append(freshEntries, entryFromCreateParams(feedID, p))
 	}
 	fresh = len(freshEntries)
-	var queryHits []map[string]bool
-	if r.Engine != nil && len(filters) > 0 {
-		queryHits = r.queryHitsBestEffort(ctx, feedID, filters, freshEntries)
+	queryHits := make([][]map[string]bool, len(perSub))
+	for i, sf := range perSub {
+		queryHits[i] = r.queryHitsBestEffort(ctx, feedID, sf.filters, freshEntries)
 	}
 
 	for i, e := range freshEntries {
 		p := freshParams[i]
-		var matches []filter.Match
-		if r.Engine != nil && len(filters) > 0 {
-			var matchErr error
-			if queryHits != nil {
-				matchCtx.QueryHits = queryHits[i]
+		wanted := false
+		for j, sf := range perSub {
+			matchCtx := sf.matchCtx
+			if queryHits[j] != nil {
+				matchCtx.QueryHits = queryHits[j][i]
 			}
-			matches, matchErr = r.Engine.MatchEntryWithContext(e, matchCtx, filters)
-			if matchErr != nil {
-				continue
+			matches, matchErr := r.Engine.MatchEntryWithContext(e, matchCtx, sf.filters)
+			if matchErr == nil && len(matches) > 0 {
+				wanted = true
+				break
 			}
 		}
-		if len(matches) == 0 {
+		if !wanted {
 			toDedup = append(toDedup, storage.FeedEntryDedupParams{Hash: p.Hash, URL: p.URL})
 			continue
 		}

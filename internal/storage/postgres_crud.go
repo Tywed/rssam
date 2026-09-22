@@ -174,22 +174,24 @@ func (s *PostgresStore) CreateFeed(ctx context.Context, userID int64, params Cre
 	if feedType == "" {
 		feedType = "rss"
 	}
-	const q = `
-INSERT INTO feeds(user_id, feed_url, feed_type, title, category_id, interval_minutes, scraper_rules, rewrite_rules, blocked_rules, keep_rules, fetch_via_proxy, tls_insecure, crawler, user_agent, webhook_id, store_hash_only, entry_retention_days, bridge_state, adaptive_interval)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, COALESCE($18::jsonb, '{}'::jsonb), $19)
-RETURNING id, user_id, feed_url, feed_type, title, category_id, interval_minutes, scraper_rules, rewrite_rules, blocked_rules, keep_rules, fetch_via_proxy, tls_insecure, crawler, user_agent, webhook_id, store_hash_only, entry_retention_days, adaptive_interval, created_at, updated_at`
 	var f Feed
-	err := s.db.QueryRow(ctx, q,
-		userID,
-		params.FeedURL, feedType, params.Title, params.CategoryID, params.IntervalMinutes,
-		params.ScraperRules, params.RewriteRules, params.BlockedRules, params.KeepRules,
-		params.FetchViaProxy, params.TLSInsecure, params.Crawler, params.UserAgent, params.WebhookID, params.StoreHashOnly, params.EntryRetentionDays, nullableJSON(params.BridgeState), params.AdaptiveInterval,
-	).Scan(
-		&f.ID, &f.UserID, &f.FeedURL, &f.FeedType, &f.Title, &f.CategoryID, &f.IntervalMinutes,
-		&f.ScraperRules, &f.RewriteRules, &f.BlockedRules, &f.KeepRules,
-		&f.FetchViaProxy, &f.TLSInsecure, &f.Crawler, &f.UserAgent, &f.WebhookID, &f.StoreHashOnly, &f.EntryRetentionDays, &f.AdaptiveInterval,
-		&f.CreatedAt, &f.UpdatedAt,
-	)
+	err := withTx(ctx, s.db, func(tx pgx.Tx) error {
+		const q = `
+INSERT INTO feeds(owner_id, feed_url, feed_type, title, interval_minutes, scraper_rules, rewrite_rules, blocked_rules, keep_rules, fetch_via_proxy, tls_insecure, crawler, user_agent, store_hash_only, entry_retention_days, bridge_state, adaptive_interval)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, COALESCE($16::jsonb, '{}'::jsonb), $17)
+RETURNING id, created_at, updated_at`
+		if err := tx.QueryRow(ctx, q,
+			userID,
+			params.FeedURL, feedType, params.Title, params.IntervalMinutes,
+			params.ScraperRules, params.RewriteRules, params.BlockedRules, params.KeepRules,
+			params.FetchViaProxy, params.TLSInsecure, params.Crawler, params.UserAgent, params.StoreHashOnly, params.EntryRetentionDays, nullableJSON(params.BridgeState), params.AdaptiveInterval,
+		).Scan(&f.ID, &f.CreatedAt, &f.UpdatedAt); err != nil {
+			return err
+		}
+		_, err := tx.Exec(ctx, `INSERT INTO subscriptions(user_id, feed_id, category_id, webhook_id) VALUES ($1, $2, $3, $4)`,
+			userID, f.ID, params.CategoryID, params.WebhookID)
+		return err
+	})
 	if err != nil {
 		if isDuplicateFeedURLError(err) {
 			return Feed{}, ErrDuplicateFeedURL
@@ -199,31 +201,55 @@ RETURNING id, user_id, feed_url, feed_type, title, category_id, interval_minutes
 		}
 		return Feed{}, fmt.Errorf("create feed: %w", err)
 	}
+	f.OwnerID = userID
+	f.FeedURL = params.FeedURL
+	f.FeedType = feedType
+	f.Title = params.Title
+	f.CategoryID = params.CategoryID
+	f.IntervalMinutes = params.IntervalMinutes
+	f.ScraperRules = params.ScraperRules
+	f.RewriteRules = params.RewriteRules
+	f.BlockedRules = params.BlockedRules
+	f.KeepRules = params.KeepRules
+	f.FetchViaProxy = params.FetchViaProxy
+	f.TLSInsecure = params.TLSInsecure
+	f.Crawler = params.Crawler
+	f.UserAgent = params.UserAgent
+	f.WebhookID = params.WebhookID
+	f.StoreHashOnly = params.StoreHashOnly
+	f.EntryRetentionDays = params.EntryRetentionDays
+	f.AdaptiveInterval = params.AdaptiveInterval
 	return f, nil
 }
 
 func (s *PostgresStore) GetFeed(ctx context.Context, userID int64, id int64) (Feed, error) {
-	q := `SELECT ` + feedColumns + `, icon_data FROM feeds WHERE id = $1 AND user_id = $2`
-	return s.scanFeed(s.db.QueryRow(ctx, q, id, userID))
+	q := `SELECT ` + feedColumns + `, f.icon_data FROM feeds f ` + subscribedJoin + ` WHERE f.id = $2`
+	return s.scanFeed(s.db.QueryRow(ctx, q, userID, id))
 }
 
 func (s *PostgresStore) GetFeedByID(ctx context.Context, id int64) (Feed, error) {
-	q := `SELECT ` + feedColumns + `, icon_data FROM feeds WHERE id = $1`
+	q := `SELECT ` + feedColumns + `, f.icon_data FROM feeds f ` + catalogJoin + ` WHERE f.id = $1`
 	return s.scanFeed(s.db.QueryRow(ctx, q, id))
 }
 
 // feedColumns is every feeds column except icon_data, which is a blob of up
 // to 512 KiB served only by the icon endpoint through GetFeed. Every list
 // selects this set so that a Feed from a list is as complete as one from
-// GetFeed (rules, flags, poll state, bridge state).
-const feedColumns = `id, user_id, feed_url, feed_type, title, category_id, interval_minutes, etag, last_modified, last_checked_at, last_error,
-       parsing_error_count, poll_paused, manual_paused, store_hash_only, entry_retention_days, adaptive_interval, next_check_at,
-       bridge_state, scraper_rules, rewrite_rules, blocked_rules, keep_rules, fetch_via_proxy, tls_insecure, crawler, user_agent,
-       webhook_id, icon_url, last_entry_at, created_at, updated_at`
+// GetFeed (rules, flags, poll state, bridge state). category_id and
+// webhook_id come from the subscription alias s: subscribedJoin binds it to
+// $1 = user id, catalogJoin leaves both NULL.
+const feedColumns = `f.id, COALESCE(f.owner_id, 0), f.feed_url, f.feed_type, f.title, s.category_id, f.interval_minutes, f.etag, f.last_modified, f.last_checked_at, f.last_error,
+       f.parsing_error_count, f.poll_paused, f.manual_paused, f.store_hash_only, f.entry_retention_days, f.adaptive_interval, f.next_check_at,
+       f.bridge_state, f.scraper_rules, f.rewrite_rules, f.blocked_rules, f.keep_rules, f.fetch_via_proxy, f.tls_insecure, f.crawler, f.user_agent,
+       s.webhook_id, f.icon_url, f.last_entry_at, f.created_at, f.updated_at`
+
+const subscribedJoin = `JOIN subscriptions s ON s.feed_id = f.id AND s.user_id = $1`
+
+const catalogJoin = `LEFT JOIN (SELECT NULL::bigint AS category_id, NULL::bigint AS webhook_id) s ON TRUE`
 
 func feedScanTargets(f *Feed) []any {
 	return []any{
-		&f.ID, &f.UserID, &f.FeedURL, &f.FeedType, &f.Title, &f.CategoryID, &f.IntervalMinutes, &f.ETag, &f.LastModified, &f.LastCheckedAt, &f.LastError,
+		&f.ID, &f.OwnerID, &f.FeedURL, &f.FeedType, &f.Title, &f.CategoryID, &f.IntervalMinutes, &f.ETag, &f.LastModified, &f.LastCheckedAt, &f.LastError,
 		&f.ParsingErrorCount, &f.PollPaused, &f.ManualPaused, &f.StoreHashOnly, &f.EntryRetentionDays, &f.AdaptiveInterval, &f.NextCheckAt,
 		&f.BridgeState, &f.ScraperRules, &f.RewriteRules, &f.BlockedRules, &f.KeepRules, &f.FetchViaProxy, &f.TLSInsecure, &f.Crawler, &f.UserAgent,
 		&f.WebhookID, &f.IconURL, &f.LastEntryAt, &f.CreatedAt, &f.UpdatedAt,
@@ -258,7 +284,7 @@ func (s *PostgresStore) scanFeed(row pgx.Row) (Feed, error) {
 }
 
 func (s *PostgresStore) ListFeeds(ctx context.Context, userID int64, limit, offset int) ([]Feed, int, error) {
-	base := `SELECT ` + feedColumns + `, count(*) OVER() FROM feeds WHERE user_id = $1 ORDER BY id DESC`
+	base := `SELECT ` + feedColumns + `, count(*) OVER() FROM feeds f ` + subscribedJoin + ` ORDER BY f.id DESC`
 	var (
 		rows pgx.Rows
 		err  error
@@ -282,6 +308,14 @@ func (s *PostgresStore) ListFeeds(ctx context.Context, userID int64, limit, offs
 	return out, total, nil
 }
 
+func (s *PostgresStore) CountOwnedFeeds(ctx context.Context, userID int64) (int, error) {
+	var n int
+	if err := s.db.QueryRow(ctx, `SELECT count(*) FROM feeds WHERE owner_id = $1`, userID).Scan(&n); err != nil {
+		return 0, fmt.Errorf("count owned feeds: %w", err)
+	}
+	return n, nil
+}
+
 func (s *PostgresStore) ListFeedsByCategory(ctx context.Context, userID, categoryID int64) ([]Feed, error) {
 	feeds, _, err := s.ListFeedsByCategoryPaginated(ctx, userID, categoryID, NoLimit, 0)
 	return feeds, err
@@ -294,18 +328,18 @@ func (s *PostgresStore) ListFeedsByCategoryPaginated(ctx context.Context, userID
 	)
 	args = append(args, userID)
 	if categoryID == 0 {
-		where = `user_id = $1 AND category_id IS NULL`
+		where = `s.category_id IS NULL`
 	} else {
-		where = `user_id = $1 AND category_id = $2`
+		where = `s.category_id = $2`
 		args = append(args, categoryID)
 	}
 
 	var total int
-	if err := s.db.QueryRow(ctx, `SELECT COUNT(*)::int FROM feeds WHERE `+where, args...).Scan(&total); err != nil {
+	if err := s.db.QueryRow(ctx, `SELECT COUNT(*)::int FROM subscriptions s WHERE s.user_id = $1 AND `+where, args...).Scan(&total); err != nil {
 		return nil, 0, fmt.Errorf("count feeds by category: %w", err)
 	}
 
-	cols := `SELECT ` + feedColumns + ` FROM feeds WHERE ` + where + ` ORDER BY title ASC, id ASC`
+	cols := `SELECT ` + feedColumns + ` FROM feeds f ` + subscribedJoin + ` WHERE ` + where + ` ORDER BY f.title ASC, f.id ASC`
 
 	var (
 		rows pgx.Rows
@@ -336,7 +370,7 @@ func (s *PostgresStore) ListAllFeeds(ctx context.Context, limit int) ([]Feed, er
 	if limit > 10000 {
 		limit = 10000
 	}
-	rows, err := s.db.Query(ctx, `SELECT `+feedColumns+` FROM feeds ORDER BY id ASC LIMIT $1`, limit)
+	rows, err := s.db.Query(ctx, `SELECT `+feedColumns+` FROM feeds f `+catalogJoin+` ORDER BY f.id ASC LIMIT $1`, limit)
 	if err != nil {
 		return nil, fmt.Errorf("list all feeds: %w", err)
 	}
@@ -351,30 +385,36 @@ func (s *PostgresStore) UpdateFeed(ctx context.Context, userID int64, params Upd
 	if err := ValidateEntryRetentionDays(params.EntryRetentionDays); err != nil {
 		return Feed{}, err
 	}
-	const q = `
-UPDATE feeds
-SET feed_url = $3, title = $4, category_id = $5, interval_minutes = $6,
-    scraper_rules = $7, rewrite_rules = $8, blocked_rules = $9, keep_rules = $10,
-    fetch_via_proxy = $11, tls_insecure = $12, crawler = $13, user_agent = $14,
-    webhook_id = $15,
-    store_hash_only = $16,
-    entry_retention_days = $17,
-    bridge_state = COALESCE($18::jsonb, bridge_state),
-    adaptive_interval = $19,
-    updated_at = now()
-WHERE id = $1 AND user_id = $2
-RETURNING id, user_id, feed_url, title, category_id, interval_minutes, scraper_rules, rewrite_rules, blocked_rules, keep_rules, fetch_via_proxy, tls_insecure, crawler, user_agent, webhook_id, store_hash_only, entry_retention_days, adaptive_interval, created_at, updated_at`
 	var f Feed
-	err := s.db.QueryRow(ctx, q,
-		params.ID, userID, params.FeedURL, params.Title, params.CategoryID, params.IntervalMinutes,
-		params.ScraperRules, params.RewriteRules, params.BlockedRules, params.KeepRules,
-		params.FetchViaProxy, params.TLSInsecure, params.Crawler, params.UserAgent, params.WebhookID, params.StoreHashOnly, params.EntryRetentionDays, nullableJSON(params.BridgeState), params.AdaptiveInterval,
-	).Scan(
-		&f.ID, &f.UserID, &f.FeedURL, &f.Title, &f.CategoryID, &f.IntervalMinutes,
-		&f.ScraperRules, &f.RewriteRules, &f.BlockedRules, &f.KeepRules,
-		&f.FetchViaProxy, &f.TLSInsecure, &f.Crawler, &f.UserAgent, &f.WebhookID, &f.StoreHashOnly, &f.EntryRetentionDays, &f.AdaptiveInterval,
-		&f.CreatedAt, &f.UpdatedAt,
-	)
+	err := withTx(ctx, s.db, func(tx pgx.Tx) error {
+		cmd, err := tx.Exec(ctx, `UPDATE subscriptions SET category_id = $3, webhook_id = $4 WHERE user_id = $1 AND feed_id = $2`,
+			userID, params.ID, params.CategoryID, params.WebhookID)
+		if err != nil {
+			return err
+		}
+		if cmd.RowsAffected() == 0 {
+			return ErrNotFound
+		}
+		const q = `
+UPDATE feeds f
+SET feed_url = $2, title = $3, interval_minutes = $4,
+    scraper_rules = $5, rewrite_rules = $6, blocked_rules = $7, keep_rules = $8,
+    fetch_via_proxy = $9, tls_insecure = $10, crawler = $11, user_agent = $12,
+    store_hash_only = $13,
+    entry_retention_days = $14,
+    bridge_state = COALESCE($15::jsonb, bridge_state),
+    adaptive_interval = $16,
+    updated_at = now()
+FROM s
+WHERE f.id = $1
+RETURNING ` + feedColumns
+		row := tx.QueryRow(ctx, `WITH s AS (SELECT $17::bigint AS category_id, $18::bigint AS webhook_id) `+q,
+			params.ID, params.FeedURL, params.Title, params.IntervalMinutes,
+			params.ScraperRules, params.RewriteRules, params.BlockedRules, params.KeepRules,
+			params.FetchViaProxy, params.TLSInsecure, params.Crawler, params.UserAgent, params.StoreHashOnly, params.EntryRetentionDays, nullableJSON(params.BridgeState), params.AdaptiveInterval,
+			params.CategoryID, params.WebhookID)
+		return row.Scan(feedScanTargets(&f)...)
+	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return Feed{}, ErrNotFound
@@ -394,7 +434,7 @@ func (s *PostgresStore) UpdateFeedIcon(ctx context.Context, userID, feedID int64
 	const q = `
 UPDATE feeds
 SET icon_url = $3, icon_data = $4, updated_at = now()
-WHERE id = $1 AND user_id = $2`
+WHERE id = $1 AND EXISTS (SELECT 1 FROM subscriptions s WHERE s.feed_id = feeds.id AND s.user_id = $2)`
 	cmd, err := s.db.Exec(ctx, q, feedID, userID, iconURL, iconData)
 	if err != nil {
 		return fmt.Errorf("update feed icon: %w", err)
@@ -405,8 +445,24 @@ WHERE id = $1 AND user_id = $2`
 	return nil
 }
 
+// DeleteFeed: the caller's subscription goes with their user_entries and
+// entry_labels; the catalog row (entries, dedup hashes, poll log) only when
+// no subscriber remains.
 func (s *PostgresStore) DeleteFeed(ctx context.Context, userID int64, id int64) error {
-	cmd, err := s.db.Exec(ctx, `DELETE FROM feeds WHERE id = $1 AND user_id = $2`, id, userID)
+	return withTx(ctx, s.db, func(tx pgx.Tx) error {
+		if err := unsubscribeTx(ctx, tx, userID, id); err != nil {
+			return err
+		}
+		_, err := tx.Exec(ctx, `DELETE FROM feeds WHERE id = $1 AND NOT EXISTS (SELECT 1 FROM subscriptions s WHERE s.feed_id = $1)`, id)
+		if err != nil {
+			return fmt.Errorf("delete feed: %w", err)
+		}
+		return nil
+	})
+}
+
+func (s *PostgresStore) DeleteFeedByID(ctx context.Context, id int64) error {
+	cmd, err := s.db.Exec(ctx, `DELETE FROM feeds WHERE id = $1`, id)
 	if err != nil {
 		return fmt.Errorf("delete feed: %w", err)
 	}
@@ -424,9 +480,7 @@ func isDuplicateFeedURLError(err error) bool {
 	if pgErr.Code != "23505" {
 		return false
 	}
-	return pgErr.ConstraintName == "feeds_feed_url_key" ||
-		pgErr.ConstraintName == "feeds_user_id_feed_url_uidx" ||
-		strings.Contains(pgErr.ConstraintName, "feed_url")
+	return strings.Contains(pgErr.ConstraintName, "feed_url")
 }
 
 func isForeignKeyViolation(err error) bool {

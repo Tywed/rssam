@@ -63,7 +63,9 @@ func (f *fetchFeedStore) UpdateFeedRefreshMeta(_ context.Context, _ storage.Upda
 func (f *fetchFeedStore) SetFeedNextCheckAt(_ context.Context, _ int64, _ time.Time) error {
 	return nil
 }
-func (f *fetchFeedStore) DeleteFeed(_ context.Context, _ int64, _ int64) error { return nil }
+func (f *fetchFeedStore) DeleteFeed(_ context.Context, _ int64, _ int64) error    { return nil }
+func (f *fetchFeedStore) DeleteFeedByID(_ context.Context, _ int64) error         { return nil }
+func (f *fetchFeedStore) CountOwnedFeeds(_ context.Context, _ int64) (int, error) { return 0, nil }
 
 func TestFetchEntryContent_Smoke(t *testing.T) {
 	page := `<html><body><div class="entry-content"><p>Full article text.</p></div></body></html>`

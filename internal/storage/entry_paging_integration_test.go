@@ -59,7 +59,7 @@ func TestIntegration_EntryListPaging(t *testing.T) {
 }
 
 // The ORDER BY expression must match the indexed expression from migration
-// 0034 or the planner sorts the whole user's set again.
+// 0050 or the planner sorts the whole user's set again.
 func TestIntegration_EntryListUsesSortIndex(t *testing.T) {
 	store := testStore(t)
 	ctx := context.Background()
@@ -71,7 +71,10 @@ func TestIntegration_EntryListUsesSortIndex(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	if _, err := tx.Exec(ctx, "SET LOCAL enable_seqscan = off"); err != nil {
+	// Stale statistics on a tiny table can make the planner prefer
+	// user_entries_user_feed_status_idx plus a sort; the test asserts that
+	// an ordered index path exists, so sorting is priced out.
+	if _, err := tx.Exec(ctx, "SET LOCAL enable_seqscan = off; SET LOCAL enable_sort = off"); err != nil {
 		t.Fatal(err)
 	}
 	unread := EntryStatusUnread
@@ -79,14 +82,14 @@ func TestIntegration_EntryListUsesSortIndex(t *testing.T) {
 		name  string
 		where string
 	}{
-		{"status", "user_id = $1 AND status = $2"},
-		{"all", "user_id = $1 AND status <> $2"},
+		{"status", "ue.user_id = $1 AND ue.status = $2"},
+		{"all", "ue.user_id = $1 AND ue.status <> $2"},
 	} {
 		args := []any{owner.ID, unread}
 		if tc.name == "all" {
 			args[1] = EntryStatusRemoved
 		}
-		rows, err := tx.Query(ctx, "EXPLAIN SELECT id FROM entries WHERE "+tc.where+" ORDER BY "+entryOrderClause(EntrySortNewest)+" LIMIT 51", args...)
+		rows, err := tx.Query(ctx, "EXPLAIN SELECT ue.entry_id FROM user_entries ue WHERE "+tc.where+" ORDER BY "+entryOrderClause(EntrySortNewest)+" LIMIT 51", args...)
 		if err != nil {
 			t.Fatal(err)
 		}

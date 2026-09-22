@@ -103,7 +103,7 @@ func TestIntegration_WebhookOnSuccessEntry_ResolvesAcrossWebhooks(t *testing.T) 
 	}
 
 	// Entry 1: delete keeps the payload but removes the entry.
-	if err := store.MarkEntryRemovedKeepPayload(ctx, entries[1].ID); err != nil {
+	if err := store.MarkEntryRemovedKeepPayload(ctx, owner.ID, entries[1].ID); err != nil {
 		t.Fatal(err)
 	}
 	e1, err := store.GetEntry(ctx, owner.ID, entries[1].ID)
@@ -115,7 +115,7 @@ func TestIntegration_WebhookOnSuccessEntry_ResolvesAcrossWebhooks(t *testing.T) 
 	}
 
 	// Entry 2: mark_read only flips unread → read.
-	if err := store.MarkEntryReadIfActive(ctx, entries[2].ID); err != nil {
+	if err := store.MarkEntryReadIfActive(ctx, owner.ID, entries[2].ID); err != nil {
 		t.Fatal(err)
 	}
 	e2, err := store.GetEntry(ctx, owner.ID, entries[2].ID)
@@ -126,7 +126,7 @@ func TestIntegration_WebhookOnSuccessEntry_ResolvesAcrossWebhooks(t *testing.T) 
 		t.Fatalf("read entry: status=%q title=%q", e2.Status, e2.Title)
 	}
 	// ...and is idempotent for non-unread rows.
-	if err := store.MarkEntryReadIfActive(ctx, entries[1].ID); err != nil {
+	if err := store.MarkEntryReadIfActive(ctx, owner.ID, entries[1].ID); err != nil {
 		t.Fatal(err)
 	}
 	e1, _ = store.GetEntry(ctx, owner.ID, entries[1].ID)

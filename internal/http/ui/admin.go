@@ -203,6 +203,8 @@ type adminSystemInfo struct {
 	DBSizeBytes   int64
 	TotalEntries  int
 	TotalUnread   int
+	Subscriptions int
+	UserEntries   int
 	AuditRows     int
 	BinaryPath    string
 	EnvFile       string
@@ -271,6 +273,8 @@ func (h *Handler) handleAdminSystem(w http.ResponseWriter, r *http.Request) {
 		if err == nil {
 			info.TotalEntries = summary.TotalEntries
 			info.TotalUnread = summary.TotalUnread
+			info.Subscriptions = summary.TotalSubscriptions
+			info.UserEntries = summary.TotalUserEntries
 			jobs, jerr := h.cfg.AdminFeeds.PollFeedJobCounts(r.Context())
 			if jerr != nil {
 				jobs = storage.PollFeedJobCounts{}
@@ -302,8 +306,7 @@ func (h *Handler) handleAdminHashEntries(w http.ResponseWriter, r *http.Request)
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
-	p, _ := principal(r)
-	n, err := h.collapseEntries(r, p.UserID, nil, nil, true)
+	n, err := h.collapseEntries(r, 0, nil, nil, true)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

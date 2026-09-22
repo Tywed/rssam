@@ -36,9 +36,13 @@ type Category struct {
 	UpdatedAt time.Time
 }
 
+// Feed is a catalog row shared by every subscriber. OwnerID is the user who
+// added it (0 once that user is gone). CategoryID and WebhookID belong to
+// the subscription of the user the feed was loaded for; catalog loads
+// (GetFeedByID, ListAllFeeds) leave them nil.
 type Feed struct {
 	ID                 int64
-	UserID             int64
+	OwnerID            int64
 	FeedURL            string
 	FeedType           string
 	Title              string
@@ -89,6 +93,9 @@ type Job struct {
 	UpdatedAt time.Time
 }
 
+// Entry is stored once per feed; Status and Starred are the state of the
+// user it was loaded for (user_entries) — "unread"/false on rows returned
+// by CreateEntries.
 type Entry struct {
 	ID              int64
 	FeedID          int64
@@ -108,12 +115,19 @@ type Entry struct {
 
 type Enclosure struct {
 	ID               int64
-	UserID           int64
 	EntryID          int64
 	URL              string
 	Size             int64
 	MIMEType         string
 	MediaProgression int
+}
+
+type Subscription struct {
+	UserID     int64
+	FeedID     int64
+	CategoryID *int64
+	WebhookID  *int64
+	CreatedAt  time.Time
 }
 
 type Filter struct {
@@ -245,10 +259,14 @@ type CategoryStore interface {
 	ReorderCategories(ctx context.Context, userID int64, ids []int64) error
 }
 
+// FeedStore reads the catalog through the caller's subscriptions: every
+// userID-scoped method sees only feeds the user is subscribed to and returns
+// the subscription's category/webhook.
 type FeedStore interface {
+	// CreateFeed adds a catalog row owned by userID and subscribes them.
 	CreateFeed(ctx context.Context, userID int64, params CreateFeedParams) (Feed, error)
 	GetFeed(ctx context.Context, userID int64, id int64) (Feed, error)
-	GetFeedByID(ctx context.Context, id int64) (Feed, error) // internal/worker: no tenant check
+	GetFeedByID(ctx context.Context, id int64) (Feed, error) // catalog row, no subscription
 	ListFeeds(ctx context.Context, userID int64, limit, offset int) ([]Feed, int, error)
 	ListFeedsByCategory(ctx context.Context, userID, categoryID int64) ([]Feed, error)
 	ListFeedsByCategoryPaginated(ctx context.Context, userID, categoryID int64, limit, offset int) ([]Feed, int, error)
@@ -258,6 +276,10 @@ type FeedStore interface {
 	FeedCountsByCategory(ctx context.Context, userID int64) (FeedCategoryCounts, error)
 	CountFeedStatuses(ctx context.Context, userID int64) (errors, inactive int, err error)
 	ListAllFeeds(ctx context.Context, limit int) ([]Feed, error)
+	// CountOwnedFeeds is the editor quota counter: catalog rows added by userID.
+	CountOwnedFeeds(ctx context.Context, userID int64) (int, error)
+	// UpdateFeed writes the catalog columns and the caller's own
+	// category/webhook; the caller must be subscribed.
 	UpdateFeed(ctx context.Context, userID int64, params UpdateFeedParams) (Feed, error)
 	UpdateFeedRefreshMeta(ctx context.Context, params UpdateFeedRefreshMetaParams) error
 	UpdateFeedIcon(ctx context.Context, userID, feedID int64, iconURL string, iconData []byte) error
@@ -267,7 +289,27 @@ type FeedStore interface {
 	ResetErrorFeedPollCircuits(ctx context.Context) (int64, error)
 	SetFeedManualPaused(ctx context.Context, feedID int64, paused bool) error
 	BulkUpdateFeedsByCategory(ctx context.Context, userID, categoryID int64, update BulkFeedUpdate) (feedIDs []int64, count int, err error)
+	// DeleteFeed drops the caller's subscription and, when nobody else is
+	// subscribed, the catalog row with its entries.
 	DeleteFeed(ctx context.Context, userID int64, id int64) error
+	// DeleteFeedByID removes the catalog row for every subscriber (admin).
+	DeleteFeedByID(ctx context.Context, id int64) error
+}
+
+// SubscriptionStore manages who reads which catalog feed.
+type SubscriptionStore interface {
+	// Subscribe adds the subscription and gives the user the feed's current
+	// entries (the newest SubscribeUnreadBackfill unread, the rest read).
+	// An existing subscription is left as is (ErrAlreadySubscribed).
+	Subscribe(ctx context.Context, userID, feedID int64, params SubscriptionParams) (Subscription, error)
+	UpdateSubscription(ctx context.Context, userID, feedID int64, params SubscriptionParams) (Subscription, error)
+	ListFeedSubscribers(ctx context.Context, feedID int64) ([]Subscription, error)
+	ListSubscriptions(ctx context.Context, userID int64) ([]Subscription, error)
+}
+
+type SubscriptionParams struct {
+	CategoryID *int64
+	WebhookID  *int64
 }
 
 type JobStore interface {
@@ -295,7 +337,8 @@ type EntryDedupStore interface {
 }
 
 // CollapseEntriesParams selects which entries to convert to hash-only storage.
-// CategoryID 0 means uncategorized feeds; nil means all categories.
+// UserID 0 means the whole catalog; otherwise the user's subscriptions, and
+// CategoryID 0 means their uncategorized feeds (nil: all categories).
 type CollapseEntriesParams struct {
 	UserID     int64
 	FeedID     *int64
@@ -315,9 +358,9 @@ type EntryStore interface {
 	ListEntries(ctx context.Context, userID int64, filter ListEntriesFilter) ([]Entry, int, error)
 	ListFeedEntries(ctx context.Context, userID int64, feedID int64, filter ListEntriesFilter) ([]Entry, int, error)
 	SearchEntries(ctx context.Context, userID int64, filter SearchEntriesFilter) ([]Entry, int, error)
-	ListEnclosuresByEntryIDs(ctx context.Context, userID int64, entryIDs []int64) (map[int64][]Enclosure, error)
-	CountUnreadByFeed(ctx context.Context, feedID int64) (int, error)
-	CountUnreadByCategory(ctx context.Context, categoryID int64) (int, error)
+	ListEnclosuresByEntryIDs(ctx context.Context, entryIDs []int64) (map[int64][]Enclosure, error)
+	CountUnreadByFeed(ctx context.Context, userID, feedID int64) (int, error)
+	CountUnreadByCategory(ctx context.Context, userID, categoryID int64) (int, error)
 	CountUnreadGlobalForUser(ctx context.Context, userID int64) (int, error)
 	UnreadCountsForUser(ctx context.Context, userID int64) (feedCounts map[int64]int, categoryCounts map[int64]int, err error)
 	BulkUpdateEntries(ctx context.Context, userID int64, entryIDs []int64, update BulkEntryUpdate) (int, error)
@@ -467,7 +510,6 @@ type CreateEntryParams struct {
 	Author      *string
 	PublishedAt *time.Time
 	Hash        string
-	Status      string
 	Enclosures  []CreateEnclosureParams
 }
 

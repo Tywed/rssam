@@ -93,7 +93,7 @@ func (s *Server) handleListEntries(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	out, err := s.entriesToDTOs(r.Context(), p.UserID, entries)
+	out, err := s.entriesToDTOs(r.Context(), entries)
 	if err != nil {
 		s.log.ErrorContext(r.Context(), "load entry enclosures failed", "err", err)
 		writeError(w, http.StatusInternalServerError, "internal server error")
@@ -112,7 +112,7 @@ func (s *Server) handleGetEntry(w http.ResponseWriter, r *http.Request) {
 		s.storeError(w, r, err, "entry not found", "get entry failed")
 		return
 	}
-	dto, err := s.entryToDTO(r.Context(), p.UserID, entry)
+	dto, err := s.entryToDTO(r.Context(), entry)
 	if err != nil {
 		s.log.ErrorContext(r.Context(), "load entry enclosures failed", "err", err)
 		writeError(w, http.StatusInternalServerError, "internal server error")
@@ -148,7 +148,7 @@ func (s *Server) handleListFeedEntries(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
-	out, err := s.entriesToDTOs(r.Context(), p.UserID, entries)
+	out, err := s.entriesToDTOs(r.Context(), entries)
 	if err != nil {
 		s.log.ErrorContext(r.Context(), "load entry enclosures failed", "err", err)
 		writeError(w, http.StatusInternalServerError, "internal server error")

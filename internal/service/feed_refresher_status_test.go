@@ -84,7 +84,8 @@ type statusPublisher struct {
 	errs  []error
 }
 
-func (p *statusPublisher) PublishNewEntries(context.Context, storage.Feed, []storage.Entry) {}
+func (p *statusPublisher) PublishNewEntries(context.Context, storage.Feed, []storage.Subscription, []storage.Entry) {
+}
 func (p *statusPublisher) PublishFeedStatusChanged(feed storage.Feed, err error) {
 	p.feeds = append(p.feeds, feed)
 	p.errs = append(p.errs, err)
@@ -108,6 +109,32 @@ type retryAfterErr struct{ at time.Time }
 func (e retryAfterErr) Error() string      { return "rate limited" }
 func (e retryAfterErr) RetryAt() time.Time { return e.at }
 
+// memSubscribers answers ListFeedSubscribers with one subscription per
+// feed: the owner with the feed's CategoryID/WebhookID.
+type memSubscribers struct{}
+
+func (memSubscribers) Subscribe(context.Context, int64, int64, storage.SubscriptionParams) (storage.Subscription, error) {
+	return storage.Subscription{}, nil
+}
+func (memSubscribers) UpdateSubscription(context.Context, int64, int64, storage.SubscriptionParams) (storage.Subscription, error) {
+	return storage.Subscription{}, nil
+}
+func (memSubscribers) ListSubscriptions(context.Context, int64) ([]storage.Subscription, error) {
+	return nil, nil
+}
+
+type feedSubscribers struct {
+	memSubscribers
+	feed storage.Feed
+}
+
+func (m feedSubscribers) ListFeedSubscribers(_ context.Context, feedID int64) ([]storage.Subscription, error) {
+	if feedID != m.feed.ID {
+		return nil, nil
+	}
+	return []storage.Subscription{{UserID: m.feed.OwnerID, FeedID: feedID, CategoryID: m.feed.CategoryID, WebhookID: m.feed.WebhookID}}, nil
+}
+
 func newStatusRefresher(h reader.Handler, feed storage.Feed) (*FeedRefresher, *statusFeedStore, *statusPollLog, *statusPublisher) {
 	fs := &statusFeedStore{feed: feed}
 	pl := &statusPollLog{}
@@ -116,6 +143,7 @@ func newStatusRefresher(h reader.Handler, feed storage.Feed) (*FeedRefresher, *s
 		Feeds:                   fs,
 		Entries:                 &memEntryCreate{},
 		Dedup:                   &memDedupStore{},
+		Subscribers:             feedSubscribers{feed: feed},
 		Registry:                reader.NewHandlerRegistry(h),
 		PollLog:                 pl,
 		Realtime:                pub,
@@ -127,7 +155,7 @@ func newStatusRefresher(h reader.Handler, feed storage.Feed) (*FeedRefresher, *s
 }
 
 func TestRefreshLoadedFeed_FailurePublishesPersistedStateAndLogsPoll(t *testing.T) {
-	feed := storage.Feed{ID: 7, UserID: 1, FeedURL: "https://example.com/f.xml", IntervalMinutes: 10, ParsingErrorCount: 2}
+	feed := storage.Feed{ID: 7, OwnerID: 1, FeedURL: "https://example.com/f.xml", IntervalMinutes: 10, ParsingErrorCount: 2}
 	r, fs, pl, pub := newStatusRefresher(&stubHandler{err: errors.New("boom 503")}, feed)
 
 	_, err := r.RefreshLoadedFeed(context.Background(), feed)
@@ -168,7 +196,7 @@ func TestRefreshLoadedFeed_FailurePublishesPersistedStateAndLogsPoll(t *testing.
 }
 
 func TestRefreshLoadedFeed_SuccessPublishesClearedStateAndLogsPoll(t *testing.T) {
-	feed := storage.Feed{ID: 8, UserID: 1, FeedURL: "https://example.com/f.xml", IntervalMinutes: 15, ParsingErrorCount: 2, LastError: "old"}
+	feed := storage.Feed{ID: 8, OwnerID: 1, FeedURL: "https://example.com/f.xml", IntervalMinutes: 15, ParsingErrorCount: 2, LastError: "old"}
 	h := &stubHandler{res: reader.FetchResponse{Entries: []storage.CreateEntryParams{
 		{Title: "a", URL: "https://example.com/a", Hash: "a"},
 		{Title: "b", URL: "https://example.com/b", Hash: "b"},
@@ -211,7 +239,7 @@ func TestRefreshLoadedFeed_SuccessPublishesClearedStateAndLogsPoll(t *testing.T)
 }
 
 func TestRefreshLoadedFeed_HashOnlyFeedStampsLastEntry(t *testing.T) {
-	feed := storage.Feed{ID: 9, UserID: 1, FeedURL: "https://example.com/h.xml", IntervalMinutes: 15, StoreHashOnly: true}
+	feed := storage.Feed{ID: 9, OwnerID: 1, FeedURL: "https://example.com/h.xml", IntervalMinutes: 15, StoreHashOnly: true}
 	h := &stubHandler{res: reader.FetchResponse{Entries: []storage.CreateEntryParams{
 		{Title: "a", URL: "https://example.com/a", Hash: "a"},
 	}}}
@@ -233,7 +261,7 @@ func TestRefreshLoadedFeed_HashOnlyFeedStampsLastEntry(t *testing.T) {
 }
 
 func TestRefreshLoadedFeed_RetryAfterIsLoggedButNotAnError(t *testing.T) {
-	feed := storage.Feed{ID: 9, UserID: 1, FeedURL: "https://example.com/f.xml", IntervalMinutes: 5}
+	feed := storage.Feed{ID: 9, OwnerID: 1, FeedURL: "https://example.com/f.xml", IntervalMinutes: 5}
 	r, fs, pl, pub := newStatusRefresher(&stubHandler{err: retryAfterErr{at: time.Now().Add(time.Hour)}}, feed)
 
 	_, err := r.RefreshLoadedFeed(context.Background(), feed)
@@ -249,7 +277,7 @@ func TestRefreshLoadedFeed_RetryAfterIsLoggedButNotAnError(t *testing.T) {
 }
 
 func TestRefreshLoadedFeed_NoPollLogConfigured(t *testing.T) {
-	feed := storage.Feed{ID: 10, UserID: 1, FeedURL: "https://example.com/f.xml", IntervalMinutes: 5}
+	feed := storage.Feed{ID: 10, OwnerID: 1, FeedURL: "https://example.com/f.xml", IntervalMinutes: 5}
 	r, _, _, _ := newStatusRefresher(&stubHandler{}, feed)
 	r.PollLog = nil
 	r.Realtime = nil
@@ -259,7 +287,7 @@ func TestRefreshLoadedFeed_NoPollLogConfigured(t *testing.T) {
 }
 
 func TestRefreshLoadedFeed_GoneFeedIsPausedForGood(t *testing.T) {
-	feed := storage.Feed{ID: 10, UserID: 1, FeedURL: "https://example.com/f.xml", IntervalMinutes: 10}
+	feed := storage.Feed{ID: 10, OwnerID: 1, FeedURL: "https://example.com/f.xml", IntervalMinutes: 10}
 	r, fs, pl, pub := newStatusRefresher(&stubHandler{err: reader.ErrFeedGone}, feed)
 
 	_, err := r.RefreshLoadedFeed(context.Background(), feed)
@@ -278,7 +306,7 @@ func TestRefreshLoadedFeed_GoneFeedIsPausedForGood(t *testing.T) {
 }
 
 func TestRefreshLoadedFeed_SourceFreshnessPostponesNextCheck(t *testing.T) {
-	feed := storage.Feed{ID: 11, UserID: 1, FeedURL: "https://example.com/f.xml", IntervalMinutes: 15}
+	feed := storage.Feed{ID: 11, OwnerID: 1, FeedURL: "https://example.com/f.xml", IntervalMinutes: 15}
 	h := &stubHandler{res: reader.FetchResponse{MinNextCheck: time.Now().Add(2 * time.Hour)}}
 	r, fs, _, _ := newStatusRefresher(h, feed)
 	if _, err := r.RefreshLoadedFeed(context.Background(), feed); err != nil {

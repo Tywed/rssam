@@ -49,11 +49,11 @@ func (s *entryReadStore) ListFeedEntries(context.Context, int64, int64, storage.
 func (s *entryReadStore) SearchEntries(context.Context, int64, storage.SearchEntriesFilter) ([]storage.Entry, int, error) {
 	return nil, 0, nil
 }
-func (s *entryReadStore) ListEnclosuresByEntryIDs(context.Context, int64, []int64) (map[int64][]storage.Enclosure, error) {
+func (s *entryReadStore) ListEnclosuresByEntryIDs(context.Context, []int64) (map[int64][]storage.Enclosure, error) {
 	return nil, nil
 }
-func (s *entryReadStore) CountUnreadByFeed(context.Context, int64) (int, error) { return 0, nil }
-func (s *entryReadStore) CountUnreadByCategory(context.Context, int64) (int, error) {
+func (s *entryReadStore) CountUnreadByFeed(context.Context, int64, int64) (int, error) { return 0, nil }
+func (s *entryReadStore) CountUnreadByCategory(context.Context, int64, int64) (int, error) {
 	return 0, nil
 }
 func (s *entryReadStore) CountUnreadGlobalForUser(context.Context, int64) (int, error) { return 0, nil }

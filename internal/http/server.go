@@ -112,6 +112,7 @@ type Dependencies struct {
 	StoreEntriesMode    string
 
 	DedupStore              storage.EntryDedupStore
+	SubscriptionStore       storage.SubscriptionStore
 	QueryMatcher            filter.QueryMatcher
 	CategoryPollHours       storage.CategoryPollHoursStore
 	CircuitBreakerThreshold int
@@ -315,10 +316,15 @@ func New(dep Dependencies) *Server {
 	if categoryPollHours == nil && dep.DB != nil {
 		categoryPollHours = storage.NewPostgresStore(dep.DB)
 	}
+	subscriptionStore := dep.SubscriptionStore
+	if subscriptionStore == nil && dep.DB != nil {
+		subscriptionStore = storage.NewPostgresStore(dep.DB)
+	}
 	refresher := &service.FeedRefresher{
 		Feeds:                   feedStore,
 		Entries:                 entryStore,
 		Dedup:                   dedupStore,
+		Subscribers:             subscriptionStore,
 		PollLog:                 pollLog,
 		PollHours:               categoryPollHours,
 		Registry:                registry,
@@ -337,7 +343,7 @@ func New(dep Dependencies) *Server {
 		Activity:                dep.FeedActivityStore,
 	}
 	if dep.WSEnabled {
-		refresher.Realtime = ws.NewPublisher(log, wsHub, entryStore)
+		refresher.Realtime = ws.NewPublisher(log, wsHub, entryStore, subscriptionStore)
 	}
 
 	var contentFetcher *service.ContentFetcher

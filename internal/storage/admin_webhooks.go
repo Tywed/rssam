@@ -41,7 +41,7 @@ type AdminWebhookSummary struct {
 	FailedTotal int
 }
 
-// WebhookBindingFeed is a feed linked to a webhook via feeds.webhook_id.
+// WebhookBindingFeed is a feed linked to a webhook via a subscription.
 type WebhookBindingFeed struct {
 	ID    int64
 	Title string
@@ -109,7 +109,7 @@ LEFT JOIN LATERAL (
 ) stats ON TRUE
 LEFT JOIN (
   SELECT webhook_id, COUNT(*)::int AS cnt
-  FROM feeds
+  FROM subscriptions
   WHERE webhook_id IS NOT NULL
   GROUP BY webhook_id
 ) feeds ON feeds.webhook_id = w.id
@@ -226,10 +226,11 @@ func (s *PostgresStore) GetAdminWebhook(ctx context.Context, userID, webhookID i
 
 func (s *PostgresStore) ListWebhookBindingFeeds(ctx context.Context, userID, webhookID int64) ([]WebhookBindingFeed, error) {
 	const q = `
-SELECT id, title
-FROM feeds
-WHERE user_id = $1 AND webhook_id = $2
-ORDER BY title ASC, id ASC`
+SELECT f.id, f.title
+FROM feeds f
+JOIN subscriptions s ON s.feed_id = f.id
+WHERE s.user_id = $1 AND s.webhook_id = $2
+ORDER BY f.title ASC, f.id ASC`
 	rows, err := s.db.Query(ctx, q, userID, webhookID)
 	if err != nil {
 		return nil, fmt.Errorf("list webhook binding feeds: %w", err)
@@ -305,7 +306,7 @@ SELECT
       JOIN filter_matches fm ON fm.filter_id = fa.filter_id AND fm.entry_id = wl.entry_id
       WHERE fa.action_type = 'webhook' AND fa.action_param = wl.webhook_id::text
     ) THEN 'filter'
-    WHEN f.webhook_id = wl.webhook_id THEN 'feed'
+    WHEN EXISTS (SELECT 1 FROM subscriptions sub WHERE sub.feed_id = f.id AND sub.webhook_id = wl.webhook_id) THEN 'feed'
     ELSE 'unknown'
   END,
   COALESCE((

@@ -80,8 +80,8 @@ func TestIntegration_EntryDedupAndCollapse(t *testing.T) {
 	if err := store.EnqueueWebhookLogs(ctx, []int64{wh.ID}, entries[3].ID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.CollapseEntriesToHashes(ctx, CollapseEntriesParams{}); err == nil {
-		t.Fatal("collapse without user accepted")
+	if _, err := store.CollapseEntriesToHashes(ctx, CollapseEntriesParams{CategoryID: ptr(int64(0))}); err == nil {
+		t.Fatal("category collapse without user accepted")
 	}
 	n64, err := store.CollapseEntriesToHashes(ctx, CollapseEntriesParams{UserID: owner.ID, OnlyHashOnlyFeeds: true})
 	if err != nil || n64 != 2 {
@@ -139,30 +139,27 @@ func TestIntegration_EnclosuresUnreadCountsAndMarkAll(t *testing.T) {
 	if err != nil || len(entries) != 2 {
 		t.Fatalf("create entries: %v err=%v", entries, err)
 	}
-	if err := store.CreateEnclosures(ctx, owner.ID, entries[1].ID, []CreateEnclosureParams{{URL: "https://example.com/b.jpg", MIMEType: "image/jpeg"}}); err != nil {
+	if err := store.CreateEnclosures(ctx, entries[1].ID, []CreateEnclosureParams{{URL: "https://example.com/b.jpg", MIMEType: "image/jpeg"}}); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.CreateEnclosures(ctx, owner.ID, entries[1].ID, []CreateEnclosureParams{{URL: " "}}); err != nil {
+	if err := store.CreateEnclosures(ctx, entries[1].ID, []CreateEnclosureParams{{URL: " "}}); err != nil {
 		t.Fatalf("all-blank enclosures must be a no-op: %v", err)
 	}
-	encs, err := store.ListEnclosuresByEntryIDs(ctx, owner.ID, []int64{entries[0].ID, entries[1].ID})
+	encs, err := store.ListEnclosuresByEntryIDs(ctx, []int64{entries[0].ID, entries[1].ID})
 	if err != nil || len(encs[entries[0].ID]) != 1 || len(encs[entries[1].ID]) != 1 || encs[entries[0].ID][0].MIMEType != "audio/mpeg" || encs[entries[0].ID][0].Size != 10 {
 		t.Fatalf("enclosures: %v err=%v", encs, err)
 	}
-	if foreign, _ := store.ListEnclosuresByEntryIDs(ctx, other.ID, []int64{entries[0].ID}); len(foreign) != 0 {
-		t.Fatalf("foreign enclosures visible: %v", foreign)
-	}
-	if empty, err := store.ListEnclosuresByEntryIDs(ctx, owner.ID, nil); err != nil || len(empty) != 0 {
+	if empty, err := store.ListEnclosuresByEntryIDs(ctx, nil); err != nil || len(empty) != 0 {
 		t.Fatalf("empty ids: %v err=%v", empty, err)
 	}
 
 	if _, _, err := store.CreateEntries(ctx, loose.ID, []CreateEntryParams{{Title: "l", URL: fmt.Sprintf("https://example.com/l/%d", suffix), Hash: fmt.Sprintf("l-%d", suffix)}}); err != nil {
 		t.Fatal(err)
 	}
-	if n, err := store.CountUnreadByFeed(ctx, feed.ID); err != nil || n != 2 {
+	if n, err := store.CountUnreadByFeed(ctx, owner.ID, feed.ID); err != nil || n != 2 {
 		t.Fatalf("unread by feed=%d err=%v", n, err)
 	}
-	if n, err := store.CountUnreadByCategory(ctx, cat.ID); err != nil || n != 2 {
+	if n, err := store.CountUnreadByCategory(ctx, owner.ID, cat.ID); err != nil || n != 2 {
 		t.Fatalf("unread by category=%d err=%v", n, err)
 	}
 	if n, err := store.CountUnreadGlobalForUser(ctx, owner.ID); err != nil || n != 3 {
@@ -178,7 +175,7 @@ func TestIntegration_EnclosuresUnreadCountsAndMarkAll(t *testing.T) {
 	if n, err := store.MarkAllCategoryEntriesRead(ctx, owner.ID, cat.ID); err != nil || n != 2 {
 		t.Fatalf("category mark-all n=%d err=%v", n, err)
 	}
-	if n, _ := store.CountUnreadByCategory(ctx, cat.ID); n != 0 {
+	if n, _ := store.CountUnreadByCategory(ctx, owner.ID, cat.ID); n != 0 {
 		t.Fatalf("still unread in category: %d", n)
 	}
 	if n, err := store.MarkAllEntriesRead(ctx, owner.ID); err != nil || n != 1 {

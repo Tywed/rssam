@@ -13,9 +13,10 @@ import (
 // AdminFeedRow is a feed with health and storage stats for the admin dashboard.
 type AdminFeedRow struct {
 	Feed
-	EntryCount   int
-	UnreadCount  int
-	HasQueuedJob bool
+	EntryCount      int
+	UnreadCount     int
+	SubscriberCount int
+	HasQueuedJob    bool
 }
 
 // AdminFeedSummary holds aggregate counters for the admin feeds dashboard.
@@ -30,6 +31,10 @@ type AdminFeedSummary struct {
 	SilentCount  int
 	TotalEntries int
 	TotalUnread  int
+	// TotalSubscriptions / TotalUserEntries size the per-user tables of
+	// the shared catalog (estimates, like TotalEntries).
+	TotalSubscriptions int
+	TotalUserEntries   int
 }
 
 // PollFeedJobCounts is a snapshot of poll_feed jobs in the queue.
@@ -96,17 +101,14 @@ WHERE f.id = $1`
 }
 
 const adminFeedSelectCols = `
-  f.id, f.user_id, f.feed_url, f.feed_type, f.title, f.category_id, f.interval_minutes,
-  f.etag, f.last_modified, f.last_checked_at, f.last_error, f.parsing_error_count, f.poll_paused, f.manual_paused, f.store_hash_only, f.adaptive_interval, f.next_check_at,
-  f.bridge_state, f.scraper_rules, f.rewrite_rules, f.blocked_rules, f.keep_rules,
-  f.fetch_via_proxy, f.tls_insecure, f.crawler, f.user_agent, f.webhook_id, f.icon_url, f.icon_data, f.last_entry_at,
-  f.created_at, f.updated_at,
+  ` + feedColumns + `, f.icon_data,
   COALESCE((SELECT COUNT(*)::int FROM entries e WHERE e.feed_id = f.id), 0),
-  COALESCE((SELECT COUNT(*)::int FROM entries e WHERE e.feed_id = f.id AND e.status = 'unread'), 0),
+  COALESCE((SELECT COUNT(*)::int FROM user_entries ue WHERE ue.feed_id = f.id AND ue.status = 'unread'), 0),
+  COALESCE((SELECT COUNT(*)::int FROM subscriptions s WHERE s.feed_id = f.id), 0),
   EXISTS(SELECT 1 FROM jobs j WHERE j.type = 'poll_feed' AND j.feed_id = f.id)`
 
 const adminFeedFromJoins = `
-FROM feeds f`
+FROM feeds f ` + catalogJoin
 
 // adminFeedsSilentWhere: a feed that polls fine but has not produced a new
 // item (entry or dedup hash) for silentAfter. Feeds younger than that count
@@ -174,7 +176,7 @@ func adminFeedsOrderClause(sortKey, order string) string {
 	case "entries":
 		return fmt.Sprintf("COALESCE((SELECT COUNT(*) FROM entries e WHERE e.feed_id = f.id), 0) %s, f.id ASC", dir)
 	case "unread":
-		return fmt.Sprintf("COALESCE((SELECT COUNT(*) FROM entries e WHERE e.feed_id = f.id AND e.status = 'unread'), 0) %s, f.id ASC", dir)
+		return fmt.Sprintf("COALESCE((SELECT COUNT(*) FROM user_entries ue WHERE ue.feed_id = f.id AND ue.status = 'unread'), 0) %s, f.id ASC", dir)
 	default:
 		return fmt.Sprintf("f.title %s, f.id ASC", dir)
 	}
@@ -182,43 +184,7 @@ func adminFeedsOrderClause(sortKey, order string) string {
 
 func scanAdminFeedRow(rows pgx.Rows) (AdminFeedRow, error) {
 	var row AdminFeedRow
-	err := rows.Scan(
-		&row.ID,
-		&row.UserID,
-		&row.FeedURL,
-		&row.FeedType,
-		&row.Title,
-		&row.CategoryID,
-		&row.IntervalMinutes,
-		&row.ETag,
-		&row.LastModified,
-		&row.LastCheckedAt,
-		&row.LastError,
-		&row.ParsingErrorCount,
-		&row.PollPaused,
-		&row.ManualPaused,
-		&row.StoreHashOnly,
-		&row.AdaptiveInterval,
-		&row.NextCheckAt,
-		&row.BridgeState,
-		&row.ScraperRules,
-		&row.RewriteRules,
-		&row.BlockedRules,
-		&row.KeepRules,
-		&row.FetchViaProxy,
-		&row.TLSInsecure,
-		&row.Crawler,
-		&row.UserAgent,
-		&row.WebhookID,
-		&row.IconURL,
-		&row.IconData,
-		&row.LastEntryAt,
-		&row.CreatedAt,
-		&row.UpdatedAt,
-		&row.EntryCount,
-		&row.UnreadCount,
-		&row.HasQueuedJob,
-	)
+	err := rows.Scan(append(feedScanTargets(&row.Feed), &row.IconData, &row.EntryCount, &row.UnreadCount, &row.SubscriberCount, &row.HasQueuedJob)...)
 	return row, err
 }
 
@@ -313,7 +279,9 @@ SELECT
       AND COALESCE(last_entry_at, created_at) < now() - make_interval(secs => $1::bigint)
   )::int,
   COALESCE((SELECT GREATEST(reltuples, 0)::bigint FROM pg_class WHERE oid = 'public.entries'::regclass), 0)::int,
-  COALESCE((SELECT COUNT(*)::int FROM entries WHERE status = 'unread'), 0)
+  COALESCE((SELECT COUNT(*)::int FROM user_entries WHERE status = 'unread'), 0),
+  COALESCE((SELECT COUNT(*)::int FROM subscriptions), 0),
+  COALESCE((SELECT GREATEST(reltuples, 0)::bigint FROM pg_class WHERE oid = 'public.user_entries'::regclass), 0)::int
 FROM feeds`
 	var sum AdminFeedSummary
 	err := s.db.QueryRow(ctx, q, silentSeconds).Scan(
@@ -325,6 +293,8 @@ FROM feeds`
 		&sum.SilentCount,
 		&sum.TotalEntries,
 		&sum.TotalUnread,
+		&sum.TotalSubscriptions,
+		&sum.TotalUserEntries,
 	)
 	if err != nil {
 		return AdminFeedSummary{}, fmt.Errorf("admin feed summary: %w", err)

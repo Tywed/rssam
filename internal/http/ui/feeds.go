@@ -364,7 +364,7 @@ func (h *Handler) feedQuota(r *http.Request, p auth.Principal, intervalMinutes i
 	if !creating || h.cfg.Quotas.MaxFeedsPerEditor <= 0 || p.IsAdmin() {
 		return nil
 	}
-	_, total, err := h.cfg.Feeds.ListFeeds(r.Context(), p.UserID, 1, 0)
+	total, err := h.cfg.Feeds.CountOwnedFeeds(r.Context(), p.UserID)
 	if err != nil {
 		return err
 	}

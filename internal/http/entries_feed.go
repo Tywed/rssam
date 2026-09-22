@@ -51,7 +51,7 @@ func (s *Server) handleGetFeedEntry(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	dto, err := s.entryToDTO(r.Context(), p.UserID, entry)
+	dto, err := s.entryToDTO(r.Context(), entry)
 	if err != nil {
 		s.log.ErrorContext(r.Context(), "load entry enclosures failed", "err", err)
 		writeError(w, http.StatusInternalServerError, "internal server error")
@@ -108,7 +108,7 @@ func (s *Server) handleUpdateFeedEntry(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	dto, err := s.entryToDTO(r.Context(), p.UserID, entry)
+	dto, err := s.entryToDTO(r.Context(), entry)
 	if err != nil {
 		s.log.ErrorContext(r.Context(), "load entry enclosures failed", "err", err)
 		writeError(w, http.StatusInternalServerError, "internal server error")

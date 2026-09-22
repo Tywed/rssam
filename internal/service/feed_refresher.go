@@ -20,6 +20,10 @@ type FeedRefresher struct {
 	Entries  storage.EntryStore
 	Dedup    storage.EntryDedupStore
 	Registry *reader.HandlerRegistry
+	// Subscribers lists who reads a feed: filters, webhooks and realtime
+	// events are applied per subscriber (nil = nobody, as for a feed with no
+	// subscribers).
+	Subscribers storage.SubscriptionStore
 
 	Filters storage.FilterStore
 	Matches storage.FilterMatchStore
@@ -69,7 +73,9 @@ func (r *FeedRefresher) feedUsesHashOnlyStorage(feed storage.Feed) bool {
 }
 
 type RealtimePublisher interface {
-	PublishNewEntries(ctx context.Context, feed storage.Feed, newEntries []storage.Entry)
+	// PublishNewEntries notifies every subscriber in subs; feed carries the
+	// catalog row, each subscription its own category.
+	PublishNewEntries(ctx context.Context, feed storage.Feed, subs []storage.Subscription, newEntries []storage.Entry)
 	// PublishFeedStatusChanged receives the feed as it looks *after* the poll
 	// was persisted (ParsingErrorCount, PollPaused, NextCheckAt, LastError,
 	// LastCheckedAt are already updated on the copy).
@@ -217,7 +223,8 @@ func (r *FeedRefresher) refreshLoaded(ctx context.Context, feed storage.Feed, ma
 
 	started := time.Now()
 	now := started.UTC()
-	window, hasWindow := r.categoryPollWindow(ctx, feed)
+	subs := r.feedSubscribers(ctx, feedID)
+	window, hasWindow := r.pollWindow(ctx, subs, now)
 	if !manual && hasWindow && !window.Contains(now) {
 		return 0, ErrOutsidePollWindow{At: window.NextOpen(now)}
 	}
@@ -277,7 +284,7 @@ func (r *FeedRefresher) refreshLoaded(ctx context.Context, feed storage.Feed, ma
 
 		var insertedEntries []storage.Entry
 		if r.feedUsesHashOnlyStorage(feed) {
-			inserted, insertedEntries, fresh, err = r.processEntriesDedupOnly(ctx, feed, entries)
+			inserted, insertedEntries, fresh, err = r.processEntriesDedupOnly(ctx, feed, subs, entries)
 		} else {
 			inserted, insertedEntries, err = r.Entries.CreateEntries(ctx, feedID, entries)
 			fresh = inserted
@@ -292,9 +299,9 @@ func (r *FeedRefresher) refreshLoaded(ctx context.Context, feed storage.Feed, ma
 			return 0, wrappedErr
 		}
 
-		r.applyFiltersBestEffort(ctx, feed, insertedEntries)
+		r.applyFiltersBestEffort(ctx, feed, subs, insertedEntries)
 		if r.Realtime != nil && len(insertedEntries) > 0 {
-			r.Realtime.PublishNewEntries(ctx, feed, insertedEntries)
+			r.Realtime.PublishNewEntries(ctx, feed, subs, insertedEntries)
 		}
 	}
 
@@ -355,6 +362,18 @@ func (r *FeedRefresher) refreshLoaded(ctx context.Context, feed storage.Feed, ma
 	return inserted, nil
 }
 
+func (r *FeedRefresher) feedSubscribers(ctx context.Context, feedID int64) []storage.Subscription {
+	if r.Subscribers == nil {
+		return nil
+	}
+	subs, err := r.Subscribers.ListFeedSubscribers(ctx, feedID)
+	if err != nil {
+		r.logger().Error("list feed subscribers failed", "feed_id", feedID, "err", err)
+		return nil
+	}
+	return subs
+}
+
 // movedFeedURL returns the permanent-redirect destination worth storing:
 // different from the current URL and still a plain http(s) feed address (a
 // hop onto a bridge domain would change the feed type under the user).
@@ -385,19 +404,28 @@ func bridgeStateJSON(st reader.BridgeState) []byte {
 	return b
 }
 
-func (r *FeedRefresher) applyFiltersBestEffort(ctx context.Context, feed storage.Feed, entries []storage.Entry) {
+// applyFiltersBestEffort runs every subscriber's filters over the new
+// entries and enqueues their subscription webhooks. The `query` rules are
+// evaluated once per distinct pattern set, filter actions per subscriber.
+func (r *FeedRefresher) applyFiltersBestEffort(ctx context.Context, feed storage.Feed, subs []storage.Subscription, entries []storage.Entry) {
 	if len(entries) == 0 {
 		return
 	}
-	if r.Filters == nil || r.Matches == nil || r.Engine == nil {
+	for _, sub := range subs {
+		r.applySubscriberFilters(ctx, feed, sub, entries)
+	}
+}
+
+func (r *FeedRefresher) applySubscriberFilters(ctx context.Context, feed storage.Feed, sub storage.Subscription, entries []storage.Entry) {
+	var filters []storage.Filter
+	if r.Filters != nil && r.Matches != nil && r.Engine != nil {
+		filters, _ = r.listEnabledFiltersCached(ctx, sub.UserID)
+	}
+	if len(filters) == 0 {
+		r.enqueueSubscriptionWebhookBestEffort(ctx, sub, entries)
 		return
 	}
-	filters, err := r.listEnabledFiltersCached(ctx, feed.UserID)
-	if err != nil || len(filters) == 0 {
-		r.enqueueFeedWebhooksBestEffort(ctx, feed, entries)
-		return
-	}
-	matchCtx := filter.MatchContext{FeedID: feed.ID, CategoryID: feed.CategoryID}
+	matchCtx := filter.MatchContext{FeedID: feed.ID, CategoryID: sub.CategoryID}
 	queryHits := r.queryHitsBestEffort(ctx, feed.ID, filters, entries)
 	now := time.Now().UTC()
 	for i, e := range entries {
@@ -425,10 +453,10 @@ func (r *FeedRefresher) applyFiltersBestEffort(ctx context.Context, feed storage
 			if inserted, err := r.Matches.CreateFilterMatches(ctx, toInsert); err == nil && inserted > 0 {
 				metrics.FilterMatchesTotal.Add(float64(inserted))
 			}
-			r.applyFilterActions(ctx, feed.UserID, e, filters, matchedFilterIDs)
+			r.applyFilterActions(ctx, sub.UserID, e, filters, matchedFilterIDs)
 		}
-		if feed.WebhookID != nil && r.WebhookLogs != nil {
-			_ = r.WebhookLogs.EnqueueWebhookLogs(ctx, []int64{*feed.WebhookID}, e.ID)
+		if sub.WebhookID != nil && r.WebhookLogs != nil {
+			_ = r.WebhookLogs.EnqueueWebhookLogs(ctx, []int64{*sub.WebhookID}, e.ID)
 		}
 	}
 }
@@ -481,11 +509,11 @@ func (r *FeedRefresher) queryHitsBestEffort(ctx context.Context, feedID int64, f
 	return hits
 }
 
-func (r *FeedRefresher) enqueueFeedWebhooksBestEffort(ctx context.Context, feed storage.Feed, entries []storage.Entry) {
-	if feed.WebhookID == nil || r.WebhookLogs == nil || len(entries) == 0 {
+func (r *FeedRefresher) enqueueSubscriptionWebhookBestEffort(ctx context.Context, sub storage.Subscription, entries []storage.Entry) {
+	if sub.WebhookID == nil || r.WebhookLogs == nil || len(entries) == 0 {
 		return
 	}
 	for _, e := range entries {
-		_ = r.WebhookLogs.EnqueueWebhookLogs(ctx, []int64{*feed.WebhookID}, e.ID)
+		_ = r.WebhookLogs.EnqueueWebhookLogs(ctx, []int64{*sub.WebhookID}, e.ID)
 	}
 }

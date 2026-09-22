@@ -97,14 +97,14 @@ func (m *memWebhookDelivery) EntryOnSuccessAction(context.Context, int64) (strin
 	return m.delCtx.Webhook.OnSuccessEntry, nil
 }
 
-func (m *memWebhookDelivery) MarkEntryRemovedKeepPayload(_ context.Context, entryID int64) error {
+func (m *memWebhookDelivery) MarkEntryRemovedKeepPayload(_ context.Context, _ int64, entryID int64) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.removed = append(m.removed, entryID)
 	return nil
 }
 
-func (m *memWebhookDelivery) MarkEntryReadIfActive(_ context.Context, entryID int64) error {
+func (m *memWebhookDelivery) MarkEntryReadIfActive(_ context.Context, _ int64, entryID int64) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.read = append(m.read, entryID)

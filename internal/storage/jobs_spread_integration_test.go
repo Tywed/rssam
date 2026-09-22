@@ -33,7 +33,7 @@ func TestIntegration_EnqueuePollFeedJobsSpread(t *testing.T) {
 
 	const n = 300
 	rows, err := store.db.Query(ctx, `
-INSERT INTO feeds(user_id, feed_url, feed_type, title, interval_minutes, manual_paused)
+INSERT INTO feeds(owner_id, feed_url, feed_type, title, interval_minutes, manual_paused)
 SELECT $1, 'https://example.com/spread/' || $2 || '/' || i || '.xml', 'rss', 'spread', 60, TRUE
 FROM generate_series(1, $3) AS i
 RETURNING id`, u.ID, suffix, n)

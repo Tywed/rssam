@@ -393,7 +393,6 @@ func normalizeItem(it *gofeed.Item) storage.CreateEntryParams {
 		Author:      author,
 		PublishedAt: pub,
 		Hash:        hash,
-		Status:      storage.EntryStatusUnread,
 		Enclosures:  encs,
 	}
 }

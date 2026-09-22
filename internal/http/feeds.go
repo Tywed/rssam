@@ -231,7 +231,7 @@ func (s *Server) feedQuotaOK(w http.ResponseWriter, r *http.Request, p auth.Prin
 	if !creating || s.quotas.MaxFeedsPerEditor <= 0 || p.IsAdmin() {
 		return true
 	}
-	_, total, err := s.feeds.ListFeeds(r.Context(), p.UserID, 1, 0)
+	total, err := s.feeds.CountOwnedFeeds(r.Context(), p.UserID)
 	if err != nil {
 		s.log.ErrorContext(r.Context(), "count feeds failed", "err", err)
 		writeError(w, http.StatusInternalServerError, "internal server error")

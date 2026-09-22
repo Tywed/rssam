@@ -72,6 +72,7 @@
       <table>
         <tr><th>Записей</th><td>{{.AdminFeedDetail.EntryCount}}</td></tr>
         <tr><th>Непрочитанных</th><td>{{.AdminFeedDetail.UnreadCount}}</td></tr>
+        <tr><th>Подписчиков</th><td>{{.AdminFeedDetail.SubscriberCount}}</td></tr>
         <tr><th>Режим хранения</th><td>{{if .AdminFeedDetail.Feed.StoreHashOnly}}только хеш до фильтра{{else}}полный{{end}}</td></tr>
       </table>
     </div>

@@ -13,9 +13,15 @@ import (
 
 type stubCounter struct{}
 
-func (stubCounter) CountUnreadByFeed(context.Context, int64) (int, error)        { return 3, nil }
-func (stubCounter) CountUnreadByCategory(context.Context, int64) (int, error)    { return 0, nil }
-func (stubCounter) CountUnreadGlobalForUser(context.Context, int64) (int, error) { return 7, nil }
+func (stubCounter) CountUnreadByFeed(context.Context, int64, int64) (int, error)     { return 3, nil }
+func (stubCounter) CountUnreadByCategory(context.Context, int64, int64) (int, error) { return 0, nil }
+func (stubCounter) CountUnreadGlobalForUser(context.Context, int64) (int, error)     { return 7, nil }
+
+type stubSubs []storage.Subscription
+
+func (s stubSubs) ListFeedSubscribers(context.Context, int64) ([]storage.Subscription, error) {
+	return s, nil
+}
 
 // newAttachedClient registers a client without a real websocket connection so
 // we can observe what the hub would send it.
@@ -46,11 +52,12 @@ func TestPublisher_NewEntriesAreTenantScopedAndMinimal(t *testing.T) {
 	owner := newAttachedClient(t, hub, 1)
 	other := newAttachedClient(t, hub, 2)
 
-	pub := NewPublisher(nil, hub, stubCounter{})
+	pub := NewPublisher(nil, hub, stubCounter{}, nil)
 	catID := int64(3)
-	feed := storage.Feed{ID: 10, UserID: 1, Title: "Owner feed", CategoryID: &catID}
+	feed := storage.Feed{ID: 10, OwnerID: 1, Title: "Owner feed"}
+	subs := []storage.Subscription{{UserID: 1, FeedID: 10, CategoryID: &catID}}
 	secret := "SECRET-BODY-MUST-NOT-LEAK"
-	pub.PublishNewEntries(context.Background(), feed, []storage.Entry{{
+	pub.PublishNewEntries(context.Background(), feed, subs, []storage.Entry{{
 		ID: 100, FeedID: 10, Title: "hello", URL: "https://example.com/a", Content: secret, Hash: "deadbeef",
 	}})
 
@@ -84,8 +91,8 @@ func TestPublisher_FeedStatusIsTenantScoped(t *testing.T) {
 	hub := NewHub(16, time.Second)
 	owner := newAttachedClient(t, hub, 5)
 	other := newAttachedClient(t, hub, 6)
-	pub := NewPublisher(nil, hub, nil)
-	pub.PublishFeedStatusChanged(storage.Feed{ID: 1, UserID: 5}, nil)
+	pub := NewPublisher(nil, hub, nil, stubSubs{{UserID: 5, FeedID: 1}})
+	pub.PublishFeedStatusChanged(storage.Feed{ID: 1, OwnerID: 5}, nil)
 	if n := len(drain(other)); n != 0 {
 		t.Fatalf("other user got %d frames", n)
 	}
@@ -97,10 +104,10 @@ func TestPublisher_FeedStatusIsTenantScoped(t *testing.T) {
 func TestPublisher_FeedStatusCarriesPersistedState(t *testing.T) {
 	hub := NewHub(16, time.Second)
 	owner := newAttachedClient(t, hub, 5)
-	pub := NewPublisher(nil, hub, nil)
+	pub := NewPublisher(nil, hub, nil, stubSubs{{UserID: 5, FeedID: 1}})
 	next := time.Date(2026, 9, 8, 12, 0, 0, 0, time.UTC)
 	pub.PublishFeedStatusChanged(storage.Feed{
-		ID: 1, UserID: 5, ParsingErrorCount: 4, PollPaused: true, LastError: "old", NextCheckAt: &next,
+		ID: 1, OwnerID: 5, ParsingErrorCount: 4, PollPaused: true, LastError: "old", NextCheckAt: &next,
 	}, errors.New("fetch feed: 503"))
 	got := drain(owner)
 	if len(got) != 1 {
@@ -116,7 +123,7 @@ func TestPublisher_FeedStatusCarriesPersistedState(t *testing.T) {
 		}
 	}
 
-	pub.PublishFeedStatusChanged(storage.Feed{ID: 1, UserID: 5}, nil)
+	pub.PublishFeedStatusChanged(storage.Feed{ID: 1, OwnerID: 5}, nil)
 	got = drain(owner)
 	if len(got) != 1 || !strings.Contains(got[0], `"success":true`) || !strings.Contains(got[0], `"parsing_error_count":0`) || !strings.Contains(got[0], `"parsing_error_message":""`) {
 		t.Fatalf("success frame = %v", got)

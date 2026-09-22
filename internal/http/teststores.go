@@ -33,11 +33,11 @@ func (noopEntryStore) ListFeedEntries(_ context.Context, _, _ int64, _ storage.L
 func (noopEntryStore) SearchEntries(_ context.Context, _ int64, _ storage.SearchEntriesFilter) ([]storage.Entry, int, error) {
 	return nil, 0, nil
 }
-func (noopEntryStore) ListEnclosuresByEntryIDs(_ context.Context, _ int64, _ []int64) (map[int64][]storage.Enclosure, error) {
+func (noopEntryStore) ListEnclosuresByEntryIDs(_ context.Context, _ []int64) (map[int64][]storage.Enclosure, error) {
 	return map[int64][]storage.Enclosure{}, nil
 }
-func (noopEntryStore) CountUnreadByFeed(_ context.Context, _ int64) (int, error) { return 0, nil }
-func (noopEntryStore) CountUnreadByCategory(_ context.Context, _ int64) (int, error) {
+func (noopEntryStore) CountUnreadByFeed(_ context.Context, _, _ int64) (int, error) { return 0, nil }
+func (noopEntryStore) CountUnreadByCategory(_ context.Context, _, _ int64) (int, error) {
 	return 0, nil
 }
 func (noopEntryStore) CountUnreadGlobalForUser(context.Context, int64) (int, error) { return 0, nil }
@@ -124,4 +124,6 @@ func (noopFeedStore) SetFeedManualPaused(_ context.Context, _ int64, _ bool) err
 func (noopFeedStore) BulkUpdateFeedsByCategory(_ context.Context, _ int64, _ int64, _ storage.BulkFeedUpdate) ([]int64, int, error) {
 	return nil, 0, nil
 }
-func (noopFeedStore) DeleteFeed(_ context.Context, _ int64, _ int64) error { return nil }
+func (noopFeedStore) DeleteFeed(_ context.Context, _ int64, _ int64) error    { return nil }
+func (noopFeedStore) DeleteFeedByID(_ context.Context, _ int64) error         { return nil }
+func (noopFeedStore) CountOwnedFeeds(_ context.Context, _ int64) (int, error) { return 0, nil }

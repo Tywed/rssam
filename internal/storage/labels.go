@@ -145,8 +145,9 @@ func (s *PostgresStore) countsByLabel(ctx context.Context, userID int64, op, sta
 	q := `
 SELECT el.label_id, count(*)
 FROM entry_labels el
-JOIN entries e ON e.id = el.entry_id
-WHERE e.user_id = $1 AND e.status ` + op + ` $2
+JOIN labels l ON l.id = el.label_id AND l.user_id = $1
+JOIN user_entries ue ON ue.entry_id = el.entry_id AND ue.user_id = $1
+WHERE ue.status ` + op + ` $2
 GROUP BY el.label_id`
 	rows, err := s.db.Query(ctx, q, userID, status)
 	if err != nil {

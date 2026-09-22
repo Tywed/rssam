@@ -68,67 +68,67 @@ func (s *PostgresStore) BulkUpdateFeedsByCategory(ctx context.Context, userID, c
 		}
 	}
 
-	setParts := []string{"updated_at = now()"}
-	args := make([]any, 0, 4)
-	argN := 1
+	feedSet := make([]string, 0, 4)
+	subSet := make([]string, 0, 2)
+	args := []any{userID}
+	argN := 2
 
-	args = append(args, userID)
-	userArg := argN
-	argN++
-
-	var catArg int
+	catWhere := "s.category_id IS NULL"
 	if categoryID > 0 {
+		catWhere = "s.category_id = $2"
 		args = append(args, categoryID)
-		catArg = argN
 		argN++
 	}
 
 	if update.IntervalMinutes != nil {
-		setParts = append(setParts, fmt.Sprintf("interval_minutes = $%d", argN))
+		feedSet = append(feedSet, fmt.Sprintf("interval_minutes = $%d", argN))
 		args = append(args, *update.IntervalMinutes)
 		argN++
 	}
 	if update.WebhookSet {
 		if update.WebhookID != nil {
-			setParts = append(setParts, fmt.Sprintf("webhook_id = $%d", argN))
+			subSet = append(subSet, fmt.Sprintf("webhook_id = $%d", argN))
 			args = append(args, *update.WebhookID)
 			argN++
 		} else {
-			setParts = append(setParts, "webhook_id = NULL")
+			subSet = append(subSet, "webhook_id = NULL")
 		}
 	}
 	if update.StoreHashOnly != nil {
-		setParts = append(setParts, fmt.Sprintf("store_hash_only = $%d", argN))
+		feedSet = append(feedSet, fmt.Sprintf("store_hash_only = $%d", argN))
 		args = append(args, *update.StoreHashOnly)
 		argN++
 	}
 	if update.AdaptiveInterval != nil {
-		setParts = append(setParts, fmt.Sprintf("adaptive_interval = $%d", argN))
+		feedSet = append(feedSet, fmt.Sprintf("adaptive_interval = $%d", argN))
 		args = append(args, *update.AdaptiveInterval)
 		argN++
 	}
 	if update.ManualPaused != nil {
-		setParts = append(setParts, fmt.Sprintf("manual_paused = $%d", argN))
+		feedSet = append(feedSet, fmt.Sprintf("manual_paused = $%d", argN))
 		args = append(args, *update.ManualPaused)
 		argN++
 	}
 	if update.MoveCategory {
 		if update.MoveToCategoryID != nil {
-			setParts = append(setParts, fmt.Sprintf("category_id = $%d", argN))
+			subSet = append(subSet, fmt.Sprintf("category_id = $%d", argN))
 			args = append(args, *update.MoveToCategoryID)
 		} else {
-			setParts = append(setParts, "category_id = NULL")
+			subSet = append(subSet, "category_id = NULL")
 		}
 	}
 
-	where := fmt.Sprintf("user_id = $%d", userArg)
-	if categoryID == 0 {
-		where += " AND category_id IS NULL"
-	} else {
-		where += fmt.Sprintf(" AND category_id = $%d", catArg)
+	// The subscription rows are selected once; the catalog update (visible
+	// to every subscriber) and the subscription update (this user only) both
+	// derive from that set.
+	q := `WITH target AS (SELECT s.feed_id FROM subscriptions s WHERE s.user_id = $1 AND ` + catWhere + `)`
+	if len(feedSet) > 0 {
+		q += `, upd_feeds AS (UPDATE feeds f SET ` + strings.Join(append(feedSet, "updated_at = now()"), ", ") + ` FROM target WHERE f.id = target.feed_id)`
 	}
-
-	q := `UPDATE feeds SET ` + strings.Join(setParts, ", ") + ` WHERE ` + where + ` RETURNING id`
+	if len(subSet) > 0 {
+		q += `, upd_subs AS (UPDATE subscriptions s SET ` + strings.Join(subSet, ", ") + ` FROM target WHERE s.user_id = $1 AND s.feed_id = target.feed_id)`
+	}
+	q += ` SELECT feed_id FROM target ORDER BY feed_id`
 
 	rows, err := s.db.Query(ctx, q, args...)
 	if err != nil {

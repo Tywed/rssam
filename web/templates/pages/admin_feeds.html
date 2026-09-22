@@ -81,6 +81,7 @@
             <th>Последняя ошибка</th>
             <th><a href="{{adminFeedsSortLink .AdminFeedsFilter .AdminFeedsSort .AdminFeedsOrder "entries"}}">Записей{{adminFeedsSortIndicator .AdminFeedsSort .AdminFeedsOrder "entries"}}</a></th>
             <th><a href="{{adminFeedsSortLink .AdminFeedsFilter .AdminFeedsSort .AdminFeedsOrder "unread"}}">Непрочит.{{adminFeedsSortIndicator .AdminFeedsSort .AdminFeedsOrder "unread"}}</a></th>
+            <th title="Подписчиков">Подп.</th>
             <th></th>
           </tr>
         </thead>
@@ -98,6 +99,7 @@
             <td class="meta admin-feeds-error" title="{{.LastError}}">{{if .LastError}}{{truncateStr .LastError 80}}{{else}}—{{end}}</td>
             <td>{{.EntryCount}}</td>
             <td>{{.UnreadCount}}</td>
+            <td>{{.SubscriberCount}}</td>
             <td class="admin-feeds-actions">
               <form method="post" action="/ui/admin/feeds/{{.ID}}/refresh" class="inline-form">
                 <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
@@ -135,7 +137,7 @@
             </td>
           </tr>
           {{else}}
-          <tr><td colspan="12" class="meta">Нет лент по выбранному фильтру</td></tr>
+          <tr><td colspan="13" class="meta">Нет лент по выбранному фильтру</td></tr>
           {{end}}
         </tbody>
       </table>

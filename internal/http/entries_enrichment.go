@@ -12,15 +12,15 @@ type enclosureDTO struct {
 	MIMEType string `json:"mime_type"`
 }
 
-func (s *Server) entryToDTO(ctx context.Context, userID int64, e storage.Entry) (entryDTO, error) {
-	m, err := s.entries.ListEnclosuresByEntryIDs(ctx, userID, []int64{e.ID})
+func (s *Server) entryToDTO(ctx context.Context, e storage.Entry) (entryDTO, error) {
+	m, err := s.entries.ListEnclosuresByEntryIDs(ctx, []int64{e.ID})
 	if err != nil {
 		return entryDTO{}, err
 	}
 	return toEntryDTO(e, m[e.ID]), nil
 }
 
-func (s *Server) entriesToDTOs(ctx context.Context, userID int64, entries []storage.Entry) ([]entryDTO, error) {
+func (s *Server) entriesToDTOs(ctx context.Context, entries []storage.Entry) ([]entryDTO, error) {
 	if len(entries) == 0 {
 		return []entryDTO{}, nil
 	}
@@ -28,7 +28,7 @@ func (s *Server) entriesToDTOs(ctx context.Context, userID int64, entries []stor
 	for _, e := range entries {
 		ids = append(ids, e.ID)
 	}
-	m, err := s.entries.ListEnclosuresByEntryIDs(ctx, userID, ids)
+	m, err := s.entries.ListEnclosuresByEntryIDs(ctx, ids)
 	if err != nil {
 		return nil, err
 	}

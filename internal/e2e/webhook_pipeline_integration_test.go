@@ -132,7 +132,8 @@ type feedStatusEvent struct {
 	Err  error
 }
 
-func (s *feedStatusSink) PublishNewEntries(context.Context, storage.Feed, []storage.Entry) {}
+func (s *feedStatusSink) PublishNewEntries(context.Context, storage.Feed, []storage.Subscription, []storage.Entry) {
+}
 func (s *feedStatusSink) PublishFeedStatusChanged(feed storage.Feed, err error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -204,6 +205,7 @@ func newEnv(t *testing.T, feedDocs map[string]string) *e2eEnv {
 		Feeds:       store,
 		Entries:     store,
 		Dedup:       store,
+		Subscribers: store,
 		Registry:    registry,
 		Filters:     store,
 		Matches:     store,

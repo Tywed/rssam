@@ -92,6 +92,5 @@ func EntryFromMessage(channelName string, msg APIMessage) storage.CreateEntryPar
 		Author:      &author,
 		PublishedAt: pub,
 		Hash:        hash,
-		Status:      storage.EntryStatusUnread,
 	}
 }

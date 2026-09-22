@@ -33,7 +33,7 @@ DO UPDATE SET run_at = LEAST(jobs.run_at, EXCLUDED.run_at),
 }
 
 func (s *PostgresStore) EnqueueRefreshAllPollJobs(ctx context.Context) (feeds int, queued int, err error) {
-	if err := s.db.QueryRow(ctx, `SELECT COUNT(*)::int FROM feeds WHERE manual_paused = FALSE`).Scan(&feeds); err != nil {
+	if err := s.db.QueryRow(ctx, `SELECT COUNT(*)::int FROM feeds WHERE manual_paused = FALSE AND EXISTS (SELECT 1 FROM subscriptions s WHERE s.feed_id = feeds.id)`).Scan(&feeds); err != nil {
 		return 0, 0, fmt.Errorf("count feeds for refresh-all: %w", err)
 	}
 	if _, err := s.db.Exec(ctx, `
@@ -50,6 +50,7 @@ INSERT INTO jobs(type, feed_id, run_at)
 SELECT 'poll_feed', id, now() + random() * $1::interval
 FROM feeds
 WHERE manual_paused = FALSE
+  AND EXISTS (SELECT 1 FROM subscriptions s WHERE s.feed_id = feeds.id)
 ON CONFLICT (type, feed_id) WHERE (type = 'poll_feed' AND feed_id IS NOT NULL)
 DO UPDATE SET run_at = LEAST(jobs.run_at, EXCLUDED.run_at),
               updated_at = now()`, EnqueueSpread(feeds))

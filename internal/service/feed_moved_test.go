@@ -9,7 +9,7 @@ import (
 )
 
 func TestRefreshLoadedFeed_PermanentRedirectUpdatesURL(t *testing.T) {
-	feed := storage.Feed{ID: 31, UserID: 1, FeedURL: "https://example.com/old.xml", FeedType: "rss", IntervalMinutes: 15}
+	feed := storage.Feed{ID: 31, OwnerID: 1, FeedURL: "https://example.com/old.xml", FeedType: "rss", IntervalMinutes: 15}
 	h := &stubHandler{res: reader.FetchResponse{NewURL: "https://example.com/new.xml"}}
 	r, fs, _, _ := newStatusRefresher(h, feed)
 	if _, err := r.RefreshLoadedFeed(context.Background(), feed); err != nil {
@@ -27,7 +27,7 @@ func TestRefreshLoadedFeed_PermanentRedirectUpdatesURL(t *testing.T) {
 	}{
 		{"same", feed, feed.FeedURL},
 		{"bridge", feed, "https://t.me/s/channel"},
-		{"telegram feed", storage.Feed{ID: 32, UserID: 1, FeedURL: "https://t.me/s/a", FeedType: "telegram"}, "https://t.me/s/b"},
+		{"telegram feed", storage.Feed{ID: 32, OwnerID: 1, FeedURL: "https://t.me/s/a", FeedType: "telegram"}, "https://t.me/s/b"},
 		{"empty", feed, ""},
 	}
 	for _, c := range cases {

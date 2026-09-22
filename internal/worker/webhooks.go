@@ -91,8 +91,8 @@ type webhookDeliveryStore interface {
 	StripEntryPayloadAfterWebhook(ctx context.Context, entryID int64) error
 	CountIncompleteWebhookLogs(ctx context.Context, entryID, excludeLogID int64) (int, error)
 	EntryOnSuccessAction(ctx context.Context, entryID int64) (string, error)
-	MarkEntryRemovedKeepPayload(ctx context.Context, entryID int64) error
-	MarkEntryReadIfActive(ctx context.Context, entryID int64) error
+	MarkEntryRemovedKeepPayload(ctx context.Context, userID, entryID int64) error
+	MarkEntryReadIfActive(ctx context.Context, userID, entryID int64) error
 }
 
 func (r *Runner) webhookDelivery() webhookDeliveryStore {
@@ -250,7 +250,7 @@ func (r *Runner) applyOnSuccessEntry(ctx context.Context, store webhookDeliveryS
 		thisAction = storage.WebhookOnSuccessNone
 	}
 	if thisAction == storage.WebhookOnSuccessMarkRead {
-		if err := store.MarkEntryReadIfActive(ctx, l.EntryID); err != nil && r.Log != nil {
+		if err := store.MarkEntryReadIfActive(ctx, delCtx.Webhook.UserID, l.EntryID); err != nil && r.Log != nil {
 			r.Log.Error("webhook on_success: mark read", "entry_id", l.EntryID, "err", err)
 		}
 	}
@@ -281,7 +281,7 @@ func (r *Runner) applyOnSuccessEntry(ctx context.Context, store webhookDeliveryS
 			r.Log.Error("webhook on_success: hash entry", "entry_id", l.EntryID, "err", err)
 		}
 	case storage.WebhookOnSuccessDelete:
-		if err := store.MarkEntryRemovedKeepPayload(ctx, l.EntryID); err != nil && r.Log != nil {
+		if err := store.MarkEntryRemovedKeepPayload(ctx, delCtx.Webhook.UserID, l.EntryID); err != nil && r.Log != nil {
 			r.Log.Error("webhook on_success: delete entry", "entry_id", l.EntryID, "err", err)
 		}
 	}

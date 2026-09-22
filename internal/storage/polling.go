@@ -5,7 +5,8 @@ import (
 	"fmt"
 )
 
-// ListFeedsDue returns feed IDs that should be polled now and have no poll_feed job yet.
+// ListFeedsDue returns feed IDs that should be polled now and have no
+// poll_feed job yet. A catalog row nobody is subscribed to is not polled.
 func (s *PostgresStore) ListFeedsDue(ctx context.Context, limit int) ([]int64, error) {
 	if limit <= 0 {
 		return nil, nil
@@ -18,6 +19,7 @@ WHERE f.poll_paused = FALSE
   AND f.manual_paused = FALSE
   AND (f.next_check_at IS NULL OR f.next_check_at <= now())
   AND j.id IS NULL
+  AND EXISTS (SELECT 1 FROM subscriptions s WHERE s.feed_id = f.id)
 ORDER BY COALESCE(f.next_check_at, now()) ASC, f.id ASC
 LIMIT $1`
 	rows, err := s.db.Query(ctx, q, limit)

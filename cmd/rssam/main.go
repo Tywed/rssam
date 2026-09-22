@@ -37,6 +37,7 @@ func main() {
 	var (
 		printVersion = flag.Bool("version", false, "print version and exit")
 		runMigrate   = flag.Bool("migrate", false, "apply database migrations and exit")
+		migratePlan  = flag.Bool("migrate-plan", false, "print what the pending migrations would merge and exit")
 		listenAddr   = flag.String("listen", "", "HTTP listen address (overrides LISTEN_ADDR)")
 	)
 	flag.Parse()
@@ -74,6 +75,28 @@ func main() {
 		os.Exit(1)
 	}
 	defer db.Close()
+
+	if *migratePlan {
+		pending, err := migrations.Pending(ctx, db)
+		if err != nil {
+			log.Error("check pending migrations", "err", err)
+			os.Exit(1)
+		}
+		plan, err := migrations.SharedFeedsPlan(ctx, db)
+		if err != nil {
+			log.Error("migration plan", "err", err)
+			os.Exit(1)
+		}
+		fmt.Printf("pending migrations: %d\n", len(pending))
+		for _, m := range plan {
+			fmt.Printf("merge %s: keep feed %d (owner %d), remove feeds %v (owners %v), entries moved %d, collapsed %d\n",
+				m.FeedURL, m.KeepID, m.KeepOwnerID, m.LoseIDs, m.LoseOwnerIDs, m.LoseEntries-m.SameEntries, m.SameEntries)
+		}
+		if len(plan) == 0 {
+			fmt.Println("shared feeds: nothing to merge")
+		}
+		return
+	}
 
 	if *runMigrate || cfg.RunMigrations {
 		if err := migrations.Apply(ctx, db, log); err != nil {
@@ -130,7 +153,7 @@ func main() {
 		os.Exit(1)
 	}
 	wsHub := ws.NewHub(cfg.WSClientBuffer, cfg.WSPingInterval)
-	wsPublisher := ws.NewPublisher(log, wsHub, pgStore)
+	wsPublisher := ws.NewPublisher(log, wsHub, pgStore, pgStore)
 
 	fetchTimeout := 15 * time.Second
 	if cfg.FetchTimeoutSeconds > 0 {
@@ -253,6 +276,7 @@ func main() {
 		Feeds:                   pgStore,
 		Entries:                 pgStore,
 		Dedup:                   pgStore,
+		Subscribers:             pgStore,
 		Registry:                registryBundle.Registry,
 		Log:                     log,
 		StoreEntriesMode:        cfg.StoreEntriesMode,

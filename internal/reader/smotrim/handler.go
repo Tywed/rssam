@@ -107,7 +107,6 @@ func entryFromVideoItem(item VideoItem, now time.Time) storage.CreateEntryParams
 		Author:      authorPtr,
 		PublishedAt: pub,
 		Hash:        DedupHash(item.PublicID),
-		Status:      storage.EntryStatusUnread,
 	}
 }
 

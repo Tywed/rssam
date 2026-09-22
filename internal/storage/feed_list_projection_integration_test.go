@@ -112,9 +112,17 @@ WHERE id = $1`, created.ID); err != nil {
 	}
 	check("ListFeedsByStatus", find("ListFeedsByStatus", feeds))
 
+	// Catalog views carry no subscription: category and webhook are nil.
 	all, err := store.ListAllFeeds(ctx, 10000)
 	if err != nil {
 		t.Fatal(err)
 	}
+	want.CategoryID, want.WebhookID = nil, nil
 	check("ListAllFeeds", find("ListAllFeeds", all))
+	byID, err := store.GetFeedByID(ctx, created.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	byID.IconData = nil
+	check("GetFeedByID", byID)
 }

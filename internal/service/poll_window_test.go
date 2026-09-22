@@ -39,7 +39,7 @@ func TestRefreshLoadedFeed_OutsideCategoryWindowSkipsFetch(t *testing.T) {
 	now := time.Now()
 	spec, opensAt := closedWindow(now)
 	catID := int64(5)
-	feed := storage.Feed{ID: 21, UserID: 1, FeedURL: "https://example.com/f.xml", IntervalMinutes: 15, CategoryID: &catID}
+	feed := storage.Feed{ID: 21, OwnerID: 1, FeedURL: "https://example.com/f.xml", IntervalMinutes: 15, CategoryID: &catID}
 	h := &stubHandler{}
 	r, fs, pl, pub := newStatusRefresher(h, feed)
 	ph := &memPollHours{hours: map[int64]string{catID: spec}}
@@ -101,7 +101,7 @@ func TestRefreshLoadedFeed_NextCheckClampedToWindow(t *testing.T) {
 	}
 	spec := fmt.Sprintf("%02d:%02d-%02d:%02d", start.Hour(), start.Minute(), end.Hour(), end.Minute())
 	catID := int64(6)
-	feed := storage.Feed{ID: 22, UserID: 1, FeedURL: "https://example.com/f.xml", IntervalMinutes: 15, CategoryID: &catID}
+	feed := storage.Feed{ID: 22, OwnerID: 1, FeedURL: "https://example.com/f.xml", IntervalMinutes: 15, CategoryID: &catID}
 	h := &stubHandler{}
 	r, fs, _, _ := newStatusRefresher(h, feed)
 	r.PollHours = &memPollHours{hours: map[int64]string{catID: spec}}
@@ -118,7 +118,7 @@ func TestRefreshLoadedFeed_NextCheckClampedToWindow(t *testing.T) {
 	}
 
 	// Feed without a category, or a category without a window, keeps its interval.
-	plain := storage.Feed{ID: 23, UserID: 1, FeedURL: "https://example.com/p.xml", IntervalMinutes: 15}
+	plain := storage.Feed{ID: 23, OwnerID: 1, FeedURL: "https://example.com/p.xml", IntervalMinutes: 15}
 	r2, fs2, _, _ := newStatusRefresher(&stubHandler{}, plain)
 	r2.PollHours = &memPollHours{hours: map[int64]string{}}
 	if _, err := r2.RefreshLoadedFeed(context.Background(), plain); err != nil {

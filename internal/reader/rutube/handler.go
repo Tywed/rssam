@@ -121,7 +121,6 @@ func entryFromVideo(v personVideo) (storage.CreateEntryParams, string) {
 		Author:      authorPtr,
 		PublishedAt: pub,
 		Hash:        hash,
-		Status:      storage.EntryStatusUnread,
 	}, author
 }
 

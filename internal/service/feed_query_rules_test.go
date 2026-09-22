@@ -46,9 +46,9 @@ func TestProcessEntriesDedupOnly_QueryRuleBatched(t *testing.T) {
 		Engine:  filter.New(filter.Config{}),
 		Queries: matcher,
 	}
-	feed := storage.Feed{ID: 1, UserID: 1, StoreHashOnly: true}
+	feed := storage.Feed{ID: 1, OwnerID: 1, StoreHashOnly: true}
 
-	inserted, created, fresh, err := r.processEntriesDedupOnly(context.Background(), feed, []storage.CreateEntryParams{
+	inserted, created, fresh, err := r.processEntriesDedupOnly(context.Background(), feed, []storage.Subscription{{UserID: 1, FeedID: feed.ID}}, []storage.CreateEntryParams{
 		{Title: "already seen", Hash: "old", Content: "цены на нефти"},
 		{Title: "sport", Hash: "h1", Content: "футбол"},
 		{Title: "oil", Hash: "h2", Content: "цены на нефти выросли"},
@@ -84,9 +84,9 @@ func TestProcessEntriesDedupOnly_QueryRuleWithoutMatcherKeepsRegexRules(t *testi
 		{ID: 2, UserID: 1, Enabled: true, Rules: []storage.FilterRule{{Field: "title", Pattern: "oil"}}},
 	}}
 	r := &FeedRefresher{Dedup: dedup, Entries: entries, Filters: filters, Engine: filter.New(filter.Config{})}
-	feed := storage.Feed{ID: 1, UserID: 1, StoreHashOnly: true}
+	feed := storage.Feed{ID: 1, OwnerID: 1, StoreHashOnly: true}
 
-	inserted, _, _, err := r.processEntriesDedupOnly(context.Background(), feed, []storage.CreateEntryParams{
+	inserted, _, _, err := r.processEntriesDedupOnly(context.Background(), feed, []storage.Subscription{{UserID: 1, FeedID: feed.ID}}, []storage.CreateEntryParams{
 		{Title: "oil", Hash: "h1", Content: "нефть"},
 		{Title: "gas", Hash: "h2", Content: "нефть"},
 	})
@@ -128,8 +128,8 @@ func TestApplyFiltersBestEffort_QueryRuleUsesStoredEntryIDs(t *testing.T) {
 		Engine:  filter.New(filter.Config{}),
 		Queries: matcher,
 	}
-	feed := storage.Feed{ID: 1, UserID: 1}
-	r.applyFiltersBestEffort(context.Background(), feed, []storage.Entry{{ID: 10, FeedID: 1}, {ID: 11, FeedID: 1}, {ID: 12, FeedID: 1}})
+	feed := storage.Feed{ID: 1, OwnerID: 1}
+	r.applyFiltersBestEffort(context.Background(), feed, []storage.Subscription{{UserID: 1, FeedID: feed.ID}}, []storage.Entry{{ID: 10, FeedID: 1}, {ID: 11, FeedID: 1}, {ID: 12, FeedID: 1}})
 
 	if matcher.calls != 1 || len(matcher.items) != 3 || matcher.items[1].EntryID != 11 {
 		t.Fatalf("one batched call with stored ids expected: calls=%d items=%+v", matcher.calls, matcher.items)

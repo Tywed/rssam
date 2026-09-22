@@ -87,6 +87,13 @@ func Apply(ctx context.Context, db *pgxpool.Pool, log *slog.Logger) error {
 		}
 
 		log.Info("applying migration", "name", name)
+		if name == sharedFeedsMigration {
+			plan, err := SharedFeedsPlan(ctx, db)
+			if err != nil {
+				return err
+			}
+			logSharedFeedsPlan(log, plan)
+		}
 		started := time.Now()
 		if err := applyOne(ctx, db, name, sql); err != nil {
 			return err

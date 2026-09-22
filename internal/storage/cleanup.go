@@ -41,13 +41,7 @@ func (s *PostgresStore) RunRetentionCleanup(ctx context.Context, opts RetentionC
 	var result RetentionCleanupResult
 	now := time.Now().UTC()
 
-	n, err := s.deleteInBatches(ctx, `
-DELETE FROM entries
-WHERE id IN (
-  SELECT id FROM entries
-  WHERE status = $1 AND updated_at < $2
-  LIMIT $3
-)`, EntryStatusRemoved, opts.RemovedEntriesBefore.UTC(), deleteBatchSize)
+	n, err := s.purgeRemovedEntries(ctx, opts.RemovedEntriesBefore.UTC())
 	if err != nil {
 		return result, fmt.Errorf("delete removed entries: %w", err)
 	}
@@ -113,7 +107,7 @@ WHERE id IN (
   SELECT e.id FROM entries e
   JOIN feeds f ON e.feed_id = f.id
   WHERE f.entry_retention_days IS NOT NULL
-    AND e.starred = FALSE
+    AND NOT EXISTS (SELECT 1 FROM user_entries ue WHERE ue.entry_id = e.id AND ue.starred)
     AND e.created_at < $1::timestamptz - (f.entry_retention_days * INTERVAL '1 day')
   LIMIT $2
 )`, now, deleteBatchSize)
@@ -143,6 +137,51 @@ WHERE (feed_id, hash) IN (
 	result.ExpiredSessions = n
 
 	return result, nil
+}
+
+// purgeRemovedEntries drops per-user removed rows older than before and the
+// entries left without any reader: those stripped after webhook delivery
+// (removed_at) and those every subscriber removed. The purged rows are
+// excluded from the "any reader left" check explicitly because a DELETE
+// does not see the effect of a sibling CTE. Returns the number of entries
+// deleted.
+func (s *PostgresStore) purgeRemovedEntries(ctx context.Context, before time.Time) (int64, error) {
+	var total int64
+	for {
+		if err := ctx.Err(); err != nil {
+			return total, err
+		}
+		var purged, deleted int64
+		if err := s.db.QueryRow(ctx, `
+WITH purged AS (
+  DELETE FROM user_entries ue
+  WHERE (ue.entry_id, ue.user_id) IN (
+    SELECT entry_id, user_id FROM user_entries
+    WHERE status = $1 AND updated_at < $2
+    LIMIT $3
+  )
+  RETURNING ue.entry_id, ue.user_id
+), del AS (
+  DELETE FROM entries e
+  WHERE e.id IN (SELECT entry_id FROM purged)
+    AND NOT EXISTS (
+      SELECT 1 FROM user_entries ue
+      WHERE ue.entry_id = e.id
+        AND NOT EXISTS (SELECT 1 FROM purged p WHERE p.entry_id = ue.entry_id AND p.user_id = ue.user_id))
+  RETURNING e.id
+)
+SELECT (SELECT count(*) FROM purged), (SELECT count(*) FROM del)`, EntryStatusRemoved, before, deleteBatchSize).Scan(&purged, &deleted); err != nil {
+			return total, err
+		}
+		total += deleted
+		if purged < deleteBatchSize {
+			break
+		}
+	}
+	n, err := s.deleteInBatches(ctx, `
+DELETE FROM entries
+WHERE id IN (SELECT id FROM entries WHERE removed_at < $1 LIMIT $2)`, before, deleteBatchSize)
+	return total + n, err
 }
 
 func (s *PostgresStore) deleteInBatches(ctx context.Context, q string, args ...any) (int64, error) {

@@ -194,7 +194,7 @@ func (s *Server) importOPML(r *http.Request, doc *opml.Document, userID int64, j
 	// The importer runs under the request's principal; the quota is checked
 	// against the count before the import plus what this import created.
 	p, _ := auth.PrincipalFromContext(ctx)
-	feedCount := len(existingFeeds)
+	feedCount, _ := s.feeds.CountOwnedFeeds(ctx, userID)
 
 	existingCats, _, _ := s.categories.ListCategories(ctx, userID, 10000, 0)
 	categoryByTitle := make(map[string]int64, len(existingCats))

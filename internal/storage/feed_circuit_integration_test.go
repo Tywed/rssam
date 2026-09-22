@@ -28,7 +28,7 @@ func TestIntegration_FeedPollOutcomeIsOneRowVersion(t *testing.T) {
 
 	var feedID int64
 	if err := store.db.QueryRow(ctx, `
-INSERT INTO feeds(user_id, feed_url, feed_type, title, interval_minutes, manual_paused)
+INSERT INTO feeds(owner_id, feed_url, feed_type, title, interval_minutes, manual_paused)
 VALUES ($1, $2, 'rss', 'circuit', 60, TRUE) RETURNING id`, u.ID, "https://example.com/circuit/"+suffix+".xml").Scan(&feedID); err != nil {
 		t.Fatal(err)
 	}

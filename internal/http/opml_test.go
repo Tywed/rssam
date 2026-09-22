@@ -148,6 +148,7 @@ func (s *opmlFeedStore) SetFeedNextCheckAt(_ context.Context, _ int64, _ time.Ti
 }
 
 func (s *opmlFeedStore) DeleteFeed(_ context.Context, _ int64, _ int64) error { return nil }
+func (s *opmlFeedStore) DeleteFeedByID(_ context.Context, _ int64) error      { return nil }
 
 func TestOPMLImportExportRoundtrip(t *testing.T) {
 	guard, err := ssrf.New(ssrf.Config{LookupHost: publicExampleLookup})

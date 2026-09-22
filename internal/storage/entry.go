@@ -25,17 +25,12 @@ func IsValidEntryStatus(s string) bool {
 	}
 }
 
+// CreateEntries inserts the feed's new items once and fans them out to every
+// subscriber as unread in the same statement. Returned entries carry the
+// unread/unstarred state of a fresh row.
 func (s *PostgresStore) CreateEntries(ctx context.Context, feedID int64, entries []CreateEntryParams) (inserted int, insertedEntries []Entry, err error) {
 	if len(entries) == 0 {
 		return 0, nil, nil
-	}
-
-	var feedUserID int64
-	if err := s.db.QueryRow(ctx, `SELECT user_id FROM feeds WHERE id = $1`, feedID).Scan(&feedUserID); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return 0, nil, ErrNotFound
-		}
-		return 0, nil, fmt.Errorf("lookup feed user_id: %w", err)
 	}
 
 	titles := make([]string, len(entries))
@@ -44,15 +39,8 @@ func (s *PostgresStore) CreateEntries(ctx context.Context, feedID int64, entries
 	authors := make([]string, len(entries))
 	published := make([]*time.Time, len(entries))
 	hashes := make([]string, len(entries))
-	statuses := make([]string, len(entries))
 	byHash := make(map[string]CreateEntryParams, len(entries))
 	for i, e := range entries {
-		if e.Status == "" {
-			e.Status = EntryStatusUnread
-		}
-		if !IsValidEntryStatus(e.Status) {
-			return 0, nil, fmt.Errorf("invalid entry status: %q", e.Status)
-		}
 		if e.Hash == "" {
 			return 0, nil, errors.New("entry hash is required")
 		}
@@ -64,7 +52,6 @@ func (s *PostgresStore) CreateEntries(ctx context.Context, feedID int64, entries
 		}
 		published[i] = e.PublishedAt
 		hashes[i] = e.Hash
-		statuses[i] = e.Status
 		byHash[e.Hash] = e
 	}
 
@@ -74,16 +61,26 @@ func (s *PostgresStore) CreateEntries(ctx context.Context, feedID int64, entries
 	// FilterKnownEntryHashes on the hash-only path.
 	vecExpr := ftsVectorExprPlaceholders(s.ftsLanguage, "x.title", "x.content")
 	q := `
-INSERT INTO entries(feed_id, user_id, title, url, content, author, published_at, hash, status, search_vector)
-SELECT $1, $2, x.title, x.url, x.content, NULLIF(x.author, ''), x.published_at, x.hash, x.status, ` + vecExpr + `
-FROM unnest($3::text[], $4::text[], $5::text[], $6::text[], $7::timestamptz[], $8::text[], $9::text[])
-  AS x(title, url, content, author, published_at, hash, status)
-WHERE NOT EXISTS (SELECT 1 FROM feed_entry_dedup d WHERE d.feed_id = $1 AND d.hash = x.hash)
-ON CONFLICT (feed_id, hash) DO NOTHING
-RETURNING id, feed_id, title, url, author, published_at, hash, status, starred, created_at, updated_at`
+WITH ins AS (
+  INSERT INTO entries(feed_id, title, url, content, author, published_at, hash, search_vector)
+  SELECT $1, x.title, x.url, x.content, NULLIF(x.author, ''), x.published_at, x.hash, ` + vecExpr + `
+  FROM unnest($2::text[], $3::text[], $4::text[], $5::text[], $6::timestamptz[], $7::text[])
+    AS x(title, url, content, author, published_at, hash)
+  WHERE NOT EXISTS (SELECT 1 FROM feed_entry_dedup d WHERE d.feed_id = $1 AND d.hash = x.hash)
+  ON CONFLICT (feed_id, hash) DO NOTHING
+  RETURNING id, feed_id, title, url, author, published_at, hash, created_at, updated_at
+), fan AS (
+  INSERT INTO user_entries(user_id, entry_id, feed_id, status, starred, sort_at)
+  SELECT s.user_id, ins.id, ins.feed_id, '` + EntryStatusUnread + `', FALSE, COALESCE(ins.published_at, ins.created_at)
+  FROM ins JOIN subscriptions s ON s.feed_id = ins.feed_id
+)
+SELECT id, feed_id, title, url, author, published_at, hash, created_at, updated_at FROM ins`
 
-	rows, err := s.db.Query(ctx, q, feedID, feedUserID, titles, urls, contents, authors, published, hashes, statuses)
+	rows, err := s.db.Query(ctx, q, feedID, titles, urls, contents, authors, published, hashes)
 	if err != nil {
+		if isForeignKeyViolation(err) {
+			return 0, nil, ErrNotFound
+		}
 		return 0, nil, fmt.Errorf("create entries: %w", err)
 	}
 	defer rows.Close()
@@ -93,7 +90,7 @@ RETURNING id, feed_id, title, url, author, published_at, hash, status, starred, 
 	var encSizes []int64
 	var encMIMEs []string
 	for rows.Next() {
-		var e Entry
+		e := Entry{Status: EntryStatusUnread}
 		if err := rows.Scan(
 			&e.ID,
 			&e.FeedID,
@@ -102,8 +99,6 @@ RETURNING id, feed_id, title, url, author, published_at, hash, status, starred, 
 			&e.Author,
 			&e.PublishedAt,
 			&e.Hash,
-			&e.Status,
-			&e.Starred,
 			&e.CreatedAt,
 			&e.UpdatedAt,
 		); err != nil {
@@ -126,19 +121,19 @@ RETURNING id, feed_id, title, url, author, published_at, hash, status, starred, 
 		insertedEntries = append(insertedEntries, e)
 	}
 	if err := rows.Err(); err != nil {
+		if isForeignKeyViolation(err) {
+			return 0, nil, ErrNotFound
+		}
 		return 0, nil, fmt.Errorf("iterate create entries: %w", err)
 	}
-	if err := s.createEnclosuresBatch(ctx, feedUserID, encEntryIDs, encURLs, encSizes, encMIMEs); err != nil {
+	if err := s.createEnclosuresBatch(ctx, encEntryIDs, encURLs, encSizes, encMIMEs); err != nil {
 		return inserted, insertedEntries, err
 	}
 	return inserted, insertedEntries, nil
 }
 
 func (s *PostgresStore) GetEntry(ctx context.Context, userID int64, id int64) (Entry, error) {
-	const q = `
-SELECT ` + entrySelectColumns + `
-FROM entries
-WHERE id = $1 AND user_id = $2`
+	q := `SELECT ` + entrySelectColumns + ` ` + entryFromUser + ` WHERE ue.user_id = $2 AND ue.entry_id = $1`
 	return s.scanEntry(s.db.QueryRow(ctx, q, id, userID))
 }
 
@@ -193,16 +188,16 @@ func (s *PostgresStore) listEntries(ctx context.Context, userID int64, filter Li
 		args  []any
 	)
 	argN := 1
-	where = append(where, fmt.Sprintf("user_id = $%d", argN))
+	where = append(where, fmt.Sprintf("ue.user_id = $%d", argN))
 	args = append(args, userID)
 	argN++
 	if filter.FeedID != nil {
-		where = append(where, fmt.Sprintf("feed_id = $%d", argN))
+		where = append(where, fmt.Sprintf("ue.feed_id = $%d", argN))
 		args = append(args, *filter.FeedID)
 		argN++
 	}
 	if filter.CategoryID != nil {
-		where = append(where, fmt.Sprintf("feed_id IN (SELECT id FROM feeds WHERE user_id = $1 AND category_id = $%d)", argN))
+		where = append(where, fmt.Sprintf("ue.feed_id IN (SELECT feed_id FROM subscriptions WHERE user_id = $1 AND category_id = $%d)", argN))
 		args = append(args, *filter.CategoryID)
 		argN++
 	}
@@ -210,33 +205,30 @@ func (s *PostgresStore) listEntries(ctx context.Context, userID int64, filter Li
 		if !IsValidEntryStatus(*filter.Status) {
 			return nil, 0, fmt.Errorf("invalid entry status: %q", *filter.Status)
 		}
-		where = append(where, fmt.Sprintf("status = $%d", argN))
+		where = append(where, fmt.Sprintf("ue.status = $%d", argN))
 		args = append(args, *filter.Status)
 		argN++
 	} else {
-		where = append(where, fmt.Sprintf("status <> $%d", argN))
+		where = append(where, fmt.Sprintf("ue.status <> $%d", argN))
 		args = append(args, EntryStatusRemoved)
 		argN++
 	}
 	if filter.Starred != nil {
-		where = append(where, fmt.Sprintf("starred = $%d", argN))
+		where = append(where, fmt.Sprintf("ue.starred = $%d", argN))
 		args = append(args, *filter.Starred)
 		argN++
 	}
 	if filter.LabelID != nil {
-		where = append(where, fmt.Sprintf("id IN (SELECT entry_id FROM entry_labels WHERE label_id = $%d)", argN))
+		where = append(where, fmt.Sprintf("ue.entry_id IN (SELECT entry_id FROM entry_labels WHERE label_id = $%d)", argN))
 		args = append(args, *filter.LabelID)
 		argN++
 	}
-	whereSQL := ""
-	if len(where) > 0 {
-		whereSQL = "\nWHERE " + strings.Join(where, " AND ")
-	}
+	whereSQL := "\nWHERE " + strings.Join(where, " AND ")
 	fetch := limit
 	if !filter.WithTotal {
 		fetch++
 	}
-	q := "SELECT " + entryColumns(filter.WithoutBody) + "\nFROM entries" + whereSQL +
+	q := "SELECT " + entryColumns(filter.WithoutBody) + "\n" + entryFromUser + whereSQL +
 		"\nORDER BY " + entryOrderClause(filter.Sort) +
 		"\nLIMIT $" + fmt.Sprint(argN) + " OFFSET $" + fmt.Sprint(argN+1)
 
@@ -253,7 +245,7 @@ func (s *PostgresStore) listEntries(ctx context.Context, userID int64, filter Li
 		return out, total, nil
 	}
 	var total int
-	if err := s.db.QueryRow(ctx, "SELECT count(*) FROM entries"+whereSQL, args...).Scan(&total); err != nil {
+	if err := s.db.QueryRow(ctx, "SELECT count(*) FROM user_entries ue"+whereSQL, args...).Scan(&total); err != nil {
 		return nil, 0, fmt.Errorf("count entries: %w", err)
 	}
 	return out, total, nil
@@ -316,7 +308,7 @@ SET etag = $2,
     poll_paused = CASE WHEN $5 = '' THEN FALSE ELSE poll_paused END,
     next_check_at = COALESCE($7, next_check_at),
     last_entry_at = CASE WHEN $8 THEN $4 ELSE last_entry_at END,
-    feed_url = CASE WHEN $9 <> '' AND NOT EXISTS (SELECT 1 FROM feeds o WHERE o.user_id = feeds.user_id AND o.feed_url = $9)
+    feed_url = CASE WHEN $9 <> '' AND NOT EXISTS (SELECT 1 FROM feeds o WHERE o.feed_url = $9)
                THEN $9 ELSE feed_url END,
     updated_at = now()
 WHERE id = $1`
@@ -346,24 +338,23 @@ WHERE id = $1`
 	return nil
 }
 
-func (s *PostgresStore) CountUnreadByFeed(ctx context.Context, feedID int64) (int, error) {
-	const q = `SELECT count(*) FROM entries WHERE feed_id = $1 AND status = $2`
+func (s *PostgresStore) CountUnreadByFeed(ctx context.Context, userID, feedID int64) (int, error) {
+	const q = `SELECT count(*) FROM user_entries WHERE user_id = $1 AND feed_id = $2 AND status = $3`
 	var total int
-	if err := s.db.QueryRow(ctx, q, feedID, EntryStatusUnread).Scan(&total); err != nil {
+	if err := s.db.QueryRow(ctx, q, userID, feedID, EntryStatusUnread).Scan(&total); err != nil {
 		return 0, fmt.Errorf("count unread by feed: %w", err)
 	}
 	return total, nil
 }
 
-func (s *PostgresStore) CountUnreadByCategory(ctx context.Context, categoryID int64) (int, error) {
+func (s *PostgresStore) CountUnreadByCategory(ctx context.Context, userID, categoryID int64) (int, error) {
 	const q = `
 SELECT count(*)
-FROM entries e
-JOIN feeds f ON f.id = e.feed_id
-WHERE f.category_id = $1
-  AND e.status = $2`
+FROM user_entries ue
+JOIN subscriptions s ON s.user_id = ue.user_id AND s.feed_id = ue.feed_id
+WHERE ue.user_id = $1 AND s.category_id = $2 AND ue.status = $3`
 	var total int
-	if err := s.db.QueryRow(ctx, q, categoryID, EntryStatusUnread).Scan(&total); err != nil {
+	if err := s.db.QueryRow(ctx, q, userID, categoryID, EntryStatusUnread).Scan(&total); err != nil {
 		return 0, fmt.Errorf("count unread by category: %w", err)
 	}
 	return total, nil
@@ -372,22 +363,23 @@ WHERE f.category_id = $1
 func (s *PostgresStore) UpdateEntryContent(ctx context.Context, userID int64, params UpdateEntryContentParams) (Entry, error) {
 	// Column references inside SET see the row before the update, so the
 	// vector must be built from the $3 parameter, not from `content`.
-	vecExpr := ftsVectorExprPlaceholders(s.ftsLanguage, "title", "$3")
+	vecExpr := ftsVectorExprPlaceholders(s.ftsLanguage, "e.title", "$3")
 	q := `
-UPDATE entries
+UPDATE entries e
 SET content = $3,
     original_content = $4,
     content_fetched = $5,
     search_vector = ` + vecExpr + `,
     updated_at = now()
-WHERE id = $1 AND user_id = $2
+FROM user_entries ue
+WHERE e.id = $1 AND ue.entry_id = e.id AND ue.user_id = $2
 RETURNING ` + entrySelectColumns
 	return s.scanEntry(s.db.QueryRow(ctx, q, params.ID, userID, params.Content, params.OriginalContent, params.ContentFetched))
 }
 
-// CountUnreadGlobalForUser counts unread entries owned by userID.
+// CountUnreadGlobalForUser counts the user's unread entries.
 func (s *PostgresStore) CountUnreadGlobalForUser(ctx context.Context, userID int64) (int, error) {
-	const q = `SELECT count(*) FROM entries WHERE user_id = $1 AND status = $2`
+	const q = `SELECT count(*) FROM user_entries WHERE user_id = $1 AND status = $2`
 	var total int
 	if err := s.db.QueryRow(ctx, q, userID, EntryStatusUnread).Scan(&total); err != nil {
 		return 0, fmt.Errorf("count unread global for user: %w", err)
@@ -400,11 +392,14 @@ func (s *PostgresStore) UnreadCountsForUser(ctx context.Context, userID int64) (
 	categoryCounts := make(map[int64]int)
 
 	rows, err := s.db.Query(ctx, `
-SELECT e.feed_id, f.category_id, count(*)::int
-FROM entries e
-JOIN feeds f ON f.id = e.feed_id
-WHERE e.user_id = $1 AND e.status = $2
-GROUP BY e.feed_id, f.category_id`, userID, EntryStatusUnread)
+SELECT c.feed_id, s.category_id, c.n
+FROM (
+	SELECT feed_id, count(*)::int AS n
+	FROM user_entries
+	WHERE user_id = $1 AND status = $2
+	GROUP BY feed_id
+) c
+JOIN subscriptions s ON s.user_id = $1 AND s.feed_id = c.feed_id`, userID, EntryStatusUnread)
 	if err != nil {
 		return nil, nil, fmt.Errorf("unread counts: %w", err)
 	}

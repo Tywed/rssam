@@ -246,7 +246,7 @@ func (s *tenantFeedStore) CreateFeed(_ context.Context, userID int64, p storage.
 	if _, ok := s.feeds[userID][p.FeedURL]; ok {
 		return storage.Feed{}, storage.ErrDuplicateFeedURL
 	}
-	f := storage.Feed{ID: s.next, UserID: userID, FeedURL: p.FeedURL, Title: p.Title, IntervalMinutes: 60}
+	f := storage.Feed{ID: s.next, OwnerID: userID, FeedURL: p.FeedURL, Title: p.Title, IntervalMinutes: 60}
 	s.next++
 	s.feeds[userID][p.FeedURL] = f
 	return f, nil
@@ -289,6 +289,12 @@ func (s *tenantFeedStore) ListFeeds(_ context.Context, userID int64, _, _ int) (
 	return out, len(out), nil
 }
 
+func (s *tenantFeedStore) CountOwnedFeeds(_ context.Context, userID int64) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return len(s.feeds[userID]), nil
+}
+
 func (s *tenantFeedStore) UpdateFeed(_ context.Context, _ int64, _ storage.UpdateFeedParams) (storage.Feed, error) {
 	return storage.Feed{}, nil
 }
@@ -299,6 +305,7 @@ func (s *tenantFeedStore) SetFeedNextCheckAt(_ context.Context, _ int64, _ time.
 	return nil
 }
 func (s *tenantFeedStore) DeleteFeed(_ context.Context, _ int64, _ int64) error { return nil }
+func (s *tenantFeedStore) DeleteFeedByID(_ context.Context, _ int64) error      { return nil }
 
 func TestMultiUser_CreateUserAndAPIKeyAuth(t *testing.T) {
 	users := newMemUserStore()

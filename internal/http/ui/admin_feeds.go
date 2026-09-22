@@ -17,12 +17,13 @@ type adminFeedRowView struct {
 }
 
 type adminFeedDetailView struct {
-	Feed        storage.Feed
-	EntryCount  int
-	UnreadCount int
-	Status      string
-	Job         *storage.AdminFeedJob
-	OwnerName   string
+	Feed            storage.Feed
+	EntryCount      int
+	UnreadCount     int
+	SubscriberCount int
+	Status          string
+	Job             *storage.AdminFeedJob
+	OwnerName       string
 	// PollLog is the last adminFeedPollLogLimit poll attempts, newest first;
 	// PollLogEnabled is false when history is not wired at all.
 	PollLog        []storage.FeedPollLogEntry
@@ -272,6 +273,7 @@ func (h *Handler) handleAdminFeedShow(w http.ResponseWriter, r *http.Request) {
 		if row, err := h.cfg.AdminFeeds.GetAdminFeedRow(r.Context(), id); err == nil {
 			detail.EntryCount = row.EntryCount
 			detail.UnreadCount = row.UnreadCount
+			detail.SubscriberCount = row.SubscriberCount
 			detail.Status = classifyAdminFeedStatus(row, time.Now())
 		}
 		if job, err := h.cfg.AdminFeeds.GetPollFeedJob(r.Context(), id); err == nil {
@@ -281,8 +283,8 @@ func (h *Handler) handleAdminFeedShow(w http.ResponseWriter, r *http.Request) {
 	if detail.Status == "" {
 		detail.Status = classifyAdminFeedStatus(storage.AdminFeedRow{Feed: feed}, time.Now())
 	}
-	if h.cfg.Users != nil {
-		if u, err := h.cfg.Users.GetUser(r.Context(), feed.UserID); err == nil {
+	if h.cfg.Users != nil && feed.OwnerID > 0 {
+		if u, err := h.cfg.Users.GetUser(r.Context(), feed.OwnerID); err == nil {
 			detail.OwnerName = u.Username
 		}
 	}
@@ -417,11 +419,11 @@ func (h *Handler) handleAdminFeedDelete(w http.ResponseWriter, r *http.Request) 
 		http.NotFound(w, r)
 		return
 	}
-	if err := h.cfg.Feeds.DeleteFeed(r.Context(), feed.UserID, id); err != nil {
+	if err := h.cfg.Feeds.DeleteFeedByID(r.Context(), id); err != nil {
 		http.NotFound(w, r)
 		return
 	}
-	h.cfg.Audit.Record(r, storage.AuditFeedDelete, "feed", id, map[string]any{"url": feed.FeedURL, "owner_id": feed.UserID})
+	h.cfg.Audit.Record(r, storage.AuditFeedDelete, "feed", id, map[string]any{"url": feed.FeedURL, "owner_id": feed.OwnerID})
 	http.Redirect(w, r, adminFeedsRedirect(r), http.StatusFound)
 }
 
@@ -441,7 +443,7 @@ func (h *Handler) handleAdminFeedHashEntries(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	feedID := feed.ID
-	n, err := h.collapseEntries(r, feed.UserID, &feedID, nil, false)
+	n, err := h.collapseEntries(r, 0, &feedID, nil, false)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

@@ -37,7 +37,7 @@ func nextDelay(t *testing.T, r *FeedRefresher, fs *statusFeedStore, feed storage
 
 func TestRefreshLoadedFeed_AdaptiveInterval(t *testing.T) {
 	h := &stubHandler{res: reader.FetchResponse{}}
-	base := storage.Feed{ID: 9, UserID: 1, FeedURL: "https://example.com/f.xml", IntervalMinutes: 15}
+	base := storage.Feed{ID: 9, OwnerID: 1, FeedURL: "https://example.com/f.xml", IntervalMinutes: 15}
 
 	t.Run("off by default", func(t *testing.T) {
 		r, fs, _, _ := newStatusRefresher(h, base)

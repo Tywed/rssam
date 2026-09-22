@@ -178,6 +178,10 @@ func (m *uiMemFeeds) DeleteFeed(_ context.Context, _ int64, id int64) error {
 	}
 	return storage.ErrNotFound
 }
+func (m *uiMemFeeds) DeleteFeedByID(ctx context.Context, id int64) error {
+	return m.DeleteFeed(ctx, 0, id)
+}
+func (m *uiMemFeeds) CountOwnedFeeds(context.Context, int64) (int, error) { return len(m.feeds), nil }
 func (m *uiMemFeeds) GetFeedByID(_ context.Context, id int64) (storage.Feed, error) {
 	return m.GetFeed(context.Background(), 0, id)
 }
@@ -225,7 +229,7 @@ func (m *uiMemFeeds) SetFeedManualPaused(_ context.Context, id int64, paused boo
 func (m *uiMemFeeds) BulkUpdateFeedsByCategory(_ context.Context, userID, categoryID int64, update storage.BulkFeedUpdate) ([]int64, int, error) {
 	var ids []int64
 	for i, f := range m.feeds {
-		if f.UserID != 0 && f.UserID != userID {
+		if f.OwnerID != 0 && f.OwnerID != userID {
 			continue
 		}
 		match := categoryID == 0 && f.CategoryID == nil

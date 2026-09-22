@@ -370,14 +370,18 @@ func TestIntegration_GetAdminFeedRow(t *testing.T) {
 	ctx := context.Background()
 	owner := newIntegrationUser(t, store, "adminrow")
 	feed := newFeedForUser(t, store, owner.ID, "adminrow", 60)
-	if _, _, err := store.CreateEntries(ctx, feed.ID, []CreateEntryParams{
+	_, created, err := store.CreateEntries(ctx, feed.ID, []CreateEntryParams{
 		{Title: "a", URL: "https://example.com/ar/1", Hash: "ar-1"},
-		{Title: "b", URL: "https://example.com/ar/2", Hash: "ar-2", Status: EntryStatusRead},
-	}); err != nil {
+		{Title: "b", URL: "https://example.com/ar/2", Hash: "ar-2"},
+	})
+	if err != nil || len(created) != 2 {
+		t.Fatalf("create entries: %v err=%v", created, err)
+	}
+	if _, err := store.UpdateEntry(ctx, owner.ID, feed.ID, created[1].ID, UpdateEntryParams{Status: ptr(EntryStatusRead)}); err != nil {
 		t.Fatal(err)
 	}
 	row, err := store.GetAdminFeedRow(ctx, feed.ID)
-	if err != nil || row.ID != feed.ID || row.EntryCount != 2 || row.UnreadCount != 1 {
+	if err != nil || row.ID != feed.ID || row.EntryCount != 2 || row.UnreadCount != 1 || row.SubscriberCount != 1 {
 		t.Fatalf("row=%+v err=%v", row, err)
 	}
 	if _, err := store.GetAdminFeedRow(ctx, feed.ID+1_000_000); !errors.Is(err, ErrNotFound) {

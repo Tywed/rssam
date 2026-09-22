@@ -87,11 +87,11 @@ func (m *memEntryCreate) ListFeedEntries(context.Context, int64, int64, storage.
 func (m *memEntryCreate) SearchEntries(context.Context, int64, storage.SearchEntriesFilter) ([]storage.Entry, int, error) {
 	return nil, 0, nil
 }
-func (m *memEntryCreate) ListEnclosuresByEntryIDs(context.Context, int64, []int64) (map[int64][]storage.Enclosure, error) {
+func (m *memEntryCreate) ListEnclosuresByEntryIDs(context.Context, []int64) (map[int64][]storage.Enclosure, error) {
 	return nil, nil
 }
-func (m *memEntryCreate) CountUnreadByFeed(context.Context, int64) (int, error) { return 0, nil }
-func (m *memEntryCreate) CountUnreadByCategory(context.Context, int64) (int, error) {
+func (m *memEntryCreate) CountUnreadByFeed(context.Context, int64, int64) (int, error) { return 0, nil }
+func (m *memEntryCreate) CountUnreadByCategory(context.Context, int64, int64) (int, error) {
 	return 0, nil
 }
 func (m *memEntryCreate) CountUnreadGlobalForUser(context.Context, int64) (int, error) { return 0, nil }
@@ -149,9 +149,9 @@ func TestFeedRefresherPerFeedHashOnly(t *testing.T) {
 		Filters: filters,
 		Engine:  filter.New(filter.Config{}),
 	}
-	feed := storage.Feed{ID: 1, UserID: 1, StoreHashOnly: true}
+	feed := storage.Feed{ID: 1, OwnerID: 1, StoreHashOnly: true}
 
-	inserted, created, fresh, err := r.processEntriesDedupOnly(context.Background(), feed, []storage.CreateEntryParams{
+	inserted, created, fresh, err := r.processEntriesDedupOnly(context.Background(), feed, []storage.Subscription{{UserID: 1, FeedID: feed.ID}}, []storage.CreateEntryParams{
 		{Title: "skip me", Hash: "h1", URL: "https://example.com/1"},
 		{Title: "match item", Hash: "h2", URL: "https://example.com/2", Content: "body"},
 	})

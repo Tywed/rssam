@@ -34,7 +34,7 @@ func newAdminFeedDetailHandler(t *testing.T, pollLog storage.FeedPollLogStore) (
 		}},
 		Sessions:    &uiMemSessions{sessions: map[string]storage.Session{}},
 		Entries:     uiMemEntries{},
-		Feeds:       &uiMemFeeds{feeds: []storage.Feed{{ID: 7, UserID: 1, Title: "Detail feed", FeedURL: "https://example.com/f.xml", IntervalMinutes: 30}}},
+		Feeds:       &uiMemFeeds{feeds: []storage.Feed{{ID: 7, OwnerID: 1, Title: "Detail feed", FeedURL: "https://example.com/f.xml", IntervalMinutes: 30}}},
 		Categories:  &uiMemCategories{},
 		AdminFeeds:  &uiMemAdminFeeds{},
 		FeedPollLog: pollLog,

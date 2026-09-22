@@ -100,7 +100,7 @@ func (s *tenantEntryStore) ListFeedEntries(_ context.Context, userID, feedID int
 	return out, len(out), nil
 }
 
-func (s *tenantEntryStore) ListEnclosuresByEntryIDs(_ context.Context, _ int64, ids []int64) (map[int64][]storage.Enclosure, error) {
+func (s *tenantEntryStore) ListEnclosuresByEntryIDs(_ context.Context, ids []int64) (map[int64][]storage.Enclosure, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	out := map[int64][]storage.Enclosure{}

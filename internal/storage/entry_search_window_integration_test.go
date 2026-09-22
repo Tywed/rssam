@@ -39,8 +39,12 @@ func TestIntegration_SearchEntriesRankWindowAndTotalCap(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := store.db.Exec(ctx, `
-UPDATE entries SET published_at = now() - interval '1 day' * (CASE WHEN hash = 'rankwin-old' THEN 5000 ELSE split_part(hash, '-', 2)::int END)
-WHERE feed_id = $1`, feed.ID); err != nil {
+WITH e AS (
+  UPDATE entries SET published_at = now() - interval '1 day' * (CASE WHEN hash = 'rankwin-old' THEN 5000 ELSE split_part(hash, '-', 2)::int END)
+  WHERE feed_id = $1
+  RETURNING id, published_at
+)
+UPDATE user_entries ue SET sort_at = e.published_at FROM e WHERE ue.entry_id = e.id`, feed.ID); err != nil {
 		t.Fatal(err)
 	}
 
@@ -91,9 +95,13 @@ func TestIntegration_SearchEntriesTotalCap(t *testing.T) {
 	owner := newIntegrationUser(t, store, "totalcap_owner")
 	feed, _ := newIntegrationFeedWithEntries(t, store, owner.ID, 0)
 	if _, err := store.db.Exec(ctx, `
-INSERT INTO entries (feed_id, user_id, title, url, hash, content, search_vector)
-SELECT $1, $2, 'cap ' || g, 'https://example.com/cap/' || g, 'cap-' || g, '', to_tsvector('simple', 'капремонт')
-FROM generate_series(1, $3) g`, feed.ID, owner.ID, SearchTotalCap+10); err != nil {
+WITH e AS (
+  INSERT INTO entries (feed_id, title, url, hash, content, search_vector)
+  SELECT $1, 'cap ' || g, 'https://example.com/cap/' || g, 'cap-' || g, '', to_tsvector('simple', 'капремонт')
+  FROM generate_series(1, $3) g
+  RETURNING id, feed_id, created_at
+)
+INSERT INTO user_entries (user_id, entry_id, feed_id, sort_at) SELECT $2, id, feed_id, created_at FROM e`, feed.ID, owner.ID, SearchTotalCap+10); err != nil {
 		t.Fatal(err)
 	}
 	rows, total, err := store.SearchEntries(ctx, owner.ID, SearchEntriesFilter{Query: "капремонт", Limit: 3, WithTotal: true})

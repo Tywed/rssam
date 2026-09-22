@@ -128,7 +128,6 @@ func entryFromPost(post post, pub time.Time) storage.CreateEntryParams {
 		Content:     content,
 		PublishedAt: &utc,
 		Hash:        hash,
-		Status:      storage.EntryStatusUnread,
 	}
 }
 

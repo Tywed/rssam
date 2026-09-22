@@ -65,7 +65,7 @@ func (s *PostgresStore) SearchEntries(ctx context.Context, userID int64, filter 
 	)
 	argN := 1
 
-	where = append(where, fmt.Sprintf("user_id = $%d", argN))
+	where = append(where, fmt.Sprintf("ue.user_id = $%d", argN))
 	args = append(args, userID)
 	argN++
 
@@ -83,10 +83,10 @@ func (s *PostgresStore) SearchEntries(ctx context.Context, userID int64, filter 
 		args = append(args, ftsPrefixQuery(query))
 		argN++
 	}
-	where = append(where, "search_vector @@ "+tsq)
+	where = append(where, "e.search_vector @@ "+tsq)
 
 	if filter.FeedID != nil {
-		where = append(where, fmt.Sprintf("feed_id = $%d", argN))
+		where = append(where, fmt.Sprintf("ue.feed_id = $%d", argN))
 		args = append(args, *filter.FeedID)
 		argN++
 	}
@@ -94,16 +94,16 @@ func (s *PostgresStore) SearchEntries(ctx context.Context, userID int64, filter 
 		if !IsValidEntryStatus(*filter.Status) {
 			return nil, 0, fmt.Errorf("invalid entry status: %q", *filter.Status)
 		}
-		where = append(where, fmt.Sprintf("status = $%d", argN))
+		where = append(where, fmt.Sprintf("ue.status = $%d", argN))
 		args = append(args, *filter.Status)
 		argN++
 	} else {
-		where = append(where, fmt.Sprintf("status <> $%d", argN))
+		where = append(where, fmt.Sprintf("ue.status <> $%d", argN))
 		args = append(args, EntryStatusRemoved)
 		argN++
 	}
 	if filter.Starred != nil {
-		where = append(where, fmt.Sprintf("starred = $%d", argN))
+		where = append(where, fmt.Sprintf("ue.starred = $%d", argN))
 		args = append(args, *filter.Starred)
 		argN++
 	}
@@ -129,11 +129,11 @@ func (s *PostgresStore) SearchEntries(ctx context.Context, userID int64, filter 
 		window = SearchRankWindow
 	}
 	orderBy := entryOrderClause(filter.Sort)
-	q := "WITH hits AS MATERIALIZED (SELECT id FROM entries" + whereSQL +
+	q := "WITH hits AS MATERIALIZED (SELECT ue.entry_id, ue.user_id " + entryFromUser + whereSQL +
 		"\nORDER BY " + orderBy + "\nLIMIT " + fmt.Sprint(window) + ")\n" +
-		"SELECT " + entryColumns(filter.WithoutBody) + "\nFROM entries\nWHERE id IN (SELECT id FROM hits)"
+		"SELECT " + entryColumns(filter.WithoutBody) + "\n" + entryFromUser + "\nWHERE (ue.entry_id, ue.user_id) IN (SELECT entry_id, user_id FROM hits)"
 	if filter.Rank {
-		orderBy = fmt.Sprintf("ts_rank_cd(search_vector, %s) DESC, ", tsq) + orderBy
+		orderBy = fmt.Sprintf("ts_rank_cd(e.search_vector, %s) DESC, ", tsq) + orderBy
 	}
 	q += "\nORDER BY " + orderBy +
 		"\nLIMIT $" + fmt.Sprint(argN) + " OFFSET $" + fmt.Sprint(argN+1)
@@ -157,7 +157,7 @@ func (s *PostgresStore) SearchEntries(ctx context.Context, userID int64, filter 
 		if !filter.WithTotal {
 			return nil
 		}
-		return tx.QueryRow(ctx, "SELECT count(*) FROM (SELECT 1 FROM entries"+whereSQL+
+		return tx.QueryRow(ctx, "SELECT count(*) FROM (SELECT 1 "+entryFromUser+whereSQL+
 			"\nLIMIT "+fmt.Sprint(SearchTotalCap)+") c", args...).Scan(&total)
 	})
 	if err != nil {

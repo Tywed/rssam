@@ -293,6 +293,5 @@ func messageToEntry(m ParsedMessage) storage.CreateEntryParams {
 		Author:      author,
 		PublishedAt: pub,
 		Hash:        model.DedupHashFromURL(uri),
-		Status:      storage.EntryStatusUnread,
 	}
 }

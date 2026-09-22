@@ -55,12 +55,18 @@ func (c *unreadCountsCache) put(userID int64, snap unreadCountsSnap) {
 	c.items[userID] = snap
 }
 
+// invalidate drops one user's snapshot; userID 0 drops every user (actions
+// on shared entries touch all subscribers).
 func (c *unreadCountsCache) invalidate(userID int64) {
 	if c == nil {
 		return
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if userID == 0 {
+		clear(c.items)
+		return
+	}
 	delete(c.items, userID)
 }
 

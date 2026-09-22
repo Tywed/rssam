@@ -143,7 +143,6 @@ func entryFromPost(post wallPost, ownerNames map[int]string) storage.CreateEntry
 		Author:      authorPtr,
 		PublishedAt: pub,
 		Hash:        hash,
-		Status:      storage.EntryStatusUnread,
 	}
 }
 

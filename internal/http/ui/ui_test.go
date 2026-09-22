@@ -129,12 +129,12 @@ func (uiMemEntries) ListFeedEntries(context.Context, int64, int64, storage.ListE
 func (uiMemEntries) SearchEntries(context.Context, int64, storage.SearchEntriesFilter) ([]storage.Entry, int, error) {
 	return nil, 0, nil
 }
-func (uiMemEntries) ListEnclosuresByEntryIDs(context.Context, int64, []int64) (map[int64][]storage.Enclosure, error) {
+func (uiMemEntries) ListEnclosuresByEntryIDs(context.Context, []int64) (map[int64][]storage.Enclosure, error) {
 	return nil, nil
 }
-func (uiMemEntries) CountUnreadByFeed(context.Context, int64) (int, error)        { return 0, nil }
-func (uiMemEntries) CountUnreadByCategory(context.Context, int64) (int, error)    { return 0, nil }
-func (uiMemEntries) CountUnreadGlobalForUser(context.Context, int64) (int, error) { return 0, nil }
+func (uiMemEntries) CountUnreadByFeed(context.Context, int64, int64) (int, error)     { return 0, nil }
+func (uiMemEntries) CountUnreadByCategory(context.Context, int64, int64) (int, error) { return 0, nil }
+func (uiMemEntries) CountUnreadGlobalForUser(context.Context, int64) (int, error)     { return 0, nil }
 func (uiMemEntries) UnreadCountsForUser(context.Context, int64) (map[int64]int, map[int64]int, error) {
 	return map[int64]int{}, map[int64]int{}, nil
 }

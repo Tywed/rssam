@@ -71,33 +71,39 @@ ON CONFLICT (feed_id, hash) DO NOTHING`)
 	return int(tag.RowsAffected()), nil
 }
 
-// StripEntryPayloadAfterWebhook clears entry body fields after successful webhook delivery.
-// The row (and hash) remain for FK references and poll dedup.
+// StripEntryPayloadAfterWebhook clears entry body fields after successful
+// webhook delivery. The row (and hash) remain for FK references and poll
+// dedup; the entry becomes removed for every subscriber (removed_at) and the
+// retention pass deletes it later.
 func (s *PostgresStore) StripEntryPayloadAfterWebhook(ctx context.Context, entryID int64) error {
 	const q = `
-UPDATE entries
-SET title = '',
-    content = '',
-    original_content = '',
-    author = NULL,
-    content_fetched = FALSE,
-    search_vector = ''::tsvector,
-    status = 'removed',
-    updated_at = now()
-WHERE id = $1`
-	cmd, err := s.db.Exec(ctx, q, entryID)
-	if err != nil {
+WITH e AS (
+  UPDATE entries
+  SET title = '',
+      content = '',
+      original_content = '',
+      author = NULL,
+      content_fetched = FALSE,
+      search_vector = ''::tsvector,
+      removed_at = COALESCE(removed_at, now()),
+      updated_at = now()
+  WHERE id = $1
+  RETURNING id, feed_id, hash, url
+), ue AS (
+  UPDATE user_entries SET status = $2, updated_at = now()
+  WHERE entry_id = $1 AND status <> $2
+), d AS (
+  INSERT INTO feed_entry_dedup(feed_id, hash, url)
+  SELECT feed_id, hash, url FROM e
+  ON CONFLICT (feed_id, hash) DO NOTHING
+)
+SELECT count(*) FROM e`
+	var n int
+	if err := s.db.QueryRow(ctx, q, entryID, EntryStatusRemoved).Scan(&n); err != nil {
 		return fmt.Errorf("strip entry payload after webhook: %w", err)
 	}
-	if cmd.RowsAffected() == 0 {
+	if n == 0 {
 		return ErrNotFound
-	}
-	const dedupQ = `
-INSERT INTO feed_entry_dedup(feed_id, hash, url)
-SELECT feed_id, hash, url FROM entries WHERE id = $1
-ON CONFLICT (feed_id, hash) DO NOTHING`
-	if _, err := s.db.Exec(ctx, dedupQ, entryID); err != nil {
-		return fmt.Errorf("record dedup after strip: %w", err)
 	}
 	return nil
 }
@@ -106,8 +112,8 @@ const collapseEntriesBatchSize = 5000
 
 // CollapseEntriesToHashes records hashes for poll dedup and deletes full entry rows.
 func (s *PostgresStore) CollapseEntriesToHashes(ctx context.Context, params CollapseEntriesParams) (int64, error) {
-	if params.UserID <= 0 {
-		return 0, fmt.Errorf("user_id is required")
+	if params.UserID <= 0 && params.CategoryID != nil {
+		return 0, fmt.Errorf("category scope needs a user")
 	}
 	var total int64
 	for {
@@ -140,14 +146,12 @@ WITH doomed AS (
   SELECT e.id, e.feed_id, e.hash, COALESCE(e.url, '') AS url
   FROM entries e
   INNER JOIN feeds f ON f.id = e.feed_id
-  WHERE f.user_id = $1
+  WHERE ($1::bigint = 0 OR EXISTS (
+      SELECT 1 FROM subscriptions s
+      WHERE s.user_id = $1 AND s.feed_id = f.id
+        AND ($3::bigint IS NULL OR ($3 = 0 AND s.category_id IS NULL) OR s.category_id = $3)))
     AND ($2::bigint IS NULL OR e.feed_id = $2)
-    AND (
-      $3::bigint IS NULL
-      OR ($3 = 0 AND f.category_id IS NULL)
-      OR f.category_id = $3
-    )
-    AND e.starred = FALSE
+    AND NOT EXISTS (SELECT 1 FROM user_entries ue WHERE ue.entry_id = e.id AND ue.starred)
     AND ($6::boolean OR NOT EXISTS (SELECT 1 FROM entry_labels el WHERE el.entry_id = e.id))
     AND NOT EXISTS (
       SELECT 1 FROM webhook_logs wl

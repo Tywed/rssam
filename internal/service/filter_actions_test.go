@@ -69,11 +69,11 @@ func (m *memEntryBulk) ListFeedEntries(context.Context, int64, int64, storage.Li
 func (m *memEntryBulk) SearchEntries(context.Context, int64, storage.SearchEntriesFilter) ([]storage.Entry, int, error) {
 	return nil, 0, nil
 }
-func (m *memEntryBulk) ListEnclosuresByEntryIDs(context.Context, int64, []int64) (map[int64][]storage.Enclosure, error) {
+func (m *memEntryBulk) ListEnclosuresByEntryIDs(context.Context, []int64) (map[int64][]storage.Enclosure, error) {
 	return nil, nil
 }
-func (m *memEntryBulk) CountUnreadByFeed(context.Context, int64) (int, error) { return 0, nil }
-func (m *memEntryBulk) CountUnreadByCategory(context.Context, int64) (int, error) {
+func (m *memEntryBulk) CountUnreadByFeed(context.Context, int64, int64) (int, error) { return 0, nil }
+func (m *memEntryBulk) CountUnreadByCategory(context.Context, int64, int64) (int, error) {
 	return 0, nil
 }
 func (m *memEntryBulk) CountUnreadGlobalForUser(context.Context, int64) (int, error) { return 0, nil }

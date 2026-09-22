@@ -32,8 +32,11 @@ func TestIntegration_CreateEntriesHugeContentIsIndexedTruncated(t *testing.T) {
 
 	var feedID int64
 	if err := store.db.QueryRow(ctx, `
-INSERT INTO feeds(user_id, feed_url, feed_type, title, interval_minutes, manual_paused)
-VALUES ($1, $2, 'rss', 'fts', 60, TRUE) RETURNING id`, u.ID, "https://example.com/fts/"+suffix+".xml").Scan(&feedID); err != nil {
+WITH f AS (
+  INSERT INTO feeds(owner_id, feed_url, feed_type, title, interval_minutes, manual_paused)
+  VALUES ($1, $2, 'rss', 'fts', 60, TRUE) RETURNING id
+)
+INSERT INTO subscriptions(user_id, feed_id) SELECT $1, id FROM f RETURNING feed_id`, u.ID, "https://example.com/fts/"+suffix+".xml").Scan(&feedID); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _, _ = store.db.Exec(context.Background(), `DELETE FROM feeds WHERE id = $1`, feedID) })
