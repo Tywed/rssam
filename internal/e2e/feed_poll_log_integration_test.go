@@ -50,15 +50,22 @@ func TestE2E_FeedPollLog_FailureThenRecovery(t *testing.T) {
 	if d := events[0].Feed.NextCheckAt.Sub(*after.NextCheckAt); d < -time.Millisecond || d > time.Millisecond {
 		t.Fatalf("event next_check_at=%s, db=%s", events[0].Feed.NextCheckAt, after.NextCheckAt)
 	}
-	// And the queued job must run at exactly that time.
-	job, err := env.store.GetPollFeedJob(ctx, feed.ID)
-	if err != nil || job == nil {
-		t.Fatalf("poll job: %+v err=%v", job, err)
-	}
+	// And the queued job must run at exactly that time. The poll log row is
+	// written by the refresher, the job is rescheduled by the worker after
+	// the refresher returns — wait for that second step.
+	var job *storage.AdminFeedJob
+	waitFor(t, "failed job to be rescheduled", func() bool {
+		j, err := env.store.GetPollFeedJob(ctx, feed.ID)
+		if err != nil || j == nil || j.LastError == nil {
+			return false
+		}
+		job = j
+		return true
+	})
 	if !job.RunAt.Equal(*after.NextCheckAt) {
 		t.Fatalf("job.run_at=%s, feeds.next_check_at=%s", job.RunAt, after.NextCheckAt)
 	}
-	if job.LastError == nil || *job.LastError == "" {
+	if *job.LastError == "" {
 		t.Fatal("job.last_error must carry the failure")
 	}
 
