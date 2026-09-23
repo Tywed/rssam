@@ -10,6 +10,7 @@ import (
 // querier is what a read helper needs from either the pool or a transaction.
 type querier interface {
 	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 }
 
 func withTx(ctx context.Context, db *pgxpool.Pool, fn func(pgx.Tx) error) error {

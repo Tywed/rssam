@@ -69,6 +69,9 @@ type Config struct {
 	// FeedPollLog is the per-feed poll history shown on the admin feed page
 	// (nil = card hidden).
 	FeedPollLog storage.FeedPollLogStore
+	// Subscriptions is the shared catalog (nil = catalog page and
+	// unsubscribe unavailable).
+	Subscriptions storage.SubscriptionStore
 	// Audit records admin actions; nil disables the audit page and recording.
 	Audit                 *audit.Recorder
 	AdminWebhooks         storage.AdminWebhookStore
@@ -124,6 +127,7 @@ type WebhookTestResult struct {
 type ImportReport struct {
 	CategoriesCreated int
 	FeedsCreated      int
+	FeedsSubscribed   int
 	FeedsSkipped      int
 	Errors            []string
 }
@@ -464,6 +468,9 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.Handle("GET /ui/feeds/{id}/edit", auth(h.requireEditor(http.HandlerFunc(h.handleFeedEdit))))
 	mux.Handle("POST /ui/feeds/{id}", auth(h.requireEditor(http.HandlerFunc(h.handleFeedUpdate))))
 	mux.Handle("POST /ui/feeds/{id}/delete", auth(h.requireEditor(http.HandlerFunc(h.handleFeedDelete))))
+	mux.Handle("GET /ui/catalog", auth(http.HandlerFunc(h.handleCatalog)))
+	mux.Handle("POST /ui/catalog/{id}/subscribe", auth(http.HandlerFunc(h.handleSubscribe)))
+	mux.Handle("POST /ui/feeds/{id}/unsubscribe", auth(http.HandlerFunc(h.handleUnsubscribe)))
 	mux.Handle("POST /ui/feeds/{id}/refresh", auth(http.HandlerFunc(h.handleFeedRefresh)))
 	mux.Handle("POST /ui/feeds/{feedID}/mark-read", auth(http.HandlerFunc(h.handleFeedMarkRead)))
 

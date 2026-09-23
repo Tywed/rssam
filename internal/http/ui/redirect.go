@@ -47,3 +47,14 @@ func localUIPath(raw, fallback string) string {
 func refererOr(r *http.Request, fallback string) string {
 	return localUIPath(r.Header.Get("Referer"), fallback)
 }
+
+func withQueryParam(target, key, value string) string {
+	u, err := url.Parse(target)
+	if err != nil {
+		return target
+	}
+	q := u.Query()
+	q.Set(key, value)
+	u.RawQuery = q.Encode()
+	return u.RequestURI()
+}

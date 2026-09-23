@@ -172,6 +172,8 @@ var rbacProbeBodies = map[string]string{
 	"/v1/categories/{id}":                  `{"title":"t"}`,
 	"/v1/feeds":                            `{"feed_url":"http://e.test/f"}`,
 	"/v1/feeds/{id}":                       `{"feed_url":"http://e.test/f"}`,
+	"/v1/subscriptions":                    `{"feed_id":1}`,
+	"/v1/subscriptions/{id}":               `{"category_id":null}`,
 	"/v1/entries":                          `{"entry_ids":[1],"status":"read"}`,
 	"/v1/feeds/{feedID}/entries/{entryID}": `{"status":"read"}`,
 	"/v1/filters":                          `{"name":"f"}`,

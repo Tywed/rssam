@@ -3,7 +3,7 @@
   "info": {
     "title": "rssam API",
     "version": "0.0.0-dev",
-    "description": "REST API of the rssam RSS aggregator.\n\n**Authentication.** Every `/v1` endpoint takes `X-Auth-Token: <token>` where the token is a personal API key (`POST /v1/me/api-keys`, with a `scope` of `read`/`write`/`admin` and an optional expiry). A request outside the key's scope is rejected with 403. A browser session cookie is also accepted, but state-changing requests authenticated only by the cookie must pass the same-origin check (`Sec-Fetch-Site`/`Origin`), otherwise 403.\n\n**Envelope.** Successful JSON responses are `{\"data\": ..., \"total\": n}`; errors are `{\"error_message\": \"...\"}`. Lists take `limit`/`offset`; `total` is the full row count.\n\n**Roles.** Every user has one of three roles, each including the previous one: `reader` — reads entries, changes read/starred state, manages own categories and labels; `editor` — additionally creates, edits and deletes feeds (including bridges), imports/exports OPML, manages filters and webhooks; `admin` — additionally manages users (`/v1/users`), triggers refresh-all and reads `/v1/system/info`. Endpoints marked \"Requires an editor principal\" / \"Requires an admin principal\" return 403 for lower roles. Objects are scoped to the calling user; reading another user's object yields 404.\n\n**Request id.** Every response carries `X-Request-Id` (echoed from the request when a proxy set it, generated otherwise); quote it when reporting 5xx errors.\n\n**Limits.** Request bodies are capped (MAX_REQUEST_BODY_BYTES, default 1 MiB) → 413; per-IP rate limits on authentication failures and sensitive routes → 429. Editor quotas (admins exempt; 0 = unlimited): MAX_FEEDS_PER_EDITOR and MAX_WEBHOOKS_PER_EDITOR → 429 on create, EDITOR_MIN_POLL_INTERVAL → 422 on a feed write with a shorter interval."
+    "description": "REST API of the rssam RSS aggregator.\n\n**Authentication.** Every `/v1` endpoint takes `X-Auth-Token: <token>` where the token is a personal API key (`POST /v1/me/api-keys`, with a `scope` of `read`/`write`/`admin` and an optional expiry). A request outside the key's scope is rejected with 403. A browser session cookie is also accepted, but state-changing requests authenticated only by the cookie must pass the same-origin check (`Sec-Fetch-Site`/`Origin`), otherwise 403.\n\n**Envelope.** Successful JSON responses are `{\"data\": ..., \"total\": n}`; errors are `{\"error_message\": \"...\"}`. Lists take `limit`/`offset`; `total` is the full row count.\n\n**Roles.** Every user has one of three roles, each including the previous one: `reader` — subscribes to catalog feeds, reads entries, changes read/starred state, manages own categories and labels; `editor` — additionally creates, edits and deletes feeds (including bridges), imports/exports OPML, manages filters and webhooks; `admin` — additionally manages users (`/v1/users`), triggers refresh-all and reads `/v1/system/info`. Endpoints marked \"Requires an editor principal\" / \"Requires an admin principal\" return 403 for lower roles. Objects are scoped to the calling user; reading another user's object yields 404.\n\n**Catalog.** Feeds are one catalog shared by all users (`GET /v1/catalog`); a subscription (`/v1/subscriptions`) is a user's membership in a feed with their own category and webhook, and read/starred state is per user. `GET /v1/feeds` lists the caller's subscribed feeds; feed settings (interval, rules) are shared and editable by any editor; `DELETE /v1/feeds/{id}` removes the feed for everyone, `DELETE /v1/subscriptions/{id}` only for the caller.\n\n**Request id.** Every response carries `X-Request-Id` (echoed from the request when a proxy set it, generated otherwise); quote it when reporting 5xx errors.\n\n**Limits.** Request bodies are capped (MAX_REQUEST_BODY_BYTES, default 1 MiB) → 413; per-IP rate limits on authentication failures and sensitive routes → 429. Editor quotas (admins exempt; 0 = unlimited): MAX_FEEDS_PER_EDITOR and MAX_WEBHOOKS_PER_EDITOR → 429 on create, EDITOR_MIN_POLL_INTERVAL → 422 on a feed write with a shorter interval."
   },
   "servers": [
     {
@@ -22,6 +22,10 @@
     {
       "name": "feeds",
       "description": "Feeds, OPML import/export, refresh."
+    },
+    {
+      "name": "subscriptions",
+      "description": "The shared feed catalog and who reads what."
     },
     {
       "name": "entries",
@@ -498,7 +502,8 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "description": "Only feeds the caller is subscribed to; category_id/webhook_id are the caller's. The whole catalog is GET /v1/catalog."
       },
       "post": {
         "tags": [
@@ -506,7 +511,7 @@
         ],
         "summary": "Create feed",
         "operationId": "createFeed",
-        "description": "feed_url is validated against the SSRF policy (no private networks unless FETCH_ALLOW_PRIVATE_NETWORK). Requires an editor principal.",
+        "description": "feed_url is validated against the SSRF policy (no private networks unless FETCH_ALLOW_PRIVATE_NETWORK). Feeds form one catalog shared by all users: a URL that already exists subscribes the caller to that feed instead (200, own category_id/webhook_id); a new URL creates the feed owned by the caller (201). Requires an editor principal.",
         "requestBody": {
           "required": true,
           "content": {
@@ -518,6 +523,9 @@
           }
         },
         "responses": {
+          "200": {
+            "description": "FeedResponse"
+          },
           "201": {
             "description": "Created.",
             "content": {
@@ -538,7 +546,7 @@
             "$ref": "#/components/responses/Forbidden"
           },
           "409": {
-            "$ref": "#/components/responses/Conflict"
+            "description": "Error"
           },
           "422": {
             "description": "Editor quota: interval_minutes is below EDITOR_MIN_POLL_INTERVAL.",
@@ -848,7 +856,7 @@
         ],
         "summary": "Update feed",
         "operationId": "updateFeed",
-        "description": "Requires an editor principal.",
+        "description": "Catalog columns (URL, title, interval, rules, flags) are shared by every subscriber; category_id and webhook_id apply to the caller's own subscription. Requires an editor principal.",
         "requestBody": {
           "required": true,
           "content": {
@@ -919,10 +927,10 @@
         ],
         "summary": "Delete feed",
         "operationId": "deleteFeed",
-        "description": "Requires an editor principal.",
+        "description": "Removes the feed from the catalog for every subscriber, with its entries. To stop reading a feed others still use, DELETE /v1/subscriptions/{id} instead. Requires an editor principal subscribed to the feed.",
         "responses": {
           "200": {
-            "description": "Deleted with its entries.",
+            "description": "Deleted from the catalog with its entries.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2866,6 +2874,221 @@
           }
         }
       }
+    },
+    "/v1/catalog": {
+      "get": {
+        "tags": [
+          "subscriptions"
+        ],
+        "summary": "List catalog",
+        "operationId": "listCatalog",
+        "description": "Every feed in the shared catalog with its subscriber count and whether the caller reads it. Any role: readers pick feeds here and subscribe with POST /v1/subscriptions; only editors add new feeds (POST /v1/feeds).",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/limit"
+          },
+          {
+            "$ref": "#/components/parameters/offset"
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Case-insensitive substring of the title or URL."
+          },
+          {
+            "name": "subscribed",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            },
+            "description": "true — only feeds the caller is subscribed to; false — only the others; omitted — all."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "CatalogList"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        }
+      }
+    },
+    "/v1/subscriptions": {
+      "get": {
+        "tags": [
+          "subscriptions"
+        ],
+        "summary": "List subscriptions",
+        "operationId": "listSubscriptions",
+        "description": "The caller's subscriptions with the per-subscription category and webhook. GET /v1/feeds returns the same feeds with catalog details.",
+        "responses": {
+          "200": {
+            "description": "SubscriptionList"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "subscriptions"
+        ],
+        "summary": "Subscribe",
+        "operationId": "createSubscription",
+        "description": "Subscribes the caller to a catalog feed. The newest 100 entries arrive unread, older ones read. category_id and webhook_id must belong to the caller. POST /v1/feeds with a URL that is already in the catalog does the same and answers 200.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubscriptionWrite"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "SubscriptionResponse"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        }
+      }
+    },
+    "/v1/subscriptions/{id}": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1
+          },
+          "description": "Feed id (the subscription is keyed by feed)."
+        }
+      ],
+      "put": {
+        "tags": [
+          "subscriptions"
+        ],
+        "summary": "Update subscription",
+        "operationId": "updateSubscription",
+        "description": "Changes the caller's category/webhook for the feed; the catalog row (interval, rules) is edited through PUT /v1/feeds/{id}.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubscriptionWrite"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "SubscriptionResponse"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "subscriptions"
+        ],
+        "summary": "Unsubscribe",
+        "operationId": "deleteSubscription",
+        "description": "Removes the caller's subscription and their read/starred state for the feed. Other subscribers keep the feed; when the last one leaves, the catalog row and its entries are deleted. Any role.",
+        "responses": {
+          "200": {
+            "description": "DeletedResponse"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -3490,6 +3713,10 @@
           "feeds_created": {
             "type": "integer"
           },
+          "feeds_subscribed": {
+            "type": "integer",
+            "description": "URLs already in the catalog that became subscriptions instead of new feeds."
+          },
           "feeds_skipped": {
             "type": "integer"
           },
@@ -3503,6 +3730,7 @@
         "required": [
           "categories_created",
           "feeds_created",
+          "feeds_subscribed",
           "feeds_skipped",
           "errors"
         ]
@@ -4967,6 +5195,162 @@
         "properties": {
           "data": {
             "$ref": "#/components/schemas/SystemInfo"
+          },
+          "total": {
+            "type": "integer",
+            "description": "Number of items in data (1 for single objects) or total rows for lists."
+          }
+        },
+        "required": [
+          "data",
+          "total"
+        ]
+      },
+      "CatalogFeed": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "feed_url": {
+            "type": "string"
+          },
+          "feed_type": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "owner_id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "User who added the feed; omitted when that user is gone."
+          },
+          "owner_name": {
+            "type": "string"
+          },
+          "subscriber_count": {
+            "type": "integer"
+          },
+          "subscribed": {
+            "type": "boolean",
+            "description": "Whether the caller reads this feed."
+          },
+          "last_entry_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "last_error": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "feed_url",
+          "feed_type",
+          "title",
+          "subscriber_count",
+          "subscribed",
+          "created_at"
+        ]
+      },
+      "Subscription": {
+        "type": "object",
+        "properties": {
+          "feed_id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "category_id": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "webhook_id": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "feed_id",
+          "created_at"
+        ]
+      },
+      "SubscriptionWrite": {
+        "type": "object",
+        "properties": {
+          "feed_id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Catalog feed id (POST only; ignored on PUT)."
+          },
+          "category_id": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true,
+            "description": "One of the caller's categories."
+          },
+          "webhook_id": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true,
+            "description": "One of the caller's webhooks."
+          }
+        }
+      },
+      "CatalogList": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CatalogFeed"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "description": "Number of items in data (1 for single objects) or total rows for lists."
+          }
+        },
+        "required": [
+          "data",
+          "total"
+        ]
+      },
+      "SubscriptionList": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Subscription"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "description": "Number of items in data (1 for single objects) or total rows for lists."
+          }
+        },
+        "required": [
+          "data",
+          "total"
+        ]
+      },
+      "SubscriptionResponse": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/Subscription"
           },
           "total": {
             "type": "integer",

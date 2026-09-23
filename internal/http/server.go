@@ -138,6 +138,7 @@ type Server struct {
 	db            *pgxpool.Pool
 	categories    storage.CategoryStore
 	feeds         storage.FeedStore
+	subscriptions storage.SubscriptionStore
 	entries       storage.EntryStore
 	filters       storage.FilterStore
 	filterMatches storage.FilterMatchStore
@@ -380,6 +381,7 @@ func New(dep Dependencies) *Server {
 		db:                 dep.DB,
 		categories:         categoryStore,
 		feeds:              feedStore,
+		subscriptions:      subscriptionStore,
 		entries:            entryStore,
 		filters:            filterStore,
 		filterMatches:      filterMatchStore,
@@ -464,6 +466,11 @@ func (s *Server) Handler() http.Handler {
 	api.HandleFunc("GET /v1/feeds/{feedID}/entries", s.handleListFeedEntries)
 	api.HandleFunc("GET /v1/feeds/{feedID}/entries/{entryID}", s.handleGetFeedEntry)
 	api.HandleFunc("PUT /v1/feeds/{feedID}/entries/{entryID}", s.handleUpdateFeedEntry)
+	api.HandleFunc("GET /v1/catalog", s.handleListCatalog)
+	api.HandleFunc("GET /v1/subscriptions", s.handleListSubscriptions)
+	api.HandleFunc("POST /v1/subscriptions", s.handleCreateSubscription)
+	api.HandleFunc("PUT /v1/subscriptions/{id}", s.handleUpdateSubscription)
+	api.HandleFunc("DELETE /v1/subscriptions/{id}", s.handleDeleteSubscription)
 	api.HandleFunc("GET /v1/entries", s.handleListEntries)
 	api.HandleFunc("PUT /v1/entries", s.handleBulkUpdateEntries)
 	api.HandleFunc("GET /v1/entries/{id}", s.handleGetEntry)

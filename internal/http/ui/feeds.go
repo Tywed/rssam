@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -128,8 +129,23 @@ func (h *Handler) handleFeedCreate(w http.ResponseWriter, r *http.Request) {
 		params.Title = params.FeedURL
 	}
 	feed, err := h.cfg.Feeds.CreateFeed(r.Context(), p.UserID, params)
+	if errors.Is(err, storage.ErrDuplicateFeedURL) && h.cfg.Subscriptions != nil {
+		feed, err = h.cfg.Subscriptions.SubscribeByURL(r.Context(), p.UserID, params.FeedURL, storage.SubscriptionParams{CategoryID: params.CategoryID, WebhookID: params.WebhookID})
+		if err == nil {
+			h.cfg.Audit.Record(r, storage.AuditSubscriptionCreate, "feed", feed.ID, map[string]any{"url": feed.FeedURL})
+			http.Redirect(w, r, withQueryParam("/ui/catalog", "subscribed", feed.Title), http.StatusFound)
+			return
+		}
+	}
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		switch {
+		case errors.Is(err, storage.ErrAlreadySubscribed):
+			h.renderFeedFormError(w, r, params, "Вы уже подписаны на эту ленту")
+		case errors.Is(err, storage.ErrInvalidReference):
+			h.renderFeedFormError(w, r, params, "Категория или вебхук не найдены")
+		default:
+			http.Error(w, err.Error(), http.StatusBadRequest)
+		}
 		return
 	}
 	h.cfg.Audit.Record(r, storage.AuditFeedCreate, "feed", feed.ID, map[string]any{"url": feed.FeedURL})
@@ -152,7 +168,20 @@ func (h *Handler) handleFeedShow(w http.ResponseWriter, r *http.Request) {
 	data.SettingsSection = "feeds"
 	data.Feed = feed
 	data.Title = feed.Title
+	h.loadFeedSubscribers(r, &data, id)
 	h.render(w, r, "feeds_show", data)
+}
+
+func (h *Handler) loadFeedSubscribers(r *http.Request, data *pageData, feedID int64) {
+	if h.cfg.Subscriptions == nil {
+		return
+	}
+	subs, err := h.cfg.Subscriptions.ListFeedSubscriberNames(r.Context(), feedID)
+	if err != nil {
+		h.log.WarnContext(r.Context(), "list feed subscribers failed", "feed_id", feedID, "err", err)
+		return
+	}
+	data.FeedSubscribers = subs
 }
 
 func (h *Handler) handleFeedEdit(w http.ResponseWriter, r *http.Request) {
@@ -172,6 +201,7 @@ func (h *Handler) handleFeedEdit(w http.ResponseWriter, r *http.Request) {
 	data.Feed = feed
 	applyTelegramFormData(&data, feed)
 	h.loadFeedFormWebhooks(r, &data)
+	h.loadFeedSubscribers(r, &data, id)
 	data.Title = feed.Title
 	h.render(w, r, "feeds_form", data)
 }
@@ -322,7 +352,7 @@ func (h *Handler) handleFeedsImport(w http.ResponseWriter, r *http.Request) {
 		report := h.cfg.OPMLImport(r, p.UserID, data)
 		data := h.baseData(r, "settings")
 		data.SettingsSection = "feeds"
-		data.FlashMsg = fmt.Sprintf("Импорт: создано %d лент, %d категорий, пропущено %d", report.FeedsCreated, report.CategoriesCreated, report.FeedsSkipped)
+		data.FlashMsg = fmt.Sprintf("Импорт: создано %d лент, подписок на существующие %d, %d категорий, пропущено %d", report.FeedsCreated, report.FeedsSubscribed, report.CategoriesCreated, report.FeedsSkipped)
 		if n := len(report.Errors); n > 0 {
 			// Per-feed notes (skipped duplicates, invalid rssam:* attributes,
 			// unknown webhook names). Cap the flash so a 500-feed import stays

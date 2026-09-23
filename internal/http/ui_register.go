@@ -23,6 +23,7 @@ func (s *Server) registerUI(mux *http.ServeMux) {
 		Categories:        s.categories,
 		CategoryPollHours: s.pollHours,
 		Feeds:             s.feeds,
+		Subscriptions:     s.subscriptions,
 		Entries:           s.entries,
 		Filters:           s.filters,
 		FilterMatches:     s.filterMatches,
@@ -45,6 +46,7 @@ func (s *Server) registerUI(mux *http.ServeMux) {
 			out := ui.ImportReport{
 				CategoriesCreated: rep.CategoriesCreated,
 				FeedsCreated:      rep.FeedsCreated,
+				FeedsSubscribed:   rep.FeedsSubscribed,
 				FeedsSkipped:      rep.FeedsSkipped,
 			}
 			for _, e := range rep.Errors {

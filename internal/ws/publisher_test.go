@@ -87,6 +87,41 @@ func TestPublisher_NewEntriesAreTenantScopedAndMinimal(t *testing.T) {
 	}
 }
 
+// A shared feed fans out to every subscriber with that subscriber's own
+// category; users who never subscribed hear nothing.
+func TestPublisher_NewEntriesFanOutToEverySubscriber(t *testing.T) {
+	hub := NewHub(16, time.Second)
+	owner := newAttachedClient(t, hub, 1)
+	reader := newAttachedClient(t, hub, 2)
+	stranger := newAttachedClient(t, hub, 3)
+
+	pub := NewPublisher(nil, hub, stubCounter{}, nil)
+	ownerCat, readerCat := int64(3), int64(8)
+	feed := storage.Feed{ID: 10, OwnerID: 1, Title: "Shared"}
+	subs := []storage.Subscription{
+		{UserID: 1, FeedID: 10, CategoryID: &ownerCat},
+		{UserID: 2, FeedID: 10, CategoryID: &readerCat},
+	}
+	pub.PublishNewEntries(context.Background(), feed, subs, []storage.Entry{{ID: 100, FeedID: 10, Title: "hello"}})
+
+	if got := drain(stranger); len(got) != 0 {
+		t.Fatalf("non-subscriber must not receive events, got %v", got)
+	}
+	for _, c := range []struct {
+		name  string
+		cl    *Client
+		catID string
+	}{{"owner", owner, `"category_id":3`}, {"reader", reader, `"category_id":8`}} {
+		got := drain(c.cl)
+		if len(got) < 2 {
+			t.Fatalf("%s expected new_entry + counters, got %v", c.name, got)
+		}
+		if !strings.Contains(got[0], `"event":"new_entry"`) || !strings.Contains(got[0], `"id":100`) || !strings.Contains(got[0], c.catID) {
+			t.Fatalf("%s got %s", c.name, got[0])
+		}
+	}
+}
+
 func TestPublisher_FeedStatusIsTenantScoped(t *testing.T) {
 	hub := NewHub(16, time.Second)
 	owner := newAttachedClient(t, hub, 5)

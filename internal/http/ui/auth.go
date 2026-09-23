@@ -60,6 +60,9 @@ type pageData struct {
 	FeedsListPage              int
 	FeedsListPageCount         int
 	Feeds                      []storage.Feed
+	CatalogFeeds               []storage.CatalogFeed
+	CatalogView                string
+	FeedSubscribers            []storage.FeedSubscriber
 	Categories                 []storage.Category
 	CategoryPollHours          bool
 	FeedID                     int64

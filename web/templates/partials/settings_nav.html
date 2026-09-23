@@ -2,6 +2,7 @@
 <nav class="settings-nav">
   <a href="/ui/settings" class="{{if eq .SettingsSection "profile"}}active{{end}}">Профиль</a>
   <a href="/ui/feeds" class="{{if eq .SettingsSection "feeds"}}active{{end}}">Подписки</a>
+  <a href="/ui/catalog" class="{{if eq .SettingsSection "catalog"}}active{{end}}">Каталог</a>
   <a href="/ui/categories" class="{{if eq .SettingsSection "categories"}}active{{end}}">Категории</a>
   {{if .CanEdit}}
   <a href="/ui/filters" class="{{if eq .SettingsSection "filters"}}active{{end}}">Фильтры</a>

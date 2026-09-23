@@ -138,10 +138,16 @@
       <a class="btn" href="/ui/feeds">Отмена</a>
     </form>
     {{if .Feed.ID}}
-    <form method="post" action="/ui/feeds/{{.Feed.ID}}/delete" class="mt-2" data-confirm="Удалить ленту?">
-      <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
-      <button type="submit" class="btn btn-danger">Удалить</button>
-    </form>
+    <div class="toolbar mt-2">
+      <form method="post" action="/ui/feeds/{{.Feed.ID}}/unsubscribe" data-confirm="Отписаться от «{{.Feed.Title}}»? Лента останется в каталоге{{if gt (len .FeedSubscribers) 1}} у остальных {{sub (len .FeedSubscribers) 1}} подписчиков{{else}}, только если на неё подпишется кто-то ещё; вы единственный подписчик — лента и её записи будут удалены{{end}}.">
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+        <button type="submit" class="btn">Отписаться</button>
+      </form>
+      <form method="post" action="/ui/feeds/{{.Feed.ID}}/delete" data-confirm="Удалить ленту из каталога для всех? Подписчиков: {{len .FeedSubscribers}}{{if .IsAdmin}}{{range $i, $s := .FeedSubscribers}}{{if $i}},{{else}} —{{end}} {{$s.Username}}{{end}}{{end}}. Записи ленты будут удалены у всех.">
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+        <button type="submit" class="btn btn-danger">Удалить из каталога{{if gt (len .FeedSubscribers) 1}} ({{len .FeedSubscribers}} подписчиков){{end}}</button>
+      </form>
+    </div>
     {{end}}
   </div>
 </div>

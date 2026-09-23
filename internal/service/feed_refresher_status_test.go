@@ -109,22 +109,9 @@ type retryAfterErr struct{ at time.Time }
 func (e retryAfterErr) Error() string      { return "rate limited" }
 func (e retryAfterErr) RetryAt() time.Time { return e.at }
 
-// memSubscribers answers ListFeedSubscribers with one subscription per
+// feedSubscribers answers ListFeedSubscribers with one subscription per
 // feed: the owner with the feed's CategoryID/WebhookID.
-type memSubscribers struct{}
-
-func (memSubscribers) Subscribe(context.Context, int64, int64, storage.SubscriptionParams) (storage.Subscription, error) {
-	return storage.Subscription{}, nil
-}
-func (memSubscribers) UpdateSubscription(context.Context, int64, int64, storage.SubscriptionParams) (storage.Subscription, error) {
-	return storage.Subscription{}, nil
-}
-func (memSubscribers) ListSubscriptions(context.Context, int64) ([]storage.Subscription, error) {
-	return nil, nil
-}
-
 type feedSubscribers struct {
-	memSubscribers
 	feed storage.Feed
 }
 

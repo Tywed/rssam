@@ -116,17 +116,26 @@ func (s *Server) handleCreateFeed(w http.ResponseWriter, r *http.Request) {
 		params.Title = params.FeedURL
 	}
 	feed, err := s.feeds.CreateFeed(r.Context(), p.UserID, params)
+	if errors.Is(err, storage.ErrDuplicateFeedURL) && s.subscriptions != nil {
+		// The catalog already has this URL: subscribing is what the caller
+		// wants, with their own category/webhook.
+		feed, err = s.subscriptions.SubscribeByURL(r.Context(), p.UserID, params.FeedURL, storage.SubscriptionParams{CategoryID: params.CategoryID, WebhookID: params.WebhookID})
+		if err == nil {
+			s.audit.Record(r, storage.AuditSubscriptionCreate, "feed", feed.ID, map[string]any{"url": feed.FeedURL})
+			writeJSON(w, http.StatusOK, listResponse[feedDTO]{Data: toFeedDTO(feed), Total: 1})
+			return
+		}
+	}
 	if err != nil {
-		if errors.Is(err, storage.ErrDuplicateFeedURL) {
+		switch {
+		case errors.Is(err, storage.ErrDuplicateFeedURL), errors.Is(err, storage.ErrAlreadySubscribed):
 			writeError(w, http.StatusConflict, "feed_url already exists")
-			return
+		case errors.Is(err, storage.ErrInvalidReference):
+			writeError(w, http.StatusBadRequest, "invalid category_id or webhook_id")
+		default:
+			s.log.ErrorContext(r.Context(), "create feed failed", "err", err)
+			writeError(w, http.StatusInternalServerError, "internal server error")
 		}
-		if errors.Is(err, storage.ErrInvalidReference) {
-			writeError(w, http.StatusBadRequest, "invalid category_id")
-			return
-		}
-		s.log.ErrorContext(r.Context(), "create feed failed", "err", err)
-		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
 	s.audit.Record(r, storage.AuditFeedCreate, "feed", feed.ID, map[string]any{"url": feed.FeedURL})
@@ -191,7 +200,7 @@ func (s *Server) handleUpdateFeed(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusConflict, "feed_url already exists")
 			return
 		case errors.Is(err, storage.ErrInvalidReference):
-			writeError(w, http.StatusBadRequest, "invalid category_id")
+			writeError(w, http.StatusBadRequest, "invalid category_id or webhook_id")
 			return
 		default:
 			s.log.ErrorContext(r.Context(), "update feed failed", "err", err)

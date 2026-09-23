@@ -25,10 +25,13 @@ type importErrorDTO struct {
 }
 
 type importReportDTO struct {
-	CategoriesCreated int              `json:"categories_created"`
-	FeedsCreated      int              `json:"feeds_created"`
-	FeedsSkipped      int              `json:"feeds_skipped"`
-	Errors            []importErrorDTO `json:"errors"`
+	CategoriesCreated int `json:"categories_created"`
+	FeedsCreated      int `json:"feeds_created"`
+	// FeedsSubscribed counts URLs that were already in the catalog and
+	// became subscriptions instead of new feeds.
+	FeedsSubscribed int              `json:"feeds_subscribed"`
+	FeedsSkipped    int              `json:"feeds_skipped"`
+	Errors          []importErrorDTO `json:"errors"`
 }
 
 func (s *Server) handleImportFeeds(w http.ResponseWriter, r *http.Request) {
@@ -323,8 +326,16 @@ func (s *Server) importOPML(r *http.Request, doc *opml.Document, userID int64, j
 		}
 
 		feed, err := s.feeds.CreateFeed(ctx, userID, params)
+		if errors.Is(err, storage.ErrDuplicateFeedURL) && s.subscriptions != nil {
+			feed, err = s.subscriptions.SubscribeByURL(ctx, userID, params.FeedURL, storage.SubscriptionParams{CategoryID: params.CategoryID, WebhookID: params.WebhookID})
+			if err == nil {
+				report.FeedsSubscribed++
+				knownFeedURLs[normURL] = struct{}{}
+				continue
+			}
+		}
 		if err != nil {
-			if errors.Is(err, storage.ErrDuplicateFeedURL) {
+			if errors.Is(err, storage.ErrDuplicateFeedURL) || errors.Is(err, storage.ErrAlreadySubscribed) {
 				report.FeedsSkipped++
 				knownFeedURLs[normURL] = struct{}{}
 				report.Errors = append(report.Errors, importErrorDTO{

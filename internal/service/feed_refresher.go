@@ -15,6 +15,11 @@ import (
 	"rssam/internal/storage"
 )
 
+// FeedSubscribers is the slice of the subscription store the refresher needs.
+type FeedSubscribers interface {
+	ListFeedSubscribers(ctx context.Context, feedID int64) ([]storage.Subscription, error)
+}
+
 type FeedRefresher struct {
 	Feeds    storage.FeedStore
 	Entries  storage.EntryStore
@@ -23,7 +28,7 @@ type FeedRefresher struct {
 	// Subscribers lists who reads a feed: filters, webhooks and realtime
 	// events are applied per subscriber (nil = nobody, as for a feed with no
 	// subscribers).
-	Subscribers storage.SubscriptionStore
+	Subscribers FeedSubscribers
 
 	Filters storage.FilterStore
 	Matches storage.FilterMatchStore

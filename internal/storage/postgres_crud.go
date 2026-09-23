@@ -188,6 +188,9 @@ RETURNING id, created_at, updated_at`
 		).Scan(&f.ID, &f.CreatedAt, &f.UpdatedAt); err != nil {
 			return err
 		}
+		if err := checkSubscriptionRefs(ctx, tx, userID, SubscriptionParams{CategoryID: params.CategoryID, WebhookID: params.WebhookID}); err != nil {
+			return err
+		}
 		_, err := tx.Exec(ctx, `INSERT INTO subscriptions(user_id, feed_id, category_id, webhook_id) VALUES ($1, $2, $3, $4)`,
 			userID, f.ID, params.CategoryID, params.WebhookID)
 		return err
@@ -387,6 +390,9 @@ func (s *PostgresStore) UpdateFeed(ctx context.Context, userID int64, params Upd
 	}
 	var f Feed
 	err := withTx(ctx, s.db, func(tx pgx.Tx) error {
+		if err := checkSubscriptionRefs(ctx, tx, userID, SubscriptionParams{CategoryID: params.CategoryID, WebhookID: params.WebhookID}); err != nil {
+			return err
+		}
 		cmd, err := tx.Exec(ctx, `UPDATE subscriptions SET category_id = $3, webhook_id = $4 WHERE user_id = $1 AND feed_id = $2`,
 			userID, params.ID, params.CategoryID, params.WebhookID)
 		if err != nil {
@@ -449,16 +455,14 @@ WHERE id = $1 AND EXISTS (SELECT 1 FROM subscriptions s WHERE s.feed_id = feeds.
 // entry_labels; the catalog row (entries, dedup hashes, poll log) only when
 // no subscriber remains.
 func (s *PostgresStore) DeleteFeed(ctx context.Context, userID int64, id int64) error {
-	return withTx(ctx, s.db, func(tx pgx.Tx) error {
-		if err := unsubscribeTx(ctx, tx, userID, id); err != nil {
-			return err
-		}
-		_, err := tx.Exec(ctx, `DELETE FROM feeds WHERE id = $1 AND NOT EXISTS (SELECT 1 FROM subscriptions s WHERE s.feed_id = $1)`, id)
-		if err != nil {
-			return fmt.Errorf("delete feed: %w", err)
-		}
-		return nil
-	})
+	cmd, err := s.db.Exec(ctx, `DELETE FROM feeds f WHERE f.id = $1 AND EXISTS (SELECT 1 FROM subscriptions s WHERE s.feed_id = f.id AND s.user_id = $2)`, id, userID)
+	if err != nil {
+		return fmt.Errorf("delete feed: %w", err)
+	}
+	if cmd.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 func (s *PostgresStore) DeleteFeedByID(ctx context.Context, id int64) error {

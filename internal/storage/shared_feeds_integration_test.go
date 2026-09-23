@@ -91,8 +91,14 @@ func TestIntegration_SharedFeed_SubscribeBackfillAndFanOut(t *testing.T) {
 	}
 
 	// Unsubscribe keeps the catalog row and alice's state; bob's rows go.
-	if err := store.DeleteFeed(ctx, bob.ID, feed.ID); err != nil {
+	if err := store.Unsubscribe(ctx, bob.ID, feed.ID); err != nil {
 		t.Fatal(err)
+	}
+	if err := store.Unsubscribe(ctx, bob.ID, feed.ID); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("second unsubscribe: %v", err)
+	}
+	if err := store.DeleteFeed(ctx, bob.ID, feed.ID); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("non-subscriber deleted the catalog row: %v", err)
 	}
 	if _, err := store.GetFeedByID(ctx, feed.ID); err != nil {
 		t.Fatalf("catalog row vanished with one unsubscribe: %v", err)
@@ -106,7 +112,7 @@ func TestIntegration_SharedFeed_SubscribeBackfillAndFanOut(t *testing.T) {
 		t.Fatalf("alice lost her entry: %+v err=%v", e, err)
 	}
 	// Last subscriber leaving removes the catalog row and its entries.
-	if err := store.DeleteFeed(ctx, alice.ID, feed.ID); err != nil {
+	if err := store.Unsubscribe(ctx, alice.ID, feed.ID); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := store.GetFeedByID(ctx, feed.ID); !errors.Is(err, ErrNotFound) {
@@ -345,5 +351,101 @@ func TestIntegration_Migration0050_SharedFeedsMerge(t *testing.T) {
 		if n != 0 {
 			t.Fatalf("%s still present", col)
 		}
+	}
+}
+
+// The catalog: SubscribeByURL finds the row by URL, ListCatalog shows every
+// feed with subscriber counts, DeleteFeed by a subscriber removes it for
+// everyone, and a subscription cannot point at another user's category or
+// webhook.
+func TestIntegration_SharedFeed_CatalogAndDelete(t *testing.T) {
+	store := isolatedStore(t)
+	ctx := context.Background()
+	alice := newIntegrationUser(t, store, "sfc_alice")
+	bob := newIntegrationUser(t, store, "sfc_bob")
+	aliceCat, _ := store.CreateCategory(ctx, alice.ID, "Alice", "")
+	bobCat, _ := store.CreateCategory(ctx, bob.ID, "Bob", "")
+	aliceHook, err := store.CreateWebhook(ctx, CreateWebhookParams{UserID: alice.ID, Name: "a", Kind: WebhookKindHTTP, URL: "https://example.com/hook", Headers: []byte(`{}`), Enabled: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	feed, _ := newIntegrationFeedWithEntries(t, store, alice.ID, 3)
+	other, _ := newIntegrationFeedWithEntries(t, store, alice.ID, 1)
+
+	// Foreign category / webhook are rejected everywhere they can be set.
+	if _, err := store.Subscribe(ctx, bob.ID, feed.ID, SubscriptionParams{CategoryID: &aliceCat.ID}); !errors.Is(err, ErrInvalidReference) {
+		t.Fatalf("subscribe with alice's category: %v", err)
+	}
+	if _, err := store.Subscribe(ctx, bob.ID, feed.ID, SubscriptionParams{WebhookID: &aliceHook.ID}); !errors.Is(err, ErrInvalidReference) {
+		t.Fatalf("subscribe with alice's webhook: %v", err)
+	}
+	if _, err := store.CreateFeed(ctx, bob.ID, CreateFeedParams{FeedURL: fmt.Sprintf("https://example.com/sfc/%d", time.Now().UnixNano()), FeedType: "rss", IntervalMinutes: 60, WebhookID: &aliceHook.ID}); !errors.Is(err, ErrInvalidReference) {
+		t.Fatalf("create feed with alice's webhook: %v", err)
+	}
+	if _, err := store.UpdateFeed(ctx, alice.ID, UpdateFeedParams{ID: feed.ID, FeedURL: feed.FeedURL, Title: feed.Title, IntervalMinutes: 60, CategoryID: &bobCat.ID}); !errors.Is(err, ErrInvalidReference) {
+		t.Fatalf("update feed with bob's category: %v", err)
+	}
+
+	got, err := store.SubscribeByURL(ctx, bob.ID, feed.FeedURL, SubscriptionParams{CategoryID: &bobCat.ID})
+	if err != nil || got.ID != feed.ID || got.CategoryID == nil || *got.CategoryID != bobCat.ID {
+		t.Fatalf("subscribe by url: %+v err=%v", got, err)
+	}
+	if _, err := store.SubscribeByURL(ctx, bob.ID, feed.FeedURL, SubscriptionParams{}); !errors.Is(err, ErrAlreadySubscribed) {
+		t.Fatalf("subscribe by url twice: %v", err)
+	}
+	if _, err := store.SubscribeByURL(ctx, bob.ID, "https://example.com/sfc/none", SubscriptionParams{}); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("subscribe by unknown url: %v", err)
+	}
+	if _, err := store.UpdateSubscription(ctx, bob.ID, feed.ID, SubscriptionParams{WebhookID: &aliceHook.ID}); !errors.Is(err, ErrInvalidReference) {
+		t.Fatalf("update subscription with alice's webhook: %v", err)
+	}
+
+	list, total, err := store.ListCatalog(ctx, bob.ID, CatalogFilter{})
+	if err != nil || total != 2 || len(list) != 2 {
+		t.Fatalf("catalog: total=%d len=%d err=%v", total, len(list), err)
+	}
+	byID := map[int64]CatalogFeed{}
+	for _, c := range list {
+		byID[c.ID] = c
+	}
+	if c := byID[feed.ID]; !c.Subscribed || c.SubscriberCount != 2 || c.OwnerID != alice.ID || c.OwnerName != alice.Username {
+		t.Fatalf("catalog row for shared feed: %+v", c)
+	}
+	if c := byID[other.ID]; c.Subscribed || c.SubscriberCount != 1 {
+		t.Fatalf("catalog row for alice-only feed: %+v", c)
+	}
+	mine, total, err := store.ListCatalog(ctx, bob.ID, CatalogFilter{Subscribed: ptr(true)})
+	if err != nil || total != 1 || len(mine) != 1 || mine[0].ID != feed.ID {
+		t.Fatalf("catalog subscribed=true: %v total=%d err=%v", mine, total, err)
+	}
+	notMine, total, err := store.ListCatalog(ctx, bob.ID, CatalogFilter{Subscribed: ptr(false), Query: other.Title[:4]})
+	if err != nil || total != 1 || len(notMine) != 1 || notMine[0].ID != other.ID {
+		t.Fatalf("catalog subscribed=false+query: %v total=%d err=%v", notMine, total, err)
+	}
+	if _, total, _ := store.ListCatalog(ctx, bob.ID, CatalogFilter{Query: "no-such-feed-anywhere"}); total != 0 {
+		t.Fatalf("catalog query miss total=%d", total)
+	}
+	names, err := store.ListFeedSubscriberNames(ctx, feed.ID)
+	if err != nil || len(names) != 2 || names[0].Username != alice.Username || names[1].Username != bob.Username || names[1].CategoryID == nil {
+		t.Fatalf("subscriber names: %+v err=%v", names, err)
+	}
+
+	// Bob (a subscriber, not the owner) deletes the feed from the catalog.
+	if err := store.DeleteFeed(ctx, bob.ID, feed.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.GetFeedByID(ctx, feed.ID); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("catalog row survives DeleteFeed: %v", err)
+	}
+	for _, u := range []User{alice, bob} {
+		var n int
+		_ = store.db.QueryRow(ctx, `SELECT count(*) FROM user_entries WHERE user_id = $1 AND feed_id = $2`, u.ID, feed.ID).Scan(&n)
+		if n != 0 {
+			t.Fatalf("user %d keeps %d user_entries after catalog delete", u.ID, n)
+		}
+	}
+	if _, total, _ := store.ListCatalog(ctx, alice.ID, CatalogFilter{}); total != 1 {
+		t.Fatalf("catalog after delete total=%d", total)
 	}
 }

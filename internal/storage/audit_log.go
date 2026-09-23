@@ -10,32 +10,34 @@ import (
 
 // Audit actions. Keep the list short: every entry is a row per human action.
 const (
-	AuditUserCreate       = "user.create"
-	AuditUserUpdate       = "user.update"
-	AuditUserDelete       = "user.delete"
-	AuditPasswordChange   = "user.password_change"
-	AuditLogoutOthers     = "session.logout_others"
-	AuditAPIKeyCreate     = "api_key.create"
-	AuditAPIKeyDelete     = "api_key.delete"
-	AuditEnvUpdate        = "env.update"
-	AuditBridgeUpdate     = "bridge.update"
-	AuditWorkersPause     = "workers.pause"
-	AuditWorkersResume    = "workers.resume"
-	AuditServiceRestart   = "service.restart"
-	AuditServiceUpdate    = "service.update"
-	AuditFeedsRefreshAll  = "feeds.refresh_all"
-	AuditFeedCreate       = "feed.create"
-	AuditFeedUpdate       = "feed.update"
-	AuditFeedDelete       = "feed.delete"
-	AuditOPMLImport       = "opml.import"
-	AuditFilterCreate     = "filter.create"
-	AuditFilterUpdate     = "filter.update"
-	AuditFilterDelete     = "filter.delete"
-	AuditWebhookCreate    = "webhook.create"
-	AuditWebhookUpdate    = "webhook.update"
-	AuditWebhookDelete    = "webhook.delete"
-	AuditEntriesCollapse  = "entries.collapse"
-	AuditRetentionCleanup = "retention.cleanup"
+	AuditUserCreate         = "user.create"
+	AuditUserUpdate         = "user.update"
+	AuditUserDelete         = "user.delete"
+	AuditPasswordChange     = "user.password_change"
+	AuditLogoutOthers       = "session.logout_others"
+	AuditAPIKeyCreate       = "api_key.create"
+	AuditAPIKeyDelete       = "api_key.delete"
+	AuditEnvUpdate          = "env.update"
+	AuditBridgeUpdate       = "bridge.update"
+	AuditWorkersPause       = "workers.pause"
+	AuditWorkersResume      = "workers.resume"
+	AuditServiceRestart     = "service.restart"
+	AuditServiceUpdate      = "service.update"
+	AuditFeedsRefreshAll    = "feeds.refresh_all"
+	AuditFeedCreate         = "feed.create"
+	AuditFeedUpdate         = "feed.update"
+	AuditFeedDelete         = "feed.delete"
+	AuditOPMLImport         = "opml.import"
+	AuditSubscriptionCreate = "subscription.create"
+	AuditSubscriptionDelete = "subscription.delete"
+	AuditFilterCreate       = "filter.create"
+	AuditFilterUpdate       = "filter.update"
+	AuditFilterDelete       = "filter.delete"
+	AuditWebhookCreate      = "webhook.create"
+	AuditWebhookUpdate      = "webhook.update"
+	AuditWebhookDelete      = "webhook.delete"
+	AuditEntriesCollapse    = "entries.collapse"
+	AuditRetentionCleanup   = "retention.cleanup"
 	// AuditSystemAlert is written by the worker (no actor) for every system
 	// alert message sent, so the alert history lives in the audit log.
 	AuditSystemAlert = "system.alert"
@@ -49,6 +51,7 @@ var AuditActions = []string{
 	AuditWorkersPause, AuditWorkersResume, AuditServiceRestart, AuditServiceUpdate,
 	AuditFeedsRefreshAll, AuditEntriesCollapse, AuditRetentionCleanup,
 	AuditFeedCreate, AuditFeedUpdate, AuditFeedDelete, AuditOPMLImport,
+	AuditSubscriptionCreate, AuditSubscriptionDelete,
 	AuditFilterCreate, AuditFilterUpdate, AuditFilterDelete,
 	AuditWebhookCreate, AuditWebhookUpdate, AuditWebhookDelete,
 	AuditSystemAlert,

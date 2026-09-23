@@ -6,10 +6,12 @@
     <div class="card">
       <p class="meta">{{.Feed.FeedURL}} · {{.Feed.FeedType}}{{if .Feed.TLSInsecure}} · <span title="TLS-проверка отключена для этой ленты">TLS: без проверки</span>{{end}}</p>
       {{if .Feed.LastError}}<div class="flash flash-err">{{.Feed.LastError}}</div>{{end}}
+      {{if .FeedSubscribers}}<p class="meta">Подписчиков: {{len .FeedSubscribers}}{{if .IsAdmin}} — {{range $i, $s := .FeedSubscribers}}{{if $i}}, {{end}}{{$s.Username}}{{end}}{{end}}</p>{{end}}
       <div class="toolbar">
         <form method="post" action="/ui/feeds/{{.Feed.ID}}/refresh"><input type="hidden" name="csrf_token" value="{{.CSRFToken}}"><button class="btn btn-primary">Обновить сейчас</button></form>
         {{if .CanEdit}}<a class="btn" href="/ui/feeds/{{.Feed.ID}}/edit">Редактировать</a>{{end}}
         <a class="btn" href="/ui/unread?feed_id={{.Feed.ID}}">Записи</a>
+        <form method="post" action="/ui/feeds/{{.Feed.ID}}/unsubscribe" data-confirm="Отписаться от «{{.Feed.Title}}»? Ваши отметки прочитанного и избранного по этой ленте будут удалены.{{if gt (len .FeedSubscribers) 1}}{{else}} Вы единственный подписчик — лента и её записи будут удалены из каталога.{{end}}"><input type="hidden" name="csrf_token" value="{{.CSRFToken}}"><button class="btn btn-danger">Отписаться</button></form>
       </div>
     </div>
   </div>

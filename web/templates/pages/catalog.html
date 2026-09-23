@@ -1,0 +1,71 @@
+{{define "body_catalog"}}
+<div class="settings-layout">
+  {{template "settings_nav" .}}
+  <div class="settings-content">
+    <div class="toolbar">
+      <h1>Каталог лент</h1>
+      {{if .CanEdit}}
+      <div class="toolbar-actions">
+        <a class="btn btn-primary" href="/ui/feeds/new">Добавить ленту</a>
+      </div>
+      {{end}}
+    </div>
+    <p class="meta">Общие ленты всех пользователей. Подписка даёт свою категорию и свой счёт прочитанного; последние 100 записей приходят непрочитанными.{{if not .CanEdit}} Новые ленты в каталог добавляют редакторы.{{end}}</p>
+
+    <form method="get" action="/ui/catalog" class="card feeds-filters">
+      <input type="hidden" name="view" value="{{.CatalogView}}">
+      <input type="search" name="q" value="{{.SearchQuery}}" placeholder="Название или URL">
+      <button type="submit" class="btn">Найти</button>
+    </form>
+
+    <div class="feeds-filters">
+      <a href="/ui/catalog{{if .SearchQuery}}?q={{.SearchQuery}}{{end}}" class="feeds-filter {{if not .CatalogView}}active{{end}}">Все</a>
+      <a href="/ui/catalog?view=new{{if .SearchQuery}}&q={{.SearchQuery}}{{end}}" class="feeds-filter {{if eq .CatalogView "new"}}active{{end}}">Без моей подписки</a>
+      <a href="/ui/catalog?view=mine{{if .SearchQuery}}&q={{.SearchQuery}}{{end}}" class="feeds-filter {{if eq .CatalogView "mine"}}active{{end}}">Мои подписки</a>
+      <span class="meta">Всего: {{.Total}}</span>
+    </div>
+
+    <table class="admin-feeds-table">
+      <thead><tr><th>Лента</th><th>Тип</th><th>Добавил</th><th>Подписчиков</th><th>Последняя запись</th><th></th></tr></thead>
+      <tbody>
+      {{range .CatalogFeeds}}
+      <tr {{if .LastError}}class="feed-error"{{end}}>
+        <td>
+          {{if .Subscribed}}<a href="/ui/feeds/{{.ID}}">{{.Title}}</a>{{else}}{{.Title}}{{end}}
+          <div class="meta">{{.FeedURL}}</div>
+          {{if .LastError}}<div class="feed-error-msg meta">{{.LastError}}</div>{{end}}
+        </td>
+        <td class="meta">{{feedTypeLabel .FeedType}}</td>
+        <td class="meta">{{if .OwnerName}}{{.OwnerName}}{{else}}—{{end}}</td>
+        <td>{{.SubscriberCount}}</td>
+        <td class="meta">{{if .LastEntryAt}}{{formatTime .LastEntryAt}}{{else}}—{{end}}</td>
+        <td>
+          {{if .Subscribed}}
+          <form method="post" action="/ui/feeds/{{.ID}}/unsubscribe" class="inline-form" data-confirm="Отписаться от «{{.Title}}»? Ваши отметки прочитанного и избранного по этой ленте будут удалены.">
+            <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+            <button type="submit" class="btn btn-sm">Отписаться</button>
+          </form>
+          {{else}}
+          <form method="post" action="/ui/catalog/{{.ID}}/subscribe" class="inline-form">
+            <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+            <select name="category_id" title="Категория">
+              <option value="">Без категории</option>
+              {{range $.Categories}}<option value="{{.ID}}">{{.Title}}</option>{{end}}
+            </select>
+            <button type="submit" class="btn btn-sm btn-primary">Подписаться</button>
+          </form>
+          {{end}}
+        </td>
+      </tr>
+      {{else}}
+      <tr><td colspan="6" class="meta">Ничего не найдено</td></tr>
+      {{end}}
+      </tbody>
+    </table>
+    <div class="pagination">
+      {{if gt .Offset 0}}<a class="btn btn-sm" href="?offset={{sub .Offset .Limit}}{{querySuffix .Query}}">← Назад</a>{{end}}
+      {{if lt (add .Offset (len .CatalogFeeds)) .Total}}<a class="btn btn-sm" href="?offset={{add .Offset .Limit}}{{querySuffix .Query}}">Далее →</a>{{end}}
+    </div>
+  </div>
+</div>
+{{end}}

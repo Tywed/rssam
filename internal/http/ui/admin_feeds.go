@@ -297,6 +297,7 @@ func (h *Handler) handleAdminFeedShow(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	data.AdminFeedDetail = detail
+	h.loadFeedSubscribers(r, &data, id)
 	if n := strings.TrimSpace(r.URL.Query().Get("hashed")); n != "" {
 		data.FlashMsg = "Свёрнуто в хеш: " + n + " записей"
 	}
