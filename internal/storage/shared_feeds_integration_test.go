@@ -449,3 +449,55 @@ func TestIntegration_SharedFeed_CatalogAndDelete(t *testing.T) {
 		t.Fatalf("catalog after delete total=%d", total)
 	}
 }
+
+// A star set by any subscriber protects the shared entry from feed
+// retention and from collapsing to a hash, not only the owner's star.
+func TestIntegration_SharedFeed_OtherUsersStarProtectsEntry(t *testing.T) {
+	store := isolatedStore(t)
+	ctx := context.Background()
+	alice := newIntegrationUser(t, store, "sfs_alice")
+	bob := newIntegrationUser(t, store, "sfs_bob")
+	feed, entries := newIntegrationFeedWithEntries(t, store, alice.ID, 3)
+	if _, err := store.Subscribe(ctx, bob.ID, feed.ID, SubscriptionParams{}); err != nil {
+		t.Fatal(err)
+	}
+	starred := true
+	if _, err := store.BulkUpdateEntries(ctx, bob.ID, []int64{entries[0].ID}, BulkEntryUpdate{Starred: &starred}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.db.Exec(ctx, `UPDATE entries SET created_at = now() - interval '40 days' WHERE feed_id = $1`, feed.ID); err != nil {
+		t.Fatal(err)
+	}
+	days := 30
+	if _, err := store.UpdateFeed(ctx, alice.ID, UpdateFeedParams{ID: feed.ID, FeedURL: feed.FeedURL, Title: feed.Title, IntervalMinutes: 60, EntryRetentionDays: &days}); err != nil {
+		t.Fatal(err)
+	}
+	res, err := store.RunRetentionCleanup(ctx, RetentionCleanupOpts{RemovedEntriesBefore: RetentionCutoff(time.Now(), 30), WebhookLogsBefore: RetentionCutoff(time.Now(), 90)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.FeedEntries != 2 {
+		t.Fatalf("feed retention deleted %d entries, want 2 (bob's star keeps one)", res.FeedEntries)
+	}
+	if e, err := store.GetEntry(ctx, alice.ID, entries[0].ID); err != nil || e.Starred {
+		t.Fatalf("alice should still see the entry bob starred, unstarred for her: %+v err=%v", e, err)
+	}
+	n, err := store.CollapseEntriesToHashes(ctx, CollapseEntriesParams{FeedID: &feed.ID, IncludeLabeled: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 0 {
+		t.Fatalf("collapse removed %d entries, want 0", n)
+	}
+	if _, err := store.BulkUpdateEntries(ctx, bob.ID, []int64{entries[0].ID}, BulkEntryUpdate{Starred: ptrBool(false)}); err != nil {
+		t.Fatal(err)
+	}
+	if n, _ = store.CollapseEntriesToHashes(ctx, CollapseEntriesParams{FeedID: &feed.ID, IncludeLabeled: true}); n != 1 {
+		t.Fatalf("collapse after unstar removed %d entries, want 1", n)
+	}
+	if known, _ := store.FilterKnownEntryHashes(ctx, feed.ID, []string{entries[0].Hash}); len(known) != 1 {
+		t.Fatal("collapsed hash not kept for poll dedup")
+	}
+}
+
+func ptrBool(b bool) *bool { return &b }

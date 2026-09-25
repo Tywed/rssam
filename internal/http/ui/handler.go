@@ -471,6 +471,7 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.Handle("GET /ui/catalog", auth(http.HandlerFunc(h.handleCatalog)))
 	mux.Handle("POST /ui/catalog/{id}/subscribe", auth(http.HandlerFunc(h.handleSubscribe)))
 	mux.Handle("POST /ui/feeds/{id}/unsubscribe", auth(http.HandlerFunc(h.handleUnsubscribe)))
+	mux.Handle("POST /ui/feeds/{id}/subscription", auth(http.HandlerFunc(h.handleSubscriptionUpdate)))
 	mux.Handle("POST /ui/feeds/{id}/refresh", auth(http.HandlerFunc(h.handleFeedRefresh)))
 	mux.Handle("POST /ui/feeds/{feedID}/mark-read", auth(http.HandlerFunc(h.handleFeedMarkRead)))
 

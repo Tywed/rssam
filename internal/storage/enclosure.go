@@ -3,29 +3,7 @@ package storage
 import (
 	"context"
 	"fmt"
-	"strings"
 )
-
-func (s *PostgresStore) CreateEnclosures(ctx context.Context, entryID int64, enclosures []CreateEnclosureParams) error {
-	if len(enclosures) == 0 {
-		return nil
-	}
-	ids := make([]int64, 0, len(enclosures))
-	urls := make([]string, 0, len(enclosures))
-	sizes := make([]int64, 0, len(enclosures))
-	mimes := make([]string, 0, len(enclosures))
-	for _, enc := range enclosures {
-		url := strings.TrimSpace(enc.URL)
-		if url == "" {
-			continue
-		}
-		ids = append(ids, entryID)
-		urls = append(urls, url)
-		sizes = append(sizes, enc.Size)
-		mimes = append(mimes, enc.MIMEType)
-	}
-	return s.createEnclosuresBatch(ctx, ids, urls, sizes, mimes)
-}
 
 func (s *PostgresStore) createEnclosuresBatch(ctx context.Context, entryIDs []int64, urls []string, sizes []int64, mimeTypes []string) error {
 	if len(entryIDs) == 0 {

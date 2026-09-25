@@ -49,9 +49,6 @@ func (h *Handler) handleCatalog(w http.ResponseWriter, r *http.Request) {
 	data.Offset = filter.Offset
 	data.Query = map[string]string{"q": filter.Query, "view": view}
 	data.SearchQuery = filter.Query
-	if cats, _, err := h.cfg.Categories.ListCategories(r.Context(), p.UserID, 1000, 0); err == nil {
-		data.Categories = cats
-	}
 	if n := q.Get("subscribed"); n != "" {
 		data.FlashMsg = "Подписка оформлена: " + n
 	}
@@ -128,4 +125,46 @@ func (h *Handler) handleUnsubscribe(w http.ResponseWriter, r *http.Request) {
 	}
 	h.cfg.Audit.Record(r, storage.AuditSubscriptionDelete, "feed", feedID, nil)
 	http.Redirect(w, r, "/ui/feeds", http.StatusFound)
+}
+
+// handleSubscriptionUpdate moves the caller's subscription to another of
+// their categories; the catalog row is untouched, so readers can use it.
+func (h *Handler) handleSubscriptionUpdate(w http.ResponseWriter, r *http.Request) {
+	if !h.validateCSRF(r) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	if h.cfg.Subscriptions == nil {
+		http.NotFound(w, r)
+		return
+	}
+	p, _ := principal(r)
+	feedID, err := parsePathID(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	feed, err := h.cfg.Feeds.GetFeed(r.Context(), p.UserID, feedID)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	params := storage.SubscriptionParams{WebhookID: feed.WebhookID}
+	if v := strings.TrimSpace(r.FormValue("category_id")); v != "" {
+		id, err := strconv.ParseInt(v, 10, 64)
+		if err != nil || id <= 0 {
+			http.Error(w, "invalid category id", http.StatusBadRequest)
+			return
+		}
+		params.CategoryID = &id
+	}
+	if _, err := h.cfg.Subscriptions.UpdateSubscription(r.Context(), p.UserID, feedID, params); err != nil {
+		if errors.Is(err, storage.ErrInvalidReference) {
+			http.Error(w, "invalid category id", http.StatusBadRequest)
+			return
+		}
+		h.failRedirect(w, r, "/ui/feeds/"+strconv.FormatInt(feedID, 10), "update subscription", err)
+		return
+	}
+	http.Redirect(w, r, "/ui/feeds/"+strconv.FormatInt(feedID, 10), http.StatusFound)
 }

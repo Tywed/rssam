@@ -134,16 +134,10 @@ func TestIntegration_EnclosuresUnreadCountsAndMarkAll(t *testing.T) {
 			{URL: "https://example.com/a.mp3", Size: 10, MIMEType: "audio/mpeg"},
 			{URL: "   "},
 		}},
-		{Title: "plain", URL: fmt.Sprintf("https://example.com/q/%d", suffix), Hash: fmt.Sprintf("q-%d", suffix)},
+		{Title: "plain", URL: fmt.Sprintf("https://example.com/q/%d", suffix), Hash: fmt.Sprintf("q-%d", suffix), Enclosures: []CreateEnclosureParams{{URL: "https://example.com/b.jpg", MIMEType: "image/jpeg"}}},
 	})
 	if err != nil || len(entries) != 2 {
 		t.Fatalf("create entries: %v err=%v", entries, err)
-	}
-	if err := store.CreateEnclosures(ctx, entries[1].ID, []CreateEnclosureParams{{URL: "https://example.com/b.jpg", MIMEType: "image/jpeg"}}); err != nil {
-		t.Fatal(err)
-	}
-	if err := store.CreateEnclosures(ctx, entries[1].ID, []CreateEnclosureParams{{URL: " "}}); err != nil {
-		t.Fatalf("all-blank enclosures must be a no-op: %v", err)
 	}
 	encs, err := store.ListEnclosuresByEntryIDs(ctx, []int64{entries[0].ID, entries[1].ID})
 	if err != nil || len(encs[entries[0].ID]) != 1 || len(encs[entries[1].ID]) != 1 || encs[entries[0].ID][0].MIMEType != "audio/mpeg" || encs[entries[0].ID][0].Size != 10 {

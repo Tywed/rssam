@@ -40,8 +40,15 @@ func (m *uiMemSubscriptions) SubscribeByURL(ctx context.Context, userID int64, f
 	return storage.Feed{}, storage.ErrNotFound
 }
 
-func (m *uiMemSubscriptions) UpdateSubscription(context.Context, int64, int64, storage.SubscriptionParams) (storage.Subscription, error) {
-	return storage.Subscription{}, storage.ErrNotFound
+func (m *uiMemSubscriptions) UpdateSubscription(_ context.Context, _ int64, feedID int64, p storage.SubscriptionParams) (storage.Subscription, error) {
+	if !m.subscribed[feedID] {
+		return storage.Subscription{}, storage.ErrNotFound
+	}
+	if p.CategoryID != nil && *p.CategoryID != 10 {
+		return storage.Subscription{}, storage.ErrInvalidReference
+	}
+	m.calls = append(m.calls, "update")
+	return storage.Subscription{FeedID: feedID, CategoryID: p.CategoryID, WebhookID: p.WebhookID}, nil
 }
 
 func (m *uiMemSubscriptions) Unsubscribe(_ context.Context, _ int64, feedID int64) error {
@@ -154,8 +161,17 @@ func TestUI_CatalogSubscribeUnsubscribe(t *testing.T) {
 	}
 
 	body = getPage(t, mux, sid, "/ui/feeds/1").Body.String()
-	if !strings.Contains(body, "Подписчиков: 2") || strings.Contains(body, "bob, alice") || !strings.Contains(body, "/ui/feeds/1/unsubscribe") {
+	if !strings.Contains(body, "Подписчиков: 2") || strings.Contains(body, "bob, alice") || !strings.Contains(body, "/ui/feeds/1/unsubscribe") || !strings.Contains(body, "/ui/feeds/1/subscription") {
 		t.Fatalf("feed card for reader: %s", body)
+	}
+	if rec := postForm(t, mux, sid, "/ui/feeds/1/subscription", url.Values{"csrf_token": {token}, "category_id": {"99"}}); rec.Code != http.StatusBadRequest {
+		t.Fatalf("move to foreign category: %d", rec.Code)
+	}
+	if rec := postForm(t, mux, sid, "/ui/feeds/1/subscription", url.Values{"csrf_token": {token}, "category_id": {"10"}}); rec.Code != http.StatusFound || rec.Header().Get("Location") != "/ui/feeds/1" {
+		t.Fatalf("move to own category: %d %s", rec.Code, rec.Header().Get("Location"))
+	}
+	if rec := postForm(t, mux, sid, "/ui/feeds/77/subscription", url.Values{"csrf_token": {token}}); rec.Code != http.StatusNotFound {
+		t.Fatalf("move unknown feed: %d", rec.Code)
 	}
 
 	if rec := postForm(t, mux, sid, "/ui/feeds/1/unsubscribe", url.Values{"csrf_token": {token}}); rec.Code != http.StatusFound || rec.Header().Get("Location") != "/ui/feeds" {
@@ -164,7 +180,7 @@ func TestUI_CatalogSubscribeUnsubscribe(t *testing.T) {
 	if rec := postForm(t, mux, sid, "/ui/feeds/1/unsubscribe", url.Values{"csrf_token": {token}}); rec.Code != http.StatusNotFound {
 		t.Fatalf("repeat unsubscribe: %d", rec.Code)
 	}
-	if strings.Join(subs.calls, ",") != "subscribe,unsubscribe" {
+	if strings.Join(subs.calls, ",") != "subscribe,update,unsubscribe" {
 		t.Fatalf("calls = %v", subs.calls)
 	}
 	if len(auditStore.rows) != 2 || auditStore.rows[0].Action != storage.AuditSubscriptionCreate || auditStore.rows[1].Action != storage.AuditSubscriptionDelete || *auditStore.rows[1].TargetID != 1 {
