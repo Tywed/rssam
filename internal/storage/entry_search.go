@@ -144,7 +144,14 @@ func (s *PostgresStore) SearchEntries(ctx context.Context, userID int64, filter 
 	var out []Entry
 	total := 0
 	err := withTx(ctx, s.db, func(tx pgx.Tx) error {
-		if _, err := tx.Exec(ctx, "SET LOCAL enable_seqscan = off; SET LOCAL enable_indexscan = off; SET LOCAL plan_cache_mode = force_custom_plan"); err != nil {
+		// pgx extended protocol: one statement per Exec.
+		if _, err := tx.Exec(ctx, "SET LOCAL enable_seqscan = off"); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, "SET LOCAL enable_indexscan = off"); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, "SET LOCAL plan_cache_mode = force_custom_plan"); err != nil {
 			return err
 		}
 		rows, err := tx.Query(ctx, q, append(args, fetch, offset)...)
