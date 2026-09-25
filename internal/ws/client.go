@@ -60,6 +60,22 @@ func (c *Client) Close() {
 	_ = c.conn.Close()
 }
 
+// trySend queues payload unless the client was unregistered. Unregister
+// closes c.send under the hub write lock; sending without the matching
+// read lock races with that close (and panics if the channel is already
+// closed).
+func (c *Client) trySend(payload []byte) {
+	c.hub.mu.RLock()
+	defer c.hub.mu.RUnlock()
+	if c.gone {
+		return
+	}
+	select {
+	case c.send <- payload:
+	default:
+	}
+}
+
 func (c *Client) readPump() {
 	defer c.Close()
 	defer c.hub.Unregister(c)
@@ -88,10 +104,7 @@ func (c *Client) readPump() {
 		// Acknowledge so a client can know when events will start flowing
 		// instead of guessing with a delay. Older clients ignore unknown events.
 		if ack, err := json.Marshal(Envelope{Event: "subscribed", Data: map[string]any{"channels": channels}}); err == nil {
-			select {
-			case c.send <- ack:
-			default:
-			}
+			c.trySend(ack)
 		}
 	}
 }
