@@ -120,12 +120,14 @@ END $$;
 CREATE UNIQUE INDEX IF NOT EXISTS feeds_feed_url_uidx ON feeds(feed_url);
 
 -- Unread/read/removed lists, "all" list, starred list, per-feed lists and
--- counters, removed-row purge. Status is in every index, so a status change
+-- counters (one index-only scan per feed page whatever the status filter,
+-- instead of walking the user's whole ordered set and dropping other
+-- feeds), removed-row purge. Status is in every index, so a status change
 -- is never a HOT update; the row is ~60 bytes against ~1.7 kB before.
 CREATE INDEX IF NOT EXISTS user_entries_user_status_sort_idx ON user_entries(user_id, status, sort_at DESC, entry_id DESC);
 CREATE INDEX IF NOT EXISTS user_entries_user_sort_idx ON user_entries(user_id, sort_at DESC, entry_id DESC) WHERE status <> 'removed';
 CREATE INDEX IF NOT EXISTS user_entries_user_starred_idx ON user_entries(user_id, sort_at DESC, entry_id DESC) WHERE starred;
-CREATE INDEX IF NOT EXISTS user_entries_user_feed_status_idx ON user_entries(user_id, feed_id, status);
+CREATE INDEX IF NOT EXISTS user_entries_user_feed_sort_idx ON user_entries(user_id, feed_id, sort_at DESC, entry_id DESC) INCLUDE (status);
 CREATE INDEX IF NOT EXISTS user_entries_removed_idx ON user_entries(updated_at) WHERE status = 'removed';
 
 CREATE INDEX IF NOT EXISTS entries_feed_created_idx ON entries(feed_id, created_at DESC);

@@ -205,13 +205,12 @@ func (s *PostgresStore) listEntries(ctx context.Context, userID int64, filter Li
 		if !IsValidEntryStatus(*filter.Status) {
 			return nil, 0, fmt.Errorf("invalid entry status: %q", *filter.Status)
 		}
-		where = append(where, fmt.Sprintf("ue.status = $%d", argN))
-		args = append(args, *filter.Status)
-		argN++
+		// Spelled out, not bound: the status is one of three validated
+		// words, and the partial indexes (WHERE status = 'unread', WHERE
+		// status <> 'removed') are only chosen when the planner sees it.
+		where = append(where, "ue.status = '"+*filter.Status+"'")
 	} else {
-		where = append(where, fmt.Sprintf("ue.status <> $%d", argN))
-		args = append(args, EntryStatusRemoved)
-		argN++
+		where = append(where, "ue.status <> '"+EntryStatusRemoved+"'")
 	}
 	if filter.Starred != nil {
 		where = append(where, fmt.Sprintf("ue.starred = $%d", argN))
@@ -338,10 +337,13 @@ WHERE id = $1`
 	return nil
 }
 
+// The unread counters spell the status out instead of binding it, like the
+// list filters: a generic plan for a bound status cannot use the partial
+// indexes and estimates nothing about the value.
 func (s *PostgresStore) CountUnreadByFeed(ctx context.Context, userID, feedID int64) (int, error) {
-	const q = `SELECT count(*) FROM user_entries WHERE user_id = $1 AND feed_id = $2 AND status = $3`
+	const q = `SELECT count(*) FROM user_entries WHERE user_id = $1 AND feed_id = $2 AND status = '` + EntryStatusUnread + `'`
 	var total int
-	if err := s.db.QueryRow(ctx, q, userID, feedID, EntryStatusUnread).Scan(&total); err != nil {
+	if err := s.db.QueryRow(ctx, q, userID, feedID).Scan(&total); err != nil {
 		return 0, fmt.Errorf("count unread by feed: %w", err)
 	}
 	return total, nil
@@ -352,9 +354,9 @@ func (s *PostgresStore) CountUnreadByCategory(ctx context.Context, userID, categ
 SELECT count(*)
 FROM user_entries ue
 JOIN subscriptions s ON s.user_id = ue.user_id AND s.feed_id = ue.feed_id
-WHERE ue.user_id = $1 AND s.category_id = $2 AND ue.status = $3`
+WHERE ue.user_id = $1 AND s.category_id = $2 AND ue.status = '` + EntryStatusUnread + `'`
 	var total int
-	if err := s.db.QueryRow(ctx, q, userID, categoryID, EntryStatusUnread).Scan(&total); err != nil {
+	if err := s.db.QueryRow(ctx, q, userID, categoryID).Scan(&total); err != nil {
 		return 0, fmt.Errorf("count unread by category: %w", err)
 	}
 	return total, nil
@@ -379,9 +381,9 @@ RETURNING ` + entrySelectColumns
 
 // CountUnreadGlobalForUser counts the user's unread entries.
 func (s *PostgresStore) CountUnreadGlobalForUser(ctx context.Context, userID int64) (int, error) {
-	const q = `SELECT count(*) FROM user_entries WHERE user_id = $1 AND status = $2`
+	const q = `SELECT count(*) FROM user_entries WHERE user_id = $1 AND status = '` + EntryStatusUnread + `'`
 	var total int
-	if err := s.db.QueryRow(ctx, q, userID, EntryStatusUnread).Scan(&total); err != nil {
+	if err := s.db.QueryRow(ctx, q, userID).Scan(&total); err != nil {
 		return 0, fmt.Errorf("count unread global for user: %w", err)
 	}
 	return total, nil
@@ -396,10 +398,10 @@ SELECT c.feed_id, s.category_id, c.n
 FROM (
 	SELECT feed_id, count(*)::int AS n
 	FROM user_entries
-	WHERE user_id = $1 AND status = $2
+	WHERE user_id = $1 AND status = '`+EntryStatusUnread+`'
 	GROUP BY feed_id
 ) c
-JOIN subscriptions s ON s.user_id = $1 AND s.feed_id = c.feed_id`, userID, EntryStatusUnread)
+JOIN subscriptions s ON s.user_id = $1 AND s.feed_id = c.feed_id`, userID)
 	if err != nil {
 		return nil, nil, fmt.Errorf("unread counts: %w", err)
 	}

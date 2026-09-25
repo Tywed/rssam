@@ -64,16 +64,22 @@ func TestIntegration_EntryListUsesSortIndex(t *testing.T) {
 	store := testStore(t)
 	ctx := context.Background()
 	owner := newIntegrationUser(t, store, "sortidx_owner")
-	newIntegrationFeedWithEntries(t, store, owner.ID, 3)
+	// Two feeds of equal size: on a handful of rows every ordered index
+	// costs the same and the per-feed cases prove nothing.
+	feed, _ := newIntegrationFeedWithEntries(t, store, owner.ID, 300)
+	newIntegrationFeedWithEntries(t, store, owner.ID, 300)
 
 	tx, err := store.db.Begin(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	// Stale statistics on a tiny table can make the planner prefer
-	// user_entries_user_feed_status_idx plus a sort; the test asserts that
-	// an ordered index path exists, so sorting is priced out.
+	if _, err := tx.Exec(ctx, "ANALYZE user_entries"); err != nil {
+		t.Fatal(err)
+	}
+	// Stale statistics on a tiny table can make the planner prefer a
+	// bitmap path plus a sort; the test asserts that an ordered index path
+	// exists, so sorting is priced out.
 	if _, err := tx.Exec(ctx, "SET LOCAL enable_seqscan = off; SET LOCAL enable_sort = off"); err != nil {
 		t.Fatal(err)
 	}
@@ -84,10 +90,15 @@ func TestIntegration_EntryListUsesSortIndex(t *testing.T) {
 	}{
 		{"status", "ue.user_id = $1 AND ue.status = $2"},
 		{"all", "ue.user_id = $1 AND ue.status <> $2"},
+		{"feed unread", "ue.user_id = $1 AND ue.status = 'unread' AND ue.feed_id = $2"},
+		{"feed all", "ue.user_id = $1 AND ue.status <> 'removed' AND ue.feed_id = $2"},
 	} {
 		args := []any{owner.ID, unread}
 		if tc.name == "all" {
 			args[1] = EntryStatusRemoved
+		}
+		if strings.HasPrefix(tc.name, "feed ") {
+			args[1] = feed.ID
 		}
 		rows, err := tx.Query(ctx, "EXPLAIN SELECT ue.entry_id FROM user_entries ue WHERE "+tc.where+" ORDER BY "+entryOrderClause(EntrySortNewest)+" LIMIT 51", args...)
 		if err != nil {
@@ -103,8 +114,12 @@ func TestIntegration_EntryListUsesSortIndex(t *testing.T) {
 			plan.WriteByte('\n')
 		}
 		rows.Close()
-		if !strings.Contains(plan.String(), "_sort_idx") || strings.Contains(plan.String(), "Sort Key") {
-			t.Fatalf("%s: expected an ordered scan of a *_sort_idx index, got plan:\n%s", tc.name, plan.String())
+		want := "_sort_idx"
+		if strings.HasPrefix(tc.name, "feed ") {
+			want = "user_entries_user_feed_sort_idx"
+		}
+		if !strings.Contains(plan.String(), want) || strings.Contains(plan.String(), "Sort Key") {
+			t.Fatalf("%s: expected an ordered scan of %s, got plan:\n%s", tc.name, want, plan.String())
 		}
 	}
 }

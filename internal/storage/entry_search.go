@@ -94,13 +94,12 @@ func (s *PostgresStore) SearchEntries(ctx context.Context, userID int64, filter 
 		if !IsValidEntryStatus(*filter.Status) {
 			return nil, 0, fmt.Errorf("invalid entry status: %q", *filter.Status)
 		}
-		where = append(where, fmt.Sprintf("ue.status = $%d", argN))
-		args = append(args, *filter.Status)
-		argN++
+		// Spelled out, not bound: the status is one of three validated
+		// words, and the partial indexes (WHERE status = 'unread', WHERE
+		// status <> 'removed') are only chosen when the planner sees it.
+		where = append(where, "ue.status = '"+*filter.Status+"'")
 	} else {
-		where = append(where, fmt.Sprintf("ue.status <> $%d", argN))
-		args = append(args, EntryStatusRemoved)
-		argN++
+		where = append(where, "ue.status <> '"+EntryStatusRemoved+"'")
 	}
 	if filter.Starred != nil {
 		where = append(where, fmt.Sprintf("ue.starred = $%d", argN))
@@ -123,7 +122,11 @@ func (s *PostgresStore) SearchEntries(ctx context.Context, userID int64, filter 
 	// through entries_user_sort_idx or a sequential scan, detoasting every
 	// row on the way (405–856 ms and 0.8 M buffers for a word with 50
 	// hits). With the two scan types off the same query runs the GIN
-	// bitmap path in 0.5–58 ms; the settings are transaction-local.
+	// bitmap path in 0.5–58 ms; the settings are transaction-local. The
+	// plan must also be built for the actual words: pgx keeps the statement
+	// prepared, and the generic plan Postgres switches to after five runs
+	// knows nothing about the query's selectivity and joins user_entries
+	// row by row (700 ms against 120 ms for a word present in every entry).
 	window := offset + fetch
 	if filter.Rank {
 		window = SearchRankWindow
@@ -141,10 +144,7 @@ func (s *PostgresStore) SearchEntries(ctx context.Context, userID int64, filter 
 	var out []Entry
 	total := 0
 	err := withTx(ctx, s.db, func(tx pgx.Tx) error {
-		if _, err := tx.Exec(ctx, "SET LOCAL enable_seqscan = off"); err != nil {
-			return err
-		}
-		if _, err := tx.Exec(ctx, "SET LOCAL enable_indexscan = off"); err != nil {
+		if _, err := tx.Exec(ctx, "SET LOCAL enable_seqscan = off; SET LOCAL enable_indexscan = off; SET LOCAL plan_cache_mode = force_custom_plan"); err != nil {
 			return err
 		}
 		rows, err := tx.Query(ctx, q, append(args, fetch, offset)...)
