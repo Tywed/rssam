@@ -9,7 +9,7 @@ require (
 	github.com/andybalholm/cascadia v1.3.5
 	github.com/jackc/pgx/v5 v5.11.0
 	github.com/microcosm-cc/bluemonday v1.0.27
-	github.com/mmcdole/gofeed v1.4.2
+	github.com/mmcdole/gofeed v1.5.0
 	github.com/prometheus/client_golang v1.24.1
 	golang.org/x/crypto v0.57.0
 	golang.org/x/net v0.59.0
