@@ -10,6 +10,7 @@ import (
 
 	"rssam/internal/reader"
 	dzenbridge "rssam/internal/reader/dzen"
+	"rssam/internal/reader/dzenchannel"
 	maxstatbridge "rssam/internal/reader/maxstat"
 	"rssam/internal/reader/page"
 	"rssam/internal/reader/rutube"
@@ -86,6 +87,11 @@ func (h *Handler) handleFeedDetectType(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+	if ft == reader.FeedTypeDzenChannel {
+		if ch, ok := dzenchannel.Parse(feedURL); ok {
+			resp.ChannelID = ch.String()
+		}
+	}
 	if ft == reader.FeedTypeSmotrim {
 		if opts, ok := smotrimbridge.ParseOptionsFromFeedURL(feedURL); ok {
 			resp.BrandID = opts.BrandID
@@ -96,7 +102,7 @@ func (h *Handler) handleFeedDetectType(w http.ResponseWriter, r *http.Request) {
 	}
 	if h.cfg.DiscoverFeed != nil {
 		switch ft {
-		case reader.FeedTypeTelegram, reader.FeedTypeRSS, reader.FeedTypePage:
+		case reader.FeedTypeTelegram, reader.FeedTypeRSS, reader.FeedTypePage, reader.FeedTypeDzenChannel:
 			d, err := h.cfg.DiscoverFeed(r.Context(), feedURL, ft, tlsInsecure)
 			if err != nil {
 				if ft != reader.FeedTypeTelegram {
@@ -134,6 +140,9 @@ func formatRSSDetectError(err error) string {
 	msg := err.Error()
 	if errors.Is(err, reader.ErrNoFeedFound) {
 		return "На странице не найдено ссылок на RSS/Atom ленту; укажите адрес ленты вручную"
+	}
+	if errors.Is(err, dzenchannel.ErrChannelNotFound) {
+		return "Канал Дзен не найден: проверьте адрес (https://dzen.ru/имя или https://dzen.ru/id/…)"
 	}
 	if errors.Is(err, page.ErrSelectorNoMatch) {
 		return "Селектор не нашёл ни одного элемента на странице: " + strings.TrimPrefix(msg, page.ErrSelectorNoMatch.Error()+": ")
@@ -202,7 +211,7 @@ func resolveFeedBeforeCreate(ctx context.Context, h *Handler, params *storage.Cr
 		if params.Title == "" {
 			params.Title = strings.TrimSpace(d.Title)
 		}
-	case reader.FeedTypeTelegram:
+	case reader.FeedTypeTelegram, reader.FeedTypeDzenChannel:
 		if params.Title == "" {
 			if d, err := h.cfg.DiscoverFeed(ctx, params.FeedURL, params.FeedType, params.TLSInsecure); err == nil {
 				params.Title = strings.TrimSpace(d.Title)

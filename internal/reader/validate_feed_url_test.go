@@ -16,11 +16,22 @@ func TestValidateFeedURL_BridgeSchemes(t *testing.T) {
 		"dzen-search://golang",
 		"vk-search://golang",
 		"rutube-person://26119699",
+		"dzen-channel://tass",
+		"dzen-channel://id/5f9abb2e66afb7042d59a0af?types=article",
 	}
 	for _, url := range cases {
 		if err := ValidateFeedURL(url, g); err != nil {
 			t.Fatalf("%s: %v", url, err)
 		}
+	}
+}
+
+func TestValidateFeedURL_DzenChannelScheme(t *testing.T) {
+	if err := ValidateFeedURL("dzen-channel://a/slug", nil); err == nil {
+		t.Fatal("article path must not pass as a channel")
+	}
+	if err := ValidateFeedURL("dzen-channel://tass?types=podcast", nil); err == nil {
+		t.Fatal("unknown content type must be rejected")
 	}
 }
 

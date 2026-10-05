@@ -107,6 +107,16 @@
         <p class="meta" id="dzen-search-query"></p>
       </div>
 
+      <div class="card feed-type-settings" id="feed-settings-dzen_channel" data-feed-type="dzen_channel" {{if .Feed.ID}}{{if ne .Feed.FeedType "dzen_channel"}}hidden{{end}}{{else}}hidden{{end}}>
+        <h2>Канал Дзен</h2>
+        <p class="meta">Статьи, посты, видео и ролики одного канала dzen.ru (у каналов Дзена нет RSS). Название подставляется с канала.</p>
+        <ul class="meta">
+          <li><code>https://dzen.ru/tass</code> или <code>https://dzen.ru/id/5f9abb2e66afb7042d59a0af</code></li>
+          <li><code>https://dzen.ru/tass?types=article,long_video</code> — только статьи и видео (<code>short_video</code> — ролики); без <code>types</code> берутся все вкладки канала</li>
+        </ul>
+        <p class="meta" id="dzen-channel-id"></p>
+      </div>
+
       <div class="card feed-type-settings" id="feed-settings-smotrim" data-feed-type="smotrim" {{if .Feed.ID}}{{if ne .Feed.FeedType "smotrim"}}hidden{{end}}{{else}}hidden{{end}}>
         <h2>Smotrim</h2>
         <p class="meta">Видео и сюжеты <strong>бренда</strong> на smotrim.ru (ранее api.vgtrk.com).</p>

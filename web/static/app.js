@@ -584,6 +584,7 @@
     var rutubeChannelEl = document.getElementById('rutube-channel-id');
     var vkSearchQueryEl = document.getElementById('vk-search-query');
     var dzenSearchQueryEl = document.getElementById('dzen-search-query');
+    var dzenChannelEl = document.getElementById('dzen-channel-id');
     var smotrimBrandEl = document.getElementById('smotrim-brand-id');
     var tlsCheckbox = document.getElementById('feed-tls-insecure');
     var settingsPanels = Array.from(document.querySelectorAll('.feed-type-settings'));
@@ -634,6 +635,11 @@
       if (dzenSearchQueryEl) {
         dzenSearchQueryEl.textContent = (feedType === 'dzen_news' && data && data.search_query)
           ? 'Поисковый запрос: ' + data.search_query
+          : '';
+      }
+      if (dzenChannelEl) {
+        dzenChannelEl.textContent = (feedType === 'dzen_channel' && data && data.channel_id)
+          ? 'Канал: ' + data.channel_id
           : '';
       }
       if (smotrimBrandEl) {

@@ -260,7 +260,7 @@ func main() {
 		TelegramProxyRequestTimeout: cfg.TelegramProxyRequestTimeout,
 		TelegramProxyRetry:          cfg.TelegramProxyRetry,
 		TelegramMaxPages:            cfg.TelegramMaxPages,
-	}, registryBundle.Telegram)
+	}, registryBundle.Telegram, registryBundle.Contract)
 	if err != nil {
 		log.Error("title resolver init failed", "err", err)
 		os.Exit(1)

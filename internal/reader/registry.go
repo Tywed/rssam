@@ -6,8 +6,10 @@ import (
 	"strings"
 	"time"
 
+	"rssam/internal/bridge/v1"
 	"rssam/internal/proxy"
 	"rssam/internal/reader/dzen"
+	"rssam/internal/reader/dzenchannel"
 	"rssam/internal/reader/max"
 	"rssam/internal/reader/maxstat"
 	"rssam/internal/reader/page"
@@ -82,6 +84,9 @@ type RegistryBundle struct {
 	Dzen     *dzen.Handler
 	Smotrim  *smotrim.Handler
 	Page     *page.Handler
+	// Contract holds the bridge.Handler implementations (registered through
+	// Adapt); the title resolver asks them for names.
+	Contract []bridge.Handler
 }
 
 // NewRegistry creates a registry with RSS (fallback) and optional bridge handlers.
@@ -203,6 +208,12 @@ func NewRegistry(cfg RegistryConfig) (*RegistryBundle, error) {
 	})
 	reg.Register(newDzenNewsHandler(dzenHandler))
 
+	dzenChannel := dzenchannel.NewHandler(dzenchannel.NewClient(cfg.HTTPClient, cfg.SSRFGuard, dzenchannel.Config{
+		UserAgent: cfg.DzenUserAgent,
+		Cookie:    cfg.DzenCookie,
+	}))
+	reg.Register(Adapt(dzenChannel))
+
 	smotrimClient, err := smotrim.NewClient(cfg.HTTPClient, cfg.SSRFGuard, smotrim.Config{
 		BrandBaseURL: cfg.SmotrimBrandBaseURL,
 		GraphQLURL:   cfg.SmotrimGraphQLURL,
@@ -231,6 +242,7 @@ func NewRegistry(cfg RegistryConfig) (*RegistryBundle, error) {
 		Dzen:     dzenHandler,
 		Smotrim:  smotrimHandler,
 		Page:     pageHandler,
+		Contract: []bridge.Handler{dzenChannel},
 	}, nil
 }
 

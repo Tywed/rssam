@@ -165,13 +165,14 @@ func normalizeBridgeFeedType(feedType string) string {
 
 func (h *Handler) bridgeFeedCounts(r *http.Request) (map[string]int, error) {
 	counts := map[string]int{
-		"telegram":  0,
-		"max":       0,
-		"maxstat":   0,
-		"vk_search": 0,
-		"dzen_news": 0,
-		"smotrim":   0,
-		"rss":       0,
+		"telegram":     0,
+		"max":          0,
+		"maxstat":      0,
+		"vk_search":    0,
+		"dzen_news":    0,
+		"dzen_channel": 0,
+		"smotrim":      0,
+		"rss":          0,
 	}
 	if h.cfg.Feeds == nil {
 		return counts, nil

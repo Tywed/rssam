@@ -1,0 +1,114 @@
+{
+ "channel": {
+  "source": {
+   "id": "6895300909172440475",
+   "publisher_id": "592d3927e3cda8a0bf8d46bb",
+   "title": "ТАСС",
+   "description": "Официальный канал ведущего государственного информационного агентства России\nО МИРЕ. О СТРАНЕ. О НАС",
+   "subscribers": 871889
+  }
+ },
+ "tabs": [
+  {
+   "id": "long_video"
+  },
+  {
+   "id": "article"
+  },
+  {
+   "id": "short_video"
+  },
+  {
+   "id": "suite"
+  }
+ ],
+ "feedData": {
+  "items": [
+   {
+    "id": "6abcab9fa95eb9133bce49ab",
+    "type": "gif",
+    "title": "Военкор ТАСС показал работу тылового подразделения под Константиновкой",
+    "text": "",
+    "link": "https://dzen.ru/video/watch/6abcab9fa95eb9133bce49ab?rid=2297275873.1338.1791221896327.51758&referrer_clid=1400&",
+    "shareLink": "https://dzen.ru/video/watch/6abcab9fa95eb9133bce49ab",
+    "publicationDate": "1790752459",
+    "views": 2556,
+    "image": {
+     "urlTemplate": "https://avatars.dzeninfra.ru/get-{namespace}/271828/pub_6abcab9fa95eb9133bce49ab_6abcb6bf16d4d432d4d06761/{size}",
+     "namespace": "zen_doc",
+     "sizeName": "scale_1200"
+    },
+    "source": {
+     "id": "592d3927e3cda8a0bf8d46bb",
+     "title": "ТАСС",
+     "shareLink": "https://dzen.ru/tass"
+    }
+   },
+   {
+    "id": "6a91381fc9fbe517bd5de64d",
+    "type": "gif",
+    "title": "Лавина, паводок и массовые жертвы: как Непал и сотни туристов оказались во власти стихии",
+    "text": "",
+    "link": "https://dzen.ru/video/watch/6a91381fc9fbe517bd5de64d?rid=2297275873.1338.1791221896327.51758&referrer_clid=1400&",
+    "shareLink": "https://dzen.ru/video/watch/6a91381fc9fbe517bd5de64d",
+    "publicationDate": "1787902005",
+    "views": 1010,
+    "image": {
+     "urlTemplate": "https://avatars.dzeninfra.ru/get-{namespace}/271828/pub_6a91381fc9fbe517bd5de64d_6a913823b1d3412bc023167b/{size}",
+     "namespace": "zen_doc",
+     "sizeName": "scale_1200"
+    },
+    "source": {
+     "id": "592d3927e3cda8a0bf8d46bb",
+     "title": "ТАСС",
+     "shareLink": "https://dzen.ru/tass"
+    }
+   },
+   {
+    "id": "10808221078385226",
+    "type": "suites_carousel",
+    "title": "Подборки автора"
+   },
+   {
+    "id": "6a9137c0ffbcd956964c2630",
+    "type": "gif",
+    "title": "Лавина, паводок и массовые жертвы: как Непал и сотни туристов оказались во власти стихии",
+    "text": "",
+    "link": "https://dzen.ru/video/watch/6a9137c0ffbcd956964c2630?rid=2297275873.1338.1791221896327.51758&referrer_clid=1400&",
+    "shareLink": "https://dzen.ru/video/watch/6a9137c0ffbcd956964c2630",
+    "publicationDate": "1787901913",
+    "views": 4974,
+    "image": {
+     "urlTemplate": "https://avatars.dzeninfra.ru/get-{namespace}/271828/pub_6a9137c0ffbcd956964c2630_6a9137c5f59160133f3652cf/{size}",
+     "namespace": "zen_doc",
+     "sizeName": "scale_1200"
+    },
+    "source": {
+     "id": "592d3927e3cda8a0bf8d46bb",
+     "title": "ТАСС",
+     "shareLink": "https://dzen.ru/tass"
+    }
+   },
+   {
+    "id": "6a91377170d7374965dbd829",
+    "type": "gif",
+    "title": "Лавина, паводок и массовые жертвы: как Непал и сотни туристов оказались во власти стихии",
+    "text": "",
+    "link": "https://dzen.ru/video/watch/6a91377170d7374965dbd829?rid=2297275873.1338.1791221896327.51758&referrer_clid=1400&",
+    "shareLink": "https://dzen.ru/video/watch/6a91377170d7374965dbd829",
+    "publicationDate": "1787901831",
+    "views": 1041,
+    "image": {
+     "urlTemplate": "https://avatars.dzeninfra.ru/get-{namespace}/271828/pub_6a91377170d7374965dbd829_6a9137764175094bd97e1665/{size}",
+     "namespace": "zen_doc",
+     "sizeName": "scale_1200"
+    },
+    "source": {
+     "id": "592d3927e3cda8a0bf8d46bb",
+     "title": "ТАСС",
+     "shareLink": "https://dzen.ru/tass"
+    }
+   }
+  ]
+ }
+}

@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"rssam/internal/reader/dzen"
+	"rssam/internal/reader/dzenchannel"
 	maxbridge "rssam/internal/reader/max"
 	maxstatbridge "rssam/internal/reader/maxstat"
 	"rssam/internal/reader/page"
@@ -21,6 +22,7 @@ var bridgeFeedSchemes = map[string]struct{}{
 	"maxstat-search": {},
 	"dzen-news":      {},
 	"dzen-search":    {},
+	"dzen-channel":   {},
 	"rutube-person":  {},
 	"smotrim":        {},
 	"smotrim-brand":  {},
@@ -100,6 +102,8 @@ func FeedTypeLabel(feedType string) string {
 		return "Rutube"
 	case FeedTypeDzenNews:
 		return "Dzen News"
+	case FeedTypeDzenChannel:
+		return "Dzen"
 	case FeedTypeSmotrim:
 		return "Smotrim"
 	case FeedTypePage:
@@ -144,6 +148,10 @@ func ValidateBridgeFeedURL(feedURL, feedType string) error {
 	case FeedTypeDzenNews:
 		if _, ok := dzen.ParseQueryFromFeedURL(feedURL); !ok {
 			return fmt.Errorf("не удалось распознать поисковый запрос Dzen News в URL")
+		}
+	case FeedTypeDzenChannel:
+		if !dzenchannel.Detect(feedURL) {
+			return fmt.Errorf("ожидается адрес канала Дзен: https://dzen.ru/имя или https://dzen.ru/id/…")
 		}
 	case FeedTypeSmotrim:
 		if _, ok := smotrim.ParseOptionsFromFeedURL(feedURL); !ok {

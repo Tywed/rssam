@@ -1,0 +1,119 @@
+{
+ "channel": {
+  "source": {
+   "id": "6895300909172440475",
+   "publisher_id": "592d3927e3cda8a0bf8d46bb",
+   "title": "ТАСС",
+   "description": "Официальный канал ведущего государственного информационного агентства России\nО МИРЕ. О СТРАНЕ. О НАС",
+   "subscribers": 871889
+  }
+ },
+ "tabs": [
+  {
+   "id": "long_video"
+  },
+  {
+   "id": "article"
+  },
+  {
+   "id": "short_video"
+  },
+  {
+   "id": "suite"
+  }
+ ],
+ "feedData": {
+  "items": [
+   {
+    "id": "6ac3e01c8872795b730a609b",
+    "type": "article",
+    "title": "Тренер сборной Нигерии Шелль назвал Россию гостеприимной",
+    "text": "Нигерийцы сыграют с россиянами во вторник НИЖНИЙ НОВГОРОД, 5 октября. /ТАСС/. Россия является гостеприимной страной, все люди очень приветливые. Такое мнение журналистам высказал главный тренер сборной Нигерии Эрик Шелль. Товарищеский матч между сборными России и Нигерии пройдет 6 октября в Нижнем Новгороде и начнется в 19:00 мск. \"Абсолютная правда, что Россия - гостеприимная страна, все люди приветливые, все хорошо организовано, все очень чисто...",
+    "link": "https://dzen.ru/a/asPgHIhyeVtzCmCb?feed_exp=ordinary_feed&from=channel&integration=site_desktop&place=channel_articles&secdata=CIiqi%2BmQNCABUA9qAQGQAQA%3D&rid=1275130734.1290.1791221893585.18947&referrer_clid=1400&",
+    "shareLink": "https://dzen.ru/a/asPgHIhyeVtzCmCb",
+    "publicationDate": "1791221749",
+    "image": {
+     "urlTemplate": "https://avatars.dzeninfra.ru/get-{namespace}/271828/pub_6ac3e01c8872795b730a609b_6ac3e05f934d8121ed61c1c8/{size}",
+     "namespace": "zen_doc",
+     "sizeName": "scale_1200"
+    },
+    "source": {
+     "id": "592d3927e3cda8a0bf8d46bb",
+     "title": "ТАСС",
+     "shareLink": "https://dzen.ru/tass"
+    }
+   },
+   {
+    "id": "6ac3e01c8c2d001240c539ed",
+    "type": "article",
+    "title": "Захарова: киевский режим продолжает создавать угрозы ядерной аварии, атакуя ЗАЭС",
+    "text": "Киевский режим продолжает целенаправленно создавать угрозы серьезной ядерной аварии, атакуя российскую ЗАЭС - Захарова. Новость дополняется.",
+    "link": "https://dzen.ru/a/asPgHIwtABJAxTnt?feed_exp=ordinary_feed&from=channel&integration=site_desktop&place=channel_articles&secdata=CMj6hemQNCABUA9qAQGQAQA%3D&rid=1275130734.1290.1791221893585.18947&referrer_clid=1400&",
+    "shareLink": "https://dzen.ru/a/asPgHIwtABJAxTnt",
+    "publicationDate": "1791221661",
+    "image": {
+     "urlTemplate": "https://avatars.dzeninfra.ru/get-{namespace}/271828/pub_6ac3e01c8c2d001240c539ed_6ac3e01c0c57c7544b7cf5ea/{size}",
+     "namespace": "zen_doc",
+     "sizeName": "scale_1200"
+    },
+    "source": {
+     "id": "592d3927e3cda8a0bf8d46bb",
+     "title": "ТАСС",
+     "shareLink": "https://dzen.ru/tass"
+    }
+   },
+   {
+    "id": "10808221078385226",
+    "type": "suites_carousel",
+    "title": "Подборки автора"
+   },
+   {
+    "id": "6ac3df5c8872795b730a5d15",
+    "type": "article",
+    "title": "Российский рынок акций закрылся ростом основных индексов",
+    "text": "Курс юаня вырос на 25,7 копейки МОСКВА, 5 октября. /ТАСС/. Индекс Мосбиржи по итогам основных торгов в понедельник вырос на 1,86%, до 2 319,57 пункта, долларовый индекс РТС поднялся на 0,12%, до 860,36 пункта. Курс юаня вырос на 25,7 копейки, до 12,754 рубля. \"Индекс Мосбиржи сегодня смог выйти за круглую отметку 2 300 пунктов и пытался закрепиться выше. Сырьевой рынок в целом тоже благоприятствовал покупателям - дорожали металлы, нефть с переменным успехом курсировала выше $100\", - отметил эксперт по фондовому рынку \"БКС мир инвестиций\" Андрей Смирнов...",
+    "link": "https://dzen.ru/a/asPfXIhyeVtzCl0V?feed_exp=ordinary_feed&from=channel&integration=site_desktop&place=channel_articles&secdata=CJii%2FuiQNCABUA9qAQGQAQA%3D&rid=1275130734.1290.1791221893585.18947&referrer_clid=1400&",
+    "shareLink": "https://dzen.ru/a/asPfXIhyeVtzCl0V",
+    "publicationDate": "1791221535",
+    "image": {
+     "urlTemplate": "https://avatars.dzeninfra.ru/get-{namespace}/271828/pub_6ac3df5c8872795b730a5d15_6ac3df5cfc1bff1f305f4274/{size}",
+     "namespace": "zen_doc",
+     "sizeName": "scale_1200"
+    },
+    "source": {
+     "id": "592d3927e3cda8a0bf8d46bb",
+     "title": "ТАСС",
+     "shareLink": "https://dzen.ru/tass"
+    }
+   },
+   {
+    "id": "6ac3df5c8872795b730a5d14",
+    "type": "article",
+    "title": "Карпин: сборная России по футболу стала командой друзей",
+    "text": "Тренер отметил, что все игроки бьются друг за друга НИЖНИЙ НОВГОРОД, 5 октября. /ТАСС/. Все футболисты сборной России на этом сборе бьются друг за друга, думают не каждый сам о себе, а стали командой друзей. Такое мнение журналистам высказал главный тренер сборной России Валерий Карпин. 29 сентября российские футболисты в Казани обыграли иранцев (2:0), 3 октября в Екатеринбурге оказались сильнее намибийцев (6:0). 6 октября в Нижнем Новгороде россияне сыграют против команды Нигерии. \"У нас был небольшой этап, когда товарищеские матчи приелись, хотя это и выступление за сборную России...",
+    "link": "https://dzen.ru/a/asPfXIhyeVtzCl0U?feed_exp=ordinary_feed&from=channel&integration=site_desktop&place=channel_articles&secdata=CPDk%2BuiQNCABUA9qAQGQAQA%3D&rid=1275130734.1290.1791221893585.18947&referrer_clid=1400&",
+    "shareLink": "https://dzen.ru/a/asPfXIhyeVtzCl0U",
+    "publicationDate": "1791221478",
+    "image": {
+     "urlTemplate": "https://avatars.dzeninfra.ru/get-{namespace}/271828/pub_6ac3df5c8872795b730a5d14_6ac3df5c7644b856e17a82a3/{size}",
+     "namespace": "zen_doc",
+     "sizeName": "scale_1200"
+    },
+    "source": {
+     "id": "592d3927e3cda8a0bf8d46bb",
+     "title": "ТАСС",
+     "shareLink": "https://dzen.ru/tass"
+    }
+   },
+   {
+    "id": "0",
+    "type": "publishers_channel_subscribe_card",
+    "title": "Если нравится — подпишитесь",
+    "source": {
+     "id": "6895300909172440475",
+     "title": "ТАСС"
+    }
+   }
+  ]
+ }
+}

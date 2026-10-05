@@ -77,6 +77,12 @@ type Handler interface {
 	Fetch(ctx context.Context, req Request) (Response, error)
 }
 
+// TitleDiscoverer is optional: a Handler that can name a subscription before
+// the first poll (the feed form suggests the title, API fills an empty one).
+type TitleDiscoverer interface {
+	DiscoverTitle(ctx context.Context, feedURL string) (string, error)
+}
+
 // RetryAtError is a fetch error that should be retried at a given time
 // without counting as a feed failure (rate limits, cool-downs).
 type RetryAtError interface {

@@ -1,0 +1,114 @@
+{
+ "channel": {
+  "source": {
+   "id": "6895300909172440475",
+   "publisher_id": "592d3927e3cda8a0bf8d46bb",
+   "title": "ТАСС",
+   "description": "Официальный канал ведущего государственного информационного агентства России\nО МИРЕ. О СТРАНЕ. О НАС",
+   "subscribers": 871889
+  }
+ },
+ "tabs": [
+  {
+   "id": "long_video"
+  },
+  {
+   "id": "article"
+  },
+  {
+   "id": "short_video"
+  },
+  {
+   "id": "suite"
+  }
+ ],
+ "feedData": {
+  "items": [
+   {
+    "id": "6981fbfc1269841b377d6771",
+    "type": "short_video_compact",
+    "title": "Робот-гуманоид Bolt установил мировой рекорд",
+    "text": "",
+    "link": "https://dzen.ru/shorts/6981fbfc1269841b377d6771?rid=708443935.1403.1791221894821.53659&referrer_clid=1400&source=channel",
+    "shareLink": "https://dzen.ru/shorts/6981fbfc1269841b377d6771",
+    "publicationDate": "1770126705",
+    "views": 5307,
+    "image": {
+     "urlTemplate": "https://avatars.dzeninfra.ru/get-{namespace}/271828/pub_6981fbfc1269841b377d6771_6981fd1c61eaac2ff5f751ff/{size}",
+     "namespace": "zen_doc",
+     "sizeName": "scale_1200"
+    },
+    "source": {
+     "id": "592d3927e3cda8a0bf8d46bb",
+     "title": "ТАСС",
+     "shareLink": "https://dzen.ru/tass"
+    }
+   },
+   {
+    "id": "6981bf9fdebe424c8ce197e0",
+    "type": "short_video_compact",
+    "title": "В Торецком при попытке бегства уничтожены два взвода ВСУ",
+    "text": "",
+    "link": "https://dzen.ru/shorts/6981bf9fdebe424c8ce197e0?rid=708443935.1403.1791221894821.53659&referrer_clid=1400&source=channel",
+    "shareLink": "https://dzen.ru/shorts/6981bf9fdebe424c8ce197e0",
+    "publicationDate": "1770110924",
+    "views": 3689,
+    "image": {
+     "urlTemplate": "https://avatars.dzeninfra.ru/get-{namespace}/271828/pub_6981bf9fdebe424c8ce197e0_6981bfbe06be4455e6ab2ef7/{size}",
+     "namespace": "zen_doc",
+     "sizeName": "scale_1200"
+    },
+    "source": {
+     "id": "592d3927e3cda8a0bf8d46bb",
+     "title": "ТАСС",
+     "shareLink": "https://dzen.ru/tass"
+    }
+   },
+   {
+    "id": "10808221078385226",
+    "type": "suites_carousel",
+    "title": "Подборки автора"
+   },
+   {
+    "id": "697cabf4c2ae407bf448f741",
+    "type": "short_video_compact",
+    "title": "Реабилитация Хинштейна займет определенное время",
+    "text": "",
+    "link": "https://dzen.ru/shorts/697cabf4c2ae407bf448f741?rid=708443935.1403.1791221894821.53659&referrer_clid=1400&source=channel",
+    "shareLink": "https://dzen.ru/shorts/697cabf4c2ae407bf448f741",
+    "publicationDate": "1769778235",
+    "views": 1948,
+    "image": {
+     "urlTemplate": "https://avatars.dzeninfra.ru/get-{namespace}/271828/pub_697cabf4c2ae407bf448f741_697cac117de3030f94a10b03/{size}",
+     "namespace": "zen_doc",
+     "sizeName": "scale_1200"
+    },
+    "source": {
+     "id": "592d3927e3cda8a0bf8d46bb",
+     "title": "ТАСС",
+     "shareLink": "https://dzen.ru/tass"
+    }
+   },
+   {
+    "id": "697b5c67797e6825a29b3170",
+    "type": "short_video_compact",
+    "title": "\"Азов\" не берет в плен военных из России",
+    "text": "",
+    "link": "https://dzen.ru/shorts/697b5c67797e6825a29b3170?rid=708443935.1403.1791221894821.53659&referrer_clid=1400&source=channel",
+    "shareLink": "https://dzen.ru/shorts/697b5c67797e6825a29b3170",
+    "publicationDate": "1769692299",
+    "views": 3848,
+    "image": {
+     "urlTemplate": "https://avatars.dzeninfra.ru/get-{namespace}/271828/pub_697b5c67797e6825a29b3170_697b5c7ba19ee61857164036/{size}",
+     "namespace": "zen_doc",
+     "sizeName": "scale_1200"
+    },
+    "source": {
+     "id": "592d3927e3cda8a0bf8d46bb",
+     "title": "ТАСС",
+     "shareLink": "https://dzen.ru/tass"
+    }
+   }
+  ]
+ }
+}
