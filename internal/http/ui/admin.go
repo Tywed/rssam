@@ -204,6 +204,7 @@ type adminSystemInfo struct {
 	TotalEntries  int
 	TotalUnread   int
 	Subscriptions int
+	Collections   int
 	UserEntries   int
 	AuditRows     int
 	BinaryPath    string
@@ -281,6 +282,9 @@ func (h *Handler) handleAdminSystem(w http.ResponseWriter, r *http.Request) {
 			}
 			data.WorkerAdvice = h.loadWorkerAdvice(r.Context(), summary, jobs)
 		}
+	}
+	if h.cfg.Collections != nil {
+		info.Collections, _ = h.cfg.Collections.CountCollections(r.Context())
 	}
 	if h.cfg.Audit != nil && h.cfg.Audit.Store != nil {
 		info.AuditRows, _ = h.cfg.Audit.Store.CountAuditLog(r.Context())

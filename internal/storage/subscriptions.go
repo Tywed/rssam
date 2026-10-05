@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 )
 
 var ErrAlreadySubscribed = errors.New("already subscribed")
@@ -51,7 +50,7 @@ func (s *PostgresStore) Subscribe(ctx context.Context, userID, feedID int64, par
 	var sub Subscription
 	err := withTx(ctx, s.db, func(tx pgx.Tx) error {
 		var err error
-		sub, err = subscribeTx(ctx, tx, userID, feedID, params)
+		sub, err = subscribeTx(ctx, tx, userID, feedID, params, nil)
 		return err
 	})
 	if err != nil {
@@ -72,7 +71,7 @@ func (s *PostgresStore) SubscribeByURL(ctx context.Context, userID int64, feedUR
 			}
 			return fmt.Errorf("subscribe by url: %w", err)
 		}
-		if _, err := subscribeTx(ctx, tx, userID, feedID, params); err != nil {
+		if _, err := subscribeTx(ctx, tx, userID, feedID, params, nil); err != nil {
 			return err
 		}
 		q := `SELECT ` + feedColumns + `, f.icon_data FROM feeds f ` + subscribedJoin + ` WHERE f.id = $2`
@@ -86,17 +85,22 @@ func (s *PostgresStore) SubscribeByURL(ctx context.Context, userID int64, feedUR
 	return f, nil
 }
 
-func subscribeTx(ctx context.Context, tx pgx.Tx, userID, feedID int64, params SubscriptionParams) (Subscription, error) {
+// subscribeTx inserts the subscription with the user's view of the feed's
+// entries; collectionID marks a row created by following a collection.
+func subscribeTx(ctx context.Context, tx pgx.Tx, userID, feedID int64, params SubscriptionParams, collectionID *int64) (Subscription, error) {
 	if err := checkSubscriptionRefs(ctx, tx, userID, params); err != nil {
 		return Subscription{}, err
 	}
+	// ON CONFLICT instead of catching 23505: a failed statement would
+	// abort the surrounding transaction, and collection follows continue
+	// past feeds the user already reads.
 	sub, err := scanSubscription(tx.QueryRow(ctx, `
-INSERT INTO subscriptions(user_id, feed_id, category_id, webhook_id)
-VALUES ($1, $2, $3, $4)
-RETURNING `+subscriptionColumns, userID, feedID, params.CategoryID, params.WebhookID))
+INSERT INTO subscriptions(user_id, feed_id, category_id, webhook_id, collection_id)
+VALUES ($1, $2, $3, $4, $5)
+ON CONFLICT (user_id, feed_id) DO NOTHING
+RETURNING `+subscriptionColumns, userID, feedID, params.CategoryID, params.WebhookID, collectionID))
 	if err != nil {
-		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+		if errors.Is(err, ErrNotFound) {
 			return Subscription{}, ErrAlreadySubscribed
 		}
 		if isForeignKeyViolation(err) {
@@ -141,11 +145,20 @@ func (s *PostgresStore) Unsubscribe(ctx context.Context, userID, feedID int64) e
 		if err := unsubscribeTx(ctx, tx, userID, feedID); err != nil {
 			return err
 		}
-		if _, err := tx.Exec(ctx, `DELETE FROM feeds WHERE id = $1 AND NOT EXISTS (SELECT 1 FROM subscriptions s WHERE s.feed_id = $1)`, feedID); err != nil {
-			return fmt.Errorf("unsubscribe: drop orphan feed: %w", err)
-		}
-		return nil
+		return dropOrphanFeed(ctx, tx, feedID)
 	})
+}
+
+// orphanFeedCond: a catalog feed f exists while someone reads it or a
+// collection lists it.
+const orphanFeedCond = `NOT EXISTS (SELECT 1 FROM subscriptions s WHERE s.feed_id = f.id)
+  AND NOT EXISTS (SELECT 1 FROM collection_feeds cf WHERE cf.feed_id = f.id)`
+
+func dropOrphanFeed(ctx context.Context, tx pgx.Tx, feedID int64) error {
+	if _, err := tx.Exec(ctx, `DELETE FROM feeds f WHERE f.id = $1 AND `+orphanFeedCond, feedID); err != nil {
+		return fmt.Errorf("drop orphan feed: %w", err)
+	}
+	return nil
 }
 
 func (s *PostgresStore) ListFeedSubscribers(ctx context.Context, feedID int64) ([]Subscription, error) {

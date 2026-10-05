@@ -62,6 +62,11 @@ type pageData struct {
 	Feeds                      []storage.Feed
 	CatalogFeeds               []storage.CatalogFeed
 	CatalogView                string
+	Collections                []storage.Collection
+	Collection                 storage.Collection
+	CollectionFeeds            []storage.CatalogFeed
+	CollectionCandidates       []storage.CatalogFeed
+	CanEditCollection          bool
 	FeedSubscribers            []storage.FeedSubscriber
 	Categories                 []storage.Category
 	CategoryPollHours          bool

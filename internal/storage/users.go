@@ -289,8 +289,7 @@ func (s *PostgresStore) DeleteUser(ctx context.Context, id int64) error {
 		if _, err := tx.Exec(ctx, `DELETE FROM users WHERE id = $1`, id); err != nil {
 			return fmt.Errorf("delete user: %w", err)
 		}
-		// A catalog feed exists only while someone reads it.
-		if _, err := tx.Exec(ctx, `DELETE FROM feeds f WHERE NOT EXISTS (SELECT 1 FROM subscriptions s WHERE s.feed_id = f.id)`); err != nil {
+		if _, err := tx.Exec(ctx, `DELETE FROM feeds f WHERE `+orphanFeedCond); err != nil {
 			return fmt.Errorf("delete user: orphan feeds: %w", err)
 		}
 		return nil

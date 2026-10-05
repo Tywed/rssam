@@ -72,6 +72,8 @@ type Config struct {
 	// Subscriptions is the shared catalog (nil = catalog page and
 	// unsubscribe unavailable).
 	Subscriptions storage.SubscriptionStore
+	// Collections are curated feed sets (nil = pages unavailable).
+	Collections storage.CollectionStore
 	// Audit records admin actions; nil disables the audit page and recording.
 	Audit                 *audit.Recorder
 	AdminWebhooks         storage.AdminWebhookStore
@@ -470,6 +472,15 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.Handle("POST /ui/feeds/{id}/delete", auth(h.requireEditor(http.HandlerFunc(h.handleFeedDelete))))
 	mux.Handle("GET /ui/catalog", auth(http.HandlerFunc(h.handleCatalog)))
 	mux.Handle("POST /ui/catalog/{id}/subscribe", auth(http.HandlerFunc(h.handleSubscribe)))
+	mux.Handle("GET /ui/collections", auth(http.HandlerFunc(h.handleCollections)))
+	mux.Handle("POST /ui/collections", auth(h.requireEditor(http.HandlerFunc(h.handleCollectionCreate))))
+	mux.Handle("GET /ui/collections/{id}", auth(http.HandlerFunc(h.handleCollectionShow)))
+	mux.Handle("POST /ui/collections/{id}", auth(h.requireEditor(http.HandlerFunc(h.handleCollectionUpdate))))
+	mux.Handle("POST /ui/collections/{id}/delete", auth(h.requireEditor(http.HandlerFunc(h.handleCollectionDelete))))
+	mux.Handle("POST /ui/collections/{id}/feeds", auth(h.requireEditor(http.HandlerFunc(h.handleCollectionAddFeeds))))
+	mux.Handle("POST /ui/collections/{id}/feeds/{feedID}/remove", auth(h.requireEditor(http.HandlerFunc(h.handleCollectionRemoveFeed))))
+	mux.Handle("POST /ui/collections/{id}/follow", auth(http.HandlerFunc(h.handleCollectionFollow)))
+	mux.Handle("POST /ui/collections/{id}/unfollow", auth(http.HandlerFunc(h.handleCollectionUnfollow)))
 	mux.Handle("POST /ui/feeds/{id}/unsubscribe", auth(http.HandlerFunc(h.handleUnsubscribe)))
 	mux.Handle("POST /ui/feeds/{id}/subscription", auth(http.HandlerFunc(h.handleSubscriptionUpdate)))
 	mux.Handle("POST /ui/feeds/{id}/refresh", auth(http.HandlerFunc(h.handleFeedRefresh)))

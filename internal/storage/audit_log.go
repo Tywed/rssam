@@ -30,6 +30,9 @@ const (
 	AuditOPMLImport         = "opml.import"
 	AuditSubscriptionCreate = "subscription.create"
 	AuditSubscriptionDelete = "subscription.delete"
+	AuditCollectionCreate   = "collection.create"
+	AuditCollectionUpdate   = "collection.update"
+	AuditCollectionDelete   = "collection.delete"
 	AuditFilterCreate       = "filter.create"
 	AuditFilterUpdate       = "filter.update"
 	AuditFilterDelete       = "filter.delete"
@@ -52,6 +55,7 @@ var AuditActions = []string{
 	AuditFeedsRefreshAll, AuditEntriesCollapse, AuditRetentionCleanup,
 	AuditFeedCreate, AuditFeedUpdate, AuditFeedDelete, AuditOPMLImport,
 	AuditSubscriptionCreate, AuditSubscriptionDelete,
+	AuditCollectionCreate, AuditCollectionUpdate, AuditCollectionDelete,
 	AuditFilterCreate, AuditFilterUpdate, AuditFilterDelete,
 	AuditWebhookCreate, AuditWebhookUpdate, AuditWebhookDelete,
 	AuditSystemAlert,

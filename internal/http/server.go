@@ -113,6 +113,7 @@ type Dependencies struct {
 
 	DedupStore              storage.EntryDedupStore
 	SubscriptionStore       storage.SubscriptionStore
+	CollectionStore         storage.CollectionStore
 	QueryMatcher            filter.QueryMatcher
 	CategoryPollHours       storage.CategoryPollHoursStore
 	CircuitBreakerThreshold int
@@ -139,6 +140,7 @@ type Server struct {
 	categories    storage.CategoryStore
 	feeds         storage.FeedStore
 	subscriptions storage.SubscriptionStore
+	collections   storage.CollectionStore
 	entries       storage.EntryStore
 	filters       storage.FilterStore
 	filterMatches storage.FilterMatchStore
@@ -321,6 +323,10 @@ func New(dep Dependencies) *Server {
 	if subscriptionStore == nil && dep.DB != nil {
 		subscriptionStore = storage.NewPostgresStore(dep.DB)
 	}
+	collectionStore := dep.CollectionStore
+	if collectionStore == nil && dep.DB != nil {
+		collectionStore = storage.NewPostgresStore(dep.DB)
+	}
 	refresher := &service.FeedRefresher{
 		Feeds:                   feedStore,
 		Entries:                 entryStore,
@@ -382,6 +388,7 @@ func New(dep Dependencies) *Server {
 		categories:         categoryStore,
 		feeds:              feedStore,
 		subscriptions:      subscriptionStore,
+		collections:        collectionStore,
 		entries:            entryStore,
 		filters:            filterStore,
 		filterMatches:      filterMatchStore,
@@ -471,6 +478,15 @@ func (s *Server) Handler() http.Handler {
 	api.HandleFunc("POST /v1/subscriptions", s.handleCreateSubscription)
 	api.HandleFunc("PUT /v1/subscriptions/{id}", s.handleUpdateSubscription)
 	api.HandleFunc("DELETE /v1/subscriptions/{id}", s.handleDeleteSubscription)
+	api.HandleFunc("GET /v1/collections", s.handleListCollections)
+	api.HandleFunc("POST /v1/collections", s.handleCreateCollection)
+	api.HandleFunc("GET /v1/collections/{id}", s.handleGetCollection)
+	api.HandleFunc("PUT /v1/collections/{id}", s.handleUpdateCollection)
+	api.HandleFunc("DELETE /v1/collections/{id}", s.handleDeleteCollection)
+	api.HandleFunc("POST /v1/collections/{id}/feeds", s.handleAddCollectionFeeds)
+	api.HandleFunc("DELETE /v1/collections/{id}/feeds/{feedID}", s.handleRemoveCollectionFeed)
+	api.HandleFunc("POST /v1/collections/{id}/follow", s.handleFollowCollection)
+	api.HandleFunc("DELETE /v1/collections/{id}/follow", s.handleUnfollowCollection)
 	api.HandleFunc("GET /v1/entries", s.handleListEntries)
 	api.HandleFunc("PUT /v1/entries", s.handleBulkUpdateEntries)
 	api.HandleFunc("GET /v1/entries/{id}", s.handleGetEntry)

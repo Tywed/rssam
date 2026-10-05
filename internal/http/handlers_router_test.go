@@ -232,26 +232,22 @@ func newRouterEnv(t *testing.T, mutate func(*Dependencies)) *routerEnv {
 	if err != nil {
 		t.Fatal(err)
 	}
-	mkKey := func(uid int64) string {
-		raw, hash, err := auth.NewAPIToken()
-		if err != nil {
-			t.Fatal(err)
-		}
-		if _, err := users.CreateAPIKey(context.Background(), storage.CreateAPIKeyParams{UserID: uid, Name: "t", TokenHash: hash}); err != nil {
-			t.Fatal(err)
-		}
-		return raw
+	env := &routerEnv{t: t, h: s.Handler(), users: users, bobID: bob.ID, editorID: eve.ID}
+	env.adminKey, env.editorKey, env.bobKey = env.apiKey(1), env.apiKey(eve.ID), env.apiKey(bob.ID)
+	return env
+}
+
+// apiKey issues a full-scope API key for the user.
+func (e *routerEnv) apiKey(uid int64) string {
+	e.t.Helper()
+	raw, hash, err := auth.NewAPIToken()
+	if err != nil {
+		e.t.Fatal(err)
 	}
-	return &routerEnv{
-		t:         t,
-		h:         s.Handler(),
-		users:     users,
-		adminKey:  mkKey(1),
-		editorKey: mkKey(eve.ID),
-		bobKey:    mkKey(bob.ID),
-		bobID:     bob.ID,
-		editorID:  eve.ID,
+	if _, err := e.users.CreateAPIKey(context.Background(), storage.CreateAPIKeyParams{UserID: uid, Name: "t", TokenHash: hash}); err != nil {
+		e.t.Fatal(err)
 	}
+	return raw
 }
 
 func (e *routerEnv) do(method, path, token, body string) *httptest.ResponseRecorder {
