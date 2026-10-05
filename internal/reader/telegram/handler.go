@@ -8,9 +8,9 @@ import (
 	"strings"
 	"time"
 
+	"rssam/internal/bridge/v1"
 	"rssam/internal/model"
 	"rssam/internal/proxy"
-	"rssam/internal/storage"
 )
 
 const feedTypeTelegram = "telegram"
@@ -82,7 +82,7 @@ func (h *Handler) DetectFeedType(feedURL string) string {
 
 // FetchResult holds entries from a channel poll.
 type FetchResult struct {
-	Entries []storage.CreateEntryParams
+	Entries []bridge.Entry
 }
 
 // Fetch loads channel messages using configured proxy mode.
@@ -142,7 +142,7 @@ func (h *Handler) Fetch(ctx context.Context, feedURL string, override *BridgeOve
 		all[i], all[j] = all[j], all[i]
 	}
 
-	entries := make([]storage.CreateEntryParams, 0, len(all))
+	entries := make([]bridge.Entry, 0, len(all))
 	for _, m := range all {
 		entries = append(entries, messageToEntry(m))
 	}
@@ -263,7 +263,7 @@ func (h *Handler) fetchPageWithRetry(ctx context.Context, cfg Config, pageURL st
 	return nil, fmt.Errorf("telegram: fetch failed after retries")
 }
 
-func messageToEntry(m ParsedMessage) storage.CreateEntryParams {
+func messageToEntry(m ParsedMessage) bridge.Entry {
 	uri := model.NormalizeURL(strings.TrimSpace(m.URI))
 	var author *string
 	if a := strings.TrimSpace(m.Author); a != "" {
@@ -286,7 +286,7 @@ func messageToEntry(m ParsedMessage) storage.CreateEntryParams {
 		}
 		content = b.String()
 	}
-	return storage.CreateEntryParams{
+	return bridge.Entry{
 		Title:       strings.TrimSpace(m.Title),
 		URL:         uri,
 		Content:     content,

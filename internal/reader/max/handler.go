@@ -12,8 +12,8 @@ import (
 	"sync"
 	"time"
 
+	"rssam/internal/bridge/v1"
 	"rssam/internal/ssrf"
-	"rssam/internal/storage"
 )
 
 const feedTypeMax = "max"
@@ -147,7 +147,7 @@ type FetchState struct {
 
 // FetchResult is the outcome of a Max channel poll.
 type FetchResult struct {
-	Entries []storage.CreateEntryParams
+	Entries []bridge.Entry
 	State   FetchState
 }
 
@@ -218,7 +218,7 @@ func (h *Handler) Fetch(ctx context.Context, feedURL string, st FetchState) (Fet
 		return FetchResult{}, fmt.Errorf("max: decode response: %w", err)
 	}
 
-	entries := make([]storage.CreateEntryParams, 0, len(parsed.Messages))
+	entries := make([]bridge.Entry, 0, len(parsed.Messages))
 	for _, msg := range parsed.Messages {
 		if ShouldSkipMessage(msg.Time, lastEnd) {
 			continue

@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
+	"rssam/internal/bridge/v1"
 	"rssam/internal/model"
-	"rssam/internal/storage"
 )
 
 // Handler fetches videos for a Rutube person (channel) via public API.
@@ -45,7 +45,7 @@ type FetchState struct {
 
 // FetchResult is the outcome of a Rutube poll.
 type FetchResult struct {
-	Entries   []storage.CreateEntryParams
+	Entries   []bridge.Entry
 	State     FetchState
 	FeedTitle string
 	FeedURI   string
@@ -68,7 +68,7 @@ func (h *Handler) Fetch(ctx context.Context, feedURL string, st FetchState) (Fet
 	}
 
 	feedAuthor := ""
-	entries := make([]storage.CreateEntryParams, 0, len(body.Results))
+	entries := make([]bridge.Entry, 0, len(body.Results))
 	for _, v := range body.Results {
 		entry, author := entryFromVideo(v)
 		entries = append(entries, entry)
@@ -85,7 +85,7 @@ func (h *Handler) Fetch(ctx context.Context, feedURL string, st FetchState) (Fet
 	}, nil
 }
 
-func entryFromVideo(v personVideo) (storage.CreateEntryParams, string) {
+func entryFromVideo(v personVideo) (bridge.Entry, string) {
 	title := strings.TrimSpace(v.Title)
 	if title == "" {
 		title = "Video"
@@ -114,7 +114,7 @@ func entryFromVideo(v personVideo) (storage.CreateEntryParams, string) {
 
 	hash := DedupHash(v.ID, entryURL)
 
-	return storage.CreateEntryParams{
+	return bridge.Entry{
 		Title:       title,
 		URL:         entryURL,
 		Content:     BuildContentHTML(v.ThumbnailURL, v.Description),

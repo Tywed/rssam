@@ -4,18 +4,18 @@ import (
 	"regexp"
 	"strings"
 
-	"rssam/internal/storage"
+	"rssam/internal/bridge/v1"
 )
 
 // ApplyFeedRules filters entries using blocked_rules and keep_rules (regexp per line).
-func ApplyFeedRules(entries []storage.CreateEntryParams, blockedRules, keepRules string) []storage.CreateEntryParams {
+func ApplyFeedRules(entries []bridge.Entry, blockedRules, keepRules string) []bridge.Entry {
 	blockedRE := compileMultilineRegex(blockedRules)
 	keepRE := compileMultilineRegex(keepRules)
 	if blockedRE == nil && keepRE == nil {
 		return entries
 	}
 
-	filtered := make([]storage.CreateEntryParams, 0, len(entries))
+	filtered := make([]bridge.Entry, 0, len(entries))
 	for _, entry := range entries {
 		text := entry.Title + " " + entry.Content + " " + entry.URL
 		if entry.Author != nil {
@@ -34,7 +34,7 @@ func ApplyFeedRules(entries []storage.CreateEntryParams, blockedRules, keepRules
 
 // ApplyURLRewriteRules rewrites entry URLs using pattern/replacement pairs.
 // Format: "pattern1\nreplacement1\npattern2\nreplacement2".
-func ApplyURLRewriteRules(entries []storage.CreateEntryParams, rules string) []storage.CreateEntryParams {
+func ApplyURLRewriteRules(entries []bridge.Entry, rules string) []bridge.Entry {
 	rules = strings.TrimSpace(rules)
 	if rules == "" {
 		return entries
@@ -64,7 +64,7 @@ func ApplyURLRewriteRules(entries []storage.CreateEntryParams, rules string) []s
 		return entries
 	}
 
-	out := make([]storage.CreateEntryParams, len(entries))
+	out := make([]bridge.Entry, len(entries))
 	copy(out, entries)
 	for i := range out {
 		for _, rule := range compiled {

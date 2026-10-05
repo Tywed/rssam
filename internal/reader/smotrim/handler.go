@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
+	"rssam/internal/bridge/v1"
 	"rssam/internal/model"
-	"rssam/internal/storage"
 )
 
 // Handler fetches Smotrim brand videos.
@@ -44,7 +44,7 @@ type FetchState struct {
 }
 
 type FetchResult struct {
-	Entries   []storage.CreateEntryParams
+	Entries   []bridge.Entry
 	State     FetchState
 	FeedTitle string
 	FeedURI   string
@@ -66,7 +66,7 @@ func (h *Handler) Fetch(ctx context.Context, feedURL string, st FetchState) (Fet
 	}
 
 	now := time.Now()
-	entries := make([]storage.CreateEntryParams, 0, len(items))
+	entries := make([]bridge.Entry, 0, len(items))
 	for _, item := range items {
 		entries = append(entries, entryFromVideoItem(item, now))
 	}
@@ -79,7 +79,7 @@ func (h *Handler) Fetch(ctx context.Context, feedURL string, st FetchState) (Fet
 	}, nil
 }
 
-func entryFromVideoItem(item VideoItem, now time.Time) storage.CreateEntryParams {
+func entryFromVideoItem(item VideoItem, now time.Time) bridge.Entry {
 	title := strings.TrimSpace(item.Title)
 	if title == "" {
 		title = "Видео"
@@ -100,7 +100,7 @@ func entryFromVideoItem(item VideoItem, now time.Time) storage.CreateEntryParams
 		pub = &utc
 	}
 
-	return storage.CreateEntryParams{
+	return bridge.Entry{
 		Title:       title,
 		URL:         entryURL,
 		Content:     BuildContentHTML(item),

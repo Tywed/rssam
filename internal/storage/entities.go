@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"errors"
+	"rssam/internal/bridge/v1"
 	"time"
 )
 
@@ -547,21 +548,11 @@ type RecordFeedPollFailureParams struct {
 	BridgeState []byte
 }
 
-type CreateEntryParams struct {
-	Title       string
-	URL         string
-	Content     string
-	Author      *string
-	PublishedAt *time.Time
-	Hash        string
-	Enclosures  []CreateEnclosureParams
-}
+// CreateEntryParams is the bridge contract's Entry: what every source
+// handler produces is what CreateEntries stores.
+type CreateEntryParams = bridge.Entry
 
-type CreateEnclosureParams struct {
-	URL      string
-	Size     int64
-	MIMEType string
-}
+type CreateEnclosureParams = bridge.Enclosure
 
 type BulkEntryUpdate struct {
 	Status  *string

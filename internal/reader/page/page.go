@@ -19,8 +19,8 @@ import (
 	"github.com/andybalholm/cascadia"
 	"golang.org/x/net/html"
 
+	"rssam/internal/bridge/v1"
 	"rssam/internal/ssrf"
-	"rssam/internal/storage"
 )
 
 const (
@@ -84,7 +84,7 @@ type State struct {
 }
 
 type Result struct {
-	Entries  []storage.CreateEntryParams
+	Entries  []bridge.Entry
 	State    State
 	Title    string
 	Modified bool
@@ -154,7 +154,7 @@ func (h *Handler) Fetch(ctx context.Context, feedURL, userAgent string, st State
 		content.WriteString(diffHTML(st.Text, text))
 	}
 	content.WriteString(fragment)
-	entry := storage.CreateEntryParams{
+	entry := bridge.Entry{
 		Title:       entryTitle,
 		URL:         opts.PageURL,
 		Content:     content.String(),
@@ -162,7 +162,7 @@ func (h *Handler) Fetch(ctx context.Context, feedURL, userAgent string, st State
 		Hash:        hashText(opts.PageURL + "\n" + hash),
 	}
 	return Result{
-		Entries:  []storage.CreateEntryParams{entry},
+		Entries:  []bridge.Entry{entry},
 		State:    State{Hash: hash, Text: text},
 		Title:    title,
 		Modified: true,

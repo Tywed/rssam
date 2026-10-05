@@ -7,8 +7,8 @@ import (
 	"sync"
 	"time"
 
+	"rssam/internal/bridge/v1"
 	"rssam/internal/model"
-	"rssam/internal/storage"
 )
 
 // Handler fetches posts via maxstat.ru search API.
@@ -53,7 +53,7 @@ type FetchState struct {
 }
 
 type FetchResult struct {
-	Entries []storage.CreateEntryParams
+	Entries []bridge.Entry
 	State   FetchState
 }
 
@@ -92,7 +92,7 @@ func (h *Handler) Fetch(ctx context.Context, feedURL string, st FetchState) (Fet
 		return FetchResult{State: st}, err
 	}
 
-	entries := make([]storage.CreateEntryParams, 0, len(body.Posts))
+	entries := make([]bridge.Entry, 0, len(body.Posts))
 	for _, post := range body.Posts {
 		pub, ok := parsePublishedAt(post.PublishedAt)
 		if !ok {
@@ -115,14 +115,14 @@ func (h *Handler) Fetch(ctx context.Context, feedURL string, st FetchState) (Fet
 	}, nil
 }
 
-func entryFromPost(post post, pub time.Time) storage.CreateEntryParams {
+func entryFromPost(post post, pub time.Time) bridge.Entry {
 	entryURL := model.NormalizeURL(strings.TrimSpace(post.URL))
 	title := TitleFromPost(post)
 	content := BuildContentHTML(post)
 	utc := pub.UTC()
 	hash := model.DedupHashFromString(DedupKey(post.ID))
 
-	return storage.CreateEntryParams{
+	return bridge.Entry{
 		Title:       title,
 		URL:         entryURL,
 		Content:     content,

@@ -6,8 +6,8 @@ import (
 	"sync"
 	"time"
 
+	"rssam/internal/bridge/v1"
 	"rssam/internal/model"
-	"rssam/internal/storage"
 )
 
 // Handler fetches posts via VK newsfeed.search.
@@ -54,7 +54,7 @@ type FetchState struct {
 
 // FetchResult is the outcome of a VK search poll.
 type FetchResult struct {
-	Entries []storage.CreateEntryParams
+	Entries []bridge.Entry
 	State   FetchState
 }
 
@@ -100,7 +100,7 @@ func (h *Handler) Fetch(ctx context.Context, feedURL string, st FetchState) (Fet
 	}
 
 	ownerNames := buildOwnerNames(body.Profiles, body.Groups)
-	entries := make([]storage.CreateEntryParams, 0, len(body.Items))
+	entries := make([]bridge.Entry, 0, len(body.Items))
 	for _, post := range body.Items {
 		if ShouldSkipPost(int64(post.Date), lastEnd) {
 			continue
@@ -117,7 +117,7 @@ func (h *Handler) Fetch(ctx context.Context, feedURL string, st FetchState) (Fet
 	}, nil
 }
 
-func entryFromPost(post wallPost, ownerNames map[int]string) storage.CreateEntryParams {
+func entryFromPost(post wallPost, ownerNames map[int]string) bridge.Entry {
 	entryURL := model.NormalizeURL(postURL(post.OwnerID, post.ID))
 	title := titleFromPost(post)
 	content := BuildContentHTML(post, ownerNames)
@@ -136,7 +136,7 @@ func entryFromPost(post wallPost, ownerNames map[int]string) storage.CreateEntry
 		authorPtr = &author
 	}
 
-	return storage.CreateEntryParams{
+	return bridge.Entry{
 		Title:       title,
 		URL:         entryURL,
 		Content:     content,

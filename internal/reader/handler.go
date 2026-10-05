@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	"rssam/internal/bridge/v1"
 	"rssam/internal/reader/dzen"
 	maxbridge "rssam/internal/reader/max"
 	maxstatbridge "rssam/internal/reader/maxstat"
@@ -13,12 +14,12 @@ import (
 	"rssam/internal/reader/smotrim"
 	"rssam/internal/reader/telegram"
 	vkbridge "rssam/internal/reader/vk"
-	"rssam/internal/storage"
 )
 
 var ErrNoHandlerFound = errors.New("no feed handler found")
 
 // FetchRequest describes parameters for fetching entries from a source.
+// Contract bridges (bridge.Handler) receive it as bridge.Request via Adapt.
 type FetchRequest struct {
 	FeedURL       string
 	FeedType      string
@@ -32,7 +33,7 @@ type FetchRequest struct {
 
 // FetchResponse is the result of a source fetch.
 type FetchResponse struct {
-	Entries      []storage.CreateEntryParams
+	Entries      []bridge.Entry
 	ETag         string
 	LastModified string
 	NotModified  bool
@@ -155,17 +156,8 @@ func DetectFeedTypeFromURL(feedURL string) string {
 }
 
 // RetryAtError is a fetch result that should be retried later without counting as a poll failure.
-type RetryAtError interface {
-	error
-	RetryAt() time.Time
-}
+type RetryAtError = bridge.RetryAtError
 
 func RetryAt(err error) (time.Time, bool) {
-	if e, ok := errors.AsType[RetryAtError](err); ok {
-		at := e.RetryAt()
-		if !at.IsZero() {
-			return at, true
-		}
-	}
-	return time.Time{}, false
+	return bridge.RetryAt(err)
 }

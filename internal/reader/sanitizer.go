@@ -8,8 +8,8 @@ import (
 	"github.com/microcosm-cc/bluemonday"
 	"golang.org/x/net/html"
 
+	"rssam/internal/bridge/v1"
 	"rssam/internal/model"
-	"rssam/internal/storage"
 )
 
 var htmlSanitizer = newEntryPolicy()
@@ -140,7 +140,7 @@ func rewriteImages(in string) string {
 // rendered as trusted HTML by the web UI and forwarded to webhook receivers,
 // so everything a handler returns must pass through here regardless of the
 // source type.
-func SanitizeEntries(entries []storage.CreateEntryParams) {
+func SanitizeEntries(entries []bridge.Entry) {
 	for i := range entries {
 		entries[i].Content = SanitizeHTML(entries[i].Content)
 	}

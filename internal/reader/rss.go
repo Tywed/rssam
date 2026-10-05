@@ -11,15 +11,15 @@ import (
 	"strings"
 	"time"
 
+	"rssam/internal/bridge/v1"
 	"rssam/internal/model"
 	"rssam/internal/ssrf"
-	"rssam/internal/storage"
 
 	"github.com/mmcdole/gofeed"
 )
 
 type FetchResult struct {
-	Entries      []storage.CreateEntryParams
+	Entries      []bridge.Entry
 	ETag         string
 	LastModified string
 	NotModified  bool
@@ -239,7 +239,7 @@ func (f *RSSFetcher) Fetch(ctx context.Context, feedURL, etag, lastModified stri
 		return FetchResult{}, fmt.Errorf("parse feed: %w", err)
 	}
 
-	out := make([]storage.CreateEntryParams, 0, len(parsed.Items))
+	out := make([]bridge.Entry, 0, len(parsed.Items))
 	for _, it := range parsed.Items {
 		out = append(out, normalizeItem(it))
 	}
@@ -336,7 +336,7 @@ func clientWithIsolatedCookieJar(base *http.Client) *http.Client {
 	return &c
 }
 
-func normalizeItem(it *gofeed.Item) storage.CreateEntryParams {
+func normalizeItem(it *gofeed.Item) bridge.Entry {
 	var (
 		author *string
 		pub    = it.PublishedParsed
@@ -364,7 +364,7 @@ func normalizeItem(it *gofeed.Item) storage.CreateEntryParams {
 	title := strings.TrimSpace(it.Title)
 	hash := model.DedupHashFromURL(url)
 
-	var encs []storage.CreateEnclosureParams
+	var encs []bridge.Enclosure
 	for _, enc := range it.Enclosures {
 		if enc == nil {
 			continue
@@ -379,14 +379,14 @@ func normalizeItem(it *gofeed.Item) storage.CreateEntryParams {
 				size = n
 			}
 		}
-		encs = append(encs, storage.CreateEnclosureParams{
+		encs = append(encs, bridge.Enclosure{
 			URL:      encURL,
 			Size:     size,
 			MIMEType: strings.TrimSpace(enc.Type),
 		})
 	}
 
-	return storage.CreateEntryParams{
+	return bridge.Entry{
 		Title:       title,
 		URL:         url,
 		Content:     content,

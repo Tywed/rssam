@@ -3,11 +3,11 @@ package reader
 import (
 	"testing"
 
-	"rssam/internal/storage"
+	"rssam/internal/bridge/v1"
 )
 
 func TestApplyURLRewriteRules(t *testing.T) {
-	entries := []storage.CreateEntryParams{
+	entries := []bridge.Entry{
 		{URL: "https://news.example.com/r/123"},
 	}
 	got := ApplyURLRewriteRules(entries, "https://news\\.example\\.com/r/(\\d+)\nhttps://news.example.com/article/$1")
@@ -17,7 +17,7 @@ func TestApplyURLRewriteRules(t *testing.T) {
 }
 
 func TestApplyFeedRules_Blocked(t *testing.T) {
-	entries := []storage.CreateEntryParams{
+	entries := []bridge.Entry{
 		{Title: "Normal", URL: "https://a.test/1"},
 		{Title: "SPAM promo", URL: "https://a.test/2"},
 	}

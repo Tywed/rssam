@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
+	"rssam/internal/bridge/v1"
 	"rssam/internal/model"
-	"rssam/internal/storage"
 )
 
 // flexStringID accepts JSON strings or numbers (Max API may send numeric ids).
@@ -61,7 +61,7 @@ type APIResponse struct {
 }
 
 // EntryFromMessage maps an API message to a storage entry.
-func EntryFromMessage(channelName string, msg APIMessage) storage.CreateEntryParams {
+func EntryFromMessage(channelName string, msg APIMessage) bridge.Entry {
 	text := strings.TrimSpace(msg.Text)
 	title := TitleFromText(text, 140)
 	content := BuildContentHTML(text, msg.ForwardedMessage)
@@ -85,7 +85,7 @@ func EntryFromMessage(channelName string, msg APIMessage) storage.CreateEntryPar
 		hash = model.DedupHashFromURL(channelName + "/" + id)
 	}
 
-	return storage.CreateEntryParams{
+	return bridge.Entry{
 		Title:       title,
 		URL:         entryURL,
 		Content:     content,

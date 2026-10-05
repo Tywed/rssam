@@ -399,7 +399,7 @@ func movedFeedURL(feed storage.Feed, newURL string) string {
 }
 
 func bridgeStateJSON(st reader.BridgeState) []byte {
-	if st.Max == nil && st.Telegram == nil && st.VKSearch == nil && st.Rutube == nil && st.DzenNews == nil && st.Smotrim == nil && st.Page == nil {
+	if st.IsEmpty() {
 		return nil
 	}
 	b, err := json.Marshal(st)

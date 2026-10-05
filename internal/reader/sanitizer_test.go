@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"rssam/internal/storage"
+	"rssam/internal/bridge/v1"
 )
 
 func TestSanitizeHTML_StripsScripts(t *testing.T) {
@@ -108,5 +108,5 @@ type staticHandler struct{ content string }
 func (s *staticHandler) Name() string                 { return "static" }
 func (s *staticHandler) DetectFeedType(string) string { return "static" }
 func (s *staticHandler) Fetch(context.Context, FetchRequest) (FetchResponse, error) {
-	return FetchResponse{Entries: []storage.CreateEntryParams{{Title: "t", URL: "https://example.com/1", Content: s.content}}}, nil
+	return FetchResponse{Entries: []bridge.Entry{{Title: "t", URL: "https://example.com/1", Content: s.content}}}, nil
 }
