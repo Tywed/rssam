@@ -28,7 +28,10 @@ func TestIntegration_UnreadCountersUsePartialIndex(t *testing.T) {
 	if _, err := store.db.Exec(ctx, `UPDATE user_entries SET status = 'read' WHERE user_id = $1 AND entry_id % 3 <> 0`, alice.ID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.db.Exec(ctx, `ANALYZE user_entries; ANALYZE subscriptions`); err != nil {
+	if _, err := store.db.Exec(ctx, `ANALYZE user_entries`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.db.Exec(ctx, `ANALYZE subscriptions`); err != nil {
 		t.Fatal(err)
 	}
 	plan := func(q string, args ...any) string {
