@@ -39,7 +39,7 @@ func TestHandler_Fetch_ParseFixture(t *testing.T) {
 	}
 	h := NewHandler(client, Config{})
 
-	res, err := h.Fetch(context.Background(), "https://rutube.ru/video/person/26119699/", FetchState{})
+	res, err := h.fetch(context.Background(), "https://rutube.ru/video/person/26119699/", FetchState{})
 	if err != nil {
 		t.Fatalf("fetch: %v", err)
 	}

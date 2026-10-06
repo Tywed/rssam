@@ -40,7 +40,7 @@ func TestHandler_Fetch_InitialNoAfter(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	res, err := h.Fetch(context.Background(), "https://max.ru/rosgvard_krd", FetchState{})
+	res, err := h.fetch(context.Background(), "https://max.ru/rosgvard_krd", FetchState{})
 	if err != nil {
 		t.Fatalf("fetch: %v", err)
 	}
@@ -86,7 +86,7 @@ func TestHandler_Fetch_Incremental(t *testing.T) {
 	}
 
 	lastEnd := int64(2500)
-	res, err := h.Fetch(context.Background(), "https://max.ru/rosgvard_krd", FetchState{
+	res, err := h.fetch(context.Background(), "https://max.ru/rosgvard_krd", FetchState{
 		LastEndTimeMs: lastEnd,
 	})
 	if err != nil {
@@ -125,13 +125,13 @@ func TestHandler_Fetch_RateLimited(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err = h.Fetch(context.Background(), "https://max.ru/test_channel", FetchState{})
+	_, err = h.fetch(context.Background(), "https://max.ru/test_channel", FetchState{})
 	if _, ok := isBackoff(err); !ok {
 		t.Fatalf("expected backoff after 429, err=%v", err)
 	}
 
 	start := time.Now()
-	_, err = h.Fetch(context.Background(), "https://max.ru/other_channel", FetchState{})
+	_, err = h.fetch(context.Background(), "https://max.ru/other_channel", FetchState{})
 	if _, ok := isBackoff(err); !ok {
 		t.Fatalf("second fetch should backoff immediately, err=%v", err)
 	}
@@ -175,7 +175,7 @@ func TestHandler_Fetch_SerializesRequests(t *testing.T) {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			_, err := h.Fetch(context.Background(), "https://max.ru/ch"+string(rune('a'+i)), FetchState{})
+			_, err := h.fetch(context.Background(), "https://max.ru/ch"+string(rune('a'+i)), FetchState{})
 			if err == nil {
 				okN.Add(1)
 				return
@@ -229,7 +229,7 @@ func TestHandler_Fetch_ConcurrentSlots(t *testing.T) {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			_, err := h.Fetch(context.Background(), "https://max.ru/ch"+string(rune('a'+i)), FetchState{})
+			_, err := h.fetch(context.Background(), "https://max.ru/ch"+string(rune('a'+i)), FetchState{})
 			if err == nil {
 				okN.Add(1)
 				return

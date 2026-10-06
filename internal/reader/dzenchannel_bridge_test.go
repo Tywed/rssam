@@ -45,8 +45,18 @@ func TestRegistry_DzenChannelIsContractBridge(t *testing.T) {
 	if _, ok := h.(adapted); !ok {
 		t.Fatalf("dzen_channel must be registered through Adapt, got %T", h)
 	}
-	if len(bundle.Contract) != 1 || bundle.Contract[0].Name() != FeedTypeDzenChannel {
-		t.Fatalf("Contract = %v", bundle.Contract)
+	// Every bridge is a contract bridge; max and vk_search need a token.
+	names := map[string]bool{}
+	for _, c := range bundle.Contract {
+		names[c.Name()] = true
+	}
+	for _, want := range []string{FeedTypeTelegram, FeedTypeMaxstat, FeedTypeRutube, FeedTypeDzenNews, FeedTypeDzenChannel, FeedTypeSmotrim, FeedTypePage} {
+		if !names[want] {
+			t.Fatalf("Contract lacks %s: %v", want, names)
+		}
+	}
+	if len(bundle.Contract) != 7 || len(bundle.Registry.handlers) != 8 {
+		t.Fatalf("contract=%d handlers=%d", len(bundle.Contract), len(bundle.Registry.handlers))
 	}
 }
 

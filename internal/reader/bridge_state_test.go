@@ -5,17 +5,11 @@ import (
 	"testing"
 )
 
-func TestBridgeState_KeepsUnknownKeys(t *testing.T) {
+func TestBridgeState_RoundTripKeepsEveryKey(t *testing.T) {
 	raw := []byte(`{"telegram":{"max_pages":3},"dzen_channel":{"id":"abc","n":2},"future":[1,2]}`)
 	st := ParseBridgeState(raw)
-	if st.Telegram == nil || st.Telegram.MaxPages != 3 {
-		t.Fatalf("typed field lost: %+v", st.Telegram)
-	}
-	if string(st.Raw("dzen_channel")) != `{"id":"abc","n":2}` {
-		t.Fatalf("Raw(dzen_channel) = %s", st.Raw("dzen_channel"))
-	}
-	if string(st.Raw("telegram")) != `{"max_pages":3}` {
-		t.Fatalf("Raw(telegram) = %s", st.Raw("telegram"))
+	if string(st.Raw("dzen_channel")) != `{"id":"abc","n":2}` || string(st.Raw("telegram")) != `{"max_pages":3}` {
+		t.Fatalf("Raw: %s / %s", st.Raw("dzen_channel"), st.Raw("telegram"))
 	}
 	if st.Raw("missing") != nil {
 		t.Fatalf("Raw(missing) = %s", st.Raw("missing"))
@@ -27,6 +21,9 @@ func TestBridgeState_KeepsUnknownKeys(t *testing.T) {
 	if len(back) != 3 || string(back["future"]) != `[1,2]` || string(back["telegram"]) != `{"max_pages":3}` {
 		t.Fatalf("round trip = %s", st.Marshal())
 	}
+	if !ParseBridgeState([]byte(`not json`)).IsEmpty() {
+		t.Fatal("garbage must parse as empty")
+	}
 }
 
 func TestBridgeState_IsEmptyAndWith(t *testing.T) {
@@ -34,7 +31,7 @@ func TestBridgeState_IsEmptyAndWith(t *testing.T) {
 	if !st.IsEmpty() || string(st.Marshal()) != "{}" {
 		t.Fatalf("zero state: empty=%v marshal=%s", st.IsEmpty(), st.Marshal())
 	}
-	if ParseBridgeState(nil).IsEmpty() != true || ParseBridgeState([]byte(`{}`)).IsEmpty() != true {
+	if !ParseBridgeState(nil).IsEmpty() || !ParseBridgeState([]byte(`{}`)).IsEmpty() {
 		t.Fatal("nil / {} must be empty")
 	}
 	with := st.With("x", json.RawMessage(`{"a":1}`))
@@ -44,13 +41,11 @@ func TestBridgeState_IsEmptyAndWith(t *testing.T) {
 	if !st.IsEmpty() {
 		t.Fatal("With must not mutate the receiver")
 	}
-	cleared := with.With("x", nil)
-	if !cleared.IsEmpty() {
+	if cleared := with.With("x", nil); !cleared.IsEmpty() {
 		t.Fatalf("With(nil) should drop the key: %s", cleared.Marshal())
 	}
-	// A typed document survives next to an extra one.
 	tg := ParseBridgeState([]byte(`{"telegram":{"max_pages":2}}`)).With("x", json.RawMessage(`1`))
 	if string(tg.Marshal()) != `{"telegram":{"max_pages":2},"x":1}` {
-		t.Fatalf("typed+extra = %s", tg.Marshal())
+		t.Fatalf("two documents = %s", tg.Marshal())
 	}
 }

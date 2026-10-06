@@ -1,4 +1,4 @@
-package smotrim_test
+package smotrim
 
 import (
 	"context"
@@ -7,8 +7,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"rssam/internal/reader/smotrim"
 )
 
 func TestHandlerFetchFromBrandPage(t *testing.T) {
@@ -23,16 +21,16 @@ func TestHandlerFetchFromBrandPage(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client, err := smotrim.NewClient(srv.Client(), nil, smotrim.Config{
+	client, err := NewClient(srv.Client(), nil, Config{
 		BrandBaseURL: srv.URL + "/brand",
 		GraphQLURL:   srv.URL + "/graphql",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	h := smotrim.NewHandler(client, smotrim.Config{BrandBaseURL: srv.URL + "/brand"})
+	h := NewHandler(client, Config{BrandBaseURL: srv.URL + "/brand"})
 
-	res, err := h.Fetch(context.Background(), "smotrim://67725", smotrim.FetchState{})
+	res, err := h.fetch(context.Background(), "smotrim://67725", FetchState{})
 	if err != nil {
 		t.Fatal(err)
 	}

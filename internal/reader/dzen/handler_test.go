@@ -36,7 +36,7 @@ func TestHandler_Fetch_ParseFixture(t *testing.T) {
 	}
 	h := NewHandler(client, Config{SearchURL: srv.URL + "/news/search"})
 
-	res, err := h.Fetch(context.Background(), "dzen-news://python", FetchState{})
+	res, err := h.fetch(context.Background(), "dzen-news://python", FetchState{})
 	if err != nil {
 		t.Fatalf("fetch: %v", err)
 	}

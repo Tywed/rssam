@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"rssam/internal/bridge/v1"
+	maxbridge "rssam/internal/reader/max"
 	"strings"
 	"time"
 
@@ -236,10 +238,10 @@ func (r *FeedRefresher) refreshLoaded(ctx context.Context, feed storage.Feed, ma
 	bridgeState := reader.ParseBridgeState(feed.BridgeState)
 
 	if manual && reader.NormalizeFeedType(feed.FeedType) == reader.FeedTypeMax {
-		if bridgeState.Max == nil {
-			bridgeState.Max = &reader.MaxBridgeState{}
-		}
-		bridgeState.Max.LastEndTimeMs = 0
+		var st maxbridge.FetchState
+		_ = bridge.DecodeState(bridgeState.Raw(reader.FeedTypeMax), &st)
+		st.LastEndTimeMs = 0
+		bridgeState = bridgeState.With(reader.FeedTypeMax, bridge.EncodeState(st))
 	}
 
 	res, fetchErr := r.Registry.Fetch(ctx, reader.FetchRequest{

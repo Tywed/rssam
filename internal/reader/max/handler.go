@@ -141,8 +141,8 @@ func (h *Handler) DetectFeedType(feedURL string) string {
 
 // FetchState is bridge cursor state for Max feeds.
 type FetchState struct {
-	LastEndTimeMs    int64
-	RateLimitedUntil *time.Time
+	LastEndTimeMs    int64      `json:"last_end_time_ms,omitempty"`
+	RateLimitedUntil *time.Time `json:"rate_limited_until,omitempty"`
 }
 
 // FetchResult is the outcome of a Max channel poll.
@@ -168,7 +168,15 @@ func (e *ErrBackoff) RetryAt() time.Time {
 	return e.Until
 }
 
-func (h *Handler) Fetch(ctx context.Context, feedURL string, st FetchState) (FetchResult, error) {
+// Fetch implements bridge.Handler; State is FetchState.
+func (h *Handler) Fetch(ctx context.Context, req bridge.Request) (bridge.Response, error) {
+	var st FetchState
+	_ = bridge.DecodeState(req.State, &st)
+	res, err := h.fetch(ctx, req.FeedURL, st)
+	return bridge.Response{Entries: res.Entries, State: bridge.EncodeState(res.State)}, err
+}
+
+func (h *Handler) fetch(ctx context.Context, feedURL string, st FetchState) (FetchResult, error) {
 	channel, ok := ParseChannelFromFeedURL(feedURL)
 	if !ok || channel == "" {
 		return FetchResult{}, fmt.Errorf("max: invalid feed url %q", feedURL)

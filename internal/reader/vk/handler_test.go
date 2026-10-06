@@ -50,7 +50,7 @@ func TestHandler_Fetch_ParseFixture(t *testing.T) {
 	}
 	h := NewHandler(client, Config{AccessToken: "test-token", DefaultLookback: 24 * time.Hour, Overlap: 2 * time.Minute})
 
-	res, err := h.Fetch(context.Background(), "https://vk.com/feed?section=search&q=Golang", FetchState{})
+	res, err := h.fetch(context.Background(), "https://vk.com/feed?section=search&q=Golang", FetchState{})
 	if err != nil {
 		t.Fatalf("fetch: %v", err)
 	}
@@ -112,7 +112,7 @@ func TestHandler_Fetch_SkipsOldPosts(t *testing.T) {
 	}
 	h := NewHandler(client, Config{AccessToken: "tok"})
 
-	res, err := h.Fetch(context.Background(), "vk-search://test", FetchState{LastEndTime: 150})
+	res, err := h.fetch(context.Background(), "vk-search://test", FetchState{LastEndTime: 150})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -137,7 +137,7 @@ func TestHandler_Fetch_RateLimit(t *testing.T) {
 	}
 	h := NewHandler(client, Config{AccessToken: "tok", RateLimitCooldown: 5 * time.Second})
 
-	_, err := h.Fetch(context.Background(), "vk-search://q", FetchState{})
+	_, err := h.fetch(context.Background(), "vk-search://q", FetchState{})
 	if err == nil {
 		t.Fatal("expected rate limit error")
 	}

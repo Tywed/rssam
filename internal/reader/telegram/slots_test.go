@@ -37,7 +37,7 @@ func TestHandler_Fetch_ConcurrentSlots(t *testing.T) {
 	var wg sync.WaitGroup
 	for range 8 {
 		wg.Go(func() {
-			if _, err := h.Fetch(context.Background(), "https://t.me/s/demo", nil); err != nil {
+			if _, err := h.fetch(context.Background(), "https://t.me/s/demo", nil); err != nil {
 				t.Errorf("fetch: %v", err)
 			}
 		})
@@ -57,7 +57,7 @@ func TestHandler_Fetch_SlotWaitTimesOutAsRetry(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
 	defer cancel()
-	_, err := h.Fetch(ctx, "https://t.me/s/demo", nil)
+	_, err := h.fetch(ctx, "https://t.me/s/demo", nil)
 	var busy *ErrSlotsBusy
 	if !errors.As(err, &busy) || time.Until(busy.RetryAt()) <= 0 {
 		t.Fatalf("want ErrSlotsBusy with a future RetryAt, got %v", err)

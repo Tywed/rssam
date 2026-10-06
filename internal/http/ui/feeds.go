@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"rssam/internal/bridge/v1"
+	"rssam/internal/reader/telegram"
 	"strconv"
 	"strings"
 
@@ -478,31 +480,25 @@ func errRequired(field string) error { return simpleError(field + " is required"
 
 func applyTelegramFormData(data *pageData, feed storage.Feed) {
 	useProxy := true
-	svcURL := ""
-	staticProxy := ""
-	st := reader.ParseBridgeState(feed.BridgeState)
-	if st.Telegram != nil {
-		if st.Telegram.UseProxy != nil {
-			useProxy = *st.Telegram.UseProxy
-		}
-		svcURL = st.Telegram.ProxyServiceURL
-		staticProxy = st.Telegram.StaticProxy
+	var o telegram.BridgeOverride
+	_ = bridge.DecodeState(reader.ParseBridgeState(feed.BridgeState).Raw(reader.FeedTypeTelegram), &o)
+	if o.UseProxy != nil {
+		useProxy = *o.UseProxy
 	}
 	data.TgUseProxy = useProxy
-	data.TgProxyServiceURL = svcURL
-	data.TgStaticProxy = staticProxy
+	data.TgProxyServiceURL = o.ProxyServiceURL
+	data.TgStaticProxy = o.StaticProxy
 }
 
 func bridgeStateFromTelegramForm(r *http.Request, existing []byte) []byte {
 	st := reader.ParseBridgeState(existing)
-	if st.Telegram == nil {
-		st.Telegram = &reader.TelegramBridgeState{}
-	}
+	var o telegram.BridgeOverride
+	_ = bridge.DecodeState(st.Raw(reader.FeedTypeTelegram), &o)
 	useProxy := r.FormValue("telegram_use_proxy") == "1"
-	st.Telegram.UseProxy = &useProxy
-	st.Telegram.ProxyServiceURL = strings.TrimSpace(r.FormValue("telegram_proxy_service_url"))
-	st.Telegram.StaticProxy = strings.TrimSpace(r.FormValue("telegram_static_proxy"))
-	return st.Marshal()
+	o.UseProxy = &useProxy
+	o.ProxyServiceURL = strings.TrimSpace(r.FormValue("telegram_proxy_service_url"))
+	o.StaticProxy = strings.TrimSpace(r.FormValue("telegram_static_proxy"))
+	return st.With(reader.FeedTypeTelegram, bridge.EncodeState(o)).Marshal()
 }
 
 func (h *Handler) handleFeedsCategoryTree(w http.ResponseWriter, r *http.Request) {

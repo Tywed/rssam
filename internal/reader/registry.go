@@ -84,12 +84,13 @@ type RegistryBundle struct {
 	Dzen     *dzen.Handler
 	Smotrim  *smotrim.Handler
 	Page     *page.Handler
-	// Contract holds the bridge.Handler implementations (registered through
-	// Adapt); the title resolver asks them for names.
+	// Contract lists every bridge in registration order (all are registered
+	// through Adapt); the title resolver asks them for names.
 	Contract []bridge.Handler
 }
 
-// NewRegistry creates a registry with RSS (fallback) and optional bridge handlers.
+// NewRegistry creates a registry with the bridges and RSS as the fallback.
+// Bridges that need a token (max, vk_search) are registered only when it is set.
 func NewRegistry(cfg RegistryConfig) (*RegistryBundle, error) {
 	rssFetcher := NewRSSFetcher(cfg.HTTPClient, cfg.UserAgent, cfg.SSRFGuard, cfg.FetchViaProxyURL)
 	reg := NewHandlerRegistry()
@@ -113,7 +114,7 @@ func NewRegistry(cfg RegistryConfig) (*RegistryBundle, error) {
 		UserAgent:             cfg.UserAgent,
 		TLSInsecureSkipVerify: cfg.FetchTLSInsecure,
 	})
-	reg.Register(newTelegramHandler(tgHandler))
+	reg.Register(Adapt(tgHandler))
 
 	var maxHandler *max.Handler
 	if cfg.MaxAPIBaseURL != "" {
@@ -132,7 +133,7 @@ func NewRegistry(cfg RegistryConfig) (*RegistryBundle, error) {
 			return nil, fmt.Errorf("max handler: %w", err)
 		}
 		maxHandler = h
-		reg.Register(newMaxHandler(maxHandler))
+		reg.Register(Adapt(maxHandler))
 	}
 
 	maxstatClient, err := maxstat.NewClient(cfg.HTTPClient, cfg.SSRFGuard, maxstat.Config{
@@ -154,7 +155,7 @@ func NewRegistry(cfg RegistryConfig) (*RegistryBundle, error) {
 		Overlap:           cfg.MaxstatOverlap,
 		RateLimitCooldown: time.Duration(cfg.MaxstatRateLimitSeconds) * time.Second,
 	})
-	reg.Register(newMaxstatHandler(maxstatHandler))
+	reg.Register(Adapt(maxstatHandler))
 
 	var vkHandler *vk.Handler
 	if strings.TrimSpace(cfg.VKAccessToken) != "" {
@@ -177,7 +178,7 @@ func NewRegistry(cfg RegistryConfig) (*RegistryBundle, error) {
 			Overlap:           cfg.VKOverlap,
 			RateLimitCooldown: time.Duration(cfg.VKRateLimitSeconds) * time.Second,
 		})
-		reg.Register(newVKSearchHandler(vkHandler))
+		reg.Register(Adapt(vkHandler))
 	}
 
 	rutubeClient, err := rutube.NewClient(cfg.HTTPClient, cfg.SSRFGuard, rutube.Config{
@@ -191,7 +192,7 @@ func NewRegistry(cfg RegistryConfig) (*RegistryBundle, error) {
 		APIBaseURL: cfg.RutubeAPIBaseURL,
 		UserAgent:  cfg.UserAgent,
 	})
-	reg.Register(newRutubeHandler(rutubeHandler))
+	reg.Register(Adapt(rutubeHandler))
 
 	dzenClient, err := dzen.NewClient(cfg.HTTPClient, cfg.SSRFGuard, dzen.Config{
 		SearchURL: cfg.DzenSearchURL,
@@ -206,7 +207,7 @@ func NewRegistry(cfg RegistryConfig) (*RegistryBundle, error) {
 		UserAgent: cfg.DzenUserAgent,
 		Cookie:    cfg.DzenCookie,
 	})
-	reg.Register(newDzenNewsHandler(dzenHandler))
+	reg.Register(Adapt(dzenHandler))
 
 	dzenChannel := dzenchannel.NewHandler(dzenchannel.NewClient(cfg.HTTPClient, cfg.SSRFGuard, dzenchannel.Config{
 		UserAgent: cfg.DzenUserAgent,
@@ -227,11 +228,17 @@ func NewRegistry(cfg RegistryConfig) (*RegistryBundle, error) {
 		GraphQLURL:   cfg.SmotrimGraphQLURL,
 		UserAgent:    cfg.SmotrimUserAgent,
 	})
-	reg.Register(newSmotrimHandler(smotrimHandler))
+	reg.Register(Adapt(smotrimHandler))
 	pageHandler := page.NewHandler(cfg.HTTPClient, cfg.SSRFGuard, cfg.UserAgent)
-	reg.Register(newPageHandler(pageHandler))
+	reg.Register(Adapt(pageHandler))
 
 	reg.Register(NewRSSHandler(rssFetcher))
+	var contract []bridge.Handler
+	for _, h := range reg.handlers {
+		if a, ok := h.(adapted); ok {
+			contract = append(contract, a.h)
+		}
+	}
 	return &RegistryBundle{
 		Registry: reg,
 		Telegram: tgHandler,
@@ -242,7 +249,7 @@ func NewRegistry(cfg RegistryConfig) (*RegistryBundle, error) {
 		Dzen:     dzenHandler,
 		Smotrim:  smotrimHandler,
 		Page:     pageHandler,
-		Contract: []bridge.Handler{dzenChannel},
+		Contract: contract,
 	}, nil
 }
 

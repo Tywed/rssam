@@ -10,7 +10,7 @@ import (
 
 func TestHandler_Fetch_requiresProxyService(t *testing.T) {
 	h := NewHandler(proxy.NewClient(nil), nil, Config{UseProxy: true})
-	_, err := h.Fetch(context.Background(), "https://t.me/s/demo", nil)
+	_, err := h.fetch(context.Background(), "https://t.me/s/demo", nil)
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -18,7 +18,7 @@ func TestHandler_Fetch_requiresProxyService(t *testing.T) {
 
 func TestHandler_Fetch_invalidURL(t *testing.T) {
 	h := NewHandler(proxy.NewClient(nil), nil, Config{ProxyServiceURL: "http://127.0.0.1:9", UseProxy: true})
-	_, err := h.Fetch(context.Background(), "https://example.com/not-telegram", nil)
+	_, err := h.fetch(context.Background(), "https://example.com/not-telegram", nil)
 	if err == nil {
 		t.Fatal("expected error")
 	}

@@ -38,7 +38,7 @@ func (h *Handler) DetectFeedType(feedURL string) string {
 }
 
 type FetchState struct {
-	Query string
+	Query string `json:"q,omitempty"`
 }
 
 type FetchResult struct {
@@ -48,7 +48,15 @@ type FetchResult struct {
 	FeedURI   string
 }
 
-func (h *Handler) Fetch(ctx context.Context, feedURL string, st FetchState) (FetchResult, error) {
+// Fetch implements bridge.Handler; State is FetchState.
+func (h *Handler) Fetch(ctx context.Context, req bridge.Request) (bridge.Response, error) {
+	var st FetchState
+	_ = bridge.DecodeState(req.State, &st)
+	res, err := h.fetch(ctx, req.FeedURL, st)
+	return bridge.Response{Entries: res.Entries, State: bridge.EncodeState(res.State)}, err
+}
+
+func (h *Handler) fetch(ctx context.Context, feedURL string, st FetchState) (FetchResult, error) {
 	if h == nil || h.client == nil {
 		return FetchResult{}, fmt.Errorf("dzen: handler is not configured")
 	}

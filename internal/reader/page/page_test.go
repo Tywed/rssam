@@ -48,7 +48,7 @@ func TestHandler_FetchDetectsChanges(t *testing.T) {
 	h := NewHandler(ts.Client(), nil, "test")
 	feedURL := "page+" + ts.URL + "/tarify##prices"
 
-	res, err := h.Fetch(context.Background(), feedURL, "", State{}, false)
+	res, err := h.fetch(context.Background(), feedURL, "", State{}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -65,13 +65,13 @@ func TestHandler_FetchDetectsChanges(t *testing.T) {
 
 	// Noise outside the selector (nav, footer, scripts) is not a change.
 	version.Store(0)
-	again, err := h.Fetch(context.Background(), feedURL, "", res.State, false)
+	again, err := h.fetch(context.Background(), feedURL, "", res.State, false)
 	if err != nil || again.Modified || len(again.Entries) != 0 || again.State != res.State {
 		t.Fatalf("unchanged: %+v err=%v", again, err)
 	}
 
 	version.Store(1)
-	changed, err := h.Fetch(context.Background(), feedURL, "", res.State, false)
+	changed, err := h.fetch(context.Background(), feedURL, "", res.State, false)
 	if err != nil || !changed.Modified || len(changed.Entries) != 1 {
 		t.Fatalf("changed: %+v err=%v", changed, err)
 	}
@@ -87,7 +87,7 @@ func TestHandler_FetchDetectsChanges(t *testing.T) {
 	}
 
 	// Selector without matches is an error (feed goes into backoff, user sees it).
-	if _, err := h.Fetch(context.Background(), "page+"+ts.URL+"/tarify#.nope", "", State{}, false); !errors.Is(err, ErrSelectorNoMatch) {
+	if _, err := h.fetch(context.Background(), "page+"+ts.URL+"/tarify#.nope", "", State{}, false); !errors.Is(err, ErrSelectorNoMatch) {
 		t.Fatalf("err=%v", err)
 	}
 	if _, err := h.DiscoverTitle(context.Background(), "page+"+ts.URL+"/tarify#.nope", false); !errors.Is(err, ErrSelectorNoMatch) {
@@ -98,7 +98,7 @@ func TestHandler_FetchDetectsChanges(t *testing.T) {
 	}
 
 	bad := "page+" + ts.URL + "/tarify#["
-	if _, err := h.Fetch(context.Background(), bad, "", State{}, false); err == nil || !strings.Contains(err.Error(), "invalid CSS selector") {
+	if _, err := h.fetch(context.Background(), bad, "", State{}, false); err == nil || !strings.Contains(err.Error(), "invalid CSS selector") {
 		t.Fatalf("invalid selector fetch err=%v", err)
 	}
 	if _, err := h.DiscoverTitle(context.Background(), bad, false); err == nil || !strings.Contains(err.Error(), "invalid CSS selector") {

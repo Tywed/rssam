@@ -86,7 +86,19 @@ type FetchResult struct {
 }
 
 // Fetch loads channel messages using configured proxy mode.
-func (h *Handler) Fetch(ctx context.Context, feedURL string, override *BridgeOverride) (FetchResult, error) {
+// Fetch implements bridge.Handler; State is an optional BridgeOverride the
+// feed form writes, Fetch never changes it.
+func (h *Handler) Fetch(ctx context.Context, req bridge.Request) (bridge.Response, error) {
+	var override *BridgeOverride
+	if len(req.State) > 0 {
+		override = &BridgeOverride{}
+		_ = bridge.DecodeState(req.State, override)
+	}
+	res, err := h.fetch(ctx, req.FeedURL, override)
+	return bridge.Response{Entries: res.Entries}, err
+}
+
+func (h *Handler) fetch(ctx context.Context, feedURL string, override *BridgeOverride) (FetchResult, error) {
 	if h == nil {
 		return FetchResult{}, fmt.Errorf("telegram: handler is not configured")
 	}

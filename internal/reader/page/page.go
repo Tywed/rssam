@@ -79,8 +79,8 @@ func DetectFeedURL(feedURL string) bool {
 
 // State is what survives between polls (feeds.bridge_state).
 type State struct {
-	Hash string
-	Text string
+	Hash string `json:"hash,omitempty"`
+	Text string `json:"text,omitempty"`
 }
 
 type Result struct {
@@ -115,7 +115,19 @@ func (h *Handler) DetectFeedType(feedURL string) string {
 // Fetch downloads the page, extracts the selected fragment and compares it
 // with the previous snapshot. Unchanged → Modified=false and no entries; the
 // first poll produces a baseline entry so the user can verify the selector.
-func (h *Handler) Fetch(ctx context.Context, feedURL, userAgent string, st State, tlsInsecure bool) (Result, error) {
+func (h *Handler) Fetch(ctx context.Context, req bridge.Request) (bridge.Response, error) {
+	var st State
+	_ = bridge.DecodeState(req.State, &st)
+	res, err := h.fetch(ctx, req.FeedURL, req.UserAgent, st, req.TLSInsecure)
+	if err != nil {
+		return bridge.Response{}, err
+	}
+	// Unchanged page: the poll writes nothing new; the refresher only
+	// stamps last_checked_at. The snapshot is re-sent unchanged.
+	return bridge.Response{Entries: res.Entries, NotModified: !res.Modified, State: bridge.EncodeState(res.State)}, nil
+}
+
+func (h *Handler) fetch(ctx context.Context, feedURL, userAgent string, st State, tlsInsecure bool) (Result, error) {
 	opts, ok := ParseFeedURL(feedURL)
 	if !ok {
 		return Result{State: st}, fmt.Errorf("page: invalid feed url %q", feedURL)

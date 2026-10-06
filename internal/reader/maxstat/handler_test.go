@@ -45,7 +45,7 @@ func TestHandler_Fetch_ParseFixture(t *testing.T) {
 	}
 	h := NewHandler(client, Config{AccessToken: "test-token"})
 
-	res, err := h.Fetch(context.Background(), "https://maxstat.ru/posts?search=krasnodar", FetchState{})
+	res, err := h.fetch(context.Background(), "https://maxstat.ru/posts?search=krasnodar", FetchState{})
 	if err != nil {
 		t.Fatalf("fetch: %v", err)
 	}
@@ -91,7 +91,7 @@ func TestHandler_Fetch_SkipsSeenPosts(t *testing.T) {
 	h := NewHandler(client, Config{AccessToken: "test-token"})
 
 	lastEnd := time.Date(2026, 8, 15, 18, 0, 34, 0, time.UTC).Unix()
-	res, err := h.Fetch(context.Background(), "maxstat-search://krasnodar", FetchState{LastEndTime: lastEnd})
+	res, err := h.fetch(context.Background(), "maxstat-search://krasnodar", FetchState{LastEndTime: lastEnd})
 	if err != nil {
 		t.Fatalf("fetch: %v", err)
 	}
