@@ -814,6 +814,7 @@
       var expandCategory = tree.getAttribute('data-expand-category') || '';
       var expandUncategorized = tree.getAttribute('data-expand-uncategorized') === 'true';
       var feedsFilter = tree.getAttribute('data-feeds-filter') || '';
+      var feedsScope = tree.getAttribute('data-feeds-scope') || '';
 
       function loadTreeCollapsed() {
         try {
@@ -846,6 +847,7 @@
         var qs = [];
         if (entrySort && entrySort !== 'newest') qs.push('sort=' + encodeURIComponent(entrySort));
         if (feedsFilter) qs.push('filter=' + encodeURIComponent(feedsFilter));
+        if (feedsScope) qs.push('scope=' + encodeURIComponent(feedsScope));
         if (offset) qs.push('offset=' + encodeURIComponent(offset));
         var feedID = new URLSearchParams(location.search).get('feed_id');
         if (feedID) qs.push('feed_id=' + encodeURIComponent(feedID));

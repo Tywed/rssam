@@ -149,7 +149,7 @@ WITH doomed AS (
   WHERE ($1::bigint = 0 OR EXISTS (
       SELECT 1 FROM subscriptions s
       WHERE s.user_id = $1 AND s.feed_id = f.id
-        AND ($3::bigint IS NULL OR ($3 = 0 AND s.category_id IS NULL) OR s.category_id = $3)))
+        AND ($3::bigint IS NULL OR ($3 = 0 AND f.category_id IS NULL) OR f.category_id = $3)))
     AND ($2::bigint IS NULL OR e.feed_id = $2)
     AND NOT EXISTS (SELECT 1 FROM user_entries ue WHERE ue.entry_id = e.id AND ue.starred)
     AND ($6::boolean OR NOT EXISTS (SELECT 1 FROM entry_labels el WHERE el.entry_id = e.id))

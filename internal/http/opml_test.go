@@ -21,6 +21,7 @@ import (
 )
 
 type opmlCategoryStore struct {
+	fakeCategoryStore
 	mu         sync.Mutex
 	nextID     int64
 	categories map[string]storage.Category
@@ -30,7 +31,7 @@ func newOpmlCategoryStore() *opmlCategoryStore {
 	return &opmlCategoryStore{nextID: 1, categories: make(map[string]storage.Category)}
 }
 
-func (s *opmlCategoryStore) CreateCategory(_ context.Context, _ int64, title, color string) (storage.Category, error) {
+func (s *opmlCategoryStore) CreateCategory(_ context.Context, title, color string) (storage.Category, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	key := strings.ToLower(strings.TrimSpace(title))
@@ -43,7 +44,7 @@ func (s *opmlCategoryStore) CreateCategory(_ context.Context, _ int64, title, co
 	return c, nil
 }
 
-func (s *opmlCategoryStore) ListCategories(_ context.Context, _ int64, _, _ int) ([]storage.Category, int, error) {
+func (s *opmlCategoryStore) ListCategories(_ context.Context, _, _ int) ([]storage.Category, int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	out := make([]storage.Category, 0, len(s.categories))
@@ -53,15 +54,15 @@ func (s *opmlCategoryStore) ListCategories(_ context.Context, _ int64, _, _ int)
 	return out, len(out), nil
 }
 
-func (s *opmlCategoryStore) UpdateCategory(_ context.Context, _ int64, id int64, title, color string) (storage.Category, error) {
+func (s *opmlCategoryStore) UpdateCategory(_ context.Context, id int64, title, color string) (storage.Category, error) {
 	return storage.Category{ID: id, Title: title, Color: color}, nil
 }
 
-func (s *opmlCategoryStore) DeleteCategory(_ context.Context, _ int64, _ int64) error {
+func (s *opmlCategoryStore) DeleteCategory(_ context.Context, _ int64) error {
 	return nil
 }
 
-func (s *opmlCategoryStore) ReorderCategories(_ context.Context, _ int64, _ []int64) error {
+func (s *opmlCategoryStore) ReorderCategories(_ context.Context, _ []int64) error {
 	return nil
 }
 

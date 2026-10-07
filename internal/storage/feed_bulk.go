@@ -48,12 +48,12 @@ func (s *PostgresStore) BulkUpdateFeedsByCategory(ctx context.Context, userID, c
 		return nil, 0, err
 	}
 	if categoryID > 0 {
-		if _, err := s.lookupUserCategory(ctx, userID, categoryID); err != nil {
+		if err := s.lookupCategory(ctx, categoryID); err != nil {
 			return nil, 0, err
 		}
 	}
 	if update.MoveCategory && update.MoveToCategoryID != nil && *update.MoveToCategoryID > 0 {
-		if _, err := s.lookupUserCategory(ctx, userID, *update.MoveToCategoryID); err != nil {
+		if err := s.lookupCategory(ctx, *update.MoveToCategoryID); err != nil {
 			return nil, 0, err
 		}
 	}
@@ -73,9 +73,9 @@ func (s *PostgresStore) BulkUpdateFeedsByCategory(ctx context.Context, userID, c
 	args := []any{userID}
 	argN := 2
 
-	catWhere := "s.category_id IS NULL"
+	catWhere := "f.category_id IS NULL"
 	if categoryID > 0 {
-		catWhere = "s.category_id = $2"
+		catWhere = "f.category_id = $2"
 		args = append(args, categoryID)
 		argN++
 	}
@@ -107,21 +107,20 @@ func (s *PostgresStore) BulkUpdateFeedsByCategory(ctx context.Context, userID, c
 	if update.ManualPaused != nil {
 		feedSet = append(feedSet, fmt.Sprintf("manual_paused = $%d", argN))
 		args = append(args, *update.ManualPaused)
-		argN++
 	}
+	var moveTo *int64
 	if update.MoveCategory {
-		if update.MoveToCategoryID != nil {
-			subSet = append(subSet, fmt.Sprintf("category_id = $%d", argN))
-			args = append(args, *update.MoveToCategoryID)
-		} else {
-			subSet = append(subSet, "category_id = NULL")
+		moveTo = update.MoveToCategoryID
+		if moveTo != nil && *moveTo == 0 {
+			moveTo = nil
 		}
 	}
 
-	// The subscription rows are selected once; the catalog update (visible
-	// to every subscriber) and the subscription update (this user only) both
-	// derive from that set.
-	q := `WITH target AS (SELECT s.feed_id FROM subscriptions s WHERE s.user_id = $1 AND ` + catWhere + `)`
+	// The category's feeds are selected once; the catalog update (visible
+	// to every subscriber) and the webhook update (this user only) both
+	// derive from that set. $1 is typed in the CTE so the query is valid
+	// when no per-subscription column is set.
+	q := `WITH target AS (SELECT f.id AS feed_id FROM feeds f WHERE $1::bigint IS NOT NULL AND ` + catWhere + `)`
 	if len(feedSet) > 0 {
 		q += `, upd_feeds AS (UPDATE feeds f SET ` + strings.Join(append(feedSet, "updated_at = now()"), ", ") + ` FROM target WHERE f.id = target.feed_id)`
 	}
@@ -130,34 +129,46 @@ func (s *PostgresStore) BulkUpdateFeedsByCategory(ctx context.Context, userID, c
 	}
 	q += ` SELECT feed_id FROM target ORDER BY feed_id`
 
-	rows, err := s.db.Query(ctx, q, args...)
-	if err != nil {
-		return nil, 0, fmt.Errorf("bulk update feeds by category: %w", err)
-	}
-	defer rows.Close()
-
 	var ids []int64
-	for rows.Next() {
-		var id int64
-		if err := rows.Scan(&id); err != nil {
-			return nil, 0, fmt.Errorf("scan feed id: %w", err)
+	err := withTx(ctx, s.db, func(tx pgx.Tx) error {
+		rows, err := tx.Query(ctx, q, args...)
+		if err != nil {
+			return fmt.Errorf("bulk update feeds by category: %w", err)
 		}
-		ids = append(ids, id)
-	}
-	if err := rows.Err(); err != nil {
+		ids, err = pgx.CollectRows(rows, pgx.RowTo[int64])
+		if err != nil {
+			return fmt.Errorf("scan feed id: %w", err)
+		}
+		if !update.MoveCategory || (moveTo != nil && categoryID == *moveTo) {
+			return nil
+		}
+		var oldCat *int64
+		if categoryID > 0 {
+			oldCat = &categoryID
+		}
+		for _, id := range ids {
+			if _, err := tx.Exec(ctx, `UPDATE feeds SET category_id = $2, updated_at = now() WHERE id = $1`, id, moveTo); err != nil {
+				return fmt.Errorf("move feed: %w", err)
+			}
+			if err := syncCategoryFollowersTx(ctx, tx, id, oldCat, moveTo); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
 		return nil, 0, err
 	}
 	return ids, len(ids), nil
 }
 
-func (s *PostgresStore) lookupUserCategory(ctx context.Context, userID, categoryID int64) (int64, error) {
-	const q = `SELECT id FROM categories WHERE id = $1 AND user_id = $2`
+func (s *PostgresStore) lookupCategory(ctx context.Context, categoryID int64) error {
 	var id int64
-	if err := s.db.QueryRow(ctx, q, categoryID, userID).Scan(&id); err != nil {
+	if err := s.db.QueryRow(ctx, `SELECT id FROM categories WHERE id = $1`, categoryID).Scan(&id); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return 0, ErrNotFound
+			return ErrNotFound
 		}
-		return 0, fmt.Errorf("lookup category: %w", err)
+		return fmt.Errorf("lookup category: %w", err)
 	}
-	return id, nil
+	return nil
 }

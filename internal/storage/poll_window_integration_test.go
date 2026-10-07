@@ -13,9 +13,8 @@ func TestIntegration_CategoryPollHours(t *testing.T) {
 	store := isolatedStore(t)
 	ctx := context.Background()
 	owner := newIntegrationUser(t, store, "ph")
-	other := newIntegrationUser(t, store, "ph_other")
 
-	cat, err := store.CreateCategory(ctx, owner.ID, "Night", "")
+	cat, err := store.CreateCategory(ctx, "Night", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -25,23 +24,23 @@ func TestIntegration_CategoryPollHours(t *testing.T) {
 	if got, err := store.GetCategoryPollHours(ctx, cat.ID); err != nil || got != "" {
 		t.Fatalf("get: %q err=%v", got, err)
 	}
-	if err := store.SetCategoryPollHours(ctx, other.ID, cat.ID, "08:00-22:00"); !errors.Is(err, ErrNotFound) {
-		t.Fatalf("foreign set: err=%v", err)
+	if err := store.SetCategoryPollHours(ctx, cat.ID+1000, "08:00-22:00"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("missing category: err=%v", err)
 	}
-	if err := store.SetCategoryPollHours(ctx, owner.ID, cat.ID, "8:00-22:00"); err != nil {
+	if err := store.SetCategoryPollHours(ctx, cat.ID, "8:00-22:00"); err != nil {
 		t.Fatal(err)
 	}
 	if got, _ := store.GetCategoryPollHours(ctx, cat.ID); got != "08:00-22:00" {
 		t.Fatalf("stored %q, want normalized", got)
 	}
-	if err := store.SetCategoryPollHours(ctx, owner.ID, cat.ID, "nope"); err == nil {
+	if err := store.SetCategoryPollHours(ctx, cat.ID, "nope"); err == nil {
 		t.Fatal("invalid value must be rejected")
 	}
-	cats, _, err := store.ListCategories(ctx, owner.ID, 10, 0)
+	cats, _, err := store.ListCategories(ctx, 10, 0)
 	if err != nil || len(cats) != 1 || cats[0].PollHours != "08:00-22:00" {
 		t.Fatalf("list: %+v err=%v", cats, err)
 	}
-	upd, err := store.UpdateCategory(ctx, owner.ID, cat.ID, "Night2", "")
+	upd, err := store.UpdateCategory(ctx, cat.ID, "Night2", "")
 	if err != nil || upd.PollHours != "08:00-22:00" {
 		t.Fatalf("title/color update must keep poll_hours: %+v err=%v", upd, err)
 	}
@@ -64,13 +63,13 @@ func TestIntegration_CategoryPollHours(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Same value → no write, feeds untouched.
-	if err := store.SetCategoryPollHours(ctx, owner.ID, cat.ID, "08:00-22:00"); err != nil {
+	if err := store.SetCategoryPollHours(ctx, cat.ID, "08:00-22:00"); err != nil {
 		t.Fatal(err)
 	}
 	if f, _ := store.GetFeedByID(ctx, parked.ID); f.NextCheckAt == nil || f.NextCheckAt.Sub(far).Abs() > time.Second {
 		t.Fatalf("unchanged window must not touch feeds: %v", f.NextCheckAt)
 	}
-	if err := store.SetCategoryPollHours(ctx, owner.ID, cat.ID, ""); err != nil {
+	if err := store.SetCategoryPollHours(ctx, cat.ID, ""); err != nil {
 		t.Fatal(err)
 	}
 	if f, _ := store.GetFeedByID(ctx, parked.ID); f.NextCheckAt == nil || time.Until(*f.NextCheckAt) > 31*time.Minute {

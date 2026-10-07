@@ -14,20 +14,28 @@ import (
 
 type fakeCategoryStore struct{}
 
-func (f *fakeCategoryStore) CreateCategory(_ context.Context, _ int64, title, color string) (storage.Category, error) {
+func (f *fakeCategoryStore) CreateCategory(_ context.Context, title, color string) (storage.Category, error) {
 	return storage.Category{ID: 1, Title: title, Color: color}, nil
 }
-func (f *fakeCategoryStore) ListCategories(_ context.Context, _ int64, _, _ int) ([]storage.Category, int, error) {
+func (f *fakeCategoryStore) ListCategories(_ context.Context, _, _ int) ([]storage.Category, int, error) {
 	return nil, 0, nil
 }
-func (f *fakeCategoryStore) UpdateCategory(_ context.Context, _ int64, id int64, title, color string) (storage.Category, error) {
+func (f *fakeCategoryStore) UpdateCategory(_ context.Context, id int64, title, color string) (storage.Category, error) {
 	return storage.Category{ID: id, Title: title, Color: color}, nil
 }
-func (f *fakeCategoryStore) DeleteCategory(_ context.Context, _ int64, _ int64) error {
-	return nil
+func (f *fakeCategoryStore) DeleteCategory(_ context.Context, _ int64) error      { return nil }
+func (f *fakeCategoryStore) ReorderCategories(_ context.Context, _ []int64) error { return nil }
+func (f *fakeCategoryStore) FollowCategory(_ context.Context, _, _ int64) (int, error) {
+	return 0, nil
 }
-func (f *fakeCategoryStore) ReorderCategories(_ context.Context, _ int64, _ []int64) error {
-	return nil
+func (f *fakeCategoryStore) UnfollowCategory(_ context.Context, _, _ int64) (int, error) {
+	return 0, nil
+}
+func (f *fakeCategoryStore) ListFollowedCategories(_ context.Context, _ int64) (map[int64]bool, error) {
+	return map[int64]bool{}, nil
+}
+func (f *fakeCategoryStore) CategoryFollowerCounts(_ context.Context) (map[int64]int, error) {
+	return map[int64]int{}, nil
 }
 
 type fakeFeedStore struct {

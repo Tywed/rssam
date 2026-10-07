@@ -113,7 +113,6 @@ type Dependencies struct {
 
 	DedupStore              storage.EntryDedupStore
 	SubscriptionStore       storage.SubscriptionStore
-	CollectionStore         storage.CollectionStore
 	QueryMatcher            filter.QueryMatcher
 	CategoryPollHours       storage.CategoryPollHoursStore
 	CircuitBreakerThreshold int
@@ -140,7 +139,6 @@ type Server struct {
 	categories    storage.CategoryStore
 	feeds         storage.FeedStore
 	subscriptions storage.SubscriptionStore
-	collections   storage.CollectionStore
 	entries       storage.EntryStore
 	filters       storage.FilterStore
 	filterMatches storage.FilterMatchStore
@@ -323,10 +321,6 @@ func New(dep Dependencies) *Server {
 	if subscriptionStore == nil && dep.DB != nil {
 		subscriptionStore = storage.NewPostgresStore(dep.DB)
 	}
-	collectionStore := dep.CollectionStore
-	if collectionStore == nil && dep.DB != nil {
-		collectionStore = storage.NewPostgresStore(dep.DB)
-	}
 	refresher := &service.FeedRefresher{
 		Feeds:                   feedStore,
 		Entries:                 entryStore,
@@ -388,7 +382,6 @@ func New(dep Dependencies) *Server {
 		categories:         categoryStore,
 		feeds:              feedStore,
 		subscriptions:      subscriptionStore,
-		collections:        collectionStore,
 		entries:            entryStore,
 		filters:            filterStore,
 		filterMatches:      filterMatchStore,
@@ -458,6 +451,8 @@ func (s *Server) Handler() http.Handler {
 	api.HandleFunc("PUT /v1/categories/{id}", s.handleUpdateCategory)
 	api.HandleFunc("DELETE /v1/categories/{id}", s.handleDeleteCategory)
 	api.HandleFunc("PUT /v1/categories/{categoryID}/mark-all-as-read", s.handleMarkCategoryAllRead)
+	api.HandleFunc("POST /v1/categories/{id}/follow", s.handleFollowCategory)
+	api.HandleFunc("DELETE /v1/categories/{id}/follow", s.handleUnfollowCategory)
 	api.HandleFunc("GET /v1/feeds", s.handleListFeeds)
 	api.HandleFunc("POST /v1/feeds", s.handleCreateFeed)
 	api.HandleFunc("GET /v1/feeds/import/jobs/{jobID}", s.handleGetImportJob)
@@ -473,20 +468,10 @@ func (s *Server) Handler() http.Handler {
 	api.HandleFunc("GET /v1/feeds/{feedID}/entries", s.handleListFeedEntries)
 	api.HandleFunc("GET /v1/feeds/{feedID}/entries/{entryID}", s.handleGetFeedEntry)
 	api.HandleFunc("PUT /v1/feeds/{feedID}/entries/{entryID}", s.handleUpdateFeedEntry)
-	api.HandleFunc("GET /v1/catalog", s.handleListCatalog)
 	api.HandleFunc("GET /v1/subscriptions", s.handleListSubscriptions)
 	api.HandleFunc("POST /v1/subscriptions", s.handleCreateSubscription)
 	api.HandleFunc("PUT /v1/subscriptions/{id}", s.handleUpdateSubscription)
 	api.HandleFunc("DELETE /v1/subscriptions/{id}", s.handleDeleteSubscription)
-	api.HandleFunc("GET /v1/collections", s.handleListCollections)
-	api.HandleFunc("POST /v1/collections", s.handleCreateCollection)
-	api.HandleFunc("GET /v1/collections/{id}", s.handleGetCollection)
-	api.HandleFunc("PUT /v1/collections/{id}", s.handleUpdateCollection)
-	api.HandleFunc("DELETE /v1/collections/{id}", s.handleDeleteCollection)
-	api.HandleFunc("POST /v1/collections/{id}/feeds", s.handleAddCollectionFeeds)
-	api.HandleFunc("DELETE /v1/collections/{id}/feeds/{feedID}", s.handleRemoveCollectionFeed)
-	api.HandleFunc("POST /v1/collections/{id}/follow", s.handleFollowCollection)
-	api.HandleFunc("DELETE /v1/collections/{id}/follow", s.handleUnfollowCollection)
 	api.HandleFunc("GET /v1/entries", s.handleListEntries)
 	api.HandleFunc("PUT /v1/entries", s.handleBulkUpdateEntries)
 	api.HandleFunc("GET /v1/entries/{id}", s.handleGetEntry)

@@ -231,7 +231,7 @@ func (r *FeedRefresher) refreshLoaded(ctx context.Context, feed storage.Feed, ma
 	started := time.Now()
 	now := started.UTC()
 	subs := r.feedSubscribers(ctx, feedID)
-	window, hasWindow := r.pollWindow(ctx, subs, now)
+	window, hasWindow := r.pollWindow(ctx, feed)
 	if !manual && hasWindow && !window.Contains(now) {
 		return 0, ErrOutsidePollWindow{At: window.NextOpen(now)}
 	}
@@ -432,7 +432,7 @@ func (r *FeedRefresher) applySubscriberFilters(ctx context.Context, feed storage
 		r.enqueueSubscriptionWebhookBestEffort(ctx, sub, entries)
 		return
 	}
-	matchCtx := filter.MatchContext{FeedID: feed.ID, CategoryID: sub.CategoryID}
+	matchCtx := filter.MatchContext{FeedID: feed.ID, CategoryID: feed.CategoryID}
 	queryHits := r.queryHitsBestEffort(ctx, feed.ID, filters, entries)
 	now := time.Now().UTC()
 	for i, e := range entries {

@@ -51,12 +51,12 @@ func (p *Publisher) PublishNewEntries(ctx context.Context, feed storage.Feed, su
 		return
 	}
 	for _, sub := range subs {
-		channels := feedChannels(feed.ID, sub.CategoryID)
+		channels := feedChannels(feed.ID, feed.CategoryID)
 		for _, entry := range newEntries {
 			p.hub.PublishToUser(sub.UserID, channels, Envelope{
 				Event: "new_entry",
 				Data: map[string]any{
-					"entry": newEntryPayload(feed, sub.CategoryID, entry),
+					"entry": newEntryPayload(feed, feed.CategoryID, entry),
 				},
 			})
 		}
@@ -98,7 +98,7 @@ func (p *Publisher) PublishFeedStatusChanged(feed storage.Feed, err error) {
 		msg = err.Error()
 	}
 	for _, sub := range subs {
-		p.hub.PublishToUser(sub.UserID, feedChannels(feed.ID, sub.CategoryID), Envelope{
+		p.hub.PublishToUser(sub.UserID, feedChannels(feed.ID, feed.CategoryID), Envelope{
 			Event: "feed_status_changed",
 			Data: map[string]any{
 				"feed_id":               feed.ID,
@@ -132,19 +132,19 @@ func (p *Publisher) publishUnreadCounters(ctx context.Context, feed storage.Feed
 		p.log.Warn("count feed unread failed", "feed_id", feed.ID, "err", err)
 	}
 
-	if sub.CategoryID != nil && *sub.CategoryID > 0 {
-		categoryUnread, err := p.entries.CountUnreadByCategory(ctx, sub.UserID, *sub.CategoryID)
+	if feed.CategoryID != nil && *feed.CategoryID > 0 {
+		categoryUnread, err := p.entries.CountUnreadByCategory(ctx, sub.UserID, *feed.CategoryID)
 		if err == nil {
-			p.hub.PublishToUser(sub.UserID, []string{ChannelAll, "category:" + strconv.FormatInt(*sub.CategoryID, 10)}, Envelope{
+			p.hub.PublishToUser(sub.UserID, []string{ChannelAll, "category:" + strconv.FormatInt(*feed.CategoryID, 10)}, Envelope{
 				Event: "unread_count_changed",
 				Data: map[string]any{
 					"scope":        "category",
-					"category_id":  *sub.CategoryID,
+					"category_id":  *feed.CategoryID,
 					"unread_count": categoryUnread,
 				},
 			})
 		} else {
-			p.log.Warn("count category unread failed", "category_id", *sub.CategoryID, "err", err)
+			p.log.Warn("count category unread failed", "category_id", *feed.CategoryID, "err", err)
 		}
 	}
 

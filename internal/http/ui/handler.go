@@ -69,11 +69,9 @@ type Config struct {
 	// FeedPollLog is the per-feed poll history shown on the admin feed page
 	// (nil = card hidden).
 	FeedPollLog storage.FeedPollLogStore
-	// Subscriptions is the shared catalog (nil = catalog page and
-	// unsubscribe unavailable).
+	// Subscriptions is the user's membership in the shared catalog (nil =
+	// subscribe/unsubscribe unavailable).
 	Subscriptions storage.SubscriptionStore
-	// Collections are curated feed sets (nil = pages unavailable).
-	Collections storage.CollectionStore
 	// Audit records admin actions; nil disables the audit page and recording.
 	Audit                 *audit.Recorder
 	AdminWebhooks         storage.AdminWebhookStore
@@ -266,21 +264,26 @@ func parseTemplates() (*template.Template, error) {
 		"adminFeedsSortLink":           adminFeedsSortLink,
 		"adminFeedsPageLink":           adminFeedsPageLink,
 		"feedsListPageLink":            feedsListPageLink,
-		"adminFeedsSortIndicator":      adminFeedsSortIndicator,
-		"truncateStr":                  truncateStr,
-		"formatBytes":                  formatBytes,
-		"webhookKindLabel":             webhookKindLabel,
-		"webhookLabel":                 webhookLabel,
-		"adminWebhookStatusLabel":      adminWebhookStatusLabel,
-		"adminWebhookStatusClass":      adminWebhookStatusClass,
-		"webhookLogStatusLabel":        webhookLogStatusLabel,
-		"webhookLogStatusClass":        webhookLogStatusClass,
-		"webhookTriggerLabel":          webhookTriggerLabel,
-		"classifyWebhookError":         classifyWebhookError,
-		"webhooksFilterLink":           webhooksFilterLink,
-		"webhookLogsFilterLink":        webhookLogsFilterLink,
-		"webhookSuccessRate":           webhookSuccessRate,
-		"formatCleanupInterval":        formatCleanupInterval,
+		"feedLockedByCategory": func(followed map[int64]bool, f storage.Feed) bool {
+			return f.CategoryID != nil && followed[*f.CategoryID]
+		},
+		"readerCount":             func(m map[int64]int, id int64) int { return m[id] },
+		"pluralReaders":           pluralReaders,
+		"adminFeedsSortIndicator": adminFeedsSortIndicator,
+		"truncateStr":             truncateStr,
+		"formatBytes":             formatBytes,
+		"webhookKindLabel":        webhookKindLabel,
+		"webhookLabel":            webhookLabel,
+		"adminWebhookStatusLabel": adminWebhookStatusLabel,
+		"adminWebhookStatusClass": adminWebhookStatusClass,
+		"webhookLogStatusLabel":   webhookLogStatusLabel,
+		"webhookLogStatusClass":   webhookLogStatusClass,
+		"webhookTriggerLabel":     webhookTriggerLabel,
+		"classifyWebhookError":    classifyWebhookError,
+		"webhooksFilterLink":      webhooksFilterLink,
+		"webhookLogsFilterLink":   webhookLogsFilterLink,
+		"webhookSuccessRate":      webhookSuccessRate,
+		"formatCleanupInterval":   formatCleanupInterval,
 		"derefString": func(p *string) string {
 			if p == nil {
 				return ""
@@ -470,31 +473,26 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.Handle("GET /ui/feeds/{id}/edit", auth(h.requireEditor(http.HandlerFunc(h.handleFeedEdit))))
 	mux.Handle("POST /ui/feeds/{id}", auth(h.requireEditor(http.HandlerFunc(h.handleFeedUpdate))))
 	mux.Handle("POST /ui/feeds/{id}/delete", auth(h.requireEditor(http.HandlerFunc(h.handleFeedDelete))))
-	mux.Handle("GET /ui/catalog", auth(http.HandlerFunc(h.handleCatalog)))
-	mux.Handle("POST /ui/catalog/{id}/subscribe", auth(http.HandlerFunc(h.handleSubscribe)))
-	mux.Handle("GET /ui/collections", auth(http.HandlerFunc(h.handleCollections)))
-	mux.Handle("POST /ui/collections", auth(h.requireEditor(http.HandlerFunc(h.handleCollectionCreate))))
-	mux.Handle("GET /ui/collections/{id}", auth(http.HandlerFunc(h.handleCollectionShow)))
-	mux.Handle("POST /ui/collections/{id}", auth(h.requireEditor(http.HandlerFunc(h.handleCollectionUpdate))))
-	mux.Handle("POST /ui/collections/{id}/delete", auth(h.requireEditor(http.HandlerFunc(h.handleCollectionDelete))))
-	mux.Handle("POST /ui/collections/{id}/feeds", auth(h.requireEditor(http.HandlerFunc(h.handleCollectionAddFeeds))))
-	mux.Handle("POST /ui/collections/{id}/feeds/{feedID}/remove", auth(h.requireEditor(http.HandlerFunc(h.handleCollectionRemoveFeed))))
-	mux.Handle("POST /ui/collections/{id}/follow", auth(http.HandlerFunc(h.handleCollectionFollow)))
-	mux.Handle("POST /ui/collections/{id}/unfollow", auth(http.HandlerFunc(h.handleCollectionUnfollow)))
+	// Pre-0.2.2 pages; bookmarks land on the subscriptions page.
+	mux.Handle("GET /ui/catalog", auth(http.RedirectHandler("/ui/feeds", http.StatusMovedPermanently)))
+	mux.Handle("GET /ui/collections", auth(http.RedirectHandler("/ui/feeds", http.StatusMovedPermanently)))
+	mux.Handle("GET /ui/collections/{id}", auth(http.RedirectHandler("/ui/feeds", http.StatusMovedPermanently)))
+	mux.Handle("POST /ui/feeds/{id}/subscribe", auth(http.HandlerFunc(h.handleSubscribe)))
 	mux.Handle("POST /ui/feeds/{id}/unsubscribe", auth(http.HandlerFunc(h.handleUnsubscribe)))
-	mux.Handle("POST /ui/feeds/{id}/subscription", auth(http.HandlerFunc(h.handleSubscriptionUpdate)))
+	mux.Handle("POST /ui/categories/{id}/follow", auth(http.HandlerFunc(h.handleCategoryFollow)))
+	mux.Handle("POST /ui/categories/{id}/unfollow", auth(http.HandlerFunc(h.handleCategoryUnfollow)))
 	mux.Handle("POST /ui/feeds/{id}/refresh", auth(http.HandlerFunc(h.handleFeedRefresh)))
 	mux.Handle("POST /ui/feeds/{feedID}/mark-read", auth(http.HandlerFunc(h.handleFeedMarkRead)))
 
-	mux.Handle("GET /ui/categories", auth(http.HandlerFunc(h.handleCategoriesList)))
+	mux.Handle("GET /ui/categories", auth(h.requireEditor(http.HandlerFunc(h.handleCategoriesList))))
 	mux.Handle("GET /ui/sidebar/categories/{id}/feeds", auth(http.HandlerFunc(h.handleSidebarCategoryFeeds)))
 	mux.Handle("GET /ui/sidebar/uncategorized/feeds", auth(http.HandlerFunc(h.handleSidebarUncategorizedFeeds)))
 	mux.Handle("GET /ui/feeds/categories/{id}/tree", auth(http.HandlerFunc(h.handleFeedsCategoryTree)))
 	mux.Handle("GET /ui/feeds/uncategorized/tree", auth(http.HandlerFunc(h.handleFeedsUncategorizedTree)))
-	mux.Handle("POST /ui/categories", auth(http.HandlerFunc(h.handleCategoryCreate)))
-	mux.Handle("POST /ui/categories/{id}", auth(http.HandlerFunc(h.handleCategoryUpdate)))
-	mux.Handle("POST /ui/categories/{id}/delete", auth(http.HandlerFunc(h.handleCategoryDelete)))
-	mux.Handle("POST /ui/categories/reorder", auth(http.HandlerFunc(h.handleCategoryReorder)))
+	mux.Handle("POST /ui/categories", auth(h.requireEditor(http.HandlerFunc(h.handleCategoryCreate))))
+	mux.Handle("POST /ui/categories/{id}", auth(h.requireEditor(http.HandlerFunc(h.handleCategoryUpdate))))
+	mux.Handle("POST /ui/categories/{id}/delete", auth(h.requireEditor(http.HandlerFunc(h.handleCategoryDelete))))
+	mux.Handle("POST /ui/categories/reorder", auth(h.requireEditor(http.HandlerFunc(h.handleCategoryReorder))))
 	mux.Handle("POST /ui/categories/{categoryID}/mark-read", auth(http.HandlerFunc(h.handleCategoryMarkRead)))
 	mux.Handle("POST /ui/categories/{categoryID}/feeds/bulk-interval", auth(h.requireEditor(http.HandlerFunc(h.handleCategoryBulkInterval))))
 	mux.Handle("POST /ui/categories/{categoryID}/feeds/bulk-webhook", auth(h.requireEditor(http.HandlerFunc(h.handleCategoryBulkWebhook))))

@@ -119,7 +119,7 @@ func (m feedSubscribers) ListFeedSubscribers(_ context.Context, feedID int64) ([
 	if feedID != m.feed.ID {
 		return nil, nil
 	}
-	return []storage.Subscription{{UserID: m.feed.OwnerID, FeedID: feedID, CategoryID: m.feed.CategoryID, WebhookID: m.feed.WebhookID}}, nil
+	return []storage.Subscription{{UserID: m.feed.OwnerID, FeedID: feedID, WebhookID: m.feed.WebhookID}}, nil
 }
 
 func newStatusRefresher(h reader.Handler, feed storage.Feed) (*FeedRefresher, *statusFeedStore, *statusPollLog, *statusPublisher) {

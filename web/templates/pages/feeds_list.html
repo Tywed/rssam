@@ -1,3 +1,30 @@
+{{define "feeds_list_category_header"}}
+{{/* . is dict Root/Category (nil for uncategorized)/Count */}}
+{{ $root := .Root }}{{ $cat := .Category }}{{ $catID := 0 }}{{if $cat}}{{ $catID = $cat.ID }}{{end}}
+<div class="tree-cat-header">
+  <button type="button" class="tree-toggle" aria-expanded="false" aria-label="Развернуть категорию">+</button>
+  {{if $cat}}
+  {{if index $root.FollowedCategories $cat.ID}}
+  <form method="post" action="/ui/categories/{{$cat.ID}}/unfollow" class="cat-follow" data-confirm="Перестать читать категорию «{{$cat.Title}}»? Её ленты уйдут из ваших подписок вместе с отметками прочитанного."><input type="hidden" name="csrf_token" value="{{$root.CSRFToken}}"><button type="submit" class="feed-sub-btn is-on" title="Читаю всю категорию — нажмите, чтобы убрать">✓</button></form>
+  {{else}}
+  <form method="post" action="/ui/categories/{{$cat.ID}}/follow" class="cat-follow"><input type="hidden" name="csrf_token" value="{{$root.CSRFToken}}"><button type="submit" class="feed-sub-btn" title="Читать всю категорию, включая будущие ленты">+</button></form>
+  {{end}}
+  {{else}}<span class="cat-follow"></span>{{end}}
+  <span class="tree-row tree-cat-title tree-cat-label"{{if $cat}} data-cat-color="{{$cat.ID}}"{{end}}>
+    {{if $cat}}<span class="cat-dot" aria-hidden="true"></span>{{end}}
+    <span class="tree-label">{{if $cat}}{{$cat.Title}}{{else}}Без категории{{end}}</span>
+    <span class="tree-count">{{pluralChannels .Count}}</span>
+    {{if and $root.CanEdit $cat}}<span class="tree-count" title="Сколько пользователей читают категорию целиком">· читают {{index $root.CategoryFollowerCounts $cat.ID}}</span>{{end}}
+  </span>
+  {{if $root.CanEdit}}
+  {{template "category_bulk_actions" (dict "Root" $root "CategoryID" $catID)}}
+  {{if and $cat (eq .Count 0)}}
+  <form method="post" action="/ui/categories/{{$cat.ID}}/delete" class="cat-delete" data-confirm="Удалить пустую категорию «{{$cat.Title}}»?"><input type="hidden" name="csrf_token" value="{{$root.CSRFToken}}"><button type="submit" class="btn btn-sm btn-danger" title="Удалить категорию">×</button></form>
+  {{end}}
+  {{end}}
+</div>
+{{end}}
+
 {{define "body_feeds_list"}}
 <div class="settings-layout">
   {{template "settings_nav" .}}
@@ -6,45 +33,52 @@
       <h1>Подписки</h1>
       {{if .CanEdit}}
       <div class="toolbar-actions">
-        <a class="btn btn-primary" href="/ui/feeds/new">Добавить</a>
+        <a class="btn btn-primary" href="/ui/feeds/new">+ Лента</a>
+        <details class="cat-actions cat-new">
+          <summary class="btn cat-actions-toggle">+ Категория</summary>
+          <form method="post" action="/ui/categories" class="cat-actions-menu cat-new-form">
+            <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+            <input name="title" placeholder="Название" required maxlength="100">
+            <button type="submit" class="btn btn-sm btn-primary">Создать</button>
+            <a href="/ui/categories" class="meta">цвета, порядок, часы опроса</a>
+          </form>
+        </details>
         <a class="btn" href="/ui/feeds/export">Экспорт OPML</a>
       </div>
       {{end}}
     </div>
+    <p class="meta">{{if .CanEdit}}Общий каталог лент. «+» у ленты добавляет её в ваши подписки, «+» у категории — всю категорию вместе с будущими лентами. Вы меняете ленты и категории для всех.{{else}}Отмечайте, что читать: «+» у ленты добавляет её в ваши подписки, «+» у категории — всю категорию вместе с будущими лентами. Новые ленты добавляют редакторы.{{end}}</p>
 
     <div class="feeds-filters">
-      <a href="/ui/feeds" class="feeds-filter {{if not .FeedsFilter}}active{{end}}">Все каналы <span class="meta">{{pluralChannels .TotalFeedCount}}</span></a>
-      <a href="/ui/feeds?filter=errors" class="feeds-filter {{if eq .FeedsFilter "errors"}}active{{end}}">Каналы с ошибками <span class="meta">({{.ErrorFeedCount}})</span></a>
-      <a href="/ui/feeds?filter=inactive" class="feeds-filter {{if eq .FeedsFilter "inactive"}}active{{end}}">Неактивные каналы <span class="meta">({{.InactiveFeedCount}})</span></a>
+      <a href="/ui/feeds" class="feeds-filter {{if and (not .FeedsScope) (not .FeedsFilter) (not .SearchQuery)}}active{{end}}">Все <span class="meta">{{pluralChannels .CatalogFeedCount}}</span></a>
+      <a href="/ui/feeds?scope=mine" class="feeds-filter {{if and (eq .FeedsScope "mine") (not .FeedsFilter) (not .SearchQuery)}}active{{end}}">Мои <span class="meta">{{pluralChannels .TotalFeedCount}}</span></a>
+      <a href="/ui/feeds?filter=errors" class="feeds-filter {{if eq .FeedsFilter "errors"}}active{{end}}">С ошибками <span class="meta">({{.ErrorFeedCount}})</span></a>
+      <a href="/ui/feeds?filter=inactive" class="feeds-filter {{if eq .FeedsFilter "inactive"}}active{{end}}">Неактивные <span class="meta">({{.InactiveFeedCount}})</span></a>
+      <form method="get" action="/ui/feeds" class="feeds-search">
+        {{if .FeedsScope}}<input type="hidden" name="scope" value="{{.FeedsScope}}">{{end}}
+        <input type="search" name="q" value="{{.SearchQuery}}" placeholder="Поиск по названию или адресу" minlength="2" maxlength="200">
+        <button type="submit" class="btn btn-sm">Найти</button>
+      </form>
     </div>
 
-    {{if .FeedsFilter}}
+    {{if or .FeedsFilter .SearchQuery}}
     <div class="card">
-      {{range .ListFeeds}}
-      <div class="tree-row tree-feed-row {{if feedHasError .}}feed-error{{end}}">
-        <span class="tree-icon" title="{{if feedHasError .}}{{.LastError}}{{end}}">{{if feedHasError .}}⚠{{else}}▸{{end}}</span>
-        {{if $.CanEdit}}<a href="/ui/feeds/{{.ID}}/edit" class="tree-label">{{.Title}}</a>{{else}}<a href="/ui/feeds/{{.ID}}" class="tree-label">{{.Title}}</a>{{end}}
-        <span class="feed-meta meta">{{feedTypeLabel .FeedType}}</span>
-        <span class="feed-actions">
-          <form method="post" action="/ui/feeds/{{.ID}}/refresh"><input type="hidden" name="csrf_token" value="{{$.CSRFToken}}"><button type="submit" class="btn btn-sm" title="Обновить">↻</button></form>
-        </span>
-      </div>
-      {{if feedHasError .}}{{if .LastError}}<div class="feed-error-msg meta">{{.LastError}}</div>{{end}}{{end}}
-      {{else}}
-      <p class="meta feeds-empty">Нет каналов по выбранному фильтру</p>
+      {{if .SearchQuery}}<p class="meta">Найдено: {{pluralChannels .Total}}{{if eq .Total 200}} — показаны первые 200, уточните запрос{{end}}</p>{{end}}
+      {{range .ListFeeds}}{{template "feeds_mgmt_feed_row" (dict "Root" $ "Feed" .)}}{{else}}
+      <p class="meta feeds-empty">{{if $.SearchQuery}}Ничего не найдено{{else}}Нет каналов по выбранному фильтру{{end}}</p>
       {{end}}
     </div>
     {{if gt .FeedsListPageCount 1}}
     <nav class="admin-feeds-pagination meta" aria-label="Навигация по страницам">
       {{if gt .FeedsListPage 1}}
-      <a href="{{feedsListPageLink .FeedsFilter (sub .FeedsListPage 1)}}" class="btn btn-sm">← Назад</a>
+      <a href="{{feedsListPageLink .FeedsScope .FeedsFilter (sub .FeedsListPage 1)}}" class="btn btn-sm">← Назад</a>
       {{end}}
       <span class="admin-feeds-page-info">Страница {{.FeedsListPage}} из {{.FeedsListPageCount}}</span>
       {{if lt .FeedsListPage .FeedsListPageCount}}
-      <a href="{{feedsListPageLink .FeedsFilter (add .FeedsListPage 1)}}" class="btn btn-sm">Вперёд →</a>
+      <a href="{{feedsListPageLink .FeedsScope .FeedsFilter (add .FeedsListPage 1)}}" class="btn btn-sm">Вперёд →</a>
       {{end}}
     </nav>
-    {{else if gt .Total 0}}
+    {{else if and .FeedsFilter (gt .Total 0)}}
     <p class="meta admin-feeds-page-info">Страница 1 из 1</p>
     {{end}}
     {{else}}
@@ -59,34 +93,17 @@
     </div>
     {{end}}
 
-    <div class="feeds-mgmt-tree{{if .FeedsTreeLazy}} feeds-tree-lazy{{end}}"{{if .FeedsTreeLazy}} data-lazy-feeds="true" data-feeds-filter="{{.FeedsFilter}}"{{end}}>
+    <div class="feeds-mgmt-tree{{if .FeedsTreeLazy}} feeds-tree-lazy{{end}}"{{if .FeedsTreeLazy}} data-lazy-feeds="true" data-feeds-filter="{{.FeedsFilter}}" data-feeds-scope="{{.FeedsScope}}"{{end}}>
       {{range .Categories}}
       {{ $cat := . }}
       {{ $count := categoryFeedCount $.ListCategoryFeedCounts $cat.ID }}
-      {{if gt $count 0}}
+      {{if or (gt $count 0) (not $.FeedsScope)}}
       <div class="tree-cat collapsed" data-tree-cat="mgmt-{{$cat.ID}}">
-        <div class="tree-cat-header">
-          <button type="button" class="tree-toggle" aria-expanded="false" aria-label="Развернуть категорию">+</button>
-          <span class="tree-row tree-cat-title tree-cat-label" data-cat-color="{{$cat.ID}}">
-            <span class="cat-dot" aria-hidden="true"></span>
-            <span class="tree-label">{{$cat.Title}}</span>
-            <span class="tree-count">{{pluralChannels $count}}</span>
-          </span>
-          {{template "category_bulk_actions" (dict "Root" $ "CategoryID" $cat.ID)}}
-        </div>
+        {{template "feeds_list_category_header" (dict "Root" $ "Category" $cat "Count" $count)}}
         <div class="tree-cat-feeds"{{if $.FeedsTreeLazy}} data-lazy-url="/ui/feeds/categories/{{$cat.ID}}/tree"{{end}}>
           {{if not $.FeedsTreeLazy}}
-          {{range $.ListFeeds}}{{if feedInCategory . $cat.ID}}
-          <div class="tree-row tree-feed-row {{if feedHasError .}}feed-error{{end}}">
-            <span class="tree-icon" title="{{if feedHasError .}}{{.LastError}}{{end}}">{{if feedHasError .}}⚠{{else}}▸{{end}}</span>
-            {{if $.CanEdit}}<a href="/ui/feeds/{{.ID}}/edit" class="tree-label">{{.Title}}</a>{{else}}<a href="/ui/feeds/{{.ID}}" class="tree-label">{{.Title}}</a>{{end}}
-            <span class="feed-meta meta">{{feedTypeLabel .FeedType}}</span>
-            <span class="feed-actions">
-              <form method="post" action="/ui/feeds/{{.ID}}/refresh"><input type="hidden" name="csrf_token" value="{{$.CSRFToken}}"><button type="submit" class="btn btn-sm" title="Обновить">↻</button></form>
-            </span>
-          </div>
-          {{if feedHasError .}}{{if .LastError}}<div class="feed-error-msg meta">{{.LastError}}</div>{{end}}{{end}}
-          {{end}}{{end}}
+          {{range $.ListFeeds}}{{if feedInCategory . $cat.ID}}{{template "feeds_mgmt_feed_row" (dict "Root" $ "Feed" .)}}{{end}}{{end}}
+          {{if eq $count 0}}<p class="meta feeds-empty">Пока нет лент</p>{{end}}
           {{end}}
         </div>
       </div>
@@ -95,36 +112,17 @@
 
       {{if gt .ListUncategorizedFeedCount 0}}
       <div class="tree-cat collapsed" data-tree-cat="mgmt-uncategorized">
-        <div class="tree-cat-header">
-          <button type="button" class="tree-toggle" aria-expanded="false" aria-label="Развернуть категорию">+</button>
-          <span class="tree-row tree-cat-title tree-cat-label">
-            <span class="tree-label">Без категории</span>
-            <span class="tree-count">{{pluralChannels .ListUncategorizedFeedCount}}</span>
-          </span>
-          {{template "category_bulk_actions" (dict "Root" $ "CategoryID" 0)}}
-        </div>
+        {{template "feeds_list_category_header" (dict "Root" $ "Category" nil "Count" .ListUncategorizedFeedCount)}}
         <div class="tree-cat-feeds"{{if .FeedsTreeLazy}} data-lazy-url="/ui/feeds/uncategorized/tree"{{end}}>
           {{if not .FeedsTreeLazy}}
-          {{range .ListFeeds}}{{if not .CategoryID}}
-          <div class="tree-row tree-feed-row {{if feedHasError .}}feed-error{{end}}">
-            <span class="tree-icon" title="{{if feedHasError .}}{{.LastError}}{{end}}">{{if feedHasError .}}⚠{{else}}▸{{end}}</span>
-            {{if $.CanEdit}}<a href="/ui/feeds/{{.ID}}/edit" class="tree-label">{{.Title}}</a>{{else}}<a href="/ui/feeds/{{.ID}}" class="tree-label">{{.Title}}</a>{{end}}
-            <span class="feed-meta meta">{{feedTypeLabel .FeedType}}</span>
-            <span class="feed-actions">
-              <form method="post" action="/ui/feeds/{{.ID}}/refresh"><input type="hidden" name="csrf_token" value="{{$.CSRFToken}}"><button type="submit" class="btn btn-sm" title="Обновить">↻</button></form>
-            </span>
-          </div>
-          {{if feedHasError .}}{{if .LastError}}<div class="feed-error-msg meta">{{.LastError}}</div>{{end}}{{end}}
-          {{end}}{{end}}
+          {{range .ListFeeds}}{{if not .CategoryID}}{{template "feeds_mgmt_feed_row" (dict "Root" $ "Feed" .)}}{{end}}{{end}}
           {{end}}
         </div>
       </div>
       {{end}}
 
-      {{if and (not .FeedsTreeLazy) (not .ListFeeds)}}
-      <p class="meta feeds-empty">Нет лент</p>
-      {{else if and .FeedsTreeLazy (eq .TotalFeedCount 0)}}
-      <p class="meta feeds-empty">Нет лент</p>
+      {{if and (not .Categories) (eq .ListUncategorizedFeedCount 0)}}
+      <p class="meta feeds-empty">{{if .FeedsScope}}Вы пока ничего не читаете — откройте «Все» и отметьте ленты или категории.{{else}}Нет лент{{end}}</p>
       {{end}}
     </div>
     {{end}}

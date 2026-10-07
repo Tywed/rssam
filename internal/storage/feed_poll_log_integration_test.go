@@ -13,7 +13,7 @@ import (
 )
 
 func TestIntegration_FeedPollLogRecordListRetention(t *testing.T) {
-	store := testStore(t)
+	store := isolatedStore(t)
 	ctx := context.Background()
 	suffix := fmt.Sprintf("%d", time.Now().UnixNano())
 
@@ -115,7 +115,7 @@ func TestIntegration_FeedPollLogRecordListRetention(t *testing.T) {
 }
 
 func TestIntegration_FeedPollLogCoalesceAndCap(t *testing.T) {
-	store := testStore(t)
+	store := isolatedStore(t)
 	ctx := context.Background()
 	owner := newIntegrationUser(t, store, "pollcap")
 	feed, err := store.CreateFeed(ctx, owner.ID, CreateFeedParams{

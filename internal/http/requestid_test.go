@@ -17,7 +17,7 @@ import (
 
 type failingCategoryStore struct{ *fakeCategoryStore }
 
-func (*failingCategoryStore) ListCategories(context.Context, int64, int, int) ([]storage.Category, int, error) {
+func (*failingCategoryStore) ListCategories(context.Context, int, int) ([]storage.Category, int, error) {
 	return nil, 0, errors.New("pg: connection reset")
 }
 

@@ -11,6 +11,12 @@ var (
 	ErrNotFound         = errors.New("not found")
 	ErrDuplicateFeedURL = errors.New("feed_url already exists")
 	ErrInvalidReference = errors.New("invalid reference")
+	// ErrCategoryNotEmpty: a category with feeds cannot be deleted.
+	ErrCategoryNotEmpty  = errors.New("category has feeds")
+	ErrDuplicateCategory = errors.New("category title already exists")
+	// ErrFollowsCategory: the user reads the feed through its category and
+	// cannot drop the single feed.
+	ErrFollowsCategory = errors.New("feed is read through a followed category")
 	// ErrLastAdmin is returned when a change would leave the instance without
 	// any admin that can log in (role admin with a password set).
 	ErrLastAdmin = errors.New("cannot remove the last admin")
@@ -25,9 +31,10 @@ const (
 	NoLimit = 0
 )
 
+// Category is shared by everybody: editors file feeds into it, readers
+// follow it as a whole (FollowCategory) or subscribe to single feeds.
 type Category struct {
 	ID        int64
-	UserID    int64
 	Title     string
 	Color     string
 	SortOrder int
@@ -38,9 +45,9 @@ type Category struct {
 }
 
 // Feed is a catalog row shared by every subscriber. OwnerID is the user who
-// added it (0 once that user is gone). CategoryID and WebhookID belong to
-// the subscription of the user the feed was loaded for; catalog loads
-// (GetFeedByID, ListAllFeeds) leave them nil.
+// added it (0 once that user is gone). CategoryID is the feed's place in the
+// shared tree. WebhookID and Subscribed belong to the user the feed was
+// loaded for; catalog loads (GetFeedByID, ListAllFeeds) leave them nil/false.
 type Feed struct {
 	ID                 int64
 	OwnerID            int64
@@ -48,6 +55,7 @@ type Feed struct {
 	FeedType           string
 	Title              string
 	CategoryID         *int64
+	Subscribed         bool
 	IntervalMinutes    int
 	ETag               string
 	LastModified       string
@@ -124,11 +132,10 @@ type Enclosure struct {
 }
 
 type Subscription struct {
-	UserID     int64
-	FeedID     int64
-	CategoryID *int64
-	WebhookID  *int64
-	CreatedAt  time.Time
+	UserID    int64
+	FeedID    int64
+	WebhookID *int64
+	CreatedAt time.Time
 }
 
 type Filter struct {
@@ -253,18 +260,31 @@ type WebhookLog struct {
 }
 
 type CategoryStore interface {
-	CreateCategory(ctx context.Context, userID int64, title, color string) (Category, error)
-	ListCategories(ctx context.Context, userID int64, limit, offset int) ([]Category, int, error)
-	UpdateCategory(ctx context.Context, userID int64, id int64, title, color string) (Category, error)
-	DeleteCategory(ctx context.Context, userID int64, id int64) error
-	ReorderCategories(ctx context.Context, userID int64, ids []int64) error
+	CreateCategory(ctx context.Context, title, color string) (Category, error)
+	ListCategories(ctx context.Context, limit, offset int) ([]Category, int, error)
+	UpdateCategory(ctx context.Context, id int64, title, color string) (Category, error)
+	// DeleteCategory removes an empty category (ErrCategoryNotEmpty otherwise).
+	DeleteCategory(ctx context.Context, id int64) error
+	ReorderCategories(ctx context.Context, ids []int64) error
+	// FollowCategory subscribes the user to every feed of the category now
+	// and in the future; it returns how many subscriptions were created.
+	// Following an already followed category is a no-op.
+	FollowCategory(ctx context.Context, userID, categoryID int64) (int, error)
+	// UnfollowCategory drops the user's subscriptions to the category's
+	// feeds; ErrNotFound when the user does not follow it.
+	UnfollowCategory(ctx context.Context, userID, categoryID int64) (int, error)
+	// ListFollowedCategories is the set of categories the user follows.
+	ListFollowedCategories(ctx context.Context, userID int64) (map[int64]bool, error)
+	// CategoryFollowerCounts is how many users follow each category.
+	CategoryFollowerCounts(ctx context.Context) (map[int64]int, error)
 }
 
-// FeedStore reads the catalog through the caller's subscriptions: every
-// userID-scoped method sees only feeds the user is subscribed to and returns
-// the subscription's category/webhook.
+// FeedStore reads the catalog. userID-scoped methods see the feeds the user
+// is subscribed to (with the subscription's webhook); the Catalog* methods
+// see every feed with Subscribed telling whether the user reads it.
 type FeedStore interface {
-	// CreateFeed adds a catalog row owned by userID and subscribes them.
+	// CreateFeed adds a catalog row owned by userID, subscribes them and
+	// the followers of the category.
 	CreateFeed(ctx context.Context, userID int64, params CreateFeedParams) (Feed, error)
 	GetFeed(ctx context.Context, userID int64, id int64) (Feed, error)
 	GetFeedByID(ctx context.Context, id int64) (Feed, error) // catalog row, no subscription
@@ -275,15 +295,21 @@ type FeedStore interface {
 	SearchFeeds(ctx context.Context, userID int64, filter SearchFeedsFilter) ([]Feed, error)
 	ListFeedsByIDs(ctx context.Context, userID int64, ids []int64) ([]Feed, error)
 	FeedCountsByCategory(ctx context.Context, userID int64) (FeedCategoryCounts, error)
+	// CatalogFeeds lists every feed (optionally of one category: 0 =
+	// uncategorized, nil = all) ordered by title, with Subscribed for userID.
+	CatalogFeeds(ctx context.Context, userID int64, categoryID *int64, limit, offset int) ([]Feed, int, error)
+	CatalogCountsByCategory(ctx context.Context) (FeedCategoryCounts, error)
 	CountFeedStatuses(ctx context.Context, userID int64) (errors, inactive int, err error)
 	ListAllFeeds(ctx context.Context, limit int) ([]Feed, error)
 	// CountOwnedFeeds is the editor quota counter: catalog rows added by userID.
 	CountOwnedFeeds(ctx context.Context, userID int64) (int, error)
-	// UpdateFeed writes the catalog columns and the caller's own
-	// category/webhook; the caller must be subscribed.
+	// UpdateFeed writes the catalog columns (a category change moves the
+	// feed for every subscriber: followers of the new category are
+	// subscribed, followers of the old one that do not follow the new one
+	// are unsubscribed) and the caller's own webhook when subscribed.
 	UpdateFeed(ctx context.Context, userID int64, params UpdateFeedParams) (Feed, error)
 	UpdateFeedRefreshMeta(ctx context.Context, params UpdateFeedRefreshMetaParams) error
-	UpdateFeedIcon(ctx context.Context, userID, feedID int64, iconURL string, iconData []byte) error
+	UpdateFeedIcon(ctx context.Context, feedID int64, iconURL string, iconData []byte) error
 	SetFeedNextCheckAt(ctx context.Context, feedID int64, nextCheckAt time.Time) error
 	RecordFeedPollFailure(ctx context.Context, params RecordFeedPollFailureParams) error
 	ResetFeedPollCircuit(ctx context.Context, feedID int64) error
@@ -291,10 +317,9 @@ type FeedStore interface {
 	SetFeedManualPaused(ctx context.Context, feedID int64, paused bool) error
 	BulkUpdateFeedsByCategory(ctx context.Context, userID, categoryID int64, update BulkFeedUpdate) (feedIDs []int64, count int, err error)
 	// DeleteFeed removes the catalog row with its entries for every
-	// subscriber; the caller must be subscribed (editor). A reader leaves a
-	// feed with SubscriptionStore.Unsubscribe.
+	// subscriber (editor). A reader leaves a feed with
+	// SubscriptionStore.Unsubscribe.
 	DeleteFeed(ctx context.Context, userID int64, id int64) error
-	// DeleteFeedByID removes the catalog row for every subscriber (admin).
 	DeleteFeedByID(ctx context.Context, id int64) error
 }
 
@@ -308,53 +333,25 @@ type SubscriptionStore interface {
 	// catalog has no such feed.
 	SubscribeByURL(ctx context.Context, userID int64, feedURL string, params SubscriptionParams) (Feed, error)
 	UpdateSubscription(ctx context.Context, userID, feedID int64, params SubscriptionParams) (Subscription, error)
-	// Unsubscribe drops the caller's subscription and per-entry state; the
-	// catalog row is deleted once it has no subscribers left.
+	// Unsubscribe drops the caller's subscription and per-entry state;
+	// ErrFollowsCategory when the user follows the feed's category.
 	Unsubscribe(ctx context.Context, userID, feedID int64) error
 	ListFeedSubscribers(ctx context.Context, feedID int64) ([]Subscription, error)
 	ListSubscriptions(ctx context.Context, userID int64) ([]Subscription, error)
-	// ListCatalog pages the shared catalog for a user: every feed with the
-	// subscriber count and whether the user already reads it.
-	ListCatalog(ctx context.Context, userID int64, filter CatalogFilter) ([]CatalogFeed, int, error)
 	// ListFeedSubscriberNames is the admin view of who reads a feed.
 	ListFeedSubscriberNames(ctx context.Context, feedID int64) ([]FeedSubscriber, error)
+	// FeedSubscriberCounts is how many users read each feed.
+	FeedSubscriberCounts(ctx context.Context) (map[int64]int, error)
 }
 
 type SubscriptionParams struct {
-	CategoryID *int64
-	WebhookID  *int64
-}
-
-// CatalogFilter narrows ListCatalog. Query matches title/URL (ILIKE);
-// Subscribed nil = all, true/false = only mine / only not mine.
-type CatalogFilter struct {
-	Query      string
-	Subscribed *bool
-	Limit      int
-	Offset     int
-}
-
-// CatalogFeed is the catalog projection: identity plus what a reader needs
-// to decide whether to subscribe. No poll state, rules or icon blob.
-type CatalogFeed struct {
-	ID              int64
-	FeedURL         string
-	FeedType        string
-	Title           string
-	OwnerID         int64
-	OwnerName       string
-	SubscriberCount int
-	Subscribed      bool
-	LastEntryAt     *time.Time
-	LastError       string
-	CreatedAt       time.Time
+	WebhookID *int64
 }
 
 type FeedSubscriber struct {
-	UserID     int64
-	Username   string
-	CategoryID *int64
-	CreatedAt  time.Time
+	UserID    int64
+	Username  string
+	CreatedAt time.Time
 }
 
 type JobStore interface {
@@ -481,24 +478,27 @@ type WebhookLogStore interface {
 }
 
 type CreateFeedParams struct {
-	FeedURL            string
-	FeedType           string
-	Title              string
-	CategoryID         *int64
-	IntervalMinutes    int
-	ScraperRules       string
-	RewriteRules       string
-	BlockedRules       string
-	KeepRules          string
-	FetchViaProxy      bool
-	TLSInsecure        bool
-	Crawler            bool
-	UserAgent          string
-	WebhookID          *int64
-	StoreHashOnly      bool
-	EntryRetentionDays *int
-	AdaptiveInterval   bool
-	BridgeState        []byte
+	FeedURL    string
+	FeedType   string
+	Title      string
+	CategoryID *int64
+	// SkipOwnerSubscription adds the feed to the catalog without
+	// subscribing the editor who created it.
+	SkipOwnerSubscription bool
+	IntervalMinutes       int
+	ScraperRules          string
+	RewriteRules          string
+	BlockedRules          string
+	KeepRules             string
+	FetchViaProxy         bool
+	TLSInsecure           bool
+	Crawler               bool
+	UserAgent             string
+	WebhookID             *int64
+	StoreHashOnly         bool
+	EntryRetentionDays    *int
+	AdaptiveInterval      bool
+	BridgeState           []byte
 }
 
 type UpdateFeedParams struct {

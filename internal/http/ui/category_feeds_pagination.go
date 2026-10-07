@@ -1,8 +1,9 @@
 package ui
 
 import (
-	"fmt"
 	"net/http"
+	"net/url"
+	"strconv"
 
 	"rssam/internal/storage"
 )
@@ -17,20 +18,21 @@ func parseFeedsListPage(r *http.Request) (limit, offset, page int) {
 	return pageOffset(r, feedsListPageSize)
 }
 
-func feedsListPageLink(filter string, page int) string {
-	if page < 1 {
-		page = 1
+func feedsListPageLink(scope, filter string, page int) string {
+	q := url.Values{}
+	if scope == "mine" {
+		q.Set("scope", scope)
 	}
-	if filter != "errors" && filter != "inactive" {
-		if page <= 1 {
-			return "/ui/feeds"
-		}
-		return fmt.Sprintf("/ui/feeds?page=%d", page)
+	if filter == "errors" || filter == "inactive" {
+		q.Set("filter", filter)
 	}
-	if page <= 1 {
-		return "/ui/feeds?filter=" + filter
+	if page > 1 {
+		q.Set("page", strconv.Itoa(page))
 	}
-	return fmt.Sprintf("/ui/feeds?filter=%s&page=%d", filter, page)
+	if len(q) == 0 {
+		return "/ui/feeds"
+	}
+	return "/ui/feeds?" + q.Encode()
 }
 
 func sliceFeedsPage(feeds []storage.Feed, limit, offset int) []storage.Feed {

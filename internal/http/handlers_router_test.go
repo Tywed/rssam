@@ -130,7 +130,7 @@ func (f *iconFeedStore) GetFeed(_ context.Context, userID, id int64) (storage.Fe
 	return f.feed, nil
 }
 
-func (f *iconFeedStore) UpdateFeedIcon(_ context.Context, _, _ int64, iconURL string, data []byte) error {
+func (f *iconFeedStore) UpdateFeedIcon(_ context.Context, _ int64, iconURL string, data []byte) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.cached = data

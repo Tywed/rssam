@@ -197,7 +197,7 @@ func (s *PostgresStore) listEntries(ctx context.Context, userID int64, filter Li
 		argN++
 	}
 	if filter.CategoryID != nil {
-		where = append(where, fmt.Sprintf("ue.feed_id IN (SELECT feed_id FROM subscriptions WHERE user_id = $1 AND category_id = $%d)", argN))
+		where = append(where, fmt.Sprintf("ue.feed_id IN (SELECT s.feed_id FROM subscriptions s JOIN feeds f ON f.id = s.feed_id WHERE s.user_id = $1 AND f.category_id = $%d)", argN))
 		args = append(args, *filter.CategoryID)
 		argN++
 	}
@@ -353,8 +353,8 @@ func (s *PostgresStore) CountUnreadByCategory(ctx context.Context, userID, categ
 	const q = `
 SELECT count(*)
 FROM user_entries ue
-JOIN subscriptions s ON s.user_id = ue.user_id AND s.feed_id = ue.feed_id
-WHERE ue.user_id = $1 AND s.category_id = $2 AND ue.status = '` + EntryStatusUnread + `'`
+JOIN feeds f ON f.id = ue.feed_id
+WHERE ue.user_id = $1 AND f.category_id = $2 AND ue.status = '` + EntryStatusUnread + `'`
 	var total int
 	if err := s.db.QueryRow(ctx, q, userID, categoryID).Scan(&total); err != nil {
 		return 0, fmt.Errorf("count unread by category: %w", err)
@@ -394,14 +394,14 @@ func (s *PostgresStore) UnreadCountsForUser(ctx context.Context, userID int64) (
 	categoryCounts := make(map[int64]int)
 
 	rows, err := s.db.Query(ctx, `
-SELECT c.feed_id, s.category_id, c.n
+SELECT c.feed_id, f.category_id, c.n
 FROM (
 	SELECT feed_id, count(*)::int AS n
 	FROM user_entries
 	WHERE user_id = $1 AND status = '`+EntryStatusUnread+`'
 	GROUP BY feed_id
 ) c
-JOIN subscriptions s ON s.user_id = $1 AND s.feed_id = c.feed_id`, userID)
+JOIN feeds f ON f.id = c.feed_id`, userID)
 	if err != nil {
 		return nil, nil, fmt.Errorf("unread counts: %w", err)
 	}

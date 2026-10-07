@@ -62,20 +62,28 @@ func countFeedStatuses(feeds []storage.Feed) (errors, inactive int) {
 }
 
 func pluralChannels(n int) string {
+	return "(" + pluralRu(n, "канал", "канала", "каналов") + ")"
+}
+
+func pluralReaders(n int) string {
+	return pluralRu(n, "читателю", "читателям", "читателям")
+}
+
+// pluralRu picks the Russian form for n: one, few (2–4), many.
+func pluralRu(n int, one, few, many string) string {
 	if n < 0 {
 		n = 0
 	}
-	mod100 := n % 100
-	if mod100 >= 11 && mod100 <= 19 {
-		return fmt.Sprintf("(%d каналов)", n)
+	if mod100 := n % 100; mod100 >= 11 && mod100 <= 19 {
+		return fmt.Sprintf("%d %s", n, many)
 	}
 	switch n % 10 {
 	case 1:
-		return fmt.Sprintf("(%d канал)", n)
+		return fmt.Sprintf("%d %s", n, one)
 	case 2, 3, 4:
-		return fmt.Sprintf("(%d канала)", n)
+		return fmt.Sprintf("%d %s", n, few)
 	default:
-		return fmt.Sprintf("(%d каналов)", n)
+		return fmt.Sprintf("%d %s", n, many)
 	}
 }
 

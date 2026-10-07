@@ -88,7 +88,7 @@ func minuteOfDay(t time.Time) int { return t.Hour()*60 + t.Minute() }
 // CategoryPollHoursStore reads/writes the per-category polling window.
 type CategoryPollHoursStore interface {
 	GetCategoryPollHours(ctx context.Context, categoryID int64) (string, error)
-	SetCategoryPollHours(ctx context.Context, userID, categoryID int64, pollHours string) error
+	SetCategoryPollHours(ctx context.Context, categoryID int64, pollHours string) error
 }
 
 func (s *PostgresStore) GetCategoryPollHours(ctx context.Context, categoryID int64) (string, error) {
@@ -102,12 +102,12 @@ func (s *PostgresStore) GetCategoryPollHours(ctx context.Context, categoryID int
 	return v, nil
 }
 
-func (s *PostgresStore) SetCategoryPollHours(ctx context.Context, userID, categoryID int64, pollHours string) error {
+func (s *PostgresStore) SetCategoryPollHours(ctx context.Context, categoryID int64, pollHours string) error {
 	norm, err := NormalizePollHours(pollHours)
 	if err != nil {
 		return err
 	}
-	cmd, err := s.db.Exec(ctx, `UPDATE categories SET poll_hours = $3, updated_at = now() WHERE id = $1 AND user_id = $2 AND poll_hours <> $3`, categoryID, userID, norm)
+	cmd, err := s.db.Exec(ctx, `UPDATE categories SET poll_hours = $2, updated_at = now() WHERE id = $1 AND poll_hours <> $2`, categoryID, norm)
 	if err != nil {
 		return fmt.Errorf("set category poll_hours: %w", err)
 	}
@@ -116,14 +116,13 @@ func (s *PostgresStore) SetCategoryPollHours(ctx context.Context, userID, catego
 		// interval; the new window is applied by the next poll attempt.
 		if _, err := s.db.Exec(ctx, `
 UPDATE feeds f SET next_check_at = now() + interval_minutes * interval '1 minute', updated_at = now()
-FROM subscriptions s
-WHERE s.feed_id = f.id AND s.category_id = $1 AND s.user_id = $2 AND f.next_check_at > now() + f.interval_minutes * interval '1 minute'`, categoryID, userID); err != nil {
+WHERE f.category_id = $1 AND f.next_check_at > now() + f.interval_minutes * interval '1 minute'`, categoryID); err != nil {
 			return fmt.Errorf("reset feeds after poll_hours change: %w", err)
 		}
 	}
 	if cmd.RowsAffected() == 0 {
 		var exists bool
-		if err := s.db.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM categories WHERE id = $1 AND user_id = $2)`, categoryID, userID).Scan(&exists); err != nil {
+		if err := s.db.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM categories WHERE id = $1)`, categoryID).Scan(&exists); err != nil {
 			return fmt.Errorf("check category: %w", err)
 		}
 		if !exists {

@@ -10,16 +10,16 @@ import (
 )
 
 func (h *Handler) handleCategoriesList(w http.ResponseWriter, r *http.Request) {
-	p, _ := principal(r)
 	data := h.baseData(r, "settings")
 	data.SettingsSection = "categories"
-	cats, _, err := h.cfg.Categories.ListCategories(r.Context(), p.UserID, 1000, 0)
+	cats, _, err := h.cfg.Categories.ListCategories(r.Context(), 1000, 0)
 	if err != nil {
 		http.Error(w, "list categories failed", http.StatusInternalServerError)
 		return
 	}
 	data.Categories = cats
 	data.CategoryPollHours = h.cfg.CategoryPollHours != nil
+	data.FlashMsg, data.FlashErr = feedsFlash(r)
 	data.Title = "Категории"
 	h.render(w, r, "categories_list", data)
 }
@@ -29,7 +29,6 @@ func (h *Handler) handleCategoryCreate(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
-	p, _ := principal(r)
 	title := strings.TrimSpace(r.FormValue("title"))
 	if title == "" {
 		http.Error(w, "title required", http.StatusBadRequest)
@@ -40,16 +39,23 @@ func (h *Handler) handleCategoryCreate(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	cat, err := h.cfg.Categories.CreateCategory(r.Context(), p.UserID, title, strings.TrimSpace(r.FormValue("color")))
+	// The quick form on the subscriptions page comes back there.
+	target := refererOr(r, "/ui/categories")
+	cat, err := h.cfg.Categories.CreateCategory(r.Context(), title, strings.TrimSpace(r.FormValue("color")))
 	if err != nil {
+		if errors.Is(err, storage.ErrDuplicateCategory) {
+			feedsRedirect(w, r, target, feedsMsgCatDup, 0)
+			return
+		}
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	if err := h.saveCategoryPollHours(r, p.UserID, cat.ID, pollHours); err != nil {
+	if err := h.saveCategoryPollHours(r, cat.ID, pollHours); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	http.Redirect(w, r, "/ui/categories", http.StatusFound)
+	h.cfg.Audit.Record(r, storage.AuditCategoryCreate, "category", cat.ID, map[string]any{"title": cat.Title})
+	feedsRedirect(w, r, target, feedsMsgCatCreated, 0)
 }
 
 func (h *Handler) handleCategoryUpdate(w http.ResponseWriter, r *http.Request) {
@@ -57,7 +63,6 @@ func (h *Handler) handleCategoryUpdate(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
-	p, _ := principal(r)
 	id, err := parsePathID(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -73,25 +78,30 @@ func (h *Handler) handleCategoryUpdate(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	_, err = h.cfg.Categories.UpdateCategory(r.Context(), p.UserID, id, title, strings.TrimSpace(r.FormValue("color")))
+	_, err = h.cfg.Categories.UpdateCategory(r.Context(), id, title, strings.TrimSpace(r.FormValue("color")))
 	if err != nil {
+		if errors.Is(err, storage.ErrDuplicateCategory) {
+			feedsRedirect(w, r, "/ui/categories", feedsMsgCatDup, 0)
+			return
+		}
 		http.NotFound(w, r)
 		return
 	}
-	if err := h.saveCategoryPollHours(r, p.UserID, id, pollHours); err != nil {
+	if err := h.saveCategoryPollHours(r, id, pollHours); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	h.cfg.Audit.Record(r, storage.AuditCategoryUpdate, "category", id, map[string]any{"title": title})
 	http.Redirect(w, r, "/ui/categories", http.StatusFound)
 }
 
 // saveCategoryPollHours persists the window (no-op without a store or when
 // the form did not send the field) and drops the refresher cache entry.
-func (h *Handler) saveCategoryPollHours(r *http.Request, userID, categoryID int64, pollHours string) error {
+func (h *Handler) saveCategoryPollHours(r *http.Request, categoryID int64, pollHours string) error {
 	if h.cfg.CategoryPollHours == nil || !r.Form.Has("poll_hours") {
 		return nil
 	}
-	if err := h.cfg.CategoryPollHours.SetCategoryPollHours(r.Context(), userID, categoryID, pollHours); err != nil {
+	if err := h.cfg.CategoryPollHours.SetCategoryPollHours(r.Context(), categoryID, pollHours); err != nil {
 		return err
 	}
 	if h.cfg.Refresher != nil {
@@ -105,17 +115,22 @@ func (h *Handler) handleCategoryDelete(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
-	p, _ := principal(r)
 	id, err := parsePathID(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	if err := h.cfg.Categories.DeleteCategory(r.Context(), p.UserID, id); err != nil {
+	target := refererOr(r, "/ui/categories")
+	if err := h.cfg.Categories.DeleteCategory(r.Context(), id); err != nil {
+		if errors.Is(err, storage.ErrCategoryNotEmpty) {
+			feedsRedirect(w, r, target, feedsMsgCatNotEmpty, 0)
+			return
+		}
 		http.NotFound(w, r)
 		return
 	}
-	http.Redirect(w, r, "/ui/categories", http.StatusFound)
+	h.cfg.Audit.Record(r, storage.AuditCategoryDelete, "category", id, nil)
+	feedsRedirect(w, r, target, feedsMsgCatDeleted, 0)
 }
 
 func (h *Handler) handleCategoryMarkRead(w http.ResponseWriter, r *http.Request) {
@@ -143,8 +158,6 @@ func (h *Handler) handleCategoryReorder(w http.ResponseWriter, r *http.Request) 
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
-	p, _ := principal(r)
-
 	var ids []int64
 	for _, raw := range r.Form["order"] {
 		raw = strings.TrimSpace(raw)
@@ -163,7 +176,7 @@ func (h *Handler) handleCategoryReorder(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	if err := h.cfg.Categories.ReorderCategories(r.Context(), p.UserID, ids); err != nil {
+	if err := h.cfg.Categories.ReorderCategories(r.Context(), ids); err != nil {
 		if errors.Is(err, storage.ErrInvalidReference) {
 			http.Error(w, "invalid order", http.StatusBadRequest)
 			return

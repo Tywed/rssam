@@ -403,13 +403,16 @@ func TestMultiUser_FeedIsolation(t *testing.T) {
 		t.Fatalf("bill feeds: %+v", listB)
 	}
 
-	// Alice cannot GET bill's feed by id
+	// The catalog is shared: alice sees bill's feed by id, unsubscribed.
 	req := httptest.NewRequest(http.MethodGet, "/v1/feeds/"+strconv.FormatInt(fB.ID, 10), nil)
 	req.SetPathValue("id", strconv.FormatInt(fB.ID, 10))
 	req.Header.Set("X-Auth-Token", tokA)
 	rec := httptest.NewRecorder()
 	s.wrapAPI(http.HandlerFunc(s.handleGetFeed)).ServeHTTP(rec, req)
-	if rec.Code != http.StatusNotFound {
-		t.Fatalf("expected 404 for cross-tenant get, got %d", rec.Code)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for catalog get, got %d", rec.Code)
+	}
+	if got, _ := decodeData[feedDTO](t, rec); got.ID != fB.ID || got.Subscribed {
+		t.Fatalf("catalog get = %+v", got)
 	}
 }

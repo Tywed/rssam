@@ -155,6 +155,15 @@ func (m *uiMemFeeds) CountFeedStatuses(_ context.Context, _ int64) (int, int, er
 	return errors, inactive, nil
 }
 func (m *uiMemFeeds) ListAllFeeds(context.Context, int) ([]storage.Feed, error) { return m.feeds, nil }
+func (m *uiMemFeeds) CatalogFeeds(ctx context.Context, _ int64, categoryID *int64, limit, offset int) ([]storage.Feed, int, error) {
+	if categoryID == nil {
+		return m.ListFeeds(ctx, 0, limit, offset)
+	}
+	return m.ListFeedsByCategoryPaginated(ctx, 0, *categoryID, limit, offset)
+}
+func (m *uiMemFeeds) CatalogCountsByCategory(ctx context.Context) (storage.FeedCategoryCounts, error) {
+	return m.FeedCountsByCategory(ctx, 0)
+}
 func (m *uiMemFeeds) GetFeed(_ context.Context, _ int64, id int64) (storage.Feed, error) {
 	for _, f := range m.feeds {
 		if f.ID == id {
@@ -188,7 +197,7 @@ func (m *uiMemFeeds) GetFeedByID(_ context.Context, id int64) (storage.Feed, err
 func (m *uiMemFeeds) UpdateFeedRefreshMeta(context.Context, storage.UpdateFeedRefreshMetaParams) error {
 	return nil
 }
-func (m *uiMemFeeds) UpdateFeedIcon(context.Context, int64, int64, string, []byte) error {
+func (m *uiMemFeeds) UpdateFeedIcon(context.Context, int64, string, []byte) error {
 	return nil
 }
 func (m *uiMemFeeds) SetFeedNextCheckAt(context.Context, int64, time.Time) error { return nil }
@@ -268,7 +277,7 @@ type uiMemCategories struct {
 	cats []storage.Category
 }
 
-func (m *uiMemCategories) ListCategories(_ context.Context, _ int64, limit, offset int) ([]storage.Category, int, error) {
+func (m *uiMemCategories) ListCategories(_ context.Context, limit, offset int) ([]storage.Category, int, error) {
 	if limit <= 0 {
 		limit = len(m.cats) - offset
 	}
@@ -278,15 +287,27 @@ func (m *uiMemCategories) ListCategories(_ context.Context, _ int64, limit, offs
 	end := min(offset+limit, len(m.cats))
 	return m.cats[offset:end], len(m.cats), nil
 }
-func (m *uiMemCategories) CreateCategory(context.Context, int64, string, string) (storage.Category, error) {
+func (m *uiMemCategories) CreateCategory(context.Context, string, string) (storage.Category, error) {
 	return storage.Category{}, nil
 }
-func (m *uiMemCategories) UpdateCategory(context.Context, int64, int64, string, string) (storage.Category, error) {
+func (m *uiMemCategories) UpdateCategory(context.Context, int64, string, string) (storage.Category, error) {
 	return storage.Category{}, nil
 }
-func (m *uiMemCategories) DeleteCategory(context.Context, int64, int64) error { return nil }
+func (m *uiMemCategories) DeleteCategory(context.Context, int64) error { return nil }
+func (m *uiMemCategories) FollowCategory(context.Context, int64, int64) (int, error) {
+	return 0, nil
+}
+func (m *uiMemCategories) UnfollowCategory(context.Context, int64, int64) (int, error) {
+	return 0, nil
+}
+func (m *uiMemCategories) ListFollowedCategories(context.Context, int64) (map[int64]bool, error) {
+	return map[int64]bool{}, nil
+}
+func (m *uiMemCategories) CategoryFollowerCounts(context.Context) (map[int64]int, error) {
+	return map[int64]int{}, nil
+}
 
-func (m *uiMemCategories) ReorderCategories(_ context.Context, _ int64, ids []int64) error {
+func (m *uiMemCategories) ReorderCategories(_ context.Context, ids []int64) error {
 	if len(ids) == 0 {
 		return nil
 	}
@@ -365,7 +386,7 @@ func TestUI_FeedsListTreeAndFilters(t *testing.T) {
 		t.Fatalf("feeds list: status=%d", rec.Code)
 	}
 	body := rec.Body.String()
-	for _, want := range []string{"Каналы с ошибками", "Неактивные каналы", "News", "(2 канала)", "Bad Feed", "tree-toggle"} {
+	for _, want := range []string{"С ошибками", "Неактивные", "News", "(2 канала)", "Bad Feed", "tree-toggle"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("missing %q in feeds list body", want)
 		}

@@ -66,6 +66,17 @@ func (h *Handler) handleAdminUserCreate(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	h.cfg.Audit.Record(r, storage.AuditUserCreate, "user", u.ID, map[string]any{"username": username, "role": role})
+	if h.cfg.Categories != nil {
+		for _, raw := range r.Form["follow_category_ids"] {
+			id, err := strconv.ParseInt(raw, 10, 64)
+			if err != nil {
+				continue
+			}
+			if _, err := h.cfg.Categories.FollowCategory(r.Context(), u.ID, id); err != nil {
+				h.log.WarnContext(r.Context(), "follow category for new user failed", "user_id", u.ID, "category_id", id, "err", err)
+			}
+		}
+	}
 	http.Redirect(w, r, "/ui/admin/users", http.StatusFound)
 }
 
@@ -204,25 +215,26 @@ type adminSystemInfo struct {
 	TotalEntries  int
 	TotalUnread   int
 	Subscriptions int
-	Collections   int
-	UserEntries   int
-	AuditRows     int
-	BinaryPath    string
-	EnvFile       string
-	Systemd       string
-	DatabaseHost  string
-	InDocker      bool
-	DualWarning   string
-	LocaleWarning string
-	CanRestart    bool
-	RestartHint   string
-	CanUpdate     bool
-	UpdateHint    string
-	Latest        string
-	UpdateAvail   bool
-	ReleaseNotes  string
-	ReleaseURL    string
-	WorkersPaused bool
+	// CategoryFollows is how many (user, category) pairs read a category whole.
+	CategoryFollows int
+	UserEntries     int
+	AuditRows       int
+	BinaryPath      string
+	EnvFile         string
+	Systemd         string
+	DatabaseHost    string
+	InDocker        bool
+	DualWarning     string
+	LocaleWarning   string
+	CanRestart      bool
+	RestartHint     string
+	CanUpdate       bool
+	UpdateHint      string
+	Latest          string
+	UpdateAvail     bool
+	ReleaseNotes    string
+	ReleaseURL      string
+	WorkersPaused   bool
 }
 
 func (h *Handler) handleAdminSystem(w http.ResponseWriter, r *http.Request) {
@@ -275,6 +287,7 @@ func (h *Handler) handleAdminSystem(w http.ResponseWriter, r *http.Request) {
 			info.TotalEntries = summary.TotalEntries
 			info.TotalUnread = summary.TotalUnread
 			info.Subscriptions = summary.TotalSubscriptions
+			info.CategoryFollows = summary.TotalCategoryFollows
 			info.UserEntries = summary.TotalUserEntries
 			jobs, jerr := h.cfg.AdminFeeds.PollFeedJobCounts(r.Context())
 			if jerr != nil {
@@ -282,9 +295,6 @@ func (h *Handler) handleAdminSystem(w http.ResponseWriter, r *http.Request) {
 			}
 			data.WorkerAdvice = h.loadWorkerAdvice(r.Context(), summary, jobs)
 		}
-	}
-	if h.cfg.Collections != nil {
-		info.Collections, _ = h.cfg.Collections.CountCollections(r.Context())
 	}
 	if h.cfg.Audit != nil && h.cfg.Audit.Store != nil {
 		info.AuditRows, _ = h.cfg.Audit.Store.CountAuditLog(r.Context())

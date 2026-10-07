@@ -30,7 +30,7 @@ func (s *Server) handleFeedIcon(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ctx := r.Context()
-	feed, err := s.feeds.GetFeed(ctx, p.UserID, feedID)
+	feed, err := s.catalogFeed(ctx, p.UserID, feedID)
 	if err != nil {
 		s.storeError(w, r, err, "feed not found", "get feed icon failed")
 		return
@@ -63,7 +63,7 @@ func (s *Server) handleFeedIcon(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.feeds.UpdateFeedIcon(ctx, p.UserID, feedID, iconURL, data); err != nil {
+	if err := s.feeds.UpdateFeedIcon(ctx, feedID, iconURL, data); err != nil {
 		s.log.WarnContext(r.Context(), "cache feed icon failed", "feed_id", feedID, "err", err)
 	}
 

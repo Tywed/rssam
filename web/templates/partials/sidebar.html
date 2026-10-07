@@ -30,6 +30,7 @@
     {{range .Categories}}
     {{ $cat := . }}
     {{ $count := categoryFeedCount $.CategoryFeedCounts $cat.ID }}
+    {{if gt $count 0}}
     {{ $lazyExpand := and $.SidebarLazyFeeds (eq $.SidebarExpandCategoryID $cat.ID) }}
     <div class="tree-cat" data-tree-cat="sidebar-{{$cat.ID}}">
       <div class="tree-cat-header">
@@ -54,6 +55,7 @@
       </div>
     </div>
     {{end}}
+    {{end}}
 
     {{if gt .UncategorizedFeedCount 0}}
     {{ $lazyUncatExpand := and .SidebarLazyFeeds .SidebarExpandUncategorized }}
@@ -77,15 +79,6 @@
         {{end}}
       </div>
     </div>
-    {{else if not .SidebarLazyFeeds}}
-    <div class="tree-section">Без категории</div>
-    {{range .Feeds}}{{if not .CategoryID}}
-    <a href="/ui/unread?feed_id={{.ID}}{{entrySortSuffix $.EntrySort true}}" class="tree-row tree-feed {{if eq $.FeedID .ID}}active{{end}}{{if feedHasError .}} feed-error{{end}}" data-feed-id="{{.ID}}">
-      <span class="tree-icon">{{if feedHasError .}}⚠{{else}}▸{{end}}</span>
-      <span class="tree-label">{{.Title}}</span>
-      {{with index $.FeedUnreadCounts .ID}}{{if gt . 0}}<span class="tree-badge">{{.}}</span>{{end}}{{end}}
-    </a>
-    {{end}}{{end}}
     {{end}}
   </div>
   <div class="sidebar-footer">

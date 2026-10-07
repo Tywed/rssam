@@ -72,10 +72,13 @@ func TestRBAC_ThreeRoles(t *testing.T) {
 	feedID := strconv.FormatInt(bobFeed.ID, 10)
 	cases := []tc{
 		{name: "list feeds", method: http.MethodGet, path: "/v1/feeds", want: [3]int{ok, ok, ok}},
-		{name: "get feed", method: http.MethodGet, path: "/v1/feeds/" + feedID, want: [3]int{ok, notFound, notFound}},
+		{name: "get feed", method: http.MethodGet, path: "/v1/feeds/" + feedID, want: [3]int{ok, ok, ok}},
 		{name: "list categories", method: http.MethodGet, path: "/v1/categories", want: [3]int{ok, ok, ok}},
-		{name: "create category", method: http.MethodPost, path: "/v1/categories", body: `{"title":"News"}`, want: [3]int{created, created, created}},
-		{name: "update category", method: http.MethodPut, path: "/v1/categories/1", body: `{"title":"News"}`, want: [3]int{ok, ok, ok}},
+		{name: "create category", method: http.MethodPost, path: "/v1/categories", body: `{"title":"News"}`, want: [3]int{forbidden, created, created}},
+		{name: "update category", method: http.MethodPut, path: "/v1/categories/1", body: `{"title":"News"}`, want: [3]int{forbidden, ok, ok}},
+		{name: "delete category", method: http.MethodDelete, path: "/v1/categories/1", want: [3]int{forbidden, ok, ok}},
+		{name: "follow category", method: http.MethodPost, path: "/v1/categories/1/follow", want: [3]int{ok, ok, ok}},
+		{name: "unfollow category", method: http.MethodDelete, path: "/v1/categories/1/follow", want: [3]int{ok, ok, ok}},
 		{name: "create feed", method: http.MethodPost, path: "/v1/feeds", body: `{"feed_url":"https://example.com/new.xml"}`, want: [3]int{forbidden, created, created}},
 		{name: "update feed", method: http.MethodPut, path: "/v1/feeds/" + feedID, body: `{"feed_url":"https://example.com/bob.xml","title":"x"}`, want: [3]int{forbidden, ok, ok}},
 		{name: "delete feed", method: http.MethodDelete, path: "/v1/feeds/" + feedID, want: [3]int{forbidden, ok, ok}},
@@ -100,6 +103,9 @@ func TestRBAC_ThreeRoles(t *testing.T) {
 		http.MethodGet + " /v1/feeds/import/jobs/{jobID}": http.HandlerFunc(s.handleGetImportJob),
 		http.MethodPost + " /v1/categories":               http.HandlerFunc(s.handleCreateCategory),
 		http.MethodPut + " /v1/categories/{id}":           http.HandlerFunc(s.handleUpdateCategory),
+		http.MethodDelete + " /v1/categories/{id}":        http.HandlerFunc(s.handleDeleteCategory),
+		http.MethodPost + " /v1/categories/{id}/follow":   http.HandlerFunc(s.handleFollowCategory),
+		http.MethodDelete + " /v1/categories/{id}/follow": http.HandlerFunc(s.handleUnfollowCategory),
 		http.MethodPost + " /v1/feeds/{feedID}/refresh":   http.HandlerFunc(s.handleRefreshFeed),
 		http.MethodPost + " /v1/feeds/refresh":            http.HandlerFunc(s.handleRefreshAllFeeds),
 		http.MethodGet + " /v1/users":                     http.HandlerFunc(s.handleListUsers),
@@ -148,6 +154,8 @@ func routeKey(path, feedID string) string {
 		return "/v1/feeds/{feedID}/refresh"
 	case "/v1/categories/1":
 		return "/v1/categories/{id}"
+	case "/v1/categories/1/follow":
+		return "/v1/categories/{id}/follow"
 	case "/v1/feeds/import/jobs/none":
 		return "/v1/feeds/import/jobs/{jobID}"
 	default:

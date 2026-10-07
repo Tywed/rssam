@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 
 	"github.com/jackc/pgx/v5"
 )
@@ -16,11 +15,11 @@ var ErrAlreadySubscribed = errors.New("already subscribed")
 // feed with years of history does not produce thousands of unread items.
 const SubscribeUnreadBackfill = 100
 
-const subscriptionColumns = `user_id, feed_id, category_id, webhook_id, created_at`
+const subscriptionColumns = `user_id, feed_id, webhook_id, created_at`
 
 func scanSubscription(row pgx.Row) (Subscription, error) {
 	var sub Subscription
-	if err := row.Scan(&sub.UserID, &sub.FeedID, &sub.CategoryID, &sub.WebhookID, &sub.CreatedAt); err != nil {
+	if err := row.Scan(&sub.UserID, &sub.FeedID, &sub.WebhookID, &sub.CreatedAt); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return Subscription{}, ErrNotFound
 		}
@@ -29,15 +28,15 @@ func scanSubscription(row pgx.Row) (Subscription, error) {
 	return sub, nil
 }
 
-// checkSubscriptionRefs rejects a category or webhook that belongs to
-// another user: the FK alone would let a reader route a feed into someone
-// else's webhook.
+// checkSubscriptionRefs rejects a webhook that belongs to another user: the
+// FK alone would let a reader route a feed into someone else's webhook.
 func checkSubscriptionRefs(ctx context.Context, q querier, userID int64, params SubscriptionParams) error {
+	if params.WebhookID == nil {
+		return nil
+	}
 	var ok bool
-	if err := q.QueryRow(ctx, `
-SELECT ($2::bigint IS NULL OR EXISTS (SELECT 1 FROM categories WHERE id = $2 AND user_id = $1))
-   AND ($3::bigint IS NULL OR EXISTS (SELECT 1 FROM webhooks WHERE id = $3 AND user_id = $1))`,
-		userID, params.CategoryID, params.WebhookID).Scan(&ok); err != nil {
+	if err := q.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM webhooks WHERE id = $2 AND user_id = $1)`,
+		userID, params.WebhookID).Scan(&ok); err != nil {
 		return fmt.Errorf("check subscription refs: %w", err)
 	}
 	if !ok {
@@ -50,7 +49,7 @@ func (s *PostgresStore) Subscribe(ctx context.Context, userID, feedID int64, par
 	var sub Subscription
 	err := withTx(ctx, s.db, func(tx pgx.Tx) error {
 		var err error
-		sub, err = subscribeTx(ctx, tx, userID, feedID, params, nil)
+		sub, err = subscribeTx(ctx, tx, userID, feedID, params)
 		return err
 	})
 	if err != nil {
@@ -71,7 +70,7 @@ func (s *PostgresStore) SubscribeByURL(ctx context.Context, userID int64, feedUR
 			}
 			return fmt.Errorf("subscribe by url: %w", err)
 		}
-		if _, err := subscribeTx(ctx, tx, userID, feedID, params, nil); err != nil {
+		if _, err := subscribeTx(ctx, tx, userID, feedID, params); err != nil {
 			return err
 		}
 		q := `SELECT ` + feedColumns + `, f.icon_data FROM feeds f ` + subscribedJoin + ` WHERE f.id = $2`
@@ -86,19 +85,18 @@ func (s *PostgresStore) SubscribeByURL(ctx context.Context, userID int64, feedUR
 }
 
 // subscribeTx inserts the subscription with the user's view of the feed's
-// entries; collectionID marks a row created by following a collection.
-func subscribeTx(ctx context.Context, tx pgx.Tx, userID, feedID int64, params SubscriptionParams, collectionID *int64) (Subscription, error) {
+// entries.
+func subscribeTx(ctx context.Context, tx pgx.Tx, userID, feedID int64, params SubscriptionParams) (Subscription, error) {
 	if err := checkSubscriptionRefs(ctx, tx, userID, params); err != nil {
 		return Subscription{}, err
 	}
 	// ON CONFLICT instead of catching 23505: a failed statement would
-	// abort the surrounding transaction, and collection follows continue
-	// past feeds the user already reads.
+	// abort the surrounding transaction.
 	sub, err := scanSubscription(tx.QueryRow(ctx, `
-INSERT INTO subscriptions(user_id, feed_id, category_id, webhook_id, collection_id)
-VALUES ($1, $2, $3, $4, $5)
+INSERT INTO subscriptions(user_id, feed_id, webhook_id)
+VALUES ($1, $2, $3)
 ON CONFLICT (user_id, feed_id) DO NOTHING
-RETURNING `+subscriptionColumns, userID, feedID, params.CategoryID, params.WebhookID, collectionID))
+RETURNING `+subscriptionColumns, userID, feedID, params.WebhookID))
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {
 			return Subscription{}, ErrAlreadySubscribed
@@ -126,9 +124,9 @@ func (s *PostgresStore) UpdateSubscription(ctx context.Context, userID, feedID i
 		return Subscription{}, err
 	}
 	sub, err := scanSubscription(s.db.QueryRow(ctx, `
-UPDATE subscriptions SET category_id = $3, webhook_id = $4
+UPDATE subscriptions SET webhook_id = $3
 WHERE user_id = $1 AND feed_id = $2
-RETURNING `+subscriptionColumns, userID, feedID, params.CategoryID, params.WebhookID))
+RETURNING `+subscriptionColumns, userID, feedID, params.WebhookID))
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {
 			return Subscription{}, err
@@ -138,27 +136,22 @@ RETURNING `+subscriptionColumns, userID, feedID, params.CategoryID, params.Webho
 	return sub, nil
 }
 
-// Unsubscribe drops the caller's subscription and per-entry state; the
-// catalog row goes with it once nobody else reads the feed.
+// Unsubscribe drops the caller's subscription and per-entry state. A feed
+// read through a followed category cannot be dropped alone
+// (ErrFollowsCategory); the catalog row stays for the editors.
 func (s *PostgresStore) Unsubscribe(ctx context.Context, userID, feedID int64) error {
 	return withTx(ctx, s.db, func(tx pgx.Tx) error {
-		if err := unsubscribeTx(ctx, tx, userID, feedID); err != nil {
-			return err
+		var follows bool
+		if err := tx.QueryRow(ctx, `
+SELECT EXISTS (SELECT 1 FROM feeds f JOIN category_followers cf ON cf.category_id = f.category_id
+               WHERE f.id = $2 AND cf.user_id = $1)`, userID, feedID).Scan(&follows); err != nil {
+			return fmt.Errorf("unsubscribe: %w", err)
 		}
-		return dropOrphanFeed(ctx, tx, feedID)
+		if follows {
+			return ErrFollowsCategory
+		}
+		return unsubscribeTx(ctx, tx, userID, feedID)
 	})
-}
-
-// orphanFeedCond: a catalog feed f exists while someone reads it or a
-// collection lists it.
-const orphanFeedCond = `NOT EXISTS (SELECT 1 FROM subscriptions s WHERE s.feed_id = f.id)
-  AND NOT EXISTS (SELECT 1 FROM collection_feeds cf WHERE cf.feed_id = f.id)`
-
-func dropOrphanFeed(ctx context.Context, tx pgx.Tx, feedID int64) error {
-	if _, err := tx.Exec(ctx, `DELETE FROM feeds f WHERE f.id = $1 AND `+orphanFeedCond, feedID); err != nil {
-		return fmt.Errorf("drop orphan feed: %w", err)
-	}
-	return nil
 }
 
 func (s *PostgresStore) ListFeedSubscribers(ctx context.Context, feedID int64) ([]Subscription, error) {
@@ -216,59 +209,9 @@ WHERE el.label_id = l.id AND l.user_id = $1
 	return nil
 }
 
-const catalogColumns = `f.id, f.feed_url, f.feed_type, f.title, COALESCE(f.owner_id, 0), COALESCE(u.username, ''),
-       (SELECT count(*)::int FROM subscriptions s WHERE s.feed_id = f.id),
-       EXISTS (SELECT 1 FROM subscriptions s WHERE s.feed_id = f.id AND s.user_id = $1),
-       f.last_entry_at, f.last_error, f.created_at`
-
-func (s *PostgresStore) ListCatalog(ctx context.Context, userID int64, filter CatalogFilter) ([]CatalogFeed, int, error) {
-	limit := filter.Limit
-	if limit <= 0 || limit > 500 {
-		limit = 100
-	}
-	where := []string{"TRUE"}
-	args := []any{userID}
-	if q := strings.TrimSpace(filter.Query); q != "" {
-		args = append(args, "%"+escapeLikePattern(q)+"%")
-		where = append(where, fmt.Sprintf(`(f.title ILIKE $%d ESCAPE '\' OR f.feed_url ILIKE $%d ESCAPE '\')`, len(args), len(args)))
-	}
-	if filter.Subscribed != nil {
-		not := ""
-		if !*filter.Subscribed {
-			not = "NOT "
-		}
-		where = append(where, not+`EXISTS (SELECT 1 FROM subscriptions s WHERE s.feed_id = f.id AND s.user_id = $1)`)
-	}
-	args = append(args, limit, max(filter.Offset, 0))
-	rows, err := s.db.Query(ctx, `
-SELECT `+catalogColumns+`, count(*) OVER()
-FROM feeds f
-LEFT JOIN users u ON u.id = f.owner_id
-WHERE `+strings.Join(where, " AND ")+`
-ORDER BY lower(f.title), f.id
-LIMIT $`+fmt.Sprint(len(args)-1)+` OFFSET $`+fmt.Sprint(len(args)), args...)
-	if err != nil {
-		return nil, 0, fmt.Errorf("list catalog: %w", err)
-	}
-	defer rows.Close()
-	out := make([]CatalogFeed, 0, limit)
-	total := 0
-	for rows.Next() {
-		var c CatalogFeed
-		if err := rows.Scan(&c.ID, &c.FeedURL, &c.FeedType, &c.Title, &c.OwnerID, &c.OwnerName, &c.SubscriberCount, &c.Subscribed, &c.LastEntryAt, &c.LastError, &c.CreatedAt, &total); err != nil {
-			return nil, 0, fmt.Errorf("scan catalog: %w", err)
-		}
-		out = append(out, c)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, 0, fmt.Errorf("iterate catalog: %w", err)
-	}
-	return out, total, nil
-}
-
 func (s *PostgresStore) ListFeedSubscriberNames(ctx context.Context, feedID int64) ([]FeedSubscriber, error) {
 	rows, err := s.db.Query(ctx, `
-SELECT s.user_id, u.username, s.category_id, s.created_at
+SELECT s.user_id, u.username, s.created_at
 FROM subscriptions s JOIN users u ON u.id = s.user_id
 WHERE s.feed_id = $1
 ORDER BY s.created_at, s.user_id`, feedID)
@@ -279,7 +222,7 @@ ORDER BY s.created_at, s.user_id`, feedID)
 	out := make([]FeedSubscriber, 0)
 	for rows.Next() {
 		var fs FeedSubscriber
-		if err := rows.Scan(&fs.UserID, &fs.Username, &fs.CategoryID, &fs.CreatedAt); err != nil {
+		if err := rows.Scan(&fs.UserID, &fs.Username, &fs.CreatedAt); err != nil {
 			return nil, fmt.Errorf("scan feed subscriber: %w", err)
 		}
 		out = append(out, fs)

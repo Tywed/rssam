@@ -3,7 +3,7 @@
   "info": {
     "title": "rssam API",
     "version": "0.0.0-dev",
-    "description": "REST API of the rssam RSS aggregator.\n\n**Authentication.** Every `/v1` endpoint takes `X-Auth-Token: <token>` where the token is a personal API key (`POST /v1/me/api-keys`, with a `scope` of `read`/`write`/`admin` and an optional expiry). A request outside the key's scope is rejected with 403. A browser session cookie is also accepted, but state-changing requests authenticated only by the cookie must pass the same-origin check (`Sec-Fetch-Site`/`Origin`), otherwise 403.\n\n**Envelope.** Successful JSON responses are `{\"data\": ..., \"total\": n}`; errors are `{\"error_message\": \"...\"}`. Lists take `limit`/`offset`; `total` is the full row count.\n\n**Roles.** Every user has one of three roles, each including the previous one: `reader` — subscribes to catalog feeds, reads entries, changes read/starred state, manages own categories and labels; `editor` — additionally creates, edits and deletes feeds (including bridges), imports/exports OPML, manages filters and webhooks; `admin` — additionally manages users (`/v1/users`), triggers refresh-all and reads `/v1/system/info`. Endpoints marked \"Requires an editor principal\" / \"Requires an admin principal\" return 403 for lower roles. Objects are scoped to the calling user; reading another user's object yields 404.\n\n**Catalog.** Feeds are one catalog shared by all users (`GET /v1/catalog`); a subscription (`/v1/subscriptions`) is a user's membership in a feed with their own category and webhook, and read/starred state is per user. Collections (`/v1/collections`) are sets of catalog feeds curated by editors; following one subscribes to all of its feeds into one category and keeps the membership in sync as the set changes. `GET /v1/feeds` lists the caller's subscribed feeds; feed settings (interval, rules) are shared and editable by any editor; `DELETE /v1/feeds/{id}` removes the feed for everyone, `DELETE /v1/subscriptions/{id}` only for the caller.\n\n**Request id.** Every response carries `X-Request-Id` (echoed from the request when a proxy set it, generated otherwise); quote it when reporting 5xx errors.\n\n**Limits.** Request bodies are capped (MAX_REQUEST_BODY_BYTES, default 1 MiB) → 413; per-IP rate limits on authentication failures and sensitive routes → 429. Editor quotas (admins exempt; 0 = unlimited): MAX_FEEDS_PER_EDITOR and MAX_WEBHOOKS_PER_EDITOR → 429 on create, EDITOR_MIN_POLL_INTERVAL → 422 on a feed write with a shorter interval."
+    "description": "REST API of the rssam RSS aggregator.\n\n**Authentication.** Every `/v1` endpoint takes `X-Auth-Token: <token>` where the token is a personal API key (`POST /v1/me/api-keys`, with a `scope` of `read`/`write`/`admin` and an optional expiry). A request outside the key's scope is rejected with 403. A browser session cookie is also accepted, but state-changing requests authenticated only by the cookie must pass the same-origin check (`Sec-Fetch-Site`/`Origin`), otherwise 403.\n\n**Envelope.** Successful JSON responses are `{\"data\": ..., \"total\": n}`; errors are `{\"error_message\": \"...\"}`. Lists take `limit`/`offset`; `total` is the full row count.\n\n**Roles.** Every user has one of three roles, each including the previous one: `reader` — follows categories and subscribes to catalog feeds, reads entries, changes read/starred state, manages own labels; `editor` — additionally creates, edits and deletes feeds (including bridges), manages the global categories, imports/exports OPML, manages filters and webhooks; `admin` — additionally manages users (`/v1/users`), triggers refresh-all and reads `/v1/system/info`. Endpoints marked \"Requires an editor principal\" / \"Requires an admin principal\" return 403 for lower roles. Objects are scoped to the calling user; reading another user's object yields 404.\n\n**Catalog.** Feeds are one catalog shared by all users (`GET /v1/feeds?all=true`), each sitting in at most one global category (`/v1/categories`, managed by editors). A subscription (`/v1/subscriptions`) is a user's membership in a feed with their own webhook; read/starred state is per user. Following a category (`POST /v1/categories/{id}/follow`) subscribes to all of its feeds and keeps the membership in sync as editors add, move or remove feeds. `GET /v1/feeds` lists the caller's subscribed feeds; feed settings (category, interval, rules) are shared and editable by any editor; `DELETE /v1/feeds/{id}` removes the feed for everyone, `DELETE /v1/subscriptions/{id}` only for the caller.\n\n**Request id.** Every response carries `X-Request-Id` (echoed from the request when a proxy set it, generated otherwise); quote it when reporting 5xx errors.\n\n**Limits.** Request bodies are capped (MAX_REQUEST_BODY_BYTES, default 1 MiB) → 413; per-IP rate limits on authentication failures and sensitive routes → 429. Editor quotas (admins exempt; 0 = unlimited): MAX_FEEDS_PER_EDITOR and MAX_WEBHOOKS_PER_EDITOR → 429 on create, EDITOR_MIN_POLL_INTERVAL → 422 on a feed write with a shorter interval."
   },
   "servers": [
     {
@@ -26,10 +26,6 @@
     {
       "name": "subscriptions",
       "description": "The shared feed catalog and who reads what."
-    },
-    {
-      "name": "collections",
-      "description": "Curated sets of catalog feeds a reader follows as a whole."
     },
     {
       "name": "entries",
@@ -252,7 +248,8 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "description": "All categories, the same for every user."
       },
       "post": {
         "tags": [
@@ -260,7 +257,7 @@
         ],
         "summary": "Create category",
         "operationId": "createCategory",
-        "description": "Categories are per user: every role manages its own.",
+        "description": "Categories are global and shared by every user; they hold the catalog's feeds (feeds.category_id). Titles are unique (case-insensitive) — 409 on a duplicate. Requires an editor principal.",
         "requestBody": {
           "required": true,
           "content": {
@@ -299,6 +296,9 @@
           },
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
           }
         }
       }
@@ -323,7 +323,7 @@
         ],
         "summary": "Update category",
         "operationId": "updateCategory",
-        "description": "Categories are per user: every role manages its own.",
+        "description": "Categories are global and shared by every user; they hold the catalog's feeds (feeds.category_id). Titles are unique (case-insensitive) — 409 on a duplicate. Requires an editor principal.",
         "requestBody": {
           "required": true,
           "content": {
@@ -365,6 +365,9 @@
           },
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
           }
         }
       },
@@ -374,7 +377,7 @@
         ],
         "summary": "Delete category",
         "operationId": "deleteCategory",
-        "description": "Categories are per user: every role manages its own.",
+        "description": "Only an empty category can be deleted: 409 while feeds are still in it (move them with PUT /v1/feeds/{id} first). Followers of the category are dropped with it. Requires an editor principal.",
         "responses": {
           "200": {
             "description": "Deleted.",
@@ -406,6 +409,9 @@
           },
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
           }
         }
       }
@@ -478,6 +484,18 @@
           },
           {
             "$ref": "#/components/parameters/offset"
+          },
+          {
+            "name": "all",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true"
+              ]
+            },
+            "description": "List the whole catalog instead of the caller's subscriptions."
           }
         ],
         "responses": {
@@ -507,7 +525,7 @@
             "$ref": "#/components/responses/ServiceUnavailable"
           }
         },
-        "description": "Only feeds the caller is subscribed to; category_id/webhook_id are the caller's. The whole catalog is GET /v1/catalog."
+        "description": "By default only the feeds the caller is subscribed to. With all=true the whole shared catalog, `subscribed` telling which ones the caller reads."
       },
       "post": {
         "tags": [
@@ -515,7 +533,7 @@
         ],
         "summary": "Create feed",
         "operationId": "createFeed",
-        "description": "feed_url is validated against the SSRF policy (no private networks unless FETCH_ALLOW_PRIVATE_NETWORK). Feeds form one catalog shared by all users: a URL that already exists subscribes the caller to that feed instead (200, own category_id/webhook_id); a new URL creates the feed owned by the caller (201). Requires an editor principal.",
+        "description": "feed_url is validated against the SSRF policy (no private networks unless FETCH_ALLOW_PRIVATE_NETWORK). Feeds form one catalog shared by all users: a URL that already exists subscribes the caller to that feed instead (200); a new URL creates the feed (201) in the given global category — every user following that category is subscribed to it at once, the caller too unless subscribe_self=false. Requires an editor principal.",
         "requestBody": {
           "required": true,
           "content": {
@@ -852,7 +870,8 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "description": "Any catalog feed, subscribed or not; `subscribed` tells whether the caller reads it."
       },
       "put": {
         "tags": [
@@ -860,7 +879,7 @@
         ],
         "summary": "Update feed",
         "operationId": "updateFeed",
-        "description": "Catalog columns (URL, title, interval, rules, flags) are shared by every subscriber; category_id and webhook_id apply to the caller's own subscription. Requires an editor principal.",
+        "description": "Catalog columns (URL, title, category, interval, rules, flags) are shared by every subscriber. Requires an editor principal.",
         "requestBody": {
           "required": true,
           "content": {
@@ -931,7 +950,7 @@
         ],
         "summary": "Delete feed",
         "operationId": "deleteFeed",
-        "description": "Removes the feed from the catalog for every subscriber, with its entries. To stop reading a feed others still use, DELETE /v1/subscriptions/{id} instead. Requires an editor principal subscribed to the feed.",
+        "description": "Removes the feed from the catalog for every subscriber, with its entries. To stop reading a feed others still use, DELETE /v1/subscriptions/{id} instead. Requires an editor principal.",
         "responses": {
           "200": {
             "description": "Deleted from the catalog with its entries.",
@@ -2879,60 +2898,6 @@
         }
       }
     },
-    "/v1/catalog": {
-      "get": {
-        "tags": [
-          "subscriptions"
-        ],
-        "summary": "List catalog",
-        "operationId": "listCatalog",
-        "description": "Every feed in the shared catalog with its subscriber count and whether the caller reads it. Any role: readers pick feeds here and subscribe with POST /v1/subscriptions; only editors add new feeds (POST /v1/feeds).",
-        "parameters": [
-          {
-            "$ref": "#/components/parameters/limit"
-          },
-          {
-            "$ref": "#/components/parameters/offset"
-          },
-          {
-            "name": "q",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            },
-            "description": "Case-insensitive substring of the title or URL."
-          },
-          {
-            "name": "subscribed",
-            "in": "query",
-            "schema": {
-              "type": "boolean"
-            },
-            "description": "true — only feeds the caller is subscribed to; false — only the others; omitted — all."
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "CatalogList"
-          },
-          "400": {
-            "$ref": "#/components/responses/BadRequest"
-          },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
-          },
-          "429": {
-            "$ref": "#/components/responses/TooManyRequests"
-          },
-          "500": {
-            "$ref": "#/components/responses/InternalError"
-          },
-          "503": {
-            "$ref": "#/components/responses/ServiceUnavailable"
-          }
-        }
-      }
-    },
     "/v1/subscriptions": {
       "get": {
         "tags": [
@@ -2968,7 +2933,7 @@
         ],
         "summary": "Subscribe",
         "operationId": "createSubscription",
-        "description": "Subscribes the caller to a catalog feed. The newest 100 entries arrive unread, older ones read. category_id and webhook_id must belong to the caller. POST /v1/feeds with a URL that is already in the catalog does the same and answers 200.",
+        "description": "Subscribes the caller to a catalog feed. The newest 100 entries arrive unread, older ones read. webhook_id must belong to the caller. POST /v1/feeds with a URL that is already in the catalog does the same and answers 200.",
         "requestBody": {
           "required": true,
           "content": {
@@ -3027,7 +2992,7 @@
         ],
         "summary": "Update subscription",
         "operationId": "updateSubscription",
-        "description": "Changes the caller's category/webhook for the feed; the catalog row (interval, rules) is edited through PUT /v1/feeds/{id}.",
+        "description": "Changes the caller's webhook for the feed; the catalog row (category, interval, rules) is edited through PUT /v1/feeds/{id}.",
         "requestBody": {
           "required": true,
           "content": {
@@ -3068,7 +3033,7 @@
         ],
         "summary": "Unsubscribe",
         "operationId": "deleteSubscription",
-        "description": "Removes the caller's subscription and their read/starred state for the feed. Other subscribers keep the feed; when the last one leaves, the catalog row and its entries are deleted. Any role.",
+        "description": "Removes the caller's subscription and their read/starred state for the feed. The feed stays in the catalog for everyone else. 409 when the caller follows the feed's category — unfollow the category instead. Any role.",
         "responses": {
           "200": {
             "description": "DeletedResponse"
@@ -3090,367 +3055,53 @@
           },
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
-          }
-        }
-      }
-    },
-    "/v1/collections": {
-      "get": {
-        "tags": [
-          "collections"
-        ],
-        "summary": "List collections",
-        "operationId": "listCollections",
-        "description": "Every collection with its feed and follower counts and whether the caller follows it. Any role.",
-        "responses": {
-          "200": {
-            "description": "CollectionList"
-          },
-          "400": {
-            "$ref": "#/components/responses/BadRequest"
-          },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
-          },
-          "429": {
-            "$ref": "#/components/responses/TooManyRequests"
-          },
-          "500": {
-            "$ref": "#/components/responses/InternalError"
-          },
-          "503": {
-            "$ref": "#/components/responses/ServiceUnavailable"
-          }
-        }
-      },
-      "post": {
-        "tags": [
-          "collections"
-        ],
-        "summary": "Create collection",
-        "operationId": "createCollection",
-        "description": "Creates an empty collection owned by the caller; add feeds with POST /v1/collections/{id}/feeds. Requires an editor principal.",
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CollectionWrite"
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": "CollectionResponse"
-          },
-          "400": {
-            "$ref": "#/components/responses/BadRequest"
-          },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
-          },
-          "429": {
-            "$ref": "#/components/responses/TooManyRequests"
-          },
-          "500": {
-            "$ref": "#/components/responses/InternalError"
-          },
-          "503": {
-            "$ref": "#/components/responses/ServiceUnavailable"
-          }
-        }
-      }
-    },
-    "/v1/collections/{id}": {
-      "parameters": [
-        {
-          "name": "id",
-          "in": "path",
-          "required": true,
-          "schema": {
-            "type": "integer",
-            "format": "int64",
-            "minimum": 1
-          },
-          "description": "Collection id."
-        }
-      ],
-      "get": {
-        "tags": [
-          "collections"
-        ],
-        "summary": "Get collection",
-        "operationId": "getCollection",
-        "description": "The collection with its feeds (catalog projection, `subscribed` per caller). Any role.",
-        "responses": {
-          "200": {
-            "description": "CollectionDetailResponse"
-          },
-          "400": {
-            "$ref": "#/components/responses/BadRequest"
-          },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
-          },
-          "404": {
-            "$ref": "#/components/responses/NotFound"
-          },
-          "429": {
-            "$ref": "#/components/responses/TooManyRequests"
-          },
-          "500": {
-            "$ref": "#/components/responses/InternalError"
-          },
-          "503": {
-            "$ref": "#/components/responses/ServiceUnavailable"
-          }
-        }
-      },
-      "put": {
-        "tags": [
-          "collections"
-        ],
-        "summary": "Update collection",
-        "operationId": "updateCollection",
-        "description": "Renames the collection or changes its description. Requires an editor principal; 403 unless the caller owns the collection or is an admin.",
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CollectionWrite"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "CollectionResponse"
-          },
-          "400": {
-            "$ref": "#/components/responses/BadRequest"
-          },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
-          },
-          "403": {
-            "$ref": "#/components/responses/Forbidden"
-          },
-          "404": {
-            "$ref": "#/components/responses/NotFound"
-          },
-          "429": {
-            "$ref": "#/components/responses/TooManyRequests"
-          },
-          "500": {
-            "$ref": "#/components/responses/InternalError"
-          },
-          "503": {
-            "$ref": "#/components/responses/ServiceUnavailable"
-          }
-        }
-      },
-      "delete": {
-        "tags": [
-          "collections"
-        ],
-        "summary": "Delete collection",
-        "operationId": "deleteCollection",
-        "description": "Deletes the collection. Followers keep the subscriptions it created (they are detached from the collection, not removed). Requires an editor principal; 403 unless the caller owns the collection or is an admin.",
-        "responses": {
-          "200": {
-            "description": "DeletedResponse"
-          },
-          "400": {
-            "$ref": "#/components/responses/BadRequest"
-          },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
-          },
-          "403": {
-            "$ref": "#/components/responses/Forbidden"
-          },
-          "404": {
-            "$ref": "#/components/responses/NotFound"
-          },
-          "429": {
-            "$ref": "#/components/responses/TooManyRequests"
-          },
-          "500": {
-            "$ref": "#/components/responses/InternalError"
-          },
-          "503": {
-            "$ref": "#/components/responses/ServiceUnavailable"
-          }
-        }
-      }
-    },
-    "/v1/collections/{id}/feeds": {
-      "parameters": [
-        {
-          "name": "id",
-          "in": "path",
-          "required": true,
-          "schema": {
-            "type": "integer",
-            "format": "int64",
-            "minimum": 1
-          },
-          "description": "Collection id."
-        }
-      ],
-      "post": {
-        "tags": [
-          "collections"
-        ],
-        "summary": "Add feeds to collection",
-        "operationId": "addCollectionFeeds",
-        "description": "Adds catalog feeds to the collection; every follower is subscribed to the new feeds into their follow category. Feeds already in the set are skipped (`added` counts the new ones); an unknown feed id is 400. Requires an editor principal; 403 unless the caller owns the collection or is an admin.",
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CollectionFeedsWrite"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "CollectionFeedsAddedResponse"
-          },
-          "400": {
-            "$ref": "#/components/responses/BadRequest"
-          },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
-          },
-          "403": {
-            "$ref": "#/components/responses/Forbidden"
-          },
-          "404": {
-            "$ref": "#/components/responses/NotFound"
-          },
-          "429": {
-            "$ref": "#/components/responses/TooManyRequests"
-          },
-          "500": {
-            "$ref": "#/components/responses/InternalError"
-          },
-          "503": {
-            "$ref": "#/components/responses/ServiceUnavailable"
-          }
-        }
-      }
-    },
-    "/v1/collections/{id}/feeds/{feedID}": {
-      "parameters": [
-        {
-          "name": "id",
-          "in": "path",
-          "required": true,
-          "schema": {
-            "type": "integer",
-            "format": "int64",
-            "minimum": 1
-          },
-          "description": "Collection id."
-        },
-        {
-          "name": "feedID",
-          "in": "path",
-          "required": true,
-          "schema": {
-            "type": "integer",
-            "format": "int64",
-            "minimum": 1
-          },
-          "description": "Catalog feed id."
-        }
-      ],
-      "delete": {
-        "tags": [
-          "collections"
-        ],
-        "summary": "Remove feed from collection",
-        "operationId": "removeCollectionFeed",
-        "description": "Removes the feed from the set and unsubscribes followers whose subscription came from this collection (unless another collection they follow still lists the feed); subscriptions made by hand stay. A feed left without readers and collections is deleted from the catalog. Requires an editor principal; 403 unless the caller owns the collection or is an admin.",
-        "responses": {
-          "200": {
-            "description": "DeletedResponse"
-          },
-          "400": {
-            "$ref": "#/components/responses/BadRequest"
-          },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
-          },
-          "403": {
-            "$ref": "#/components/responses/Forbidden"
-          },
-          "404": {
-            "$ref": "#/components/responses/NotFound"
-          },
-          "429": {
-            "$ref": "#/components/responses/TooManyRequests"
-          },
-          "500": {
-            "$ref": "#/components/responses/InternalError"
-          },
-          "503": {
-            "$ref": "#/components/responses/ServiceUnavailable"
-          }
-        }
-      }
-    },
-    "/v1/collections/{id}/follow": {
-      "parameters": [
-        {
-          "name": "id",
-          "in": "path",
-          "required": true,
-          "schema": {
-            "type": "integer",
-            "format": "int64",
-            "minimum": 1
-          },
-          "description": "Collection id."
-        }
-      ],
-      "post": {
-        "tags": [
-          "collections"
-        ],
-        "summary": "Follow collection",
-        "operationId": "followCollection",
-        "description": "Subscribes the caller to every feed of the collection into one category: `category_id` (one of the caller's) or, when omitted, the caller's category titled like the collection, created when missing. Feeds the caller already reads are left as they are. Feeds added to the collection later are subscribed automatically. Any role; 409 when already following.",
-        "requestBody": {
-          "required": false,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CollectionFollowWrite"
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": "CollectionFollowResponse"
-          },
-          "400": {
-            "$ref": "#/components/responses/BadRequest"
-          },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
-          },
-          "404": {
-            "$ref": "#/components/responses/NotFound"
           },
           "409": {
             "$ref": "#/components/responses/Conflict"
+          }
+        }
+      }
+    },
+    "/v1/categories/{id}/follow": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1
+          },
+          "description": "Category id."
+        }
+      ],
+      "post": {
+        "tags": [
+          "categories"
+        ],
+        "summary": "Follow category",
+        "operationId": "followCategory",
+        "description": "Reads the whole category: subscribes the caller to every feed in it now and to feeds editors add to it later (feeds moved out are dropped). Idempotent: following again returns feeds=0. Any role.",
+        "responses": {
+          "200": {
+            "description": "Following.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FollowResultResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
           },
           "429": {
             "$ref": "#/components/responses/TooManyRequests"
@@ -3465,14 +3116,21 @@
       },
       "delete": {
         "tags": [
-          "collections"
+          "categories"
         ],
-        "summary": "Unfollow collection",
-        "operationId": "unfollowCollection",
-        "description": "Removes the subscriptions this follow created (those covered by another followed collection are kept, as are subscriptions made by hand). Any role; 404 when not following.",
+        "summary": "Unfollow category",
+        "operationId": "unfollowCategory",
+        "description": "Stops reading the category: removes the follow and the caller's subscriptions to all of its feeds, including ones subscribed by hand earlier. Any role; 404 when not following.",
         "responses": {
           "200": {
-            "description": "CollectionUnfollowResponse"
+            "description": "Not following any more.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FollowResultResponse"
+                }
+              }
+            }
           },
           "400": {
             "$ref": "#/components/responses/BadRequest"
@@ -3762,7 +3420,8 @@
           },
           "category_id": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "Global category the feed sits in; omitted for «uncategorized»."
           },
           "interval_minutes": {
             "type": "integer",
@@ -3806,6 +3465,10 @@
             "type": "string",
             "format": "date-time",
             "description": "When the feed last delivered a new item (entry or hash-only record). Absent until the first one."
+          },
+          "subscribed": {
+            "type": "boolean",
+            "description": "Whether the caller reads this feed."
           }
         },
         "required": [
@@ -3815,7 +3478,8 @@
           "interval_minutes",
           "fetch_via_proxy",
           "tls_insecure",
-          "crawler"
+          "crawler",
+          "subscribed"
         ]
       },
       "FeedWrite": {
@@ -3833,7 +3497,8 @@
           "category_id": {
             "type": "integer",
             "format": "int64",
-            "nullable": true
+            "nullable": true,
+            "description": "Global category id; null = uncategorized. Moving a feed between categories re-subscribes followers: the old category's followers lose it, the new one's get it."
           },
           "interval_minutes": {
             "type": "integer",
@@ -3873,6 +3538,11 @@
           "entry_retention_days": {
             "type": "integer",
             "nullable": true
+          },
+          "subscribe_self": {
+            "type": "boolean",
+            "default": true,
+            "description": "POST only: add the feed to the caller's own subscriptions (default true)."
           }
         },
         "required": [
@@ -5611,70 +5281,12 @@
           "total"
         ]
       },
-      "CatalogFeed": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "integer",
-            "format": "int64"
-          },
-          "feed_url": {
-            "type": "string"
-          },
-          "feed_type": {
-            "type": "string"
-          },
-          "title": {
-            "type": "string"
-          },
-          "owner_id": {
-            "type": "integer",
-            "format": "int64",
-            "description": "User who added the feed; omitted when that user is gone."
-          },
-          "owner_name": {
-            "type": "string"
-          },
-          "subscriber_count": {
-            "type": "integer"
-          },
-          "subscribed": {
-            "type": "boolean",
-            "description": "Whether the caller reads this feed."
-          },
-          "last_entry_at": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "last_error": {
-            "type": "string"
-          },
-          "created_at": {
-            "type": "string",
-            "format": "date-time"
-          }
-        },
-        "required": [
-          "id",
-          "feed_url",
-          "feed_type",
-          "title",
-          "subscriber_count",
-          "subscribed",
-          "created_at"
-        ]
-      },
       "Subscription": {
         "type": "object",
         "properties": {
           "feed_id": {
             "type": "integer",
             "format": "int64"
-          },
-          "category_id": {
-            "type": "integer",
-            "format": "int64",
-            "nullable": true
           },
           "webhook_id": {
             "type": "integer",
@@ -5699,38 +5311,13 @@
             "format": "int64",
             "description": "Catalog feed id (POST only; ignored on PUT)."
           },
-          "category_id": {
-            "type": "integer",
-            "format": "int64",
-            "nullable": true,
-            "description": "One of the caller's categories."
-          },
           "webhook_id": {
             "type": "integer",
             "format": "int64",
             "nullable": true,
-            "description": "One of the caller's webhooks."
+            "description": "One of the caller's webhooks; the only per-user setting of a subscription (the category belongs to the feed)."
           }
         }
-      },
-      "CatalogList": {
-        "type": "object",
-        "properties": {
-          "data": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/CatalogFeed"
-            }
-          },
-          "total": {
-            "type": "integer",
-            "description": "Number of items in data (1 for single objects) or total rows for lists."
-          }
-        },
-        "required": [
-          "data",
-          "total"
-        ]
       },
       "SubscriptionList": {
         "type": "object",
@@ -5767,260 +5354,33 @@
           "total"
         ]
       },
-      "Collection": {
+      "FollowResult": {
         "type": "object",
         "properties": {
-          "id": {
+          "following": {
+            "type": "boolean"
+          },
+          "feeds": {
             "type": "integer",
-            "format": "int64"
-          },
-          "owner_id": {
-            "type": "integer",
-            "format": "int64",
-            "description": "Editor or admin who created the collection; omitted when that user is gone."
-          },
-          "owner_name": {
-            "type": "string"
-          },
-          "title": {
-            "type": "string"
-          },
-          "description": {
-            "type": "string"
-          },
-          "feed_count": {
-            "type": "integer"
-          },
-          "follower_count": {
-            "type": "integer"
-          },
-          "followed": {
-            "type": "boolean",
-            "description": "Whether the caller follows this collection."
-          },
-          "category_id": {
-            "type": "integer",
-            "format": "int64",
-            "nullable": true,
-            "description": "The caller's category the follow subscribes into; present only when followed."
-          },
-          "created_at": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "updated_at": {
-            "type": "string",
-            "format": "date-time"
+            "description": "How many subscriptions the call created (follow) or removed (unfollow)."
           }
         },
         "required": [
-          "id",
-          "title",
-          "feed_count",
-          "follower_count",
-          "followed",
-          "created_at",
-          "updated_at"
+          "following",
+          "feeds"
         ]
       },
-      "CollectionDetail": {
-        "allOf": [
-          {
-            "$ref": "#/components/schemas/Collection"
+      "FollowResultResponse": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/FollowResult"
           },
-          {
-            "type": "object",
-            "properties": {
-              "feeds": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/CatalogFeed"
-                }
-              }
-            },
-            "required": [
-              "feeds"
+          "total": {
+            "type": "integer",
+            "enum": [
+              1
             ]
-          }
-        ]
-      },
-      "CollectionWrite": {
-        "type": "object",
-        "properties": {
-          "title": {
-            "type": "string",
-            "maxLength": 200
-          },
-          "description": {
-            "type": "string",
-            "maxLength": 2000
-          }
-        },
-        "required": [
-          "title"
-        ]
-      },
-      "CollectionFeedsWrite": {
-        "type": "object",
-        "properties": {
-          "feed_ids": {
-            "type": "array",
-            "items": {
-              "type": "integer",
-              "format": "int64"
-            },
-            "minItems": 1,
-            "description": "Catalog feed ids."
-          }
-        },
-        "required": [
-          "feed_ids"
-        ]
-      },
-      "CollectionFollowWrite": {
-        "type": "object",
-        "properties": {
-          "category_id": {
-            "type": "integer",
-            "format": "int64",
-            "nullable": true,
-            "description": "One of the caller's categories; omitted — a category titled like the collection (created when missing)."
-          }
-        }
-      },
-      "CollectionFollowResult": {
-        "type": "object",
-        "properties": {
-          "subscribed": {
-            "type": "integer",
-            "description": "Subscriptions created by the follow."
-          },
-          "category_id": {
-            "type": "integer",
-            "format": "int64"
-          }
-        },
-        "required": [
-          "subscribed",
-          "category_id"
-        ]
-      },
-      "CollectionFeedsAdded": {
-        "type": "object",
-        "properties": {
-          "added": {
-            "type": "integer",
-            "description": "Feeds new to the collection."
-          }
-        },
-        "required": [
-          "added"
-        ]
-      },
-      "CollectionUnfollowResult": {
-        "type": "object",
-        "properties": {
-          "unsubscribed": {
-            "type": "integer",
-            "description": "Subscriptions removed by the unfollow."
-          }
-        },
-        "required": [
-          "unsubscribed"
-        ]
-      },
-      "CollectionList": {
-        "type": "object",
-        "properties": {
-          "data": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/Collection"
-            }
-          },
-          "total": {
-            "type": "integer",
-            "description": "Number of items in data (1 for single objects) or total rows for lists."
-          }
-        },
-        "required": [
-          "data",
-          "total"
-        ]
-      },
-      "CollectionResponse": {
-        "type": "object",
-        "properties": {
-          "data": {
-            "$ref": "#/components/schemas/Collection"
-          },
-          "total": {
-            "type": "integer",
-            "description": "Number of items in data (1 for single objects) or total rows for lists."
-          }
-        },
-        "required": [
-          "data",
-          "total"
-        ]
-      },
-      "CollectionDetailResponse": {
-        "type": "object",
-        "properties": {
-          "data": {
-            "$ref": "#/components/schemas/CollectionDetail"
-          },
-          "total": {
-            "type": "integer",
-            "description": "Number of items in data (1 for single objects) or total rows for lists."
-          }
-        },
-        "required": [
-          "data",
-          "total"
-        ]
-      },
-      "CollectionFollowResponse": {
-        "type": "object",
-        "properties": {
-          "data": {
-            "$ref": "#/components/schemas/CollectionFollowResult"
-          },
-          "total": {
-            "type": "integer",
-            "description": "Number of items in data (1 for single objects) or total rows for lists."
-          }
-        },
-        "required": [
-          "data",
-          "total"
-        ]
-      },
-      "CollectionFeedsAddedResponse": {
-        "type": "object",
-        "properties": {
-          "data": {
-            "$ref": "#/components/schemas/CollectionFeedsAdded"
-          },
-          "total": {
-            "type": "integer",
-            "description": "Number of items in data (1 for single objects) or total rows for lists."
-          }
-        },
-        "required": [
-          "data",
-          "total"
-        ]
-      },
-      "CollectionUnfollowResponse": {
-        "type": "object",
-        "properties": {
-          "data": {
-            "$ref": "#/components/schemas/CollectionUnfollowResult"
-          },
-          "total": {
-            "type": "integer",
-            "description": "Number of items in data (1 for single objects) or total rows for lists."
           }
         },
         "required": [

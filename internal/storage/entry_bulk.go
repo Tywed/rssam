@@ -113,22 +113,16 @@ WHERE feed_id = $1 AND user_id = $2 AND status = $3`
 
 // MarkAllCategoryEntriesRead marks all unread entries in a category as read.
 func (s *PostgresStore) MarkAllCategoryEntriesRead(ctx context.Context, userID, categoryID int64) (int, error) {
-	const qCat = `SELECT id FROM categories WHERE id = $1 AND user_id = $2`
-	var catID int64
-	if err := s.db.QueryRow(ctx, qCat, categoryID, userID).Scan(&catID); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return 0, ErrNotFound
-		}
-		return 0, fmt.Errorf("lookup category: %w", err)
+	if err := s.lookupCategory(ctx, categoryID); err != nil {
+		return 0, err
 	}
 	const q = `
 UPDATE user_entries ue
 SET status = $4, updated_at = now()
-FROM subscriptions s
-WHERE s.user_id = $2
-  AND s.category_id = $1
+FROM feeds f
+WHERE f.category_id = $1
   AND ue.user_id = $2
-  AND ue.feed_id = s.feed_id
+  AND ue.feed_id = f.id
   AND ue.status = $3`
 	cmd, err := s.db.Exec(ctx, q, categoryID, userID, EntryStatusUnread, EntryStatusRead)
 	if err != nil {

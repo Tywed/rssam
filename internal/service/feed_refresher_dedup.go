@@ -67,7 +67,7 @@ func (r *FeedRefresher) processEntriesDedupOnly(
 			}
 			perSub = append(perSub, subscriberFilters{
 				filters:  filters,
-				matchCtx: filter.MatchContext{FeedID: feedID, CategoryID: sub.CategoryID},
+				matchCtx: filter.MatchContext{FeedID: feedID, CategoryID: feed.CategoryID},
 			})
 		}
 	}

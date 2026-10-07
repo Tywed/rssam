@@ -298,6 +298,23 @@ html[data-theme="dark"] .feed-context-item.feed-context-danger:focus { backgroun
 .feed-meta { flex-shrink: 0; font-size: 0.72rem; max-width: 6rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .feed-actions { flex-shrink: 0; }
 .feed-actions form { margin: 0; display: inline; }
+.feed-sub, .cat-follow { flex-shrink: 0; width: 1.5rem; display: inline-flex; justify-content: center; align-self: center; }
+.feed-sub form, .cat-follow form { margin: 0; display: inline; }
+.feed-sub-btn {
+  width: 1.4rem; height: 1.4rem; padding: 0; line-height: 1; font-size: 0.85rem; cursor: pointer;
+  border: 1px solid var(--border); border-radius: 50%; background: #fff; color: var(--text-muted);
+}
+.feed-sub-btn:hover { border-color: var(--accent); color: var(--accent); }
+.feed-sub-btn.is-on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.feed-sub-btn.is-on:hover { background: #c0392b; border-color: #c0392b; }
+.feed-sub-locked { color: var(--accent); font-size: 0.85rem; opacity: .7; cursor: default; }
+.tree-feed-row.feed-unsubscribed .tree-label { color: var(--text-muted); }
+.cat-delete { margin: 0 0.35rem 0 0; align-self: center; }
+.cat-new-form { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem; }
+.cat-new-form input { flex: 1; min-width: 10rem; }
+.feeds-search { display: inline-flex; gap: 0.35rem; align-items: center; margin-left: auto; }
+.feeds-search input { width: 12rem; }
+.checkbox-list { display: flex; flex-wrap: wrap; gap: 0.35rem 1rem; }
 .feed-error-msg { padding: 0 0.65rem 0.35rem 2.5rem; margin: -0.15rem 0.2rem 0.25rem; color: #c0392b; font-size: 0.75rem; }
 .feeds-filters { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.85rem; }
 .feeds-filter {
@@ -760,6 +777,8 @@ html[data-theme="dark"] .feeds-filter:hover { background: #2a2a2a; }
 html[data-theme="dark"] a.admin-feeds-card:hover { background: #2a2a2a; }
 html[data-theme="dark"] .feeds-mgmt-tree { background: var(--bg-content); border-color: var(--border); }
 html[data-theme="dark"] .cat-actions-menu { background: var(--bg-content); border-color: var(--border); }
+html[data-theme="dark"] .feed-sub-btn { background: var(--bg-content); border-color: var(--border); color: var(--text-muted); }
+html[data-theme="dark"] .feed-sub-btn.is-on { background: var(--accent); border-color: var(--accent); color: #fff; }
 html[data-theme="dark"] .tree-row.feed-error,
 html[data-theme="dark"] .tree-feed-row.feed-error { color: #e74c3c; }
 html[data-theme="dark"] .feed-error-msg { color: #e74c3c; }

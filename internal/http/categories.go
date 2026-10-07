@@ -2,9 +2,11 @@
 package httpserver
 
 import (
+	"errors"
 	"net/http"
 	"strings"
 
+	"rssam/internal/auth"
 	"rssam/internal/storage"
 )
 
@@ -22,7 +24,7 @@ type categoryWriteRequest struct {
 	PollHours *string `json:"poll_hours"`
 }
 
-func (s *Server) applyCategoryPollHours(r *http.Request, userID int64, c *storage.Category, req categoryWriteRequest) error {
+func (s *Server) applyCategoryPollHours(r *http.Request, c *storage.Category, req categoryWriteRequest) error {
 	if req.PollHours == nil || s.pollHours == nil {
 		return nil
 	}
@@ -30,7 +32,7 @@ func (s *Server) applyCategoryPollHours(r *http.Request, userID int64, c *storag
 	if err != nil {
 		return err
 	}
-	if err := s.pollHours.SetCategoryPollHours(r.Context(), userID, c.ID, norm); err != nil {
+	if err := s.pollHours.SetCategoryPollHours(r.Context(), c.ID, norm); err != nil {
 		return err
 	}
 	c.PollHours = norm
@@ -41,8 +43,7 @@ func (s *Server) applyCategoryPollHours(r *http.Request, userID int64, c *storag
 }
 
 func (s *Server) handleListCategories(w http.ResponseWriter, r *http.Request) {
-	p, ok := requireStore(w, r, "", s.categories != nil, "category storage is not configured")
-	if !ok {
+	if _, ok := requireStore(w, r, "", s.categories != nil, "category storage is not configured"); !ok {
 		return
 	}
 	limit, offset, err := parseLimitOffset(r, 100, 10000)
@@ -50,7 +51,7 @@ func (s *Server) handleListCategories(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	categories, total, err := s.categories.ListCategories(r.Context(), p.UserID, limit, offset)
+	categories, total, err := s.categories.ListCategories(r.Context(), limit, offset)
 	if err != nil {
 		s.log.ErrorContext(r.Context(), "list categories failed", "err", err)
 		writeError(w, http.StatusInternalServerError, "internal server error")
@@ -69,8 +70,7 @@ func (s *Server) handleListCategories(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleCreateCategory(w http.ResponseWriter, r *http.Request) {
-	p, ok := requireStore(w, r, "", s.categories != nil, "category storage is not configured")
-	if !ok {
+	if _, ok := requireStore(w, r, auth.RoleEditor, s.categories != nil, "category storage is not configured"); !ok {
 		return
 	}
 	var req categoryWriteRequest
@@ -89,17 +89,17 @@ func (s *Server) handleCreateCategory(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	category, err := s.categories.CreateCategory(r.Context(), p.UserID, req.Title, strings.TrimSpace(req.Color))
+	category, err := s.categories.CreateCategory(r.Context(), req.Title, strings.TrimSpace(req.Color))
 	if err != nil {
-		s.log.ErrorContext(r.Context(), "create category failed", "err", err)
-		writeError(w, http.StatusInternalServerError, "internal server error")
+		s.categoryError(w, r, err, "create category failed")
 		return
 	}
-	if err := s.applyCategoryPollHours(r, p.UserID, &category, req); err != nil {
+	if err := s.applyCategoryPollHours(r, &category, req); err != nil {
 		s.log.ErrorContext(r.Context(), "set category poll_hours failed", "err", err)
 		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
+	s.audit.Record(r, storage.AuditCategoryCreate, "category", category.ID, map[string]any{"title": category.Title})
 	writeJSON(w, http.StatusCreated, listResponse[categoryDTO]{
 		Data:  categoryDTO{ID: category.ID, Title: category.Title, Color: category.Color, PollHours: category.PollHours},
 		Total: 1,
@@ -107,7 +107,7 @@ func (s *Server) handleCreateCategory(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleUpdateCategory(w http.ResponseWriter, r *http.Request) {
-	p, id, ok := requireStoreID(w, r, "", s.categories != nil, "category storage is not configured")
+	_, id, ok := requireStoreID(w, r, auth.RoleEditor, s.categories != nil, "category storage is not configured")
 	if !ok {
 		return
 	}
@@ -127,16 +127,17 @@ func (s *Server) handleUpdateCategory(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	category, err := s.categories.UpdateCategory(r.Context(), p.UserID, id, req.Title, strings.TrimSpace(req.Color))
+	category, err := s.categories.UpdateCategory(r.Context(), id, req.Title, strings.TrimSpace(req.Color))
 	if err != nil {
-		s.storeError(w, r, err, "category not found", "update category failed")
+		s.categoryError(w, r, err, "update category failed")
 		return
 	}
-	if err := s.applyCategoryPollHours(r, p.UserID, &category, req); err != nil {
+	if err := s.applyCategoryPollHours(r, &category, req); err != nil {
 		s.log.ErrorContext(r.Context(), "set category poll_hours failed", "err", err)
 		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
+	s.audit.Record(r, storage.AuditCategoryUpdate, "category", category.ID, map[string]any{"title": category.Title})
 	writeJSON(w, http.StatusOK, listResponse[categoryDTO]{
 		Data:  categoryDTO{ID: category.ID, Title: category.Title, Color: category.Color, PollHours: category.PollHours},
 		Total: 1,
@@ -144,13 +145,59 @@ func (s *Server) handleUpdateCategory(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleDeleteCategory(w http.ResponseWriter, r *http.Request) {
+	_, id, ok := requireStoreID(w, r, auth.RoleEditor, s.categories != nil, "category storage is not configured")
+	if !ok {
+		return
+	}
+	if err := s.categories.DeleteCategory(r.Context(), id); err != nil {
+		s.categoryError(w, r, err, "delete category failed")
+		return
+	}
+	s.audit.Record(r, storage.AuditCategoryDelete, "category", id, nil)
+	writeJSON(w, http.StatusOK, listResponse[deletedDTO]{Data: deletedDTO{Deleted: true}, Total: 1})
+}
+
+type followDTO struct {
+	Following bool `json:"following"`
+	// Feeds is how many subscriptions the call created or removed.
+	Feeds int `json:"feeds"`
+}
+
+func (s *Server) handleFollowCategory(w http.ResponseWriter, r *http.Request) {
 	p, id, ok := requireStoreID(w, r, "", s.categories != nil, "category storage is not configured")
 	if !ok {
 		return
 	}
-	if err := s.categories.DeleteCategory(r.Context(), p.UserID, id); err != nil {
-		s.storeError(w, r, err, "category not found", "delete category failed")
+	n, err := s.categories.FollowCategory(r.Context(), p.UserID, id)
+	if err != nil {
+		s.categoryError(w, r, err, "follow category failed")
 		return
 	}
-	writeJSON(w, http.StatusOK, listResponse[deletedDTO]{Data: deletedDTO{Deleted: true}, Total: 1})
+	s.audit.Record(r, storage.AuditCategoryFollow, "category", id, map[string]any{"feeds": n})
+	writeJSON(w, http.StatusOK, listResponse[followDTO]{Data: followDTO{Following: true, Feeds: n}, Total: 1})
+}
+
+func (s *Server) handleUnfollowCategory(w http.ResponseWriter, r *http.Request) {
+	p, id, ok := requireStoreID(w, r, "", s.categories != nil, "category storage is not configured")
+	if !ok {
+		return
+	}
+	n, err := s.categories.UnfollowCategory(r.Context(), p.UserID, id)
+	if err != nil {
+		s.categoryError(w, r, err, "unfollow category failed")
+		return
+	}
+	s.audit.Record(r, storage.AuditCategoryUnfollow, "category", id, map[string]any{"feeds": n})
+	writeJSON(w, http.StatusOK, listResponse[followDTO]{Data: followDTO{Following: false, Feeds: n}, Total: 1})
+}
+
+func (s *Server) categoryError(w http.ResponseWriter, r *http.Request, err error, logMsg string) {
+	switch {
+	case errors.Is(err, storage.ErrDuplicateCategory):
+		writeError(w, http.StatusConflict, "category title already exists")
+	case errors.Is(err, storage.ErrCategoryNotEmpty):
+		writeError(w, http.StatusConflict, "category has feeds")
+	default:
+		s.storeError(w, r, err, "category not found", logMsg)
+	}
 }

@@ -289,9 +289,6 @@ func (s *PostgresStore) DeleteUser(ctx context.Context, id int64) error {
 		if _, err := tx.Exec(ctx, `DELETE FROM users WHERE id = $1`, id); err != nil {
 			return fmt.Errorf("delete user: %w", err)
 		}
-		if _, err := tx.Exec(ctx, `DELETE FROM feeds f WHERE `+orphanFeedCond); err != nil {
-			return fmt.Errorf("delete user: orphan feeds: %w", err)
-		}
 		return nil
 	})
 }

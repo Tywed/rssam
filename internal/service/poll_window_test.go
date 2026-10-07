@@ -25,7 +25,7 @@ func (m *memPollHours) GetCategoryPollHours(_ context.Context, id int64) (string
 	return v, nil
 }
 
-func (m *memPollHours) SetCategoryPollHours(context.Context, int64, int64, string) error { return nil }
+func (m *memPollHours) SetCategoryPollHours(context.Context, int64, string) error { return nil }
 
 // closedWindow is a 1-hour window that starts 2 hours from now (local time),
 // so "now" is always outside it and the next opening is ~2 h away.

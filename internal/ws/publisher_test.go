@@ -54,8 +54,8 @@ func TestPublisher_NewEntriesAreTenantScopedAndMinimal(t *testing.T) {
 
 	pub := NewPublisher(nil, hub, stubCounter{}, nil)
 	catID := int64(3)
-	feed := storage.Feed{ID: 10, OwnerID: 1, Title: "Owner feed"}
-	subs := []storage.Subscription{{UserID: 1, FeedID: 10, CategoryID: &catID}}
+	feed := storage.Feed{ID: 10, OwnerID: 1, Title: "Owner feed", CategoryID: &catID}
+	subs := []storage.Subscription{{UserID: 1, FeedID: 10}}
 	secret := "SECRET-BODY-MUST-NOT-LEAK"
 	pub.PublishNewEntries(context.Background(), feed, subs, []storage.Entry{{
 		ID: 100, FeedID: 10, Title: "hello", URL: "https://example.com/a", Content: secret, Hash: "deadbeef",
@@ -96,12 +96,9 @@ func TestPublisher_NewEntriesFanOutToEverySubscriber(t *testing.T) {
 	stranger := newAttachedClient(t, hub, 3)
 
 	pub := NewPublisher(nil, hub, stubCounter{}, nil)
-	ownerCat, readerCat := int64(3), int64(8)
-	feed := storage.Feed{ID: 10, OwnerID: 1, Title: "Shared"}
-	subs := []storage.Subscription{
-		{UserID: 1, FeedID: 10, CategoryID: &ownerCat},
-		{UserID: 2, FeedID: 10, CategoryID: &readerCat},
-	}
+	catID := int64(3)
+	feed := storage.Feed{ID: 10, OwnerID: 1, Title: "Shared", CategoryID: &catID}
+	subs := []storage.Subscription{{UserID: 1, FeedID: 10}, {UserID: 2, FeedID: 10}}
 	pub.PublishNewEntries(context.Background(), feed, subs, []storage.Entry{{ID: 100, FeedID: 10, Title: "hello"}})
 
 	if got := drain(stranger); len(got) != 0 {
@@ -111,7 +108,7 @@ func TestPublisher_NewEntriesFanOutToEverySubscriber(t *testing.T) {
 		name  string
 		cl    *Client
 		catID string
-	}{{"owner", owner, `"category_id":3`}, {"reader", reader, `"category_id":8`}} {
+	}{{"owner", owner, `"category_id":3`}, {"reader", reader, `"category_id":3`}} {
 		got := drain(c.cl)
 		if len(got) < 2 {
 			t.Fatalf("%s expected new_entry + counters, got %v", c.name, got)

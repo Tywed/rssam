@@ -9,31 +9,56 @@ import (
 	"rssam/internal/reader/telegram"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"rssam/internal/auth"
 	"rssam/internal/reader"
 	"rssam/internal/storage"
 )
 
-func (h *Handler) loadFeedsListPage(r *http.Request, data *pageData, userID int64, filter string) error {
+// loadFeedsListPage fills the subscriptions page. scope "" shows the whole
+// catalog with Subscribed per feed, "mine" only the user's feeds; filter
+// errors/inactive and a search query give a flat list instead of the tree.
+func (h *Handler) loadFeedsListPage(r *http.Request, data *pageData, userID int64, scope, filter, query string) error {
+	data.FeedsScope = scope
 	data.FeedsFilter = filter
+	data.SearchQuery = query
 	ctx := r.Context()
 	if h.cfg.Feeds == nil {
 		return nil
 	}
+	h.loadFollowState(r, data, userID)
 
 	if counts, err := h.cfg.Feeds.FeedCountsByCategory(ctx, userID); err == nil {
 		data.TotalFeedCount = counts.Total
-		if filter == "" {
+		if scope == "mine" {
 			data.ListCategoryFeedCounts = counts.ByCategory
 			data.ListUncategorizedFeedCount = counts.Uncategorized
 		}
+	}
+	if scope == "" {
+		counts, err := h.cfg.Feeds.CatalogCountsByCategory(ctx)
+		if err != nil {
+			return err
+		}
+		data.ListCategoryFeedCounts = counts.ByCategory
+		data.ListUncategorizedFeedCount = counts.Uncategorized
+		data.CatalogFeedCount = counts.Total
 	}
 	if errCount, inactiveCount, err := h.cfg.Feeds.CountFeedStatuses(ctx, userID); err == nil {
 		data.ErrorFeedCount = errCount
 		data.InactiveFeedCount = inactiveCount
 	}
 
+	if query != "" {
+		feeds, err := h.cfg.Feeds.SearchFeeds(ctx, userID, storage.SearchFeedsFilter{Query: query, Limit: storage.MaxFeedSearchLimit, Catalog: scope == ""})
+		if err != nil {
+			return err
+		}
+		data.ListFeeds = feeds
+		data.Total = len(feeds)
+		return nil
+	}
 	if filter == "errors" || filter == "inactive" {
 		limit, offset, page := parseFeedsListPage(r)
 		feeds, total, err := h.cfg.Feeds.ListFeedsByStatus(ctx, userID, filter, limit, offset)
@@ -49,44 +74,81 @@ func (h *Handler) loadFeedsListPage(r *http.Request, data *pageData, userID int6
 		return nil
 	}
 
-	if data.TotalFeedCount > sidebarLazyFeedThreshold {
+	treeTotal := data.CatalogFeedCount
+	if scope == "mine" {
+		treeTotal = data.TotalFeedCount
+	}
+	if treeTotal > sidebarLazyFeedThreshold {
 		data.FeedsTreeLazy = true
 		return nil
 	}
-
-	feeds, total, err := h.cfg.Feeds.ListFeeds(ctx, userID, storage.NoLimit, 0)
+	var feeds []storage.Feed
+	var err error
+	if scope == "mine" {
+		feeds, _, err = h.cfg.Feeds.ListFeeds(ctx, userID, storage.NoLimit, 0)
+	} else {
+		feeds, _, err = h.cfg.Feeds.CatalogFeeds(ctx, userID, nil, storage.NoLimit, 0)
+	}
 	if err != nil {
 		return err
-	}
-	if data.TotalFeedCount == 0 {
-		data.TotalFeedCount = total
 	}
 	if data.ListCategoryFeedCounts == nil {
 		data.ListCategoryFeedCounts, data.ListUncategorizedFeedCount = categoryFeedCounts(feeds)
 	}
-	if data.ErrorFeedCount == 0 && data.InactiveFeedCount == 0 {
-		data.ErrorFeedCount, data.InactiveFeedCount = countFeedStatuses(feeds)
-	}
 	data.ListFeeds = feeds
 	return nil
+}
+
+// loadFollowState: which categories the user follows and how many readers
+// each category and feed has (the counts are shown to editors only).
+func (h *Handler) loadFollowState(r *http.Request, data *pageData, userID int64) {
+	if h.cfg.Categories == nil {
+		return
+	}
+	ctx := r.Context()
+	data.FollowedCategories, _ = h.cfg.Categories.ListFollowedCategories(ctx, userID)
+	if !data.CanEdit {
+		return
+	}
+	data.CategoryFollowerCounts, _ = h.cfg.Categories.CategoryFollowerCounts(ctx)
+	if h.cfg.Subscriptions != nil {
+		data.FeedSubscriberCounts, _ = h.cfg.Subscriptions.FeedSubscriberCounts(ctx)
+	}
+}
+
+func feedsListParams(r *http.Request) (scope, filter, query string) {
+	q := r.URL.Query()
+	if q.Get("scope") == "mine" {
+		scope = "mine"
+	}
+	filter = strings.TrimSpace(q.Get("filter"))
+	if filter != "errors" && filter != "inactive" {
+		filter = ""
+	}
+	query = strings.TrimSpace(q.Get("q"))
+	if utf8.RuneCountInString(query) < storage.MinFeedSearchQueryRunes {
+		query = ""
+	}
+	return scope, filter, query
 }
 
 func (h *Handler) handleFeedsList(w http.ResponseWriter, r *http.Request) {
 	p, _ := principal(r)
 	data := h.baseData(r, "settings")
 	data.SettingsSection = "feeds"
-	filter := strings.TrimSpace(r.URL.Query().Get("filter"))
-	if filter != "errors" && filter != "inactive" {
-		filter = ""
-	}
-	if err := h.loadFeedsListPage(r, &data, p.UserID, filter); err != nil {
+	scope, filter, query := feedsListParams(r)
+	if err := h.loadFeedsListPage(r, &data, p.UserID, scope, filter, query); err != nil {
+		h.log.ErrorContext(r.Context(), "feeds page failed", "err", err)
 		http.Error(w, "list feeds failed", http.StatusInternalServerError)
 		return
 	}
 	if p.CanEdit() {
 		h.loadFeedFormWebhooks(r, &data)
 	}
-	data.Title = "Ленты"
+	if msg, errMsg := feedsFlash(r); msg != "" || errMsg != "" {
+		data.FlashMsg, data.FlashErr = msg, errMsg
+	}
+	data.Title = "Подписки"
 	h.render(w, r, "feeds_list", data)
 }
 
@@ -130,19 +192,20 @@ func (h *Handler) handleFeedCreate(w http.ResponseWriter, r *http.Request) {
 	if params.Title == "" {
 		params.Title = params.FeedURL
 	}
+	params.SkipOwnerSubscription = r.FormValue("subscribe_self") == "0"
 	feed, err := h.cfg.Feeds.CreateFeed(r.Context(), p.UserID, params)
 	if errors.Is(err, storage.ErrDuplicateFeedURL) && h.cfg.Subscriptions != nil {
-		feed, err = h.cfg.Subscriptions.SubscribeByURL(r.Context(), p.UserID, params.FeedURL, storage.SubscriptionParams{CategoryID: params.CategoryID, WebhookID: params.WebhookID})
+		feed, err = h.cfg.Subscriptions.SubscribeByURL(r.Context(), p.UserID, params.FeedURL, storage.SubscriptionParams{WebhookID: params.WebhookID})
 		if err == nil {
 			h.cfg.Audit.Record(r, storage.AuditSubscriptionCreate, "feed", feed.ID, map[string]any{"url": feed.FeedURL})
-			http.Redirect(w, r, withQueryParam("/ui/catalog", "subscribed", feed.Title), http.StatusFound)
+			feedsRedirect(w, r, "/ui/feeds", feedsMsgSubscribed, 0)
 			return
 		}
 	}
 	if err != nil {
 		switch {
 		case errors.Is(err, storage.ErrAlreadySubscribed):
-			h.renderFeedFormError(w, r, params, "Вы уже подписаны на эту ленту")
+			h.renderFeedFormError(w, r, params, "Эта лента уже есть в каталоге и в ваших подписках")
 		case errors.Is(err, storage.ErrInvalidReference):
 			h.renderFeedFormError(w, r, params, "Категория или вебхук не найдены")
 		default:
@@ -151,7 +214,13 @@ func (h *Handler) handleFeedCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.cfg.Audit.Record(r, storage.AuditFeedCreate, "feed", feed.ID, map[string]any{"url": feed.FeedURL})
-	http.Redirect(w, r, "/ui/feeds", http.StatusFound)
+	readers := 0
+	if params.CategoryID != nil && h.cfg.Categories != nil {
+		if counts, err := h.cfg.Categories.CategoryFollowerCounts(r.Context()); err == nil {
+			readers = counts[*params.CategoryID]
+		}
+	}
+	feedsRedirect(w, r, "/ui/feeds", feedsMsgFeedAdded, readers)
 }
 
 func (h *Handler) handleFeedShow(w http.ResponseWriter, r *http.Request) {
@@ -161,7 +230,7 @@ func (h *Handler) handleFeedShow(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	feed, err := h.cfg.Feeds.GetFeed(r.Context(), p.UserID, id)
+	feed, err := h.catalogFeed(r, p.UserID, id)
 	if err != nil {
 		http.NotFound(w, r)
 		return
@@ -170,8 +239,19 @@ func (h *Handler) handleFeedShow(w http.ResponseWriter, r *http.Request) {
 	data.SettingsSection = "feeds"
 	data.Feed = feed
 	data.Title = feed.Title
+	h.loadFollowState(r, &data, p.UserID)
 	h.loadFeedSubscribers(r, &data, id)
 	h.render(w, r, "feeds_show", data)
+}
+
+// catalogFeed is the user's view of the feed when subscribed, else the
+// catalog row (Subscribed=false): the catalog is visible to every user.
+func (h *Handler) catalogFeed(r *http.Request, userID, id int64) (storage.Feed, error) {
+	feed, err := h.cfg.Feeds.GetFeed(r.Context(), userID, id)
+	if errors.Is(err, storage.ErrNotFound) {
+		return h.cfg.Feeds.GetFeedByID(r.Context(), id)
+	}
+	return feed, err
 }
 
 func (h *Handler) loadFeedSubscribers(r *http.Request, data *pageData, feedID int64) {
@@ -193,7 +273,7 @@ func (h *Handler) handleFeedEdit(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	feed, err := h.cfg.Feeds.GetFeed(r.Context(), p.UserID, id)
+	feed, err := h.catalogFeed(r, p.UserID, id)
 	if err != nil {
 		http.NotFound(w, r)
 		return
@@ -236,7 +316,7 @@ func (h *Handler) handleFeedUpdate(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusUnprocessableEntity)
 		return
 	}
-	existing, _ := h.cfg.Feeds.GetFeed(r.Context(), p.UserID, id)
+	existing, _ := h.cfg.Feeds.GetFeedByID(r.Context(), id)
 	bridgeState := existing.BridgeState
 	if existing.FeedType == reader.FeedTypeTelegram || reader.DetectFeedTypeFromURL(params.FeedURL) == reader.FeedTypeTelegram {
 		bridgeState = bridgeStateFromTelegramForm(r, existing.BridgeState)
@@ -299,7 +379,7 @@ func (h *Handler) handleFeedRefresh(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	if _, err := h.cfg.Feeds.GetFeed(r.Context(), p.UserID, id); err != nil {
+	if _, err := h.catalogFeed(r, p.UserID, id); err != nil {
 		http.NotFound(w, r)
 		return
 	}
@@ -369,7 +449,7 @@ func (h *Handler) handleFeedsImport(w http.ResponseWriter, r *http.Request) {
 				data.FlashErr += fmt.Sprintf("; … ещё %d", n-maxShown)
 			}
 		}
-		_ = h.loadFeedsListPage(r, &data, p.UserID, "")
+		_ = h.loadFeedsListPage(r, &data, p.UserID, "", "", "")
 		h.render(w, r, "feeds_list", data)
 		return
 	}
@@ -530,39 +610,40 @@ func (h *Handler) renderFeedsCategoryTree(w http.ResponseWriter, r *http.Request
 		return
 	}
 	limit, offset := parseCategoryFeedsPage(r)
-	filter := strings.TrimSpace(r.URL.Query().Get("filter"))
-	if filter != "errors" && filter != "inactive" {
-		filter = ""
-	}
+	scope, filter, _ := feedsListParams(r)
 
 	var feeds []storage.Feed
 	total := 0
-	if filter != "" {
-		allFeeds, err := h.cfg.Feeds.ListFeedsByCategory(r.Context(), userID, categoryID)
-		if err != nil {
-			http.Error(w, "list feeds failed", http.StatusInternalServerError)
-			return
+	var err error
+	switch {
+	case filter != "":
+		var allFeeds []storage.Feed
+		allFeeds, err = h.cfg.Feeds.ListFeedsByCategory(r.Context(), userID, categoryID)
+		if err == nil {
+			filtered := filterFeeds(allFeeds, filter)
+			total = len(filtered)
+			feeds = sliceFeedsPage(filtered, limit, offset)
 		}
-		filtered := filterFeeds(allFeeds, filter)
-		total = len(filtered)
-		feeds = sliceFeedsPage(filtered, limit, offset)
-	} else {
-		var err error
+	case scope == "mine":
 		feeds, total, err = h.cfg.Feeds.ListFeedsByCategoryPaginated(r.Context(), userID, categoryID, limit, offset)
-		if err != nil {
-			http.Error(w, "list feeds failed", http.StatusInternalServerError)
-			return
-		}
+	default:
+		feeds, total, err = h.cfg.Feeds.CatalogFeeds(r.Context(), userID, &categoryID, limit, offset)
+	}
+	if err != nil {
+		http.Error(w, "list feeds failed", http.StatusInternalServerError)
+		return
 	}
 	data := pageData{
 		Feeds:       feeds,
 		CSRFToken:   h.csrfToken(r),
 		FeedsFilter: filter,
+		FeedsScope:  scope,
 		CanEdit:     principalCanEdit(r),
 		Limit:       limit,
 		Offset:      offset,
 		Total:       total,
 	}
+	h.loadFollowState(r, &data, userID)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := h.templates.ExecuteTemplate(w, "feeds_mgmt_category_feeds", data); err != nil {
 		h.log.ErrorContext(r.Context(), "feeds tree template failed", "err", err)

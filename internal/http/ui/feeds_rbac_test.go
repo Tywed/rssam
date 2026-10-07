@@ -33,7 +33,7 @@ func newFeedsRBACHandlerQuota(t *testing.T, role string, limits quota.Limits) ht
 		Sessions: &uiMemSessions{sessions: map[string]storage.Session{}},
 		Entries:  uiMemEntries{},
 		Feeds: &uiMemFeeds{feeds: []storage.Feed{
-			{ID: 1, Title: "News Feed", CategoryID: &catID},
+			{ID: 1, Title: "News Feed", CategoryID: &catID, Subscribed: true},
 		}},
 		Categories: &uiMemCategories{cats: []storage.Category{{ID: catID, Title: "News"}}},
 		CSRFSecret: "csrf-test",
@@ -59,11 +59,14 @@ func TestFeedsRBAC_NonAdminCannotMutateSubscriptions(t *testing.T) {
 		t.Fatalf("list: status=%d", rec.Code)
 	}
 	body := rec.Body.String()
-	if strings.Contains(body, "Добавить") || strings.Contains(body, "Экспорт OPML") || strings.Contains(body, "Импорт OPML") {
+	if strings.Contains(body, "+ Лента") || strings.Contains(body, "+ Категория") || strings.Contains(body, "Экспорт OPML") || strings.Contains(body, "Импорт OPML") {
 		t.Fatal("user feeds list must not show subscription admin actions")
 	}
-	if !strings.Contains(body, `href="/ui/categories"`) || strings.Contains(body, `href="/ui/filters"`) || strings.Contains(body, `href="/ui/webhooks"`) {
-		t.Fatal("reader settings nav: categories yes, filters/webhooks no")
+	if strings.Contains(body, `href="/ui/categories"`) || strings.Contains(body, `href="/ui/filters"`) || strings.Contains(body, `href="/ui/webhooks"`) {
+		t.Fatal("reader settings nav must not link categories/filters/webhooks")
+	}
+	if !strings.Contains(body, `action="/ui/categories/10/follow"`) || !strings.Contains(body, `action="/ui/feeds/1/unsubscribe"`) {
+		t.Fatal("reader must get follow/subscribe controls")
 	}
 	if strings.Contains(body, "/ui/feeds/1/edit") {
 		t.Fatal("user must not get edit links")
@@ -90,8 +93,11 @@ func TestFeedsRBAC_NonAdminCannotMutateSubscriptions(t *testing.T) {
 	if rec := post("/ui/feeds/1/delete"); rec.Code != http.StatusForbidden {
 		t.Fatalf("delete feed: status=%d", rec.Code)
 	}
-	if rec := post("/ui/categories"); rec.Code == http.StatusForbidden {
-		t.Fatalf("reader creates own category: status=%d", rec.Code)
+	if rec := post("/ui/categories"); rec.Code != http.StatusForbidden {
+		t.Fatalf("reader creates category: status=%d", rec.Code)
+	}
+	if rec := post("/ui/categories/10/follow"); rec.Code != http.StatusFound {
+		t.Fatalf("reader follows category: status=%d", rec.Code)
 	}
 	if rec := post("/ui/filters"); rec.Code != http.StatusForbidden {
 		t.Fatalf("create filter: status=%d", rec.Code)
@@ -119,7 +125,7 @@ func TestFeedsRBAC_NonAdminCannotMutateSubscriptions(t *testing.T) {
 	if rec := get("/ui/feeds/export"); rec.Code != http.StatusForbidden {
 		t.Fatalf("export: status=%d", rec.Code)
 	}
-	if rec := get("/ui/categories"); rec.Code != http.StatusOK {
+	if rec := get("/ui/categories"); rec.Code != http.StatusForbidden {
 		t.Fatalf("categories: status=%d", rec.Code)
 	}
 	if rec := get("/ui/filters"); rec.Code != http.StatusForbidden {
@@ -159,7 +165,7 @@ func TestFeedsRBAC_AdminKeepsSubscriptionControls(t *testing.T) {
 		t.Fatalf("list: status=%d", rec.Code)
 	}
 	body := rec.Body.String()
-	if !strings.Contains(body, "Добавить") || !strings.Contains(body, "Экспорт OPML") || !strings.Contains(body, "Импорт OPML") {
+	if !strings.Contains(body, "+ Лента") || !strings.Contains(body, "+ Категория") || !strings.Contains(body, "Экспорт OPML") || !strings.Contains(body, "Импорт OPML") {
 		t.Fatal("admin feeds list should show subscription controls")
 	}
 	if !strings.Contains(body, `href="/ui/categories"`) {
@@ -184,7 +190,7 @@ func TestFeedsRBAC_EditorManagesCatalogOnly(t *testing.T) {
 		t.Fatalf("list: status=%d", rec.Code)
 	}
 	body := rec.Body.String()
-	for _, want := range []string{"Добавить", "Экспорт OPML", "Импорт OPML", `href="/ui/filters"`, `href="/ui/webhooks"`, "/ui/feeds/1/edit"} {
+	for _, want := range []string{"+ Лента", "Экспорт OPML", "Импорт OPML", `href="/ui/filters"`, `href="/ui/webhooks"`, "/ui/feeds/1/edit"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("editor feeds list must contain %q", want)
 		}

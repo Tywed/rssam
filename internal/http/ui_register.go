@@ -24,7 +24,6 @@ func (s *Server) registerUI(mux *http.ServeMux) {
 		CategoryPollHours: s.pollHours,
 		Feeds:             s.feeds,
 		Subscriptions:     s.subscriptions,
-		Collections:       s.collections,
 		Entries:           s.entries,
 		Filters:           s.filters,
 		FilterMatches:     s.filterMatches,

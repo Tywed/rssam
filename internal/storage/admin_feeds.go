@@ -35,6 +35,8 @@ type AdminFeedSummary struct {
 	// the shared catalog (estimates, like TotalEntries).
 	TotalSubscriptions int
 	TotalUserEntries   int
+	// TotalCategoryFollows is the number of (user, category) follow rows.
+	TotalCategoryFollows int
 }
 
 // PollFeedJobCounts is a snapshot of poll_feed jobs in the queue.
@@ -281,7 +283,8 @@ SELECT
   COALESCE((SELECT GREATEST(reltuples, 0)::bigint FROM pg_class WHERE oid = 'public.entries'::regclass), 0)::int,
   COALESCE((SELECT COUNT(*)::int FROM user_entries WHERE status = 'unread'), 0),
   COALESCE((SELECT COUNT(*)::int FROM subscriptions), 0),
-  COALESCE((SELECT GREATEST(reltuples, 0)::bigint FROM pg_class WHERE oid = 'public.user_entries'::regclass), 0)::int
+  COALESCE((SELECT GREATEST(reltuples, 0)::bigint FROM pg_class WHERE oid = 'public.user_entries'::regclass), 0)::int,
+  COALESCE((SELECT COUNT(*)::int FROM category_followers), 0)
 FROM feeds`
 	var sum AdminFeedSummary
 	err := s.db.QueryRow(ctx, q, silentSeconds).Scan(
@@ -295,6 +298,7 @@ FROM feeds`
 		&sum.TotalUnread,
 		&sum.TotalSubscriptions,
 		&sum.TotalUserEntries,
+		&sum.TotalCategoryFollows,
 	)
 	if err != nil {
 		return AdminFeedSummary{}, fmt.Errorf("admin feed summary: %w", err)

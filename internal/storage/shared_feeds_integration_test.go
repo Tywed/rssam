@@ -21,9 +21,12 @@ func TestIntegration_SharedFeed_SubscribeBackfillAndFanOut(t *testing.T) {
 	ctx := context.Background()
 	alice := newIntegrationUser(t, store, "sf_alice")
 	bob := newIntegrationUser(t, store, "sf_bob")
-	bobCat, _ := store.CreateCategory(ctx, bob.ID, "Bob", "")
+	cat, _ := store.CreateCategory(ctx, "Shared", "")
 
 	feed, entries := newIntegrationFeedWithEntries(t, store, alice.ID, SubscribeUnreadBackfill+20)
+	if _, err := store.UpdateFeed(ctx, alice.ID, UpdateFeedParams{ID: feed.ID, FeedURL: feed.FeedURL, Title: feed.Title, IntervalMinutes: 60, CategoryID: &cat.ID}); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := store.CreateFeed(ctx, bob.ID, CreateFeedParams{FeedURL: feed.FeedURL, FeedType: "rss", IntervalMinutes: 60}); !errors.Is(err, ErrDuplicateFeedURL) {
 		t.Fatalf("second catalog row for the same URL: err=%v", err)
 	}
@@ -34,8 +37,8 @@ func TestIntegration_SharedFeed_SubscribeBackfillAndFanOut(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	sub, err := store.Subscribe(ctx, bob.ID, feed.ID, SubscriptionParams{CategoryID: &bobCat.ID})
-	if err != nil || sub.UserID != bob.ID || sub.CategoryID == nil || *sub.CategoryID != bobCat.ID {
+	sub, err := store.Subscribe(ctx, bob.ID, feed.ID, SubscriptionParams{})
+	if err != nil || sub.UserID != bob.ID || sub.FeedID != feed.ID {
 		t.Fatalf("subscribe: %+v err=%v", sub, err)
 	}
 	if _, err := store.Subscribe(ctx, bob.ID, feed.ID, SubscriptionParams{}); !errors.Is(err, ErrAlreadySubscribed) {
@@ -47,15 +50,12 @@ func TestIntegration_SharedFeed_SubscribeBackfillAndFanOut(t *testing.T) {
 	if n, _ := store.CountUnreadByFeed(ctx, alice.ID, feed.ID); n != SubscribeUnreadBackfill+19 {
 		t.Fatalf("alice unread changed by bob's subscription: %d", n)
 	}
-	if n, _ := store.CountUnreadByCategory(ctx, bob.ID, bobCat.ID); n != SubscribeUnreadBackfill {
+	if n, _ := store.CountUnreadByCategory(ctx, bob.ID, cat.ID); n != SubscribeUnreadBackfill {
 		t.Fatalf("bob category unread = %d", n)
 	}
 	got, err := store.GetFeed(ctx, bob.ID, feed.ID)
-	if err != nil || got.CategoryID == nil || *got.CategoryID != bobCat.ID || got.OwnerID != alice.ID {
+	if err != nil || got.CategoryID == nil || *got.CategoryID != cat.ID || got.OwnerID != alice.ID || !got.Subscribed {
 		t.Fatalf("bob's view of the feed: %+v err=%v", got, err)
-	}
-	if aliceView, _ := store.GetFeed(ctx, alice.ID, feed.ID); aliceView.CategoryID != nil {
-		t.Fatalf("bob's category leaked into alice's view: %+v", aliceView)
 	}
 	subs, err := store.ListFeedSubscribers(ctx, feed.ID)
 	if err != nil || len(subs) != 2 {
@@ -97,9 +97,6 @@ func TestIntegration_SharedFeed_SubscribeBackfillAndFanOut(t *testing.T) {
 	if err := store.Unsubscribe(ctx, bob.ID, feed.ID); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("second unsubscribe: %v", err)
 	}
-	if err := store.DeleteFeed(ctx, bob.ID, feed.ID); !errors.Is(err, ErrNotFound) {
-		t.Fatalf("non-subscriber deleted the catalog row: %v", err)
-	}
 	if _, err := store.GetFeedByID(ctx, feed.ID); err != nil {
 		t.Fatalf("catalog row vanished with one unsubscribe: %v", err)
 	}
@@ -111,17 +108,18 @@ func TestIntegration_SharedFeed_SubscribeBackfillAndFanOut(t *testing.T) {
 	if e, err := store.GetEntry(ctx, alice.ID, created[0].ID); err != nil || e.Status != EntryStatusUnread {
 		t.Fatalf("alice lost her entry: %+v err=%v", e, err)
 	}
-	// Last subscriber leaving removes the catalog row and its entries.
+	// The last subscriber leaving keeps the catalog row and its entries;
+	// the feed simply stops being polled.
 	if err := store.Unsubscribe(ctx, alice.ID, feed.ID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.GetFeedByID(ctx, feed.ID); !errors.Is(err, ErrNotFound) {
-		t.Fatalf("catalog row survives with no subscribers: %v", err)
+	if _, err := store.GetFeedByID(ctx, feed.ID); err != nil {
+		t.Fatalf("catalog row with no subscribers: %v", err)
 	}
 	var left int
 	_ = store.db.QueryRow(ctx, `SELECT count(*) FROM entries WHERE feed_id = $1`, feed.ID).Scan(&left)
-	if left != 0 {
-		t.Fatalf("%d entries survive the catalog row", left)
+	if left == 0 {
+		t.Fatal("entries removed with the last subscription")
 	}
 }
 
@@ -195,7 +193,7 @@ func TestIntegration_SharedFeed_CategoryBulkAndQuota(t *testing.T) {
 	ctx := context.Background()
 	alice := newIntegrationUser(t, store, "sfc_alice")
 	bob := newIntegrationUser(t, store, "sfc_bob")
-	cat, _ := store.CreateCategory(ctx, alice.ID, "A", "")
+	cat, _ := store.CreateCategory(ctx, "A", "")
 	feed := newFeedForUser(t, store, alice.ID, "sfc", 60)
 	if _, err := store.UpdateFeed(ctx, alice.ID, UpdateFeedParams{ID: feed.ID, FeedURL: feed.FeedURL, Title: feed.Title, IntervalMinutes: 60, CategoryID: &cat.ID}); err != nil {
 		t.Fatal(err)
@@ -214,8 +212,8 @@ func TestIntegration_SharedFeed_CategoryBulkAndQuota(t *testing.T) {
 	if _, n, err := store.BulkUpdateFeedsByCategory(ctx, alice.ID, cat.ID, BulkFeedUpdate{WebhookSet: true, WebhookID: &wh.ID}); err != nil || n != 1 {
 		t.Fatalf("bulk webhook: n=%d err=%v", n, err)
 	}
-	if _, n, err := store.BulkUpdateFeedsByCategory(ctx, bob.ID, cat.ID, BulkFeedUpdate{IntervalMinutes: ptr(5)}); !errors.Is(err, ErrNotFound) || n != 0 {
-		t.Fatalf("bulk on another user's category: n=%d err=%v", n, err)
+	if _, n, err := store.BulkUpdateFeedsByCategory(ctx, bob.ID, cat.ID+1000, BulkFeedUpdate{IntervalMinutes: ptr(5)}); !errors.Is(err, ErrNotFound) || n != 0 {
+		t.Fatalf("bulk on a missing category: n=%d err=%v", n, err)
 	}
 	aliceView, _ := store.GetFeed(ctx, alice.ID, feed.ID)
 	bobView, _ := store.GetFeed(ctx, bob.ID, feed.ID)
@@ -239,16 +237,21 @@ func TestIntegration_SharedFeed_CategoryBulkAndQuota(t *testing.T) {
 	if err != nil || after.OwnerID != 0 {
 		t.Fatalf("feed after owner deletion: %+v err=%v", after, err)
 	}
-	// And deleting the last subscriber removes the orphan catalog row.
+	// Deleting the last subscriber keeps the catalog row: feeds belong to
+	// the catalog, not to their readers.
 	if err := store.DeleteUser(ctx, bob.ID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.GetFeedByID(ctx, feed.ID); !errors.Is(err, ErrNotFound) {
-		t.Fatalf("orphan catalog row left after the last subscriber: %v", err)
+	if _, err := store.GetFeedByID(ctx, feed.ID); err != nil {
+		t.Fatalf("catalog row after the last subscriber left: %v", err)
+	}
+	if subs, _ := store.ListFeedSubscribers(ctx, feed.ID); len(subs) != 0 {
+		t.Fatalf("subscriptions left: %+v", subs)
 	}
 }
 
-// 0050 replayed on a pre-0050 shape: two users with the same URL end up on
+// 0050 replayed on a pre-0050 shape (feeds.category_id is per-owner there):
+// two users with the same URL end up on
 // one catalog row (the lower owner id keeps it), equal-hash entries collapse
 // with each user's state preserved, the other entries move over, and a
 // second run is a no-op.
@@ -258,9 +261,11 @@ func TestIntegration_Migration0050_SharedFeedsMerge(t *testing.T) {
 	for _, q := range []string{
 		`DROP TABLE user_entries`,
 		`DROP TABLE subscriptions`,
+		`DROP TABLE category_followers`,
 		`DROP INDEX feeds_feed_url_uidx`,
+		`ALTER TABLE categories ADD COLUMN user_id BIGINT NOT NULL DEFAULT 1`,
 		`ALTER TABLE feeds DROP COLUMN owner_id, ADD COLUMN user_id BIGINT NOT NULL DEFAULT 1 REFERENCES users(id) ON DELETE CASCADE,
-		   ADD COLUMN category_id BIGINT REFERENCES categories(id) ON DELETE SET NULL, ADD COLUMN webhook_id BIGINT REFERENCES webhooks(id) ON DELETE SET NULL`,
+		   ADD COLUMN webhook_id BIGINT REFERENCES webhooks(id) ON DELETE SET NULL`,
 		`ALTER TABLE entries DROP COLUMN removed_at, ADD COLUMN user_id BIGINT NOT NULL DEFAULT 1, ADD COLUMN status TEXT NOT NULL DEFAULT 'unread', ADD COLUMN starred BOOLEAN NOT NULL DEFAULT FALSE`,
 		`ALTER TABLE enclosures ADD COLUMN user_id BIGINT NOT NULL DEFAULT 1`,
 		`INSERT INTO users(id, username, password_hash, role) VALUES (11, 'm50_a', 'h', 'admin'), (12, 'm50_b', 'h', 'reader')`,
@@ -296,13 +301,34 @@ func TestIntegration_Migration0050_SharedFeedsMerge(t *testing.T) {
 	if plan, _ := migrations.SharedFeedsPlan(ctx, store.db); plan != nil {
 		t.Fatalf("plan after migration: %+v", plan)
 	}
+	// 0054 on top (twice): the merged feed takes the earliest subscriber's
+	// category since its owner had none; user 12 read every feed of the
+	// category and becomes its follower, user 11 does not.
+	body54, err := migrations.Source("0054_shared_categories.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for run := 1; run <= 2; run++ {
+		if _, err := store.db.Exec(ctx, body54); err != nil {
+			t.Fatalf("0054 run %d: %v", run, err)
+		}
+	}
 
-	feeds, _ := store.ListAllFeeds(ctx, 10)
-	if len(feeds) != 2 || feeds[0].ID != 1 || feeds[0].OwnerID != 11 || feeds[1].ID != 3 {
-		t.Fatalf("feeds after merge: %+v", feeds)
+	feeds, err := store.ListAllFeeds(ctx, 10)
+	if err != nil || len(feeds) != 2 || feeds[0].ID != 1 || feeds[0].OwnerID != 11 || feeds[1].ID != 3 {
+		t.Fatalf("feeds after merge: %+v err=%v", feeds, err)
+	}
+	if feeds[0].CategoryID == nil || *feeds[0].CategoryID != 1 || feeds[1].CategoryID == nil || *feeds[1].CategoryID != 1 {
+		t.Fatalf("feed categories after 0054: %v %v", feeds[0].CategoryID, feeds[1].CategoryID)
+	}
+	if followed, _ := store.ListFollowedCategories(ctx, 12); !followed[1] {
+		t.Fatalf("user 12 must follow category 1: %v", followed)
+	}
+	if followed, _ := store.ListFollowedCategories(ctx, 11); followed[1] {
+		t.Fatalf("user 11 must not follow category 1: %v", followed)
 	}
 	subs, _ := store.ListFeedSubscribers(ctx, 1)
-	if len(subs) != 2 || subs[0].UserID != 11 || subs[1].UserID != 12 || subs[1].CategoryID == nil || *subs[1].CategoryID != 1 {
+	if len(subs) != 2 || subs[0].UserID != 11 || subs[1].UserID != 12 {
 		t.Fatalf("subscriptions of the merged feed: %+v", subs)
 	}
 	type st struct {
@@ -354,17 +380,15 @@ func TestIntegration_Migration0050_SharedFeedsMerge(t *testing.T) {
 	}
 }
 
-// The catalog: SubscribeByURL finds the row by URL, ListCatalog shows every
-// feed with subscriber counts, DeleteFeed by a subscriber removes it for
-// everyone, and a subscription cannot point at another user's category or
-// webhook.
+// The catalog: SubscribeByURL finds the row by URL, CatalogFeeds shows every
+// feed with Subscribed per user, DeleteFeed by a subscriber removes it for
+// everyone, and a subscription cannot point at another user's webhook.
 func TestIntegration_SharedFeed_CatalogAndDelete(t *testing.T) {
 	store := isolatedStore(t)
 	ctx := context.Background()
 	alice := newIntegrationUser(t, store, "sfc_alice")
 	bob := newIntegrationUser(t, store, "sfc_bob")
-	aliceCat, _ := store.CreateCategory(ctx, alice.ID, "Alice", "")
-	bobCat, _ := store.CreateCategory(ctx, bob.ID, "Bob", "")
+	cat, _ := store.CreateCategory(ctx, "Cat", "")
 	aliceHook, err := store.CreateWebhook(ctx, CreateWebhookParams{UserID: alice.ID, Name: "a", Kind: WebhookKindHTTP, URL: "https://example.com/hook", Headers: []byte(`{}`), Enabled: true})
 	if err != nil {
 		t.Fatal(err)
@@ -372,23 +396,22 @@ func TestIntegration_SharedFeed_CatalogAndDelete(t *testing.T) {
 
 	feed, _ := newIntegrationFeedWithEntries(t, store, alice.ID, 3)
 	other, _ := newIntegrationFeedWithEntries(t, store, alice.ID, 1)
-
-	// Foreign category / webhook are rejected everywhere they can be set.
-	if _, err := store.Subscribe(ctx, bob.ID, feed.ID, SubscriptionParams{CategoryID: &aliceCat.ID}); !errors.Is(err, ErrInvalidReference) {
-		t.Fatalf("subscribe with alice's category: %v", err)
+	if _, err := store.UpdateFeed(ctx, alice.ID, UpdateFeedParams{ID: feed.ID, FeedURL: feed.FeedURL, Title: feed.Title, IntervalMinutes: 60, CategoryID: &cat.ID}); err != nil {
+		t.Fatal(err)
 	}
+
 	if _, err := store.Subscribe(ctx, bob.ID, feed.ID, SubscriptionParams{WebhookID: &aliceHook.ID}); !errors.Is(err, ErrInvalidReference) {
 		t.Fatalf("subscribe with alice's webhook: %v", err)
 	}
 	if _, err := store.CreateFeed(ctx, bob.ID, CreateFeedParams{FeedURL: fmt.Sprintf("https://example.com/sfc/%d", time.Now().UnixNano()), FeedType: "rss", IntervalMinutes: 60, WebhookID: &aliceHook.ID}); !errors.Is(err, ErrInvalidReference) {
 		t.Fatalf("create feed with alice's webhook: %v", err)
 	}
-	if _, err := store.UpdateFeed(ctx, alice.ID, UpdateFeedParams{ID: feed.ID, FeedURL: feed.FeedURL, Title: feed.Title, IntervalMinutes: 60, CategoryID: &bobCat.ID}); !errors.Is(err, ErrInvalidReference) {
-		t.Fatalf("update feed with bob's category: %v", err)
+	if _, err := store.UpdateFeed(ctx, alice.ID, UpdateFeedParams{ID: feed.ID, FeedURL: feed.FeedURL, Title: feed.Title, IntervalMinutes: 60, CategoryID: ptr(cat.ID + 1000)}); !errors.Is(err, ErrInvalidReference) {
+		t.Fatalf("update feed with a missing category: %v", err)
 	}
 
-	got, err := store.SubscribeByURL(ctx, bob.ID, feed.FeedURL, SubscriptionParams{CategoryID: &bobCat.ID})
-	if err != nil || got.ID != feed.ID || got.CategoryID == nil || *got.CategoryID != bobCat.ID {
+	got, err := store.SubscribeByURL(ctx, bob.ID, feed.FeedURL, SubscriptionParams{})
+	if err != nil || got.ID != feed.ID || got.CategoryID == nil || *got.CategoryID != cat.ID || !got.Subscribed {
 		t.Fatalf("subscribe by url: %+v err=%v", got, err)
 	}
 	if _, err := store.SubscribeByURL(ctx, bob.ID, feed.FeedURL, SubscriptionParams{}); !errors.Is(err, ErrAlreadySubscribed) {
@@ -401,33 +424,38 @@ func TestIntegration_SharedFeed_CatalogAndDelete(t *testing.T) {
 		t.Fatalf("update subscription with alice's webhook: %v", err)
 	}
 
-	list, total, err := store.ListCatalog(ctx, bob.ID, CatalogFilter{})
+	list, total, err := store.CatalogFeeds(ctx, bob.ID, nil, 50, 0)
 	if err != nil || total != 2 || len(list) != 2 {
 		t.Fatalf("catalog: total=%d len=%d err=%v", total, len(list), err)
 	}
-	byID := map[int64]CatalogFeed{}
+	byID := map[int64]Feed{}
 	for _, c := range list {
 		byID[c.ID] = c
 	}
-	if c := byID[feed.ID]; !c.Subscribed || c.SubscriberCount != 2 || c.OwnerID != alice.ID || c.OwnerName != alice.Username {
+	if c := byID[feed.ID]; !c.Subscribed || c.OwnerID != alice.ID || c.WebhookID != nil {
 		t.Fatalf("catalog row for shared feed: %+v", c)
 	}
-	if c := byID[other.ID]; c.Subscribed || c.SubscriberCount != 1 {
+	if c := byID[other.ID]; c.Subscribed {
 		t.Fatalf("catalog row for alice-only feed: %+v", c)
 	}
-	mine, total, err := store.ListCatalog(ctx, bob.ID, CatalogFilter{Subscribed: ptr(true)})
-	if err != nil || total != 1 || len(mine) != 1 || mine[0].ID != feed.ID {
-		t.Fatalf("catalog subscribed=true: %v total=%d err=%v", mine, total, err)
+	inCat, total, err := store.CatalogFeeds(ctx, bob.ID, &cat.ID, 50, 0)
+	if err != nil || total != 1 || len(inCat) != 1 || inCat[0].ID != feed.ID {
+		t.Fatalf("catalog by category: %v total=%d err=%v", inCat, total, err)
 	}
-	notMine, total, err := store.ListCatalog(ctx, bob.ID, CatalogFilter{Subscribed: ptr(false), Query: other.Title[:4]})
-	if err != nil || total != 1 || len(notMine) != 1 || notMine[0].ID != other.ID {
-		t.Fatalf("catalog subscribed=false+query: %v total=%d err=%v", notMine, total, err)
+	uncat, total, err := store.CatalogFeeds(ctx, bob.ID, ptr(int64(0)), 50, 0)
+	if err != nil || total != 1 || len(uncat) != 1 || uncat[0].ID != other.ID {
+		t.Fatalf("catalog uncategorized: %v total=%d err=%v", uncat, total, err)
 	}
-	if _, total, _ := store.ListCatalog(ctx, bob.ID, CatalogFilter{Query: "no-such-feed-anywhere"}); total != 0 {
-		t.Fatalf("catalog query miss total=%d", total)
+	counts, err := store.CatalogCountsByCategory(ctx)
+	if err != nil || counts.ByCategory[cat.ID] != 1 || counts.Uncategorized != 1 || counts.Total != 2 {
+		t.Fatalf("catalog counts: %+v err=%v", counts, err)
+	}
+	subCounts, err := store.FeedSubscriberCounts(ctx)
+	if err != nil || subCounts[feed.ID] != 2 || subCounts[other.ID] != 1 {
+		t.Fatalf("subscriber counts: %v err=%v", subCounts, err)
 	}
 	names, err := store.ListFeedSubscriberNames(ctx, feed.ID)
-	if err != nil || len(names) != 2 || names[0].Username != alice.Username || names[1].Username != bob.Username || names[1].CategoryID == nil {
+	if err != nil || len(names) != 2 || names[0].Username != alice.Username || names[1].Username != bob.Username {
 		t.Fatalf("subscriber names: %+v err=%v", names, err)
 	}
 
@@ -445,8 +473,130 @@ func TestIntegration_SharedFeed_CatalogAndDelete(t *testing.T) {
 			t.Fatalf("user %d keeps %d user_entries after catalog delete", u.ID, n)
 		}
 	}
-	if _, total, _ := store.ListCatalog(ctx, alice.ID, CatalogFilter{}); total != 1 {
+	if _, total, _ := store.CatalogFeeds(ctx, alice.ID, nil, 50, 0); total != 1 {
 		t.Fatalf("catalog after delete total=%d", total)
+	}
+}
+
+// Following a category: the follower gets every feed of the category now
+// and later (create, update, bulk move), loses feeds that leave it, cannot
+// unsubscribe a single feed while following, and unfollow drops the feeds.
+func TestIntegration_CategoryFollow(t *testing.T) {
+	store := isolatedStore(t)
+	ctx := context.Background()
+	editor := newIntegrationUser(t, store, "cf_editor")
+	reader := newIntegrationUser(t, store, "cf_reader")
+	a, _ := store.CreateCategory(ctx, "A", "")
+	b, _ := store.CreateCategory(ctx, "B", "")
+	if _, err := store.CreateCategory(ctx, " a ", ""); !errors.Is(err, ErrDuplicateCategory) {
+		t.Fatalf("case-insensitive duplicate title: %v", err)
+	}
+	if _, err := store.UpdateCategory(ctx, b.ID, "A", ""); !errors.Is(err, ErrDuplicateCategory) {
+		t.Fatalf("rename to an existing title: %v", err)
+	}
+
+	f1, err := store.CreateFeed(ctx, editor.ID, CreateFeedParams{FeedURL: "https://example.com/cf/1", FeedType: "rss", Title: "f1", IntervalMinutes: 60, CategoryID: &a.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	solo := newFeedForUser(t, store, editor.ID, "cf_solo", 60)
+	if _, err := store.UpdateFeed(ctx, editor.ID, UpdateFeedParams{ID: solo.ID, FeedURL: solo.FeedURL, Title: solo.Title, IntervalMinutes: 60, CategoryID: &a.ID}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Subscribe(ctx, reader.ID, solo.ID, SubscriptionParams{}); err != nil {
+		t.Fatal(err)
+	}
+
+	n, err := store.FollowCategory(ctx, reader.ID, a.ID)
+	if err != nil || n != 1 {
+		t.Fatalf("follow: n=%d err=%v (solo was already subscribed)", n, err)
+	}
+	if n, err := store.FollowCategory(ctx, reader.ID, a.ID); err != nil || n != 0 {
+		t.Fatalf("double follow must be a no-op: n=%d err=%v", n, err)
+	}
+	if _, err := store.FollowCategory(ctx, reader.ID, a.ID+1000); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("follow missing: %v", err)
+	}
+	if followed, _ := store.ListFollowedCategories(ctx, reader.ID); !followed[a.ID] || followed[b.ID] {
+		t.Fatalf("followed: %v", followed)
+	}
+	if counts, _ := store.CategoryFollowerCounts(ctx); counts[a.ID] != 1 || counts[b.ID] != 0 {
+		t.Fatalf("follower counts: %v", counts)
+	}
+	if err := store.Unsubscribe(ctx, reader.ID, f1.ID); !errors.Is(err, ErrFollowsCategory) {
+		t.Fatalf("unsubscribe a followed feed: %v", err)
+	}
+	if err := store.DeleteCategory(ctx, a.ID); !errors.Is(err, ErrCategoryNotEmpty) {
+		t.Fatalf("delete non-empty category: %v", err)
+	}
+
+	// New feed in A reaches the follower without the editor subscribing.
+	f2, err := store.CreateFeed(ctx, editor.ID, CreateFeedParams{FeedURL: "https://example.com/cf/2", FeedType: "rss", Title: "f2", IntervalMinutes: 60, CategoryID: &a.ID, SkipOwnerSubscription: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v, err := store.GetFeed(ctx, reader.ID, f2.ID); err != nil || !v.Subscribed {
+		t.Fatalf("follower not subscribed to a new feed: %+v %v", v, err)
+	}
+	if _, err := store.GetFeed(ctx, editor.ID, f2.ID); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("SkipOwnerSubscription ignored: %v", err)
+	}
+
+	// Feeds leaving A are dropped for its followers, also the one solo
+	// subscription made before following: a follower reads the category's
+	// feeds through the category.
+	if _, err := store.UpdateFeed(ctx, editor.ID, UpdateFeedParams{ID: f1.ID, FeedURL: f1.FeedURL, Title: f1.Title, IntervalMinutes: 60, CategoryID: &b.ID}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.GetFeed(ctx, reader.ID, f1.ID); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("follower keeps a feed that left the category: %v", err)
+	}
+	if _, n, err := store.BulkUpdateFeedsByCategory(ctx, editor.ID, a.ID, BulkFeedUpdate{MoveCategory: true, MoveToCategoryID: nil}); err != nil || n != 2 {
+		t.Fatalf("bulk move to uncategorized: n=%d err=%v", n, err)
+	}
+	if _, err := store.GetFeed(ctx, reader.ID, f2.ID); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("follower keeps a bulk-moved feed: %v", err)
+	}
+	if _, err := store.GetFeed(ctx, reader.ID, solo.ID); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("follower keeps a bulk-moved feed: %v", err)
+	}
+	if subs, _ := store.ListSubscriptions(ctx, editor.ID); len(subs) != 2 {
+		t.Fatalf("non-follower subscriptions changed by the move: %+v", subs)
+	}
+	// Moving back into A re-subscribes the follower.
+	if _, n, err := store.BulkUpdateFeedsByCategory(ctx, editor.ID, 0, BulkFeedUpdate{MoveCategory: true, MoveToCategoryID: &a.ID}); err != nil || n != 2 {
+		t.Fatalf("bulk move back: n=%d err=%v", n, err)
+	}
+	if _, err := store.GetFeed(ctx, reader.ID, f2.ID); err != nil {
+		t.Fatalf("follower not re-subscribed: %v", err)
+	}
+
+	n, err = store.UnfollowCategory(ctx, reader.ID, a.ID)
+	if err != nil || n != 2 {
+		t.Fatalf("unfollow: n=%d err=%v", n, err)
+	}
+	if _, err := store.UnfollowCategory(ctx, reader.ID, a.ID); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("double unfollow: %v", err)
+	}
+	if subs, _ := store.ListSubscriptions(ctx, reader.ID); len(subs) != 0 {
+		t.Fatalf("subscriptions after unfollow: %+v", subs)
+	}
+
+	// Deleting a user drops the follower row; deleting an emptied category works.
+	if _, err := store.FollowCategory(ctx, reader.ID, b.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.DeleteUser(ctx, reader.ID); err != nil {
+		t.Fatal(err)
+	}
+	if counts, _ := store.CategoryFollowerCounts(ctx); counts[b.ID] != 0 {
+		t.Fatalf("follower row survived user deletion: %v", counts)
+	}
+	if err := store.DeleteFeedByID(ctx, f1.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.DeleteCategory(ctx, b.ID); err != nil {
+		t.Fatalf("delete empty category: %v", err)
 	}
 }
 

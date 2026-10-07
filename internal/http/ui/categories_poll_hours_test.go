@@ -20,7 +20,7 @@ func (m *uiMemPollHours) GetCategoryPollHours(_ context.Context, id int64) (stri
 	return m.set[id], nil
 }
 
-func (m *uiMemPollHours) SetCategoryPollHours(_ context.Context, _ int64, id int64, v string) error {
+func (m *uiMemPollHours) SetCategoryPollHours(_ context.Context, id int64, v string) error {
 	if m.set == nil {
 		m.set = map[int64]string{}
 	}

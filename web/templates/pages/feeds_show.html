@@ -1,27 +1,35 @@
+{{define "feed_subscribe_toggle"}}
+{{if feedLockedByCategory .FollowedCategories .Feed}}
+<span class="meta">Приходит через категорию, которую вы читаете целиком.</span>
+{{else if .Feed.Subscribed}}
+<form method="post" action="/ui/feeds/{{.Feed.ID}}/unsubscribe" data-confirm="Убрать «{{.Feed.Title}}» из ваших подписок? Ваши отметки прочитанного и избранного по этой ленте будут удалены; лента останется в каталоге.">
+  <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+  <button type="submit" class="btn">Не читать</button>
+</form>
+{{else}}
+<form method="post" action="/ui/feeds/{{.Feed.ID}}/subscribe">
+  <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+  <button type="submit" class="btn btn-primary">Читать</button>
+</form>
+{{end}}
+{{end}}
+
 {{define "body_feeds_show"}}
 <div class="settings-layout">
   {{template "settings_nav" .}}
   <div class="settings-content">
     <h1>{{.Feed.Title}}</h1>
     <div class="card">
-      <p class="meta">{{.Feed.FeedURL}} · {{.Feed.FeedType}}{{if .Feed.TLSInsecure}} · <span title="TLS-проверка отключена для этой ленты">TLS: без проверки</span>{{end}}</p>
+      <p class="meta">{{.Feed.FeedURL}} · {{feedTypeLabel .Feed.FeedType}}{{if .Feed.TLSInsecure}} · <span title="TLS-проверка отключена для этой ленты">TLS: без проверки</span>{{end}}</p>
+      <p class="meta">Категория: {{if .Feed.CategoryID}}{{range .Categories}}{{if eq .ID (deref $.Feed.CategoryID)}}{{.Title}}{{end}}{{end}}{{else}}без категории{{end}}{{if .FeedSubscribers}} · читают: {{len .FeedSubscribers}}{{if .IsAdmin}} — {{range $i, $s := .FeedSubscribers}}{{if $i}}, {{end}}{{$s.Username}}{{end}}{{end}}{{end}}</p>
       {{if .Feed.LastError}}<div class="flash flash-err">{{.Feed.LastError}}</div>{{end}}
-      <form method="post" action="/ui/feeds/{{.Feed.ID}}/subscription" class="form-row">
-        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
-        <div class="form-group"><label>Моя категория</label>
-          <select name="category_id">
-            <option value="">—</option>
-            {{range .Categories}}<option value="{{.ID}}" {{if and $.Feed.CategoryID (eq .ID (deref $.Feed.CategoryID))}}selected{{end}}>{{.Title}}</option>{{end}}
-          </select>
-        </div>
-        <div class="form-group"><button type="submit" class="btn">Сохранить</button></div>
-      </form>
-      {{if .FeedSubscribers}}<p class="meta">Подписчиков: {{len .FeedSubscribers}}{{if .IsAdmin}} — {{range $i, $s := .FeedSubscribers}}{{if $i}}, {{end}}{{$s.Username}}{{end}}{{end}}</p>{{end}}
       <div class="toolbar">
-        <form method="post" action="/ui/feeds/{{.Feed.ID}}/refresh"><input type="hidden" name="csrf_token" value="{{.CSRFToken}}"><button class="btn btn-primary">Обновить сейчас</button></form>
-        {{if .CanEdit}}<a class="btn" href="/ui/feeds/{{.Feed.ID}}/edit">Редактировать</a>{{end}}
+        {{template "feed_subscribe_toggle" .}}
+        {{if .Feed.Subscribed}}
+        <form method="post" action="/ui/feeds/{{.Feed.ID}}/refresh"><input type="hidden" name="csrf_token" value="{{.CSRFToken}}"><button class="btn">Обновить сейчас</button></form>
         <a class="btn" href="/ui/unread?feed_id={{.Feed.ID}}">Записи</a>
-        <form method="post" action="/ui/feeds/{{.Feed.ID}}/unsubscribe" data-confirm="Отписаться от «{{.Feed.Title}}»? Ваши отметки прочитанного и избранного по этой ленте будут удалены.{{if gt (len .FeedSubscribers) 1}}{{else}} Вы единственный подписчик — лента и её записи будут удалены из каталога.{{end}}"><input type="hidden" name="csrf_token" value="{{.CSRFToken}}"><button class="btn btn-danger">Отписаться</button></form>
+        {{end}}
+        {{if .CanEdit}}<a class="btn" href="/ui/feeds/{{.Feed.ID}}/edit">Редактировать</a>{{end}}
       </div>
     </div>
   </div>

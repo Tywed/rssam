@@ -13,12 +13,14 @@ type FeedCategoryCounts struct {
 }
 
 func (s *PostgresStore) FeedCountsByCategory(ctx context.Context, userID int64) (FeedCategoryCounts, error) {
-	const q = `
-SELECT category_id, count(*)
-FROM subscriptions
-WHERE user_id = $1
-GROUP BY category_id`
-	rows, err := s.db.Query(ctx, q, userID)
+	return s.feedCountsByCategory(ctx, `
+SELECT f.category_id, count(*)
+FROM feeds f JOIN subscriptions s ON s.feed_id = f.id AND s.user_id = $1
+GROUP BY f.category_id`, userID)
+}
+
+func (s *PostgresStore) feedCountsByCategory(ctx context.Context, q string, args ...any) (FeedCategoryCounts, error) {
+	rows, err := s.db.Query(ctx, q, args...)
 	if err != nil {
 		return FeedCategoryCounts{}, fmt.Errorf("feed counts by category: %w", err)
 	}

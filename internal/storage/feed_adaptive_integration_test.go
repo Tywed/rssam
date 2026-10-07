@@ -37,7 +37,7 @@ func TestIntegration_AdaptiveIntervalFlagAndActivity(t *testing.T) {
 		t.Fatal("admin row still shows adaptive after update")
 	}
 
-	cat, err := store.CreateCategory(ctx, owner.ID, "adaptive-cat", "#000")
+	cat, err := store.CreateCategory(ctx, "adaptive-cat", "#000")
 	if err != nil {
 		t.Fatal(err)
 	}

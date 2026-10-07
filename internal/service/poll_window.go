@@ -33,44 +33,14 @@ func (r *FeedRefresher) InvalidatePollHours(categoryID int64) {
 	r.pollHoursCache.invalidate(categoryID)
 }
 
-// pollWindow combines the category windows of the feed's subscribers: a
-// subscriber without a window (no category or an always-open one) lifts the
-// restriction; otherwise the feed is polled whenever any window is open and
-// the next opening is the earliest one. Lookups are cached for
+// pollWindow is the window of the feed's category; no category or an
+// always-open one means no restriction. Lookups are cached for
 // pollHoursCacheTTL; on storage error a category counts as unrestricted.
-func (r *FeedRefresher) pollWindow(ctx context.Context, subs []storage.Subscription, now time.Time) (storage.PollWindow, bool) {
-	if r.PollHours == nil || len(subs) == 0 {
+func (r *FeedRefresher) pollWindow(ctx context.Context, feed storage.Feed) (storage.PollWindow, bool) {
+	if r.PollHours == nil || feed.CategoryID == nil {
 		return storage.PollWindow{}, false
 	}
-	var (
-		windows []storage.PollWindow
-		seen    = make(map[int64]struct{}, len(subs))
-	)
-	for _, sub := range subs {
-		if sub.CategoryID == nil {
-			return storage.PollWindow{}, false
-		}
-		id := *sub.CategoryID
-		if _, dup := seen[id]; dup {
-			continue
-		}
-		seen[id] = struct{}{}
-		w, ok := r.categoryPollWindow(ctx, id)
-		if !ok {
-			return storage.PollWindow{}, false
-		}
-		windows = append(windows, w)
-	}
-	best := windows[0]
-	for _, w := range windows[1:] {
-		if w.Contains(now) {
-			return w, true
-		}
-		if w.NextOpen(now).Before(best.NextOpen(now)) {
-			best = w
-		}
-	}
-	return best, true
+	return r.categoryPollWindow(ctx, *feed.CategoryID)
 }
 
 func (r *FeedRefresher) categoryPollWindow(ctx context.Context, id int64) (storage.PollWindow, bool) {

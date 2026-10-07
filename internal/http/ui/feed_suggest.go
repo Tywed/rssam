@@ -35,7 +35,7 @@ func (h *Handler) handleFeedSuggest(w http.ResponseWriter, r *http.Request) {
 	}
 	if v := strings.TrimSpace(r.URL.Query().Get("limit")); v != "" {
 		if n, err := strconv.Atoi(v); err == nil {
-			filter.Limit = n
+			filter.Limit = min(n, storage.MaxFeedSuggestLimit)
 		}
 	}
 	if v := strings.TrimSpace(r.URL.Query().Get("category_id")); v != "" {
@@ -64,7 +64,7 @@ func (h *Handler) handleFeedSuggest(w http.ResponseWriter, r *http.Request) {
 
 	catTitles := map[int64]string{}
 	if h.cfg.Categories != nil {
-		if cats, _, err := h.cfg.Categories.ListCategories(r.Context(), p.UserID, storage.NoLimit, 0); err == nil {
+		if cats, _, err := h.cfg.Categories.ListCategories(r.Context(), storage.NoLimit, 0); err == nil {
 			for _, c := range cats {
 				catTitles[c.ID] = c.Title
 			}

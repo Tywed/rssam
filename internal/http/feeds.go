@@ -39,6 +39,8 @@ type feedDTO struct {
 	AdaptiveInterval   bool   `json:"adaptive_interval,omitempty"`
 	// LastEntryAt: when the feed last delivered a new item (entry or hash).
 	LastEntryAt *time.Time `json:"last_entry_at,omitempty"`
+	// Subscribed: whether the caller reads this feed.
+	Subscribed bool `json:"subscribed"`
 }
 
 type feedWriteRequest struct {
@@ -57,6 +59,9 @@ type feedWriteRequest struct {
 	StoreHashOnly      bool   `json:"store_hash_only,omitempty"`
 	EntryRetentionDays *int   `json:"entry_retention_days,omitempty"`
 	AdaptiveInterval   bool   `json:"adaptive_interval,omitempty"`
+	// SubscribeSelf (POST only): nil/true adds the feed to the caller's
+	// own subscriptions, false leaves it to the category's followers.
+	SubscribeSelf *bool `json:"subscribe_self,omitempty"`
 }
 
 const defaultIntervalMinutes = 60
@@ -71,7 +76,18 @@ func (s *Server) handleListFeeds(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	feeds, total, err := s.feeds.ListFeeds(r.Context(), p.UserID, limit, offset)
+	var feeds []storage.Feed
+	var total int
+	switch r.URL.Query().Get("all") {
+	case "":
+		feeds, total, err = s.feeds.ListFeeds(r.Context(), p.UserID, limit, offset)
+	case "true":
+		// The whole catalog, Subscribed telling which ones the caller reads.
+		feeds, total, err = s.feeds.CatalogFeeds(r.Context(), p.UserID, nil, limit, offset)
+	default:
+		writeError(w, http.StatusBadRequest, "all must be true")
+		return
+	}
 	if err != nil {
 		s.log.ErrorContext(r.Context(), "list feeds failed", "err", err)
 		writeError(w, http.StatusInternalServerError, "internal server error")
@@ -118,8 +134,8 @@ func (s *Server) handleCreateFeed(w http.ResponseWriter, r *http.Request) {
 	feed, err := s.feeds.CreateFeed(r.Context(), p.UserID, params)
 	if errors.Is(err, storage.ErrDuplicateFeedURL) && s.subscriptions != nil {
 		// The catalog already has this URL: subscribing is what the caller
-		// wants, with their own category/webhook.
-		feed, err = s.subscriptions.SubscribeByURL(r.Context(), p.UserID, params.FeedURL, storage.SubscriptionParams{CategoryID: params.CategoryID, WebhookID: params.WebhookID})
+		// wants, with their own webhook.
+		feed, err = s.subscriptions.SubscribeByURL(r.Context(), p.UserID, params.FeedURL, storage.SubscriptionParams{WebhookID: params.WebhookID})
 		if err == nil {
 			s.audit.Record(r, storage.AuditSubscriptionCreate, "feed", feed.ID, map[string]any{"url": feed.FeedURL})
 			writeJSON(w, http.StatusOK, listResponse[feedDTO]{Data: toFeedDTO(feed), Total: 1})
@@ -147,12 +163,22 @@ func (s *Server) handleGetFeed(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	feed, err := s.feeds.GetFeed(r.Context(), p.UserID, id)
+	feed, err := s.catalogFeed(r.Context(), p.UserID, id)
 	if err != nil {
 		s.storeError(w, r, err, "feed not found", "get feed failed")
 		return
 	}
 	writeJSON(w, http.StatusOK, listResponse[feedDTO]{Data: toFeedDTO(feed), Total: 1})
+}
+
+// catalogFeed is the user's view of a feed when subscribed, else the plain
+// catalog row: every user may look at the shared catalog.
+func (s *Server) catalogFeed(ctx context.Context, userID, id int64) (storage.Feed, error) {
+	feed, err := s.feeds.GetFeed(ctx, userID, id)
+	if errors.Is(err, storage.ErrNotFound) {
+		return s.feeds.GetFeedByID(ctx, id)
+	}
+	return feed, err
 }
 
 func (s *Server) handleUpdateFeed(w http.ResponseWriter, r *http.Request) {
@@ -270,22 +296,23 @@ func validateFeedWriteRequest(req feedWriteRequest, guard *ssrf.Guard) (storage.
 		return storage.CreateFeedParams{}, err
 	}
 	return storage.CreateFeedParams{
-		FeedURL:            feedURL,
-		FeedType:           feedType,
-		Title:              strings.TrimSpace(req.Title),
-		CategoryID:         req.CategoryID,
-		IntervalMinutes:    interval,
-		ScraperRules:       strings.TrimSpace(req.ScraperRules),
-		RewriteRules:       req.RewriteRules,
-		BlockedRules:       req.BlockedRules,
-		KeepRules:          req.KeepRules,
-		FetchViaProxy:      req.FetchViaProxy,
-		TLSInsecure:        req.TLSInsecure,
-		Crawler:            req.Crawler,
-		UserAgent:          strings.TrimSpace(req.UserAgent),
-		StoreHashOnly:      req.StoreHashOnly,
-		EntryRetentionDays: req.EntryRetentionDays,
-		AdaptiveInterval:   req.AdaptiveInterval,
+		FeedURL:               feedURL,
+		FeedType:              feedType,
+		Title:                 strings.TrimSpace(req.Title),
+		CategoryID:            req.CategoryID,
+		IntervalMinutes:       interval,
+		ScraperRules:          strings.TrimSpace(req.ScraperRules),
+		RewriteRules:          req.RewriteRules,
+		BlockedRules:          req.BlockedRules,
+		KeepRules:             req.KeepRules,
+		FetchViaProxy:         req.FetchViaProxy,
+		TLSInsecure:           req.TLSInsecure,
+		Crawler:               req.Crawler,
+		UserAgent:             strings.TrimSpace(req.UserAgent),
+		StoreHashOnly:         req.StoreHashOnly,
+		EntryRetentionDays:    req.EntryRetentionDays,
+		AdaptiveInterval:      req.AdaptiveInterval,
+		SkipOwnerSubscription: req.SubscribeSelf != nil && !*req.SubscribeSelf,
 	}, nil
 }
 
@@ -313,6 +340,7 @@ func toFeedDTO(f storage.Feed) feedDTO {
 		EntryRetentionDays: f.EntryRetentionDays,
 		AdaptiveInterval:   f.AdaptiveInterval,
 		LastEntryAt:        f.LastEntryAt,
+		Subscribed:         f.Subscribed,
 	}
 }
 

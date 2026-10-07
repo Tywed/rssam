@@ -52,6 +52,9 @@ RETURNING id`, u.ID, suffix, n)
 	if len(ids) != n {
 		t.Fatalf("created %d feeds, want %d", len(ids), n)
 	}
+	// Feeds outlive their owner since 0.2.0; their jobs would starve the
+	// e2e worker on the next run.
+	t.Cleanup(func() { _, _ = store.db.Exec(context.Background(), `DELETE FROM feeds WHERE id = ANY($1)`, ids) })
 
 	base := time.Now().UTC().Truncate(time.Millisecond)
 	if err := store.EnqueuePollFeedJobs(ctx, ids, base); err != nil {

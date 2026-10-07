@@ -23,10 +23,17 @@
       <div class="form-group"><label>Название</label><input name="title" id="feed-title-input" value="{{.Feed.Title}}"></div>
       <div class="form-group"><label>Категория</label>
         <select name="category_id">
-          <option value="">—</option>
+          <option value="">— без категории —</option>
           {{range .Categories}}<option value="{{.ID}}" {{if and $.Feed.CategoryID (eq .ID (deref $.Feed.CategoryID))}}selected{{end}}>{{.Title}}</option>{{end}}
         </select>
+        <p class="meta">Категория общая для всех: лента сразу появится у тех, кто читает категорию целиком.</p>
       </div>
+      {{if not .Feed.ID}}
+      <div class="form-group">
+        <label class="checkbox-label"><input type="checkbox" name="subscribe_self" value="1" checked> Подписаться самому</label>
+        <input type="hidden" name="subscribe_self" value="0">
+      </div>
+      {{end}}
       <div class="form-group"><label>Интервал (мин)</label><input name="interval_minutes" type="number" value="{{if .Feed.IntervalMinutes}}{{.Feed.IntervalMinutes}}{{else}}60{{end}}" min="1" max="10080">
         <label class="checkbox-label"><input type="checkbox" name="adaptive_interval" value="1" {{if .Feed.AdaptiveInterval}}checked{{end}}> Адаптивный интервал</label>
         <p class="meta">Для редко обновляемых источников интервал растягивается от указанного до <code>ADAPTIVE_MAX_INTERVAL</code> (по умолчанию 6 ч): половина среднего промежутка между записями за неделю. Лента без записей неделю опрашивается раз в <code>ADAPTIVE_MAX_INTERVAL</code>, за каждую следующую неделю тишины интервал удваивается до <code>MAX_POLL_INTERVAL</code> (по умолчанию 24 ч); первая же новая запись возвращает обычный расчёт.</p>
@@ -149,13 +156,10 @@
     </form>
     {{if .Feed.ID}}
     <div class="toolbar mt-2">
-      <form method="post" action="/ui/feeds/{{.Feed.ID}}/unsubscribe" data-confirm="Отписаться от «{{.Feed.Title}}»? Лента останется в каталоге{{if gt (len .FeedSubscribers) 1}} у остальных {{sub (len .FeedSubscribers) 1}} подписчиков{{else}}, только если на неё подпишется кто-то ещё; вы единственный подписчик — лента и её записи будут удалены{{end}}.">
+      {{template "feed_subscribe_toggle" .}}
+      <form method="post" action="/ui/feeds/{{.Feed.ID}}/delete" data-confirm="Удалить ленту из каталога для всех? Читателей: {{len .FeedSubscribers}}{{if .IsAdmin}}{{range $i, $s := .FeedSubscribers}}{{if $i}},{{else}} —{{end}} {{$s.Username}}{{end}}{{end}}. Записи ленты будут удалены у всех.">
         <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
-        <button type="submit" class="btn">Отписаться</button>
-      </form>
-      <form method="post" action="/ui/feeds/{{.Feed.ID}}/delete" data-confirm="Удалить ленту из каталога для всех? Подписчиков: {{len .FeedSubscribers}}{{if .IsAdmin}}{{range $i, $s := .FeedSubscribers}}{{if $i}},{{else}} —{{end}} {{$s.Username}}{{end}}{{end}}. Записи ленты будут удалены у всех.">
-        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
-        <button type="submit" class="btn btn-danger">Удалить из каталога{{if gt (len .FeedSubscribers) 1}} ({{len .FeedSubscribers}} подписчиков){{end}}</button>
+        <button type="submit" class="btn btn-danger">Удалить из каталога{{if gt (len .FeedSubscribers) 1}} ({{len .FeedSubscribers}} читателей){{end}}</button>
       </form>
     </div>
     {{end}}

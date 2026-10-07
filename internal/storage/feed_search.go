@@ -11,16 +11,20 @@ const (
 	MinFeedSearchQueryRunes = 2
 	DefaultFeedSuggestLimit = 20
 	MaxFeedSuggestLimit     = 50
+	MaxFeedSearchLimit      = 200
 	MaxListFeedsByIDs       = 500
 )
 
-// SearchFeedsFilter is a lightweight title/URL lookup for UI pickers.
-// Query shorter than MinFeedSearchQueryRunes is ignored unless CategoryID is set
-// (browse a category without dumping the full catalog).
+// SearchFeedsFilter is a lightweight title/URL lookup for UI pickers and
+// the subscriptions page. Query shorter than MinFeedSearchQueryRunes is
+// ignored unless CategoryID is set (browse a category without dumping the
+// full catalog). Catalog widens the search from the user's feeds to every
+// feed (Subscribed tells which ones they read).
 type SearchFeedsFilter struct {
 	Query      string
 	CategoryID *int64 // nil = any; 0 = uncategorized
 	Limit      int
+	Catalog    bool
 }
 
 func escapeLikePattern(s string) string {
@@ -34,8 +38,8 @@ func clampFeedSuggestLimit(n int) int {
 	if n <= 0 {
 		return DefaultFeedSuggestLimit
 	}
-	if n > MaxFeedSuggestLimit {
-		return MaxFeedSuggestLimit
+	if n > MaxFeedSearchLimit {
+		return MaxFeedSearchLimit
 	}
 	return n
 }
@@ -66,17 +70,21 @@ func (s *PostgresStore) SearchFeeds(ctx context.Context, userID int64, filter Se
 	}
 	if hasCategory {
 		if *filter.CategoryID == 0 {
-			where = append(where, "s.category_id IS NULL")
+			where = append(where, "f.category_id IS NULL")
 		} else {
-			where = append(where, fmt.Sprintf("s.category_id = $%d", argN))
+			where = append(where, fmt.Sprintf("f.category_id = $%d", argN))
 			args = append(args, *filter.CategoryID)
 			argN++
 		}
 	}
 
+	join := subscribedJoin
+	if filter.Catalog {
+		join = catalogUserJoin
+	}
 	sql := `
 SELECT ` + feedColumns + `
-FROM feeds f ` + subscribedJoin + `
+FROM feeds f ` + join + `
 WHERE ` + strings.Join(where, " AND ") + `
 ORDER BY f.title ASC, f.id ASC
 LIMIT $` + fmt.Sprint(argN)

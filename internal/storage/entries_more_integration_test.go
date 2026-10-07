@@ -106,7 +106,7 @@ func TestIntegration_EntryDedupAndCollapse(t *testing.T) {
 	if len(remaining) != 2 {
 		t.Fatalf("remaining after collapse: %d (starred + webhook-pending)", len(remaining))
 	}
-	cat, _ := store.CreateCategory(ctx, owner.ID, "collapse", "")
+	cat, _ := store.CreateCategory(ctx, "collapse", "")
 	if n64, err := store.CollapseEntriesToHashes(ctx, CollapseEntriesParams{UserID: owner.ID, CategoryID: &cat.ID}); err != nil || n64 != 0 {
 		t.Fatalf("collapse empty category: n=%d err=%v", n64, err)
 	}
@@ -120,7 +120,7 @@ func TestIntegration_EnclosuresUnreadCountsAndMarkAll(t *testing.T) {
 	ctx := context.Background()
 	owner := newIntegrationUser(t, store, "encl")
 	other := newIntegrationUser(t, store, "encl_other")
-	cat, _ := store.CreateCategory(ctx, owner.ID, "E", "")
+	cat, _ := store.CreateCategory(ctx, "E", "")
 	feed := newFeedForUser(t, store, owner.ID, "encl", 60)
 	if _, err := store.UpdateFeed(ctx, owner.ID, UpdateFeedParams{ID: feed.ID, FeedURL: feed.FeedURL, Title: feed.Title, IntervalMinutes: 60, CategoryID: &cat.ID}); err != nil {
 		t.Fatal(err)
@@ -163,8 +163,11 @@ func TestIntegration_EnclosuresUnreadCountsAndMarkAll(t *testing.T) {
 		t.Fatalf("unread for other=%d err=%v", n, err)
 	}
 
-	if _, err := store.MarkAllCategoryEntriesRead(ctx, other.ID, cat.ID); !errors.Is(err, ErrNotFound) {
-		t.Fatalf("foreign category mark-all: err=%v", err)
+	if _, err := store.MarkAllCategoryEntriesRead(ctx, other.ID, cat.ID+1000); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("missing category mark-all: err=%v", err)
+	}
+	if n, err := store.MarkAllCategoryEntriesRead(ctx, other.ID, cat.ID); err != nil || n != 0 {
+		t.Fatalf("category mark-all for a non-subscriber: n=%d err=%v", n, err)
 	}
 	if n, err := store.MarkAllCategoryEntriesRead(ctx, owner.ID, cat.ID); err != nil || n != 2 {
 		t.Fatalf("category mark-all n=%d err=%v", n, err)

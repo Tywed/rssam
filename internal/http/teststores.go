@@ -95,6 +95,12 @@ func (noopFeedStore) ListFeedsByIDs(_ context.Context, _ int64, _ []int64) ([]st
 func (noopFeedStore) FeedCountsByCategory(_ context.Context, _ int64) (storage.FeedCategoryCounts, error) {
 	return storage.FeedCategoryCounts{ByCategory: map[int64]int{}}, nil
 }
+func (noopFeedStore) CatalogFeeds(_ context.Context, _ int64, _ *int64, _, _ int) ([]storage.Feed, int, error) {
+	return nil, 0, nil
+}
+func (noopFeedStore) CatalogCountsByCategory(_ context.Context) (storage.FeedCategoryCounts, error) {
+	return storage.FeedCategoryCounts{}, nil
+}
 func (noopFeedStore) CountFeedStatuses(_ context.Context, _ int64) (int, int, error) {
 	return 0, 0, nil
 }
@@ -107,7 +113,7 @@ func (noopFeedStore) UpdateFeed(_ context.Context, _ int64, _ storage.UpdateFeed
 func (noopFeedStore) UpdateFeedRefreshMeta(_ context.Context, _ storage.UpdateFeedRefreshMetaParams) error {
 	return nil
 }
-func (noopFeedStore) UpdateFeedIcon(_ context.Context, _, _ int64, _ string, _ []byte) error {
+func (noopFeedStore) UpdateFeedIcon(_ context.Context, _ int64, _ string, _ []byte) error {
 	return nil
 }
 func (noopFeedStore) SetFeedNextCheckAt(_ context.Context, _ int64, _ time.Time) error {

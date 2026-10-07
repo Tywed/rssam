@@ -30,7 +30,7 @@ func TestIntegration_FeedListsMatchGetFeed(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = store.DeleteUser(context.Background(), u.ID) })
 
-	cat, err := store.CreateCategory(ctx, u.ID, "c"+suffix, "")
+	cat, err := store.CreateCategory(ctx, "c"+suffix, "")
 	if err != nil {
 		t.Fatalf("create category: %v", err)
 	}
@@ -112,12 +112,18 @@ WHERE id = $1`, created.ID); err != nil {
 	}
 	check("ListFeedsByStatus", find("ListFeedsByStatus", feeds))
 
-	// Catalog views carry no subscription: category and webhook are nil.
+	catalog, _, err := store.CatalogFeeds(ctx, u.ID, &cat.ID, 10, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	check("CatalogFeeds", find("CatalogFeeds", catalog))
+
+	// Catalog views carry no subscription: webhook is nil, Subscribed false.
 	all, err := store.ListAllFeeds(ctx, 10000)
 	if err != nil {
 		t.Fatal(err)
 	}
-	want.CategoryID, want.WebhookID = nil, nil
+	want.WebhookID, want.Subscribed = nil, false
 	check("ListAllFeeds", find("ListAllFeeds", all))
 	byID, err := store.GetFeedByID(ctx, created.ID)
 	if err != nil {

@@ -38,8 +38,12 @@ func (h *Handler) renderFeedsListFlash(w http.ResponseWriter, r *http.Request, f
 	data := h.baseData(r, "settings")
 	data.SettingsSection = "feeds"
 	data.FlashMsg = flash
-	filter := feedsFilterFromForm(r)
-	_ = h.loadFeedsListPage(r, &data, p.UserID, filter)
+	scope := strings.TrimSpace(r.FormValue("scope"))
+	if scope != "mine" {
+		scope = ""
+	}
+	_ = h.loadFeedsListPage(r, &data, p.UserID, scope, feedsFilterFromForm(r), "")
+	h.loadFollowState(r, &data, p.UserID)
 	if p.CanEdit() {
 		h.loadFeedFormWebhooks(r, &data)
 	}

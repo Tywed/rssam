@@ -35,7 +35,7 @@ func (s *catalogFeedStore) CreateFeed(ctx context.Context, userID int64, p stora
 	if err != nil {
 		return storage.Feed{}, err
 	}
-	_, err = s.subs.Subscribe(ctx, userID, feed.ID, storage.SubscriptionParams{CategoryID: p.CategoryID, WebhookID: p.WebhookID})
+	_, err = s.subs.Subscribe(ctx, userID, feed.ID, storage.SubscriptionParams{WebhookID: p.WebhookID})
 	return feed, err
 }
 
@@ -73,7 +73,7 @@ func (m *memSubscriptionStore) Subscribe(_ context.Context, userID, feedID int64
 	if _, ok := m.subs[userID][feedID]; ok {
 		return storage.Subscription{}, storage.ErrAlreadySubscribed
 	}
-	s := storage.Subscription{UserID: userID, FeedID: feedID, CategoryID: p.CategoryID, WebhookID: p.WebhookID}
+	s := storage.Subscription{UserID: userID, FeedID: feedID, WebhookID: p.WebhookID}
 	m.subs[userID][feedID] = s
 	return s, nil
 }
@@ -85,7 +85,7 @@ func (m *memSubscriptionStore) SubscribeByURL(ctx context.Context, userID int64,
 			if _, err := m.Subscribe(ctx, userID, f.ID, p); err != nil {
 				return storage.Feed{}, err
 			}
-			f.CategoryID = p.CategoryID
+			f.Subscribed = true
 			return f, nil
 		}
 	}
@@ -99,7 +99,7 @@ func (m *memSubscriptionStore) UpdateSubscription(_ context.Context, userID, fee
 	if !ok {
 		return storage.Subscription{}, storage.ErrNotFound
 	}
-	s.CategoryID, s.WebhookID = p.CategoryID, p.WebhookID
+	s.WebhookID = p.WebhookID
 	m.subs[userID][feedID] = s
 	return s, nil
 }
@@ -136,33 +136,47 @@ func (m *memSubscriptionStore) ListSubscriptions(_ context.Context, userID int64
 	return out, nil
 }
 
-func (m *memSubscriptionStore) ListCatalog(ctx context.Context, userID int64, f storage.CatalogFilter) ([]storage.CatalogFeed, int, error) {
-	feeds, _ := m.feeds.ListAllFeeds(ctx, 0)
-	var out []storage.CatalogFeed
-	for _, feed := range feeds {
-		if f.Query != "" && !strings.Contains(feed.FeedURL, f.Query) && !strings.Contains(feed.Title, f.Query) {
-			continue
-		}
-		subs, _ := m.ListFeedSubscribers(ctx, feed.ID)
-		row := storage.CatalogFeed{ID: feed.ID, FeedURL: feed.FeedURL, Title: feed.Title, OwnerID: feed.OwnerID, SubscriberCount: len(subs)}
-		for _, s := range subs {
-			if s.UserID == userID {
-				row.Subscribed = true
+func (s *catalogFeedStore) CatalogFeeds(ctx context.Context, userID int64, _ *int64, _, _ int) ([]storage.Feed, int, error) {
+	feeds, _ := s.ListAllFeeds(ctx, 0)
+	for i := range feeds {
+		subs, _ := s.subs.ListFeedSubscribers(ctx, feeds[i].ID)
+		for _, sub := range subs {
+			if sub.UserID == userID {
+				feeds[i].Subscribed = true
 			}
 		}
-		if f.Subscribed != nil && *f.Subscribed != row.Subscribed {
-			continue
+	}
+	return feeds, len(feeds), nil
+}
+
+func (s *catalogFeedStore) ListFeeds(ctx context.Context, userID int64, _, _ int) ([]storage.Feed, int, error) {
+	all, _, _ := s.CatalogFeeds(ctx, userID, nil, 0, 0)
+	var out []storage.Feed
+	for _, f := range all {
+		if f.Subscribed {
+			out = append(out, f)
 		}
-		out = append(out, row)
 	}
 	return out, len(out), nil
+}
+
+func (m *memSubscriptionStore) FeedSubscriberCounts(context.Context) (map[int64]int, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := map[int64]int{}
+	for _, byFeed := range m.subs {
+		for id := range byFeed {
+			out[id]++
+		}
+	}
+	return out, nil
 }
 
 func (m *memSubscriptionStore) ListFeedSubscriberNames(ctx context.Context, feedID int64) ([]storage.FeedSubscriber, error) {
 	subs, _ := m.ListFeedSubscribers(ctx, feedID)
 	out := make([]storage.FeedSubscriber, 0, len(subs))
 	for _, s := range subs {
-		out = append(out, storage.FeedSubscriber{UserID: s.UserID, CategoryID: s.CategoryID})
+		out = append(out, storage.FeedSubscriber{UserID: s.UserID})
 	}
 	return out, nil
 }
@@ -183,26 +197,26 @@ func TestRouter_SubscriptionsLifecycle(t *testing.T) {
 	rec := env.want(env.do(http.MethodPost, "/v1/feeds", env.editorKey, `{"feed_url":"https://example.com/a.xml","title":"A"}`), http.StatusCreated)
 	feed, _ := decodeData[feedDTO](t, rec)
 
-	// Reader: catalog shows the feed unsubscribed, subscribe works once.
-	rec = env.want(env.do(http.MethodGet, "/v1/catalog", env.bobKey, ""), http.StatusOK)
-	catalog, total := decodeData[[]catalogFeedDTO](t, rec)
-	if total != 1 || len(catalog) != 1 || catalog[0].ID != feed.ID || catalog[0].Subscribed || catalog[0].SubscriberCount != 1 {
+	// Reader: the catalog shows the feed unsubscribed, subscribe works once.
+	rec = env.want(env.do(http.MethodGet, "/v1/feeds?all=true", env.bobKey, ""), http.StatusOK)
+	catalog, total := decodeData[[]feedDTO](t, rec)
+	if total != 1 || len(catalog) != 1 || catalog[0].ID != feed.ID || catalog[0].Subscribed {
 		t.Fatalf("catalog = %+v total=%d", catalog, total)
 	}
 	env.want(env.do(http.MethodPost, "/v1/subscriptions", env.bobKey, `{"feed_id":`+itoa(feed.ID)+`}`), http.StatusCreated)
 	env.want(env.do(http.MethodPost, "/v1/subscriptions", env.bobKey, `{"feed_id":`+itoa(feed.ID)+`}`), http.StatusConflict)
 	env.want(env.do(http.MethodPost, "/v1/subscriptions", env.bobKey, `{"feed_id":999}`), http.StatusNotFound)
 	env.want(env.do(http.MethodPost, "/v1/subscriptions", env.bobKey, `{}`), http.StatusBadRequest)
-	rec = env.want(env.do(http.MethodGet, "/v1/catalog?subscribed=true", env.bobKey, ""), http.StatusOK)
-	if catalog, _ = decodeData[[]catalogFeedDTO](t, rec); len(catalog) != 1 || !catalog[0].Subscribed || catalog[0].SubscriberCount != 2 {
+	rec = env.want(env.do(http.MethodGet, "/v1/feeds?all=true", env.bobKey, ""), http.StatusOK)
+	if catalog, _ = decodeData[[]feedDTO](t, rec); len(catalog) != 1 || !catalog[0].Subscribed {
 		t.Fatalf("catalog after subscribe = %+v", catalog)
 	}
-	env.want(env.do(http.MethodGet, "/v1/catalog?subscribed=maybe", env.bobKey, ""), http.StatusBadRequest)
+	env.want(env.do(http.MethodGet, "/v1/feeds?all=maybe", env.bobKey, ""), http.StatusBadRequest)
 	rec = env.want(env.do(http.MethodGet, "/v1/subscriptions", env.bobKey, ""), http.StatusOK)
 	if subs, _ := decodeData[[]subscriptionDTO](t, rec); len(subs) != 1 || subs[0].FeedID != feed.ID {
 		t.Fatalf("subscriptions = %+v", subs)
 	}
-	env.want(env.do(http.MethodPut, "/v1/subscriptions/"+itoa(feed.ID), env.bobKey, `{"category_id":null}`), http.StatusOK)
+	env.want(env.do(http.MethodPut, "/v1/subscriptions/"+itoa(feed.ID), env.bobKey, `{"webhook_id":null}`), http.StatusOK)
 	env.want(env.do(http.MethodPut, "/v1/subscriptions/999", env.bobKey, `{}`), http.StatusNotFound)
 
 	// Admin posting the same URL is subscribed (200), not refused (409).
@@ -214,9 +228,9 @@ func TestRouter_SubscriptionsLifecycle(t *testing.T) {
 
 	env.want(env.do(http.MethodDelete, "/v1/subscriptions/"+itoa(feed.ID), env.bobKey, ""), http.StatusOK)
 	env.want(env.do(http.MethodDelete, "/v1/subscriptions/"+itoa(feed.ID), env.bobKey, ""), http.StatusNotFound)
-	rec = env.want(env.do(http.MethodGet, "/v1/catalog?subscribed=false", env.bobKey, ""), http.StatusOK)
-	if _, total = decodeData[[]catalogFeedDTO](t, rec); total != 1 {
-		t.Fatalf("unsubscribed catalog total = %d", total)
+	rec = env.want(env.do(http.MethodGet, "/v1/feeds", env.bobKey, ""), http.StatusOK)
+	if _, total = decodeData[[]feedDTO](t, rec); total != 0 {
+		t.Fatalf("bob's feeds after unsubscribe = %d", total)
 	}
 
 	got := make([]string, 0, len(log.rows))
@@ -256,8 +270,8 @@ func TestRouter_OPMLImportSubscribesToCatalogFeed(t *testing.T) {
 	if report.FeedsCreated != 1 || report.FeedsSubscribed != 1 || report.FeedsSkipped != 0 || len(report.Errors) != 0 {
 		t.Fatalf("report = %+v", report)
 	}
-	rec = env.want(env.do(http.MethodGet, "/v1/catalog?subscribed=true", env.adminKey, ""), http.StatusOK)
-	if _, total := decodeData[[]catalogFeedDTO](t, rec); total != 2 {
+	rec = env.want(env.do(http.MethodGet, "/v1/feeds", env.adminKey, ""), http.StatusOK)
+	if _, total := decodeData[[]feedDTO](t, rec); total != 2 {
 		t.Fatalf("admin subscribed to %d feeds, want 2", total)
 	}
 }

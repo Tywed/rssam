@@ -29,15 +29,15 @@ func testUser(t *testing.T, store *PostgresStore, ctx context.Context, prefix st
 }
 
 func TestIntegration_FeedCountsByCategory(t *testing.T) {
-	store := testStore(t)
+	store := isolatedStore(t)
 	ctx := context.Background()
 	u := testUser(t, store, ctx, "counts_")
 
-	cat1, err := store.CreateCategory(ctx, u.ID, "Telegram", "")
+	cat1, err := store.CreateCategory(ctx, "Telegram", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	cat2, err := store.CreateCategory(ctx, u.ID, "VK", "")
+	cat2, err := store.CreateCategory(ctx, "VK", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -87,7 +87,7 @@ func TestIntegration_FeedCountsByCategory(t *testing.T) {
 }
 
 func TestIntegration_CountFeedStatuses(t *testing.T) {
-	store := testStore(t)
+	store := isolatedStore(t)
 	ctx := context.Background()
 	u := testUser(t, store, ctx, "status_")
 
@@ -127,7 +127,7 @@ func TestIntegration_CountFeedStatuses(t *testing.T) {
 }
 
 func TestIntegration_ListFeedsNoLimit(t *testing.T) {
-	store := testStore(t)
+	store := isolatedStore(t)
 	ctx := context.Background()
 	u := testUser(t, store, ctx, "nolimit_")
 

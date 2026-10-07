@@ -85,7 +85,7 @@ func (s *Server) exportOPMLForUser(w http.ResponseWriter, ctx context.Context, u
 	if s.categories == nil || s.feeds == nil {
 		return errors.New("storage is not configured")
 	}
-	categories, _, err := s.categories.ListCategories(ctx, userID, 10000, 0)
+	categories, _, err := s.categories.ListCategories(ctx, 10000, 0)
 	if err != nil {
 		return err
 	}
@@ -199,7 +199,7 @@ func (s *Server) importOPML(r *http.Request, doc *opml.Document, userID int64, j
 	p, _ := auth.PrincipalFromContext(ctx)
 	feedCount, _ := s.feeds.CountOwnedFeeds(ctx, userID)
 
-	existingCats, _, _ := s.categories.ListCategories(ctx, userID, 10000, 0)
+	existingCats, _, _ := s.categories.ListCategories(ctx, 10000, 0)
 	categoryByTitle := make(map[string]int64, len(existingCats))
 	for _, c := range existingCats {
 		key := strings.ToLower(strings.TrimSpace(c.Title))
@@ -295,7 +295,7 @@ func (s *Server) importOPML(r *http.Request, doc *opml.Document, userID int64, j
 			key := strings.ToLower(catTitle)
 			id, ok := categoryByTitle[key]
 			if !ok {
-				category, err := s.categories.CreateCategory(ctx, userID, catTitle, "")
+				category, err := s.categories.CreateCategory(ctx, catTitle, "")
 				if err != nil {
 					report.Errors = append(report.Errors, importErrorDTO{
 						Title:  catTitle,
@@ -327,7 +327,7 @@ func (s *Server) importOPML(r *http.Request, doc *opml.Document, userID int64, j
 
 		feed, err := s.feeds.CreateFeed(ctx, userID, params)
 		if errors.Is(err, storage.ErrDuplicateFeedURL) && s.subscriptions != nil {
-			feed, err = s.subscriptions.SubscribeByURL(ctx, userID, params.FeedURL, storage.SubscriptionParams{CategoryID: params.CategoryID, WebhookID: params.WebhookID})
+			feed, err = s.subscriptions.SubscribeByURL(ctx, userID, params.FeedURL, storage.SubscriptionParams{WebhookID: params.WebhookID})
 			if err == nil {
 				report.FeedsSubscribed++
 				knownFeedURLs[normURL] = struct{}{}
