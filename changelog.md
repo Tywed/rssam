@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.2.3
+
 Миграция 0055 (одна колонка `feeds.items_hash`) применяется только с `RUN_MIGRATIONS=true`; данных не трогает, мгновенная.
 
 - Сборка: Go 1.27.2 (закрывает девять уязвимостей net/http, crypto/tls и x/net в 1.27.1 — govulncheck в CI на 1.27.1 падает), `golang.org/x/net` 0.60.0, `golang.org/x/tools` 0.51.0 (staticcheck 0.8.1 на старой версии не читает export data Go 1.27.2), golangci-lint в CI v2.14.0 (по той же причине). Для пользователя ничего не меняется.
