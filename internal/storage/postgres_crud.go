@@ -115,7 +115,7 @@ func (s *PostgresStore) GetFeedByID(ctx context.Context, id int64) (Feed, error)
 // Subscribed come from the subscription alias s.
 const feedColumns = `f.id, COALESCE(f.owner_id, 0), f.feed_url, f.feed_type, f.title, f.category_id, f.interval_minutes, f.etag, f.last_modified, f.last_checked_at, f.last_error,
        f.parsing_error_count, f.poll_paused, f.manual_paused, f.store_hash_only, f.entry_retention_days, f.adaptive_interval, f.next_check_at,
-       f.bridge_state, f.scraper_rules, f.rewrite_rules, f.blocked_rules, f.keep_rules, f.fetch_via_proxy, f.tls_insecure, f.crawler, f.user_agent,
+       f.bridge_state, f.items_hash, f.scraper_rules, f.rewrite_rules, f.blocked_rules, f.keep_rules, f.fetch_via_proxy, f.tls_insecure, f.crawler, f.user_agent,
        s.webhook_id, s.user_id IS NOT NULL, f.icon_url, f.last_entry_at, f.created_at, f.updated_at`
 
 // subscribedJoin restricts to the feeds $1 reads; catalogUserJoin keeps
@@ -130,7 +130,7 @@ func feedScanTargets(f *Feed) []any {
 	return []any{
 		&f.ID, &f.OwnerID, &f.FeedURL, &f.FeedType, &f.Title, &f.CategoryID, &f.IntervalMinutes, &f.ETag, &f.LastModified, &f.LastCheckedAt, &f.LastError,
 		&f.ParsingErrorCount, &f.PollPaused, &f.ManualPaused, &f.StoreHashOnly, &f.EntryRetentionDays, &f.AdaptiveInterval, &f.NextCheckAt,
-		&f.BridgeState, &f.ScraperRules, &f.RewriteRules, &f.BlockedRules, &f.KeepRules, &f.FetchViaProxy, &f.TLSInsecure, &f.Crawler, &f.UserAgent,
+		&f.BridgeState, &f.ItemsHash, &f.ScraperRules, &f.RewriteRules, &f.BlockedRules, &f.KeepRules, &f.FetchViaProxy, &f.TLSInsecure, &f.Crawler, &f.UserAgent,
 		&f.WebhookID, &f.Subscribed, &f.IconURL, &f.LastEntryAt, &f.CreatedAt, &f.UpdatedAt,
 	}
 }
@@ -322,6 +322,7 @@ SET feed_url = $2, title = $3, interval_minutes = $4,
     bridge_state = COALESCE($15::jsonb, bridge_state),
     adaptive_interval = $16,
     category_id = $17,
+    items_hash = CASE WHEN f.feed_url = $2 THEN f.items_hash ELSE '' END,
     updated_at = now()
 WHERE f.id = $1`
 		if _, err := tx.Exec(ctx, q,

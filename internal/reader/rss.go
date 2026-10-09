@@ -1,6 +1,7 @@
 package reader
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -15,6 +16,7 @@ import (
 	"rssam/internal/model"
 	"rssam/internal/ssrf"
 
+	"github.com/cespare/xxhash/v2"
 	"github.com/mmcdole/gofeed"
 )
 
@@ -29,6 +31,23 @@ type FetchResult struct {
 	// NewURL is set when every redirect hop was permanent (301/308): the
 	// feed has moved and the stored URL can follow.
 	NewURL string
+	// BodyHash fingerprints the response body; empty when no body was read.
+	BodyHash string
+}
+
+// FetchParams is a conditional fetch: ETag/LastModified go to the source,
+// BodyHash is matched locally for sources that answer 200 to everything.
+type FetchParams struct {
+	FeedURL      string
+	ETag         string
+	LastModified string
+	BodyHash     string
+	UseProxy     bool
+	TLSInsecure  bool
+}
+
+func bodyHash(body []byte) string {
+	return strconv.FormatUint(xxhash.Sum64(body), 16)
 }
 
 // ErrFeedGone is returned for HTTP 410: the source removed the feed for
@@ -173,7 +192,13 @@ func NewRSSFetcher(client *http.Client, userAgent string, guard *ssrf.Guard, fet
 }
 
 func (f *RSSFetcher) Fetch(ctx context.Context, feedURL, etag, lastModified string, useProxy, tlsInsecure bool) (FetchResult, error) {
-	feedURL = strings.TrimSpace(feedURL)
+	return f.FetchWith(ctx, FetchParams{FeedURL: feedURL, ETag: etag, LastModified: lastModified, UseProxy: useProxy, TLSInsecure: tlsInsecure})
+}
+
+func (f *RSSFetcher) FetchWith(ctx context.Context, p FetchParams) (FetchResult, error) {
+	feedURL := strings.TrimSpace(p.FeedURL)
+	etag, lastModified := p.ETag, p.LastModified
+	useProxy, tlsInsecure := p.UseProxy, p.TLSInsecure
 	if feedURL == "" {
 		return FetchResult{}, fmt.Errorf("empty feed url")
 	}
@@ -230,14 +255,30 @@ func (f *RSSFetcher) Fetch(ctx context.Context, feedURL, etag, lastModified stri
 		return FetchResult{}, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
 	}
 
-	// <ttl> sits in <channel> before the items; 4 KB of head is plenty.
-	head := make([]byte, 4096)
-	n, _ := io.ReadFull(resp.Body, head)
-	head = head[:n]
-	parsed, err := parseLimitedFeed(f.parser, io.MultiReader(strings.NewReader(string(head)), resp.Body))
+	body, err := io.ReadAll(io.LimitReader(resp.Body, MaxFeedBodyBytes+1))
+	if err != nil {
+		return FetchResult{}, fmt.Errorf("read feed: %w", err)
+	}
+	if len(body) > MaxFeedBodyBytes {
+		return FetchResult{}, ErrFeedTooLarge
+	}
+	sum := bodyHash(body)
+	if p.BodyHash != "" && sum == p.BodyHash {
+		return FetchResult{
+			NotModified:  true,
+			ETag:         resp.Header.Get("ETag"),
+			LastModified: resp.Header.Get("Last-Modified"),
+			MinNextCheck: cacheFreshUntil(resp.Header, now),
+			BodyHash:     sum,
+		}, nil
+	}
+
+	parsed, err := parseLimitedFeed(f.parser, bytes.NewReader(body))
 	if err != nil {
 		return FetchResult{}, fmt.Errorf("parse feed: %w", err)
 	}
+	// <ttl> sits in <channel> before the items; 4 KB of head is plenty.
+	head := body[:min(len(body), 4096)]
 
 	out := make([]bridge.Entry, 0, len(parsed.Items))
 	for _, it := range parsed.Items {
@@ -255,6 +296,7 @@ func (f *RSSFetcher) Fetch(ctx context.Context, feedURL, etag, lastModified stri
 		NotModified:  false,
 		MinNextCheck: minNext,
 		NewURL:       redirects.permanentDestination(resp),
+		BodyHash:     sum,
 	}, nil
 }
 

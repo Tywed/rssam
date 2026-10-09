@@ -28,7 +28,36 @@ func IsValidEntryStatus(s string) bool {
 // CreateEntries inserts the feed's new items once and fans them out to every
 // subscriber as unread in the same statement. Returned entries carry the
 // unread/unstarred state of a fresh row.
+//
+// Items already known to the feed are dropped by an index-only lookup first:
+// the INSERT builds a tsvector for every row it is handed before the unique
+// index rejects it, and on a routine poll nearly every item is a repeat.
 func (s *PostgresStore) CreateEntries(ctx context.Context, feedID int64, entries []CreateEntryParams) (inserted int, insertedEntries []Entry, err error) {
+	if len(entries) == 0 {
+		return 0, nil, nil
+	}
+	for _, e := range entries {
+		if e.Hash == "" {
+			return 0, nil, errors.New("entry hash is required")
+		}
+	}
+	allHashes := make([]string, len(entries))
+	for i, e := range entries {
+		allHashes[i] = e.Hash
+	}
+	known, err := s.FilterKnownEntryHashes(ctx, feedID, allHashes)
+	if err != nil {
+		return 0, nil, err
+	}
+	if len(known) > 0 {
+		fresh := make([]CreateEntryParams, 0, len(entries)-len(known))
+		for _, e := range entries {
+			if _, ok := known[e.Hash]; !ok {
+				fresh = append(fresh, e)
+			}
+		}
+		entries = fresh
+	}
 	if len(entries) == 0 {
 		return 0, nil, nil
 	}
@@ -41,9 +70,6 @@ func (s *PostgresStore) CreateEntries(ctx context.Context, feedID int64, entries
 	hashes := make([]string, len(entries))
 	byHash := make(map[string]CreateEntryParams, len(entries))
 	for i, e := range entries {
-		if e.Hash == "" {
-			return 0, nil, errors.New("entry hash is required")
-		}
 		titles[i] = e.Title
 		urls[i] = e.URL
 		contents[i] = e.Content
@@ -309,9 +335,10 @@ SET etag = $2,
     last_entry_at = CASE WHEN $8 THEN $4 ELSE last_entry_at END,
     feed_url = CASE WHEN $9 <> '' AND NOT EXISTS (SELECT 1 FROM feeds o WHERE o.feed_url = $9)
                THEN $9 ELSE feed_url END,
+    items_hash = COALESCE($10, items_hash),
     updated_at = now()
 WHERE id = $1`
-	cmd, err := s.db.Exec(ctx, q, params.ID, params.ETag, params.LastModified, params.LastCheckedAt, params.LastError, bridgeState, params.NextCheckAt, params.NewEntries > 0, params.NewFeedURL)
+	cmd, err := s.db.Exec(ctx, q, params.ID, params.ETag, params.LastModified, params.LastCheckedAt, params.LastError, bridgeState, params.NextCheckAt, params.NewEntries > 0, params.NewFeedURL, params.ItemsHash)
 	if err != nil {
 		return fmt.Errorf("update feed refresh meta: %w", err)
 	}

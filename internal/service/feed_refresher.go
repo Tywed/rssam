@@ -8,6 +8,8 @@ import (
 	"log/slog"
 	"rssam/internal/bridge/v1"
 	maxbridge "rssam/internal/reader/max"
+	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -15,6 +17,8 @@ import (
 	"rssam/internal/metrics"
 	"rssam/internal/reader"
 	"rssam/internal/storage"
+
+	"github.com/cespare/xxhash/v2"
 )
 
 // FeedSubscribers is the slice of the subscription store the refresher needs.
@@ -237,11 +241,17 @@ func (r *FeedRefresher) refreshLoaded(ctx context.Context, feed storage.Feed, ma
 	}
 	bridgeState := reader.ParseBridgeState(feed.BridgeState)
 
-	if manual && reader.NormalizeFeedType(feed.FeedType) == reader.FeedTypeMax {
-		var st maxbridge.FetchState
-		_ = bridge.DecodeState(bridgeState.Raw(reader.FeedTypeMax), &st)
-		st.LastEndTimeMs = 0
-		bridgeState = bridgeState.With(reader.FeedTypeMax, bridge.EncodeState(st))
+	if manual {
+		// A manual refresh re-reads the source in full: no body-hash
+		// shortcut in the RSS handler, no item-set shortcut below.
+		bridgeState = bridgeState.With(reader.FeedTypeRSS, nil)
+		feed.ItemsHash = ""
+		if reader.NormalizeFeedType(feed.FeedType) == reader.FeedTypeMax {
+			var st maxbridge.FetchState
+			_ = bridge.DecodeState(bridgeState.Raw(reader.FeedTypeMax), &st)
+			st.LastEndTimeMs = 0
+			bridgeState = bridgeState.With(reader.FeedTypeMax, bridge.EncodeState(st))
+		}
 	}
 
 	res, fetchErr := r.Registry.Fetch(ctx, reader.FetchRequest{
@@ -285,14 +295,25 @@ func (r *FeedRefresher) refreshLoaded(ctx context.Context, feed storage.Feed, ma
 	// fresh counts items the feed delivered for the first time, including
 	// hash-only ones that never become entries; it stamps last_entry_at.
 	fresh := 0
+	var itemsHash *string
 	if !res.NotModified {
 		entries := reader.ApplyFeedRules(res.Entries, feed.BlockedRules, feed.KeepRules)
 		entries = reader.ApplyURLRewriteRules(entries, feed.RewriteRules)
 
+		// The same item set as last time cannot insert anything: every
+		// hash is already in entries or feed_entry_dedup.
+		h := itemSetHash(entries)
+		sameItems := h != "" && h == feed.ItemsHash
+		if !sameItems {
+			itemsHash = &h
+		}
+
 		var insertedEntries []storage.Entry
-		if r.feedUsesHashOnlyStorage(feed) {
+		switch {
+		case sameItems:
+		case r.feedUsesHashOnlyStorage(feed):
 			inserted, insertedEntries, fresh, err = r.processEntriesDedupOnly(ctx, feed, subs, entries)
-		} else {
+		default:
 			inserted, insertedEntries, err = r.Entries.CreateEntries(ctx, feedID, entries)
 			fresh = inserted
 		}
@@ -352,6 +373,7 @@ func (r *FeedRefresher) refreshLoaded(ctx context.Context, feed storage.Feed, ma
 		NextCheckAt:   &next,
 		NewEntries:    fresh,
 		NewFeedURL:    movedTo,
+		ItemsHash:     itemsHash,
 	}); err != nil {
 		r.logger().Error("update feed refresh meta failed", "feed_id", feedID, "err", err)
 	}
@@ -523,4 +545,23 @@ func (r *FeedRefresher) enqueueSubscriptionWebhookBestEffort(ctx context.Context
 	for _, e := range entries {
 		_ = r.WebhookLogs.EnqueueWebhookLogs(ctx, []int64{*sub.WebhookID}, e.ID)
 	}
+}
+
+// itemSetHash fingerprints the set of item hashes after the feed's rules;
+// order and content changes do not count, only which items are present.
+func itemSetHash(entries []bridge.Entry) string {
+	if len(entries) == 0 {
+		return ""
+	}
+	hashes := make([]string, 0, len(entries))
+	for _, e := range entries {
+		hashes = append(hashes, e.Hash)
+	}
+	sort.Strings(hashes)
+	d := xxhash.New()
+	for _, h := range hashes {
+		_, _ = d.WriteString(h)
+		_, _ = d.Write([]byte{0})
+	}
+	return strconv.FormatUint(d.Sum64(), 16)
 }

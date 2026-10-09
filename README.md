@@ -82,7 +82,7 @@ sudo rssam-backup restore /opt/rssam/backups/rssam-20260911_033000.dump
 
 ## Сборка из исходников
 
-Версия Go задаётся в `go.mod` (`go 1.27.0` — минимум, `toolchain go1.27.1` — чем собираются релизы и CI; `go` сам скачает нужный toolchain, `GOTOOLCHAIN=local` это запрещает). Dependabot поднимает строку `toolchain` вместе с остальными обновлениями.
+Версия Go задаётся в `go.mod` (`go 1.27.0` — минимум, `toolchain go1.27.2` — чем собираются релизы и CI; `go` сам скачает нужный toolchain, `GOTOOLCHAIN=local` это запрещает). Dependabot поднимает строку `toolchain` вместе с остальными обновлениями.
 
 ```bash
 cd /home/rssam/rssam

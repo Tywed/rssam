@@ -3,7 +3,7 @@
 # The build stage always runs natively (--platform=$BUILDPLATFORM) and
 # cross-compiles for the requested target; Go needs no emulation for that.
 # Base images are pinned by digest (dependabot's docker ecosystem bumps them).
-FROM --platform=$BUILDPLATFORM golang:1.27.1@sha256:3680233e3204827fbdc66088528ae6d4b3d034f51d03a99d454f6de034888244 AS build
+FROM --platform=$BUILDPLATFORM golang:1.27.2@sha256:5bc7f572bbaa98885a3a1fd9c0aa76b59e3e14e8628bfc316bbfd0c701e4818c AS build
 WORKDIR /src
 
 COPY go.mod go.sum ./

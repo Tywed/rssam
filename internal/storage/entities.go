@@ -71,17 +71,20 @@ type Feed struct {
 	AdaptiveInterval bool
 	NextCheckAt      *time.Time
 	BridgeState      []byte
-	ScraperRules     string
-	RewriteRules     string
-	BlockedRules     string
-	KeepRules        string
-	FetchViaProxy    bool
-	TLSInsecure      bool
-	Crawler          bool
-	UserAgent        string
-	WebhookID        *int64
-	IconURL          string
-	IconData         []byte
+	// ItemsHash fingerprints the item set of the last poll; the same set
+	// again means the poll has nothing to insert.
+	ItemsHash     string
+	ScraperRules  string
+	RewriteRules  string
+	BlockedRules  string
+	KeepRules     string
+	FetchViaProxy bool
+	TLSInsecure   bool
+	Crawler       bool
+	UserAgent     string
+	WebhookID     *int64
+	IconURL       string
+	IconData      []byte
 	// LastEntryAt is when the feed last yielded a new entry (or dedup hash).
 	LastEntryAt *time.Time
 	CreatedAt   time.Time
@@ -537,6 +540,9 @@ type UpdateFeedRefreshMetaParams struct {
 	// NewFeedURL, when non-empty, replaces feed_url (source moved for good)
 	// unless the user already has a feed at that address.
 	NewFeedURL string
+	// ItemsHash, when set, replaces items_hash; nil keeps the previous one
+	// (polls that did not look at the items).
+	ItemsHash *string
 }
 
 type RecordFeedPollFailureParams struct {
