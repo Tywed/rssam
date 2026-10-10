@@ -240,18 +240,8 @@ func (r *FeedRefresher) refreshLoaded(ctx context.Context, feed storage.Feed, ma
 		return 0, ErrOutsidePollWindow{At: window.NextOpen(now)}
 	}
 	bridgeState := reader.ParseBridgeState(feed.BridgeState)
-
 	if manual {
-		// A manual refresh re-reads the source in full: no body-hash
-		// shortcut in the RSS handler, no item-set shortcut below.
-		bridgeState = bridgeState.With(reader.FeedTypeRSS, nil)
-		feed.ItemsHash = ""
-		if reader.NormalizeFeedType(feed.FeedType) == reader.FeedTypeMax {
-			var st maxbridge.FetchState
-			_ = bridge.DecodeState(bridgeState.Raw(reader.FeedTypeMax), &st)
-			st.LastEndTimeMs = 0
-			bridgeState = bridgeState.With(reader.FeedTypeMax, bridge.EncodeState(st))
-		}
+		bridgeState = fullRefetchState(&feed, bridgeState)
 	}
 
 	res, fetchErr := r.Registry.Fetch(ctx, reader.FetchRequest{
@@ -271,62 +261,19 @@ func (r *FeedRefresher) refreshLoaded(ctx context.Context, feed storage.Feed, ma
 			r.recordPoll(ctx, feedID, now, started, 0, fetchErr)
 			return 0, fetchErr
 		}
-		after := r.recordFailure(ctx, feed, now, fetchErr, bridgeStateJSON(res.BridgeState))
-		if errors.Is(fetchErr, reader.ErrFeedGone) {
-			// 410 is final: park the feed the same way an admin would, so
-			// neither the backoff nor the daily reset polls it again. The
-			// error text stays visible on the feed until someone deletes it
-			// or changes the URL.
-			if err := r.Feeds.SetFeedManualPaused(ctx, feedID, true); err != nil {
-				r.logger().Error("pause gone feed failed", "feed_id", feedID, "err", err)
-			} else {
-				after.ManualPaused = true
-			}
-		}
-		err := fmt.Errorf("%w: %w", ErrFetchFeed, fetchErr)
-		r.recordPoll(ctx, feedID, now, started, 0, err)
-		if r.Realtime != nil {
-			r.Realtime.PublishFeedStatusChanged(after, err)
-		}
-		return 0, err
+		return 0, r.failPoll(ctx, feed, now, started, res.BridgeState, fetchErr, ErrFetchFeed, errors.Is(fetchErr, reader.ErrFeedGone))
 	}
 
-	inserted = 0
 	// fresh counts items the feed delivered for the first time, including
 	// hash-only ones that never become entries; it stamps last_entry_at.
-	fresh := 0
+	var fresh int
 	var itemsHash *string
 	if !res.NotModified {
-		entries := reader.ApplyFeedRules(res.Entries, feed.BlockedRules, feed.KeepRules)
-		entries = reader.ApplyURLRewriteRules(entries, feed.RewriteRules)
-
-		// The same item set as last time cannot insert anything: every
-		// hash is already in entries or feed_entry_dedup.
-		h := itemSetHash(entries)
-		sameItems := h != "" && h == feed.ItemsHash
-		if !sameItems {
-			itemsHash = &h
-		}
-
 		var insertedEntries []storage.Entry
-		switch {
-		case sameItems:
-		case r.feedUsesHashOnlyStorage(feed):
-			inserted, insertedEntries, fresh, err = r.processEntriesDedupOnly(ctx, feed, subs, entries)
-		default:
-			inserted, insertedEntries, err = r.Entries.CreateEntries(ctx, feedID, entries)
-			fresh = inserted
-		}
+		inserted, insertedEntries, fresh, itemsHash, err = r.storeFetched(ctx, feed, subs, res.Entries)
 		if err != nil {
-			after := r.recordFailure(ctx, feed, now, err, bridgeStateJSON(res.BridgeState))
-			wrappedErr := fmt.Errorf("%w: %w", ErrCreateEntries, err)
-			r.recordPoll(ctx, feedID, now, started, 0, wrappedErr)
-			if r.Realtime != nil {
-				r.Realtime.PublishFeedStatusChanged(after, wrappedErr)
-			}
-			return 0, wrappedErr
+			return 0, r.failPoll(ctx, feed, now, started, res.BridgeState, err, ErrCreateEntries, false)
 		}
-
 		r.applyFiltersBestEffort(ctx, feed, subs, insertedEntries)
 		if r.Realtime != nil && len(insertedEntries) > 0 {
 			r.Realtime.PublishNewEntries(ctx, feed, subs, insertedEntries)
@@ -341,21 +288,7 @@ func (r *FeedRefresher) refreshLoaded(ctx context.Context, feed storage.Feed, ma
 	if lastMod == "" {
 		lastMod = feed.LastModified
 	}
-
-	min, max := r.pollBounds()
-	next := storage.FeedNextCheckAt(now, feed.IntervalMinutes, min, max)
-	if adaptive := r.adaptiveNextCheck(ctx, feed, now, min, max); adaptive.After(next) {
-		next = adaptive
-	}
-	// The source's own freshness hint (max-age/Expires/<ttl>) only ever
-	// postpones a poll, never brings it forward, and stays inside the
-	// configured maximum.
-	if res.MinNextCheck.After(next) {
-		next = res.MinNextCheck
-		if limit := now.Add(max); next.After(limit) {
-			next = limit
-		}
-	}
+	next := r.nextCheckAfterPoll(ctx, feed, now, res.MinNextCheck)
 	if hasWindow {
 		next = window.NextOpen(next)
 	}
@@ -389,6 +322,84 @@ func (r *FeedRefresher) refreshLoaded(ctx context.Context, feed storage.Feed, ma
 	}
 
 	return inserted, nil
+}
+
+// fullRefetchState strips every shortcut a manual refresh must not take:
+// the RSS body hash, the item-set hash and the Max bridge's time cursor.
+func fullRefetchState(feed *storage.Feed, st reader.BridgeState) reader.BridgeState {
+	st = st.With(reader.FeedTypeRSS, nil)
+	feed.ItemsHash = ""
+	if reader.NormalizeFeedType(feed.FeedType) == reader.FeedTypeMax {
+		var ms maxbridge.FetchState
+		_ = bridge.DecodeState(st.Raw(reader.FeedTypeMax), &ms)
+		ms.LastEndTimeMs = 0
+		st = st.With(reader.FeedTypeMax, bridge.EncodeState(ms))
+	}
+	return st
+}
+
+// failPoll records a failed poll (circuit counter, poll log, realtime
+// status) and returns the error wrapped in kind. gone parks the feed the
+// way an admin would: a 410 is final, neither the backoff nor the daily
+// reset should poll it again; the error text stays visible on the feed
+// until someone deletes it or changes the URL.
+func (r *FeedRefresher) failPoll(ctx context.Context, feed storage.Feed, now, started time.Time, state reader.BridgeState, cause, kind error, gone bool) error {
+	after := r.recordFailure(ctx, feed, now, cause, bridgeStateJSON(state))
+	if gone {
+		if err := r.Feeds.SetFeedManualPaused(ctx, feed.ID, true); err != nil {
+			r.logger().Error("pause gone feed failed", "feed_id", feed.ID, "err", err)
+		} else {
+			after.ManualPaused = true
+		}
+	}
+	err := fmt.Errorf("%w: %w", kind, cause)
+	r.recordPoll(ctx, feed.ID, now, started, 0, err)
+	if r.Realtime != nil {
+		r.Realtime.PublishFeedStatusChanged(after, err)
+	}
+	return err
+}
+
+// storeFetched applies the feed's rules and stores what is new. itemsHash
+// is nil when the item set is the same as last time: then nothing can be
+// inserted (every hash is already in entries or feed_entry_dedup) and the
+// stored hash needs no update.
+func (r *FeedRefresher) storeFetched(ctx context.Context, feed storage.Feed, subs []storage.Subscription, fetched []bridge.Entry) (inserted int, insertedEntries []storage.Entry, fresh int, itemsHash *string, err error) {
+	entries := reader.ApplyFeedRules(fetched, feed.BlockedRules, feed.KeepRules)
+	entries = reader.ApplyURLRewriteRules(entries, feed.RewriteRules)
+	h := itemSetHash(entries)
+	if h != "" && h == feed.ItemsHash {
+		return 0, nil, 0, nil, nil
+	}
+	if r.feedUsesHashOnlyStorage(feed) {
+		inserted, insertedEntries, fresh, err = r.processEntriesDedupOnly(ctx, feed, subs, entries)
+	} else {
+		inserted, insertedEntries, err = r.Entries.CreateEntries(ctx, feed.ID, entries)
+		fresh = inserted
+	}
+	if err != nil {
+		return 0, nil, 0, nil, err
+	}
+	return inserted, insertedEntries, fresh, &h, nil
+}
+
+// nextCheckAfterPoll: the feed's interval, raised by the adaptive schedule
+// and by the source's own freshness hint (max-age/Expires/<ttl>). Hints
+// only ever postpone a poll, never bring it forward, and stay inside the
+// configured maximum.
+func (r *FeedRefresher) nextCheckAfterPoll(ctx context.Context, feed storage.Feed, now, minNextCheck time.Time) time.Time {
+	lo, hi := r.pollBounds()
+	next := storage.FeedNextCheckAt(now, feed.IntervalMinutes, lo, hi)
+	if adaptive := r.adaptiveNextCheck(ctx, feed, now, lo, hi); adaptive.After(next) {
+		next = adaptive
+	}
+	if minNextCheck.After(next) {
+		next = minNextCheck
+		if limit := now.Add(hi); next.After(limit) {
+			next = limit
+		}
+	}
+	return next
 }
 
 func (r *FeedRefresher) feedSubscribers(ctx context.Context, feedID int64) []storage.Subscription {

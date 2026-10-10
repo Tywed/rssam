@@ -27,7 +27,7 @@ func (h *Handler) handleSettingsBridgeTelegramSave(w http.ResponseWriter, r *htt
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
-	stored := h.currentBridgeStored(r)
+	stored := h.currentBridgeStored()
 	tg := stored.Telegram
 	tg.UseProxy = r.FormValue("use_proxy") == "1"
 	tg.ProxyServiceURL = strings.TrimSpace(r.FormValue("proxy_service_url"))
@@ -60,7 +60,7 @@ func (h *Handler) handleSettingsBridgeMaxSave(w http.ResponseWriter, r *http.Req
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
-	stored := h.currentBridgeStored(r)
+	stored := h.currentBridgeStored()
 	mx := stored.Max
 	mx.APIBaseURL = strings.TrimSpace(r.FormValue("api_base_url"))
 	mx.DefaultLimit = parseIntDefault(r.FormValue("default_limit"), mx.DefaultLimit)
@@ -89,7 +89,7 @@ func (h *Handler) handleSettingsBridgeVKSave(w http.ResponseWriter, r *http.Requ
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
-	stored := h.currentBridgeStored(r)
+	stored := h.currentBridgeStored()
 	vk := stored.VK
 	vk.APIVersion = strings.TrimSpace(r.FormValue("api_version"))
 	vk.DefaultCount = parseIntDefault(r.FormValue("default_count"), vk.DefaultCount)
@@ -118,7 +118,7 @@ func (h *Handler) handleSettingsBridgeRutubeSave(w http.ResponseWriter, r *http.
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
-	stored := h.currentBridgeStored(r)
+	stored := h.currentBridgeStored()
 	stored.Rutube = bridgeconfig.RutubeStored{
 		APIBaseURL: strings.TrimSpace(r.FormValue("api_base_url")),
 	}
@@ -187,7 +187,7 @@ func (h *Handler) bridgeFeedCounts(r *http.Request) (map[string]int, error) {
 	return counts, nil
 }
 
-func (h *Handler) currentBridgeStored(r *http.Request) bridgeconfig.Stored {
+func (h *Handler) currentBridgeStored() bridgeconfig.Stored {
 	if h.cfg.GetBridgeStored != nil {
 		return h.cfg.GetBridgeStored()
 	}

@@ -2,7 +2,6 @@ package ws
 
 import (
 	"encoding/json"
-	"fmt"
 	"strconv"
 	"strings"
 	"sync"
@@ -131,15 +130,11 @@ func NormalizeChannels(in []string) []string {
 		if ch != ChannelAll && !strings.HasPrefix(ch, "feed:") && !strings.HasPrefix(ch, "category:") {
 			continue
 		}
-		if strings.HasPrefix(ch, "feed:") {
-			if _, err := parseChannelID(ch, "feed:"); err != nil {
-				continue
-			}
+		if strings.HasPrefix(ch, "feed:") && !validChannelID(ch, "feed:") {
+			continue
 		}
-		if strings.HasPrefix(ch, "category:") {
-			if _, err := parseChannelID(ch, "category:"); err != nil {
-				continue
-			}
+		if strings.HasPrefix(ch, "category:") && !validChannelID(ch, "category:") {
+			continue
 		}
 		if _, ok := seen[ch]; ok {
 			continue
@@ -150,14 +145,7 @@ func NormalizeChannels(in []string) []string {
 	return out
 }
 
-func parseChannelID(ch, prefix string) (int64, error) {
-	raw := strings.TrimPrefix(ch, prefix)
-	if raw == "" {
-		return 0, fmt.Errorf("invalid channel %q", ch)
-	}
-	id, err := strconv.ParseInt(raw, 10, 64)
-	if err != nil || id <= 0 {
-		return 0, fmt.Errorf("invalid channel %q", ch)
-	}
-	return id, nil
+func validChannelID(ch, prefix string) bool {
+	id, err := strconv.ParseInt(strings.TrimPrefix(ch, prefix), 10, 64)
+	return err == nil && id > 0
 }

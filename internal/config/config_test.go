@@ -117,7 +117,7 @@ func TestLoad_Defaults(t *testing.T) {
 	if cfg.WebhookWorkerPoolSize != 10 {
 		t.Fatalf("WebhookWorkerPoolSize=%d want fallback 10", cfg.WebhookWorkerPoolSize)
 	}
-	if cfg.SchedulerTick.String() != "5s" {
+	if cfg.SchedulerTick.String() != "30s" {
 		t.Fatalf("SchedulerTick=%s", cfg.SchedulerTick)
 	}
 	if cfg.MinPollInterval.String() != "1m0s" {
@@ -418,5 +418,43 @@ func TestLoad_EditorQuotas(t *testing.T) {
 	t.Setenv("MAX_FEEDS_PER_EDITOR", "-1")
 	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "MAX_FEEDS_PER_EDITOR") {
 		t.Fatalf("negative limit must be rejected: %v", err)
+	}
+}
+
+func TestShortDuration(t *testing.T) {
+	for in, want := range map[time.Duration]string{
+		720 * time.Hour:         "720h",
+		10 * time.Minute:        "10m",
+		90 * time.Minute:        "1h30m",
+		300 * time.Second:       "5m",
+		time.Millisecond:        "1ms",
+		0:                       "0s",
+		1500 * time.Millisecond: "1.5s",
+	} {
+		if got := shortDuration(in); got != want {
+			t.Errorf("shortDuration(%v) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestValidate_Messages(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://u:p@localhost:5432/db?sslmode=disable")
+	t.Setenv("SESSION_MAX_AGE", "1m")
+	t.Setenv("WORKER_POOL_SIZE", "0")
+	t.Setenv("DATABASE_MAX_CONNS", "501")
+	t.Setenv("WEBHOOK_RETRY_BASE", "0s")
+	_, err := Load()
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	for _, want := range []string{
+		"SESSION_MAX_AGE must be between 5m and 8760h, got 1m",
+		"WORKER_POOL_SIZE must be between 1 and 1000, got 0",
+		"DATABASE_MAX_CONNS must be between 0 and 500 (0 = auto), got 501",
+		"WEBHOOK_RETRY_BASE must be at least 1ms, got 0s",
+	} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("missing %q in:\n%v", want, err)
+		}
 	}
 }

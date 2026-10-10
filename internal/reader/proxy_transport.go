@@ -45,7 +45,7 @@ type proxyClientCache struct {
 	via    map[bool]*http.Client
 }
 
-func newProxyClientCache(base *http.Client, proxyURL string) *proxyClientCache {
+func newProxyClientCache(proxyURL string) *proxyClientCache {
 	return &proxyClientCache{
 		proxy:  strings.TrimSpace(proxyURL),
 		direct: make(map[bool]*http.Client),

@@ -256,7 +256,9 @@ func StartUpdate(ver string) error {
 }
 
 func SystemdActive() string {
-	out, err := exec.Command("systemctl", "is-active", "rssam").CombinedOutput()
+	cmd, cancel := probeCommand("systemctl", "is-active", "rssam")
+	defer cancel()
+	out, err := cmd.CombinedOutput()
 	s := strings.TrimSpace(string(out))
 	if err != nil && s == "" {
 		return "unknown"
@@ -276,7 +278,9 @@ func BinaryPath() string {
 }
 
 func DualProcessWarning() string {
-	out, err := exec.Command("pgrep", "-a", "-x", "rssam").Output()
+	cmd, cancel := probeCommand("pgrep", "-a", "-x", "rssam")
+	defer cancel()
+	out, err := cmd.Output()
 	if err != nil {
 		return ""
 	}

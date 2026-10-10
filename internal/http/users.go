@@ -103,7 +103,7 @@ func (s *Server) handleListUsers(w http.ResponseWriter, r *http.Request) {
 	if _, ok := requireStore(w, r, auth.RoleAdmin, s.users != nil, "user storage is not configured"); !ok {
 		return
 	}
-	limit, offset, err := parseLimitOffset(r, 100, 10000)
+	limit, offset, err := parseLimitOffset(r, 10000)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return

@@ -87,7 +87,7 @@ func (s *Server) handleListFilters(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	limit, offset, err := parseLimitOffset(r, 100, 10000)
+	limit, offset, err := parseLimitOffset(r, 10000)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
@@ -367,7 +367,7 @@ func (s *Server) handleListFilterMatches(w http.ResponseWriter, r *http.Request)
 			}
 		}
 	}
-	limit, offset, err := parseLimitOffset(r, 100, 10000)
+	limit, offset, err := parseLimitOffset(r, 10000)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return

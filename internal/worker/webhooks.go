@@ -38,26 +38,21 @@ type webhookEventPayload struct {
 	SentAt       time.Time           `json:"sent_at"`
 }
 
+// webhookDispatchLoop claims due deliveries, then sleeps until the earliest
+// next_retry_at, a webhooks-due notification, or SchedulerTick at most.
 func (r *Runner) webhookDispatchLoop(ctx context.Context, out chan<- storage.WebhookLog) {
-	t := time.NewTicker(1 * time.Second)
-	defer t.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-t.C:
-			if r.Paused() {
-				continue
-			}
-			logs, err := r.Store.ClaimDueWebhookLogs(ctx, r.Cfg.WebhookPoolSize)
-			if err != nil {
-				r.Log.Error("webhook dispatcher: claim due logs failed", "err", err)
-				continue
-			}
-			if len(logs) == 0 {
-				continue
-			}
+	for ctx.Err() == nil {
+		if r.Paused() {
+			idleWait(ctx, r.wake.webhooks, time.Time{}, false, r.Cfg.SchedulerTick)
+			continue
+		}
+		logs, err := r.Store.ClaimDueWebhookLogs(ctx, r.Cfg.WebhookPoolSize)
+		if err != nil {
+			r.Log.Error("webhook dispatcher: claim due logs failed", "err", err)
+			idleWait(ctx, r.wake.webhooks, time.Time{}, false, r.Cfg.SchedulerTick)
+			continue
+		}
+		if len(logs) > 0 {
 			for _, l := range r.groupDigestLogs(ctx, logs) {
 				select {
 				case out <- l:
@@ -65,7 +60,13 @@ func (r *Runner) webhookDispatchLoop(ctx context.Context, out chan<- storage.Web
 					return
 				}
 			}
+			continue
 		}
+		next, known, err := r.Store.NextWebhookRetryAt(ctx)
+		if err != nil {
+			r.Log.Error("webhook dispatcher: next retry failed", "err", err)
+		}
+		idleWait(ctx, r.wake.webhooks, next, known, r.Cfg.SchedulerTick)
 	}
 }
 

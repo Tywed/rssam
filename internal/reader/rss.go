@@ -184,7 +184,7 @@ func NewRSSFetcher(client *http.Client, userAgent string, guard *ssrf.Guard, fet
 	}
 	return &RSSFetcher{
 		client:    client,
-		proxy:     newProxyClientCache(client, fetchViaProxyURL),
+		proxy:     newProxyClientCache(fetchViaProxyURL),
 		parser:    gofeed.NewParser(),
 		userAgent: strings.TrimSpace(userAgent),
 		guard:     guard,

@@ -71,7 +71,7 @@ func (s *Server) handleListFeeds(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	limit, offset, err := parseLimitOffset(r, 100, 10000)
+	limit, offset, err := parseLimitOffset(r, 10000)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return

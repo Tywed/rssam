@@ -122,7 +122,7 @@ func (s *Server) handleListWebhooks(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	limit, offset, err := parseLimitOffset(r, 100, 10000)
+	limit, offset, err := parseLimitOffset(r, 10000)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
@@ -512,7 +512,7 @@ func (s *Server) handleListWebhookLogs(w http.ResponseWriter, r *http.Request) {
 		s.storeError(w, r, err, "webhook not found", "get webhook failed")
 		return
 	}
-	limit, offset, err := parseLimitOffset(r, 100, 10000)
+	limit, offset, err := parseLimitOffset(r, 10000)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return

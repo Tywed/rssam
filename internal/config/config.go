@@ -3,6 +3,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"strconv"
 	"strings"
@@ -182,7 +183,7 @@ func Load() (Config, error) {
 		ScraperMaxContentBytes:     int64(env.int("SCRAPER_MAX_CONTENT_BYTES", 1048576)),
 
 		FeedCircuitBreakerThreshold: env.int("FEED_CIRCUIT_BREAKER_THRESHOLD", 10),
-		FeedPollDailyResetEnabled:   parseBoolDefault(os.Getenv("FEED_POLL_DAILY_RESET"), true),
+		FeedPollDailyResetEnabled:   parseBoolDefault(os.Getenv("FEED_POLL_DAILY_RESET")),
 		FeedPollDailyResetTZ:        getEnv("FEED_POLL_DAILY_RESET_TZ", "Europe/Moscow"),
 
 		MaxAPIBaseURL:        strings.TrimSpace(os.Getenv("MAX_API_BASE_URL")),
@@ -235,7 +236,7 @@ func Load() (Config, error) {
 		CleanupInterval:          env.duration("CLEANUP_INTERVAL", 24*time.Hour),
 
 		WorkerPoolSize:      env.int("WORKER_POOL_SIZE", 10),
-		SchedulerTick:       env.duration("SCHEDULER_TICK", 5*time.Second),
+		SchedulerTick:       env.duration("SCHEDULER_TICK", 30*time.Second),
 		MinPollInterval:     env.duration("MIN_POLL_INTERVAL", 60*time.Second),
 		MaxPollInterval:     env.duration("MAX_POLL_INTERVAL", 24*time.Hour),
 		AdaptiveMaxInterval: env.duration("ADAPTIVE_MAX_INTERVAL", 6*time.Hour),
@@ -255,7 +256,7 @@ func Load() (Config, error) {
 		WSClientBuffer:     env.int("WS_CLIENT_BUFFER", 100),
 		WSPingInterval:     env.duration("WS_PING_INTERVAL", 30*time.Second),
 
-		UIEnabled: parseBoolDefault(os.Getenv("UI_ENABLED"), true),
+		UIEnabled: parseBoolDefault(os.Getenv("UI_ENABLED")),
 
 		FTSLanguage:      strings.ToLower(getEnv("FTS_LANGUAGE", "russian")),
 		StoreEntriesMode: env.storeEntriesMode(),
@@ -263,14 +264,14 @@ func Load() (Config, error) {
 		HSTSEnabled:         parseBool(os.Getenv("HSTS")),
 		SessionMaxAge:       env.duration("SESSION_MAX_AGE", 30*24*time.Hour),
 		TrustedProxies:      parseTrustedProxies(),
-		RateLimitEnabled:    parseBoolDefault(os.Getenv("RATE_LIMIT_ENABLED"), true),
+		RateLimitEnabled:    parseBoolDefault(os.Getenv("RATE_LIMIT_ENABLED")),
 		RateLimitRPS:        env.float("RATE_LIMIT_RPS", 10),
 		RateLimitBurst:      env.int("RATE_LIMIT_BURST", 20),
 		LoginRateLimitRPS:   env.float("LOGIN_RATE_LIMIT_RPS", 0.2),
 		LoginRateLimitBurst: env.int("LOGIN_RATE_LIMIT_BURST", 10),
 		MaxRequestBodyBytes: int64(env.int("MAX_REQUEST_BODY_BYTES", 1048576)),
 		MaxImportFeeds:      env.int("MAX_IMPORT_FEEDS", 500),
-		CompressEnabled:     parseBoolDefault(os.Getenv("COMPRESS_ENABLED"), true),
+		CompressEnabled:     parseBoolDefault(os.Getenv("COMPRESS_ENABLED")),
 		PprofEnabled:        parseBool(os.Getenv("PPROF_ENABLED")),
 		PprofListenAddr:     getEnv("PPROF_LISTEN_ADDR", "127.0.0.1:6060"),
 		ShutdownTimeout:     env.duration("SHUTDOWN_TIMEOUT", 15*time.Second),
@@ -293,210 +294,149 @@ func Load() (Config, error) {
 
 func (c Config) Validate() error {
 	var errs []error
+	fail := func(format string, args ...any) { errs = append(errs, fmt.Errorf(format, args...)) }
 
+	for _, f := range []struct {
+		name  string
+		value string
+	}{
+		{"LISTEN_ADDR", c.ListenAddr},
+		{"LOG_LEVEL", c.LogLevel},
+		{"FETCH_USER_AGENT", c.FetchUserAgent},
+		{"PPROF_LISTEN_ADDR", c.PprofListenAddr},
+	} {
+		if strings.TrimSpace(f.value) == "" {
+			fail("%s must not be empty", f.name)
+		}
+	}
 	if c.DatabaseURL == "" {
-		errs = append(errs, errors.New("DATABASE_URL is required"))
+		fail("DATABASE_URL is required")
 	}
-	if c.DatabaseMaxConns < 0 || c.DatabaseMaxConns > 500 {
-		errs = append(errs, fmt.Errorf("DATABASE_MAX_CONNS must be between 0 and 500 (0 = auto), got %d", c.DatabaseMaxConns))
+
+	const day = 24 * time.Hour
+	for _, r := range []struct {
+		name   string
+		v      int64
+		lo, hi int64
+		note   string
+	}{
+		{"DATABASE_MAX_CONNS", int64(c.DatabaseMaxConns), 0, 500, " (0 = auto)"},
+		{"FETCH_TIMEOUT_SECONDS", int64(c.FetchTimeoutSeconds), 1, 300, ""},
+		{"SCRAPER_MAX_CONTENT_BYTES", c.ScraperMaxContentBytes, 1024, 10 * 1024 * 1024, ""},
+		{"MAX_DEFAULT_LIMIT", int64(c.MaxDefaultLimit), 1, 200, ""},
+		{"MAX_RATE_LIMIT_SECONDS", int64(c.MaxRateLimitSeconds), 1, 86400, ""},
+		{"MAX_REQUEST_INTERVAL_MS", int64(c.MaxRequestIntervalMs), 0, 60000, ""},
+		{"MAX_CONCURRENT_SLOTS", int64(c.MaxConcurrentSlots), 1, 32, ""},
+		{"TELEGRAM_PROXY_RETRY", int64(c.TelegramProxyRetry), 0, 20, ""},
+		{"TELEGRAM_MAX_PAGES", int64(c.TelegramMaxPages), 1, 100, ""},
+		{"TELEGRAM_CONCURRENT_SLOTS", int64(c.TelegramConcurrentSlots), 1, 32, ""},
+		{"VK_DEFAULT_COUNT", int64(c.VKDefaultCount), 1, 100, ""},
+		{"VK_RATE_LIMIT_SECONDS", int64(c.VKRateLimitSeconds), 1, 86400, ""},
+		{"MAXSTAT_DEFAULT_LIMIT", int64(c.MaxstatDefaultLimit), 1, 100, ""},
+		{"MAXSTAT_RATE_LIMIT_SECONDS", int64(c.MaxstatRateLimitSeconds), 1, 86400, ""},
+		{"REMOVED_RETENTION_DAYS", int64(c.RemovedRetentionDays), 1, 3650, ""},
+		{"WEBHOOK_LOG_RETENTION_DAYS", int64(c.WebhookLogRetentionDays), 1, 3650, ""},
+		{"FILTER_MATCH_RETENTION_DAYS", int64(c.FilterMatchRetentionDays), 0, 3650, " (0 disables)"},
+		{"FEED_SILENT_DAYS", int64(c.FeedSilentDays), 0, 3650, " (0 disables)"},
+		{"FEED_POLL_LOG_RETENTION_DAYS", int64(c.FeedPollLogRetentionDays), 0, 3650, " (0 disables)"},
+		{"AUDIT_LOG_RETENTION_DAYS", int64(c.AuditLogRetentionDays), 0, 3650, " (0 disables)"},
+		{"WORKER_POOL_SIZE", int64(c.WorkerPoolSize), 1, 1000, ""},
+		{"WEBHOOK_WORKER_POOL_SIZE", int64(c.WebhookWorkerPoolSize), 1, 1000, ""},
+		{"MAX_FILTER_RULES_PER_FILTER", int64(c.MaxFilterRulesPerFilter), 1, 10000, ""},
+		{"MAX_REGEX_LENGTH", int64(c.MaxRegexLength), 1, 1048576, ""},
+		{"MAX_FEEDS_PER_EDITOR", int64(c.MaxFeedsPerEditor), 0, 100000, ""},
+		{"MAX_WEBHOOKS_PER_EDITOR", int64(c.MaxWebhooksPerEditor), 0, 10000, ""},
+		{"WEBHOOK_MAX_ATTEMPTS", int64(c.WebhookMaxAttempts), 1, 1000, ""},
+		{"WS_CLIENT_BUFFER", int64(c.WSClientBuffer), 1, 100000, ""},
+		{"RATE_LIMIT_BURST", int64(c.RateLimitBurst), 1, 100000, ""},
+		{"LOGIN_RATE_LIMIT_BURST", int64(c.LoginRateLimitBurst), 1, 10000, ""},
+		{"MAX_REQUEST_BODY_BYTES", c.MaxRequestBodyBytes, 1024, 32 * 1024 * 1024, ""},
+		{"MAX_IMPORT_FEEDS", int64(c.MaxImportFeeds), 1, 100000, ""},
+	} {
+		if r.v < r.lo || r.v > r.hi {
+			fail("%s must be between %d and %d%s, got %d", r.name, r.lo, r.hi, r.note, r.v)
+		}
 	}
-	if strings.TrimSpace(c.ListenAddr) == "" {
-		errs = append(errs, errors.New("LISTEN_ADDR must not be empty"))
+
+	for _, r := range []struct {
+		name   string
+		v      time.Duration
+		lo, hi time.Duration
+	}{
+		{"MAX_DEFAULT_LOOKBACK", c.MaxDefaultLookback, time.Millisecond, 30 * day},
+		{"MAX_OVERLAP", c.MaxOverlap, 0, day},
+		{"TELEGRAM_PROXY_CONNECT_TIMEOUT", c.TelegramProxyConnectTimeout, time.Millisecond, 5 * time.Minute},
+		{"TELEGRAM_PROXY_REQUEST_TIMEOUT", c.TelegramProxyRequestTimeout, time.Millisecond, 5 * time.Minute},
+		{"VK_DEFAULT_LOOKBACK", c.VKDefaultLookback, time.Millisecond, 30 * day},
+		{"VK_OVERLAP", c.VKOverlap, 0, day},
+		{"MAXSTAT_DEFAULT_LOOKBACK", c.MaxstatDefaultLookback, time.Millisecond, 30 * day},
+		{"MAXSTAT_OVERLAP", c.MaxstatOverlap, 0, day},
+		{"BACKUP_MAX_AGE", c.BackupMaxAge, time.Hour, math.MaxInt64},
+		{"SESSION_MAX_AGE", c.SessionMaxAge, 5 * time.Minute, 365 * day},
+		{"CLEANUP_INTERVAL", c.CleanupInterval, time.Millisecond, 7 * day},
+		{"SCHEDULER_TICK", c.SchedulerTick, time.Millisecond, math.MaxInt64},
+		{"MIN_POLL_INTERVAL", c.MinPollInterval, time.Millisecond, math.MaxInt64},
+		{"MAX_POLL_INTERVAL", c.MaxPollInterval, time.Millisecond, math.MaxInt64},
+		{"ADAPTIVE_MAX_INTERVAL", c.AdaptiveMaxInterval, time.Millisecond, math.MaxInt64},
+		{"EDITOR_MIN_POLL_INTERVAL", c.EditorMinPollInterval, 0, c.MaxPollInterval},
+		{"WEBHOOK_TIMEOUT", c.WebhookTimeout, time.Millisecond, 300 * time.Second},
+		{"WEBHOOK_RETRY_BASE", c.WebhookRetryBase, time.Millisecond, math.MaxInt64},
+		{"WEBHOOK_RETRY_MAX", c.WebhookRetryMax, time.Millisecond, math.MaxInt64},
+		{"WS_PING_INTERVAL", c.WSPingInterval, time.Millisecond, 10 * time.Minute},
+		{"SHUTDOWN_TIMEOUT", c.ShutdownTimeout, time.Millisecond, 5 * time.Minute},
+	} {
+		switch {
+		case r.v < r.lo || r.v > r.hi:
+			if r.hi == math.MaxInt64 {
+				fail("%s must be at least %s, got %s", r.name, shortDuration(r.lo), shortDuration(r.v))
+			} else {
+				fail("%s must be between %s and %s, got %s", r.name, shortDuration(r.lo), shortDuration(r.hi), shortDuration(r.v))
+			}
+		}
+	}
+	if c.MinPollInterval > 0 && c.MaxPollInterval > 0 && c.MinPollInterval > c.MaxPollInterval {
+		fail("MIN_POLL_INTERVAL must be <= MAX_POLL_INTERVAL (got %s > %s)", c.MinPollInterval, c.MaxPollInterval)
+	}
+	if c.WebhookRetryBase > 0 && c.WebhookRetryMax > 0 && c.WebhookRetryBase > c.WebhookRetryMax {
+		fail("WEBHOOK_RETRY_BASE must be <= WEBHOOK_RETRY_MAX (got %s > %s)", c.WebhookRetryBase, c.WebhookRetryMax)
+	}
+
+	if c.RateLimitRPS <= 0 || c.RateLimitRPS > 10000 {
+		fail("RATE_LIMIT_RPS must be between 0.01 and 10000, got %v", c.RateLimitRPS)
+	}
+	if c.LoginRateLimitRPS <= 0 || c.LoginRateLimitRPS > 1000 {
+		fail("LOGIN_RATE_LIMIT_RPS must be between 0.001 and 1000, got %v", c.LoginRateLimitRPS)
 	}
 	switch c.LogFormat {
 	case "json", "text":
 	default:
-		errs = append(errs, fmt.Errorf("LOG_FORMAT must be json or text, got %q", c.LogFormat))
-	}
-	if c.LogLevel == "" {
-		errs = append(errs, errors.New("LOG_LEVEL must not be empty"))
-	}
-	if strings.TrimSpace(c.FetchUserAgent) == "" {
-		errs = append(errs, errors.New("FETCH_USER_AGENT must not be empty"))
-	}
-	if c.FetchTimeoutSeconds < 1 || c.FetchTimeoutSeconds > 300 {
-		errs = append(errs, fmt.Errorf("FETCH_TIMEOUT_SECONDS must be between 1 and 300, got %d", c.FetchTimeoutSeconds))
-	}
-	if c.ScraperMaxContentBytes < 1024 || c.ScraperMaxContentBytes > 10*1024*1024 {
-		errs = append(errs, fmt.Errorf("SCRAPER_MAX_CONTENT_BYTES must be between 1024 and 10485760, got %d", c.ScraperMaxContentBytes))
-	}
-	if c.MaxDefaultLimit < 1 || c.MaxDefaultLimit > 200 {
-		errs = append(errs, fmt.Errorf("MAX_DEFAULT_LIMIT must be between 1 and 200, got %d", c.MaxDefaultLimit))
-	}
-	if c.MaxDefaultLookback <= 0 || c.MaxDefaultLookback > 30*24*time.Hour {
-		errs = append(errs, fmt.Errorf("MAX_DEFAULT_LOOKBACK must be between 1ms and 720h, got %s", c.MaxDefaultLookback))
-	}
-	if c.MaxOverlap < 0 || c.MaxOverlap > 24*time.Hour {
-		errs = append(errs, fmt.Errorf("MAX_OVERLAP must be between 0 and 24h, got %s", c.MaxOverlap))
-	}
-	if c.MaxRateLimitSeconds < 1 || c.MaxRateLimitSeconds > 86400 {
-		errs = append(errs, fmt.Errorf("MAX_RATE_LIMIT_SECONDS must be between 1 and 86400, got %d", c.MaxRateLimitSeconds))
-	}
-	if c.MaxRequestIntervalMs < 0 || c.MaxRequestIntervalMs > 60000 {
-		errs = append(errs, fmt.Errorf("MAX_REQUEST_INTERVAL_MS must be between 0 and 60000, got %d", c.MaxRequestIntervalMs))
-	}
-	if c.MaxConcurrentSlots < 1 || c.MaxConcurrentSlots > 32 {
-		errs = append(errs, fmt.Errorf("MAX_CONCURRENT_SLOTS must be between 1 and 32, got %d", c.MaxConcurrentSlots))
-	}
-	if c.TelegramProxyConnectTimeout <= 0 || c.TelegramProxyConnectTimeout > 5*time.Minute {
-		errs = append(errs, fmt.Errorf("TELEGRAM_PROXY_CONNECT_TIMEOUT must be between 1ms and 5m, got %s", c.TelegramProxyConnectTimeout))
-	}
-	if c.TelegramProxyRequestTimeout <= 0 || c.TelegramProxyRequestTimeout > 5*time.Minute {
-		errs = append(errs, fmt.Errorf("TELEGRAM_PROXY_REQUEST_TIMEOUT must be between 1ms and 5m, got %s", c.TelegramProxyRequestTimeout))
-	}
-	if c.TelegramProxyRetry < 0 || c.TelegramProxyRetry > 20 {
-		errs = append(errs, fmt.Errorf("TELEGRAM_PROXY_RETRY must be between 0 and 20, got %d", c.TelegramProxyRetry))
-	}
-	if c.TelegramMaxPages < 1 || c.TelegramMaxPages > 100 {
-		errs = append(errs, fmt.Errorf("TELEGRAM_MAX_PAGES must be between 1 and 100, got %d", c.TelegramMaxPages))
-	}
-	if c.TelegramConcurrentSlots < 1 || c.TelegramConcurrentSlots > 32 {
-		errs = append(errs, fmt.Errorf("TELEGRAM_CONCURRENT_SLOTS must be between 1 and 32, got %d", c.TelegramConcurrentSlots))
-	}
-	if c.VKDefaultCount < 1 || c.VKDefaultCount > 100 {
-		errs = append(errs, fmt.Errorf("VK_DEFAULT_COUNT must be between 1 and 100, got %d", c.VKDefaultCount))
-	}
-	if c.VKDefaultLookback <= 0 || c.VKDefaultLookback > 30*24*time.Hour {
-		errs = append(errs, fmt.Errorf("VK_DEFAULT_LOOKBACK must be between 1ms and 720h, got %s", c.VKDefaultLookback))
-	}
-	if c.VKOverlap < 0 || c.VKOverlap > 24*time.Hour {
-		errs = append(errs, fmt.Errorf("VK_OVERLAP must be between 0 and 24h, got %s", c.VKOverlap))
-	}
-	if c.VKRateLimitSeconds < 1 || c.VKRateLimitSeconds > 86400 {
-		errs = append(errs, fmt.Errorf("VK_RATE_LIMIT_SECONDS must be between 1 and 86400, got %d", c.VKRateLimitSeconds))
-	}
-	if c.MaxstatDefaultLimit < 1 || c.MaxstatDefaultLimit > 100 {
-		errs = append(errs, fmt.Errorf("MAXSTAT_DEFAULT_LIMIT must be between 1 and 100, got %d", c.MaxstatDefaultLimit))
-	}
-	if c.MaxstatDefaultLookback <= 0 || c.MaxstatDefaultLookback > 30*24*time.Hour {
-		errs = append(errs, fmt.Errorf("MAXSTAT_DEFAULT_LOOKBACK must be between 1ms and 720h, got %s", c.MaxstatDefaultLookback))
-	}
-	if c.MaxstatOverlap < 0 || c.MaxstatOverlap > 24*time.Hour {
-		errs = append(errs, fmt.Errorf("MAXSTAT_OVERLAP must be between 0 and 24h, got %s", c.MaxstatOverlap))
-	}
-	if c.MaxstatRateLimitSeconds < 1 || c.MaxstatRateLimitSeconds > 86400 {
-		errs = append(errs, fmt.Errorf("MAXSTAT_RATE_LIMIT_SECONDS must be between 1 and 86400, got %d", c.MaxstatRateLimitSeconds))
-	}
-	if c.RemovedRetentionDays <= 0 || c.RemovedRetentionDays > 3650 {
-		errs = append(errs, fmt.Errorf("REMOVED_RETENTION_DAYS must be between 1 and 3650, got %d", c.RemovedRetentionDays))
-	}
-	if c.WebhookLogRetentionDays <= 0 || c.WebhookLogRetentionDays > 3650 {
-		errs = append(errs, fmt.Errorf("WEBHOOK_LOG_RETENTION_DAYS must be between 1 and 3650, got %d", c.WebhookLogRetentionDays))
-	}
-	if c.FilterMatchRetentionDays < 0 || c.FilterMatchRetentionDays > 3650 {
-		errs = append(errs, fmt.Errorf("FILTER_MATCH_RETENTION_DAYS must be between 0 and 3650 (0 disables), got %d", c.FilterMatchRetentionDays))
-	}
-	if c.FeedSilentDays < 0 || c.FeedSilentDays > 3650 {
-		errs = append(errs, fmt.Errorf("FEED_SILENT_DAYS must be between 0 and 3650 (0 disables), got %d", c.FeedSilentDays))
-	}
-	if c.BackupMaxAge < time.Hour {
-		errs = append(errs, fmt.Errorf("BACKUP_MAX_AGE must be at least 1h, got %s", c.BackupMaxAge))
-	}
-	if c.FeedPollLogRetentionDays < 0 || c.FeedPollLogRetentionDays > 3650 {
-		errs = append(errs, fmt.Errorf("FEED_POLL_LOG_RETENTION_DAYS must be between 0 and 3650 (0 disables), got %d", c.FeedPollLogRetentionDays))
-	}
-	if c.AuditLogRetentionDays < 0 || c.AuditLogRetentionDays > 3650 {
-		errs = append(errs, fmt.Errorf("AUDIT_LOG_RETENTION_DAYS must be between 0 and 3650 (0 disables), got %d", c.AuditLogRetentionDays))
-	}
-	if c.SessionMaxAge < 5*time.Minute || c.SessionMaxAge > 365*24*time.Hour {
-		errs = append(errs, fmt.Errorf("SESSION_MAX_AGE must be between 5m and 8760h, got %s", c.SessionMaxAge))
-	}
-	if c.CleanupInterval <= 0 || c.CleanupInterval > 7*24*time.Hour {
-		errs = append(errs, fmt.Errorf("CLEANUP_INTERVAL must be between 1ms and 168h, got %s", c.CleanupInterval))
-	}
-	if c.WorkerPoolSize <= 0 || c.WorkerPoolSize > 1000 {
-		errs = append(errs, fmt.Errorf("WORKER_POOL_SIZE must be between 1 and 1000, got %d", c.WorkerPoolSize))
-	}
-	if c.WebhookWorkerPoolSize <= 0 || c.WebhookWorkerPoolSize > 1000 {
-		errs = append(errs, fmt.Errorf("WEBHOOK_WORKER_POOL_SIZE must be between 1 and 1000, got %d", c.WebhookWorkerPoolSize))
-	}
-	if c.SchedulerTick <= 0 {
-		errs = append(errs, errors.New("SCHEDULER_TICK must be > 0"))
-	}
-	if c.MinPollInterval <= 0 {
-		errs = append(errs, errors.New("MIN_POLL_INTERVAL must be > 0"))
-	}
-	if c.MaxPollInterval <= 0 {
-		errs = append(errs, errors.New("MAX_POLL_INTERVAL must be > 0"))
-	}
-	if c.MinPollInterval > 0 && c.MaxPollInterval > 0 && c.MinPollInterval > c.MaxPollInterval {
-		errs = append(errs, fmt.Errorf("MIN_POLL_INTERVAL must be <= MAX_POLL_INTERVAL (got %s > %s)", c.MinPollInterval, c.MaxPollInterval))
-	}
-	if c.AdaptiveMaxInterval <= 0 {
-		errs = append(errs, fmt.Errorf("ADAPTIVE_MAX_INTERVAL must be positive, got %s", c.AdaptiveMaxInterval))
-	}
-	if c.MaxFilterRulesPerFilter <= 0 || c.MaxFilterRulesPerFilter > 10000 {
-		errs = append(errs, fmt.Errorf("MAX_FILTER_RULES_PER_FILTER must be between 1 and 10000, got %d", c.MaxFilterRulesPerFilter))
-	}
-	if c.MaxRegexLength <= 0 || c.MaxRegexLength > 1048576 {
-		errs = append(errs, fmt.Errorf("MAX_REGEX_LENGTH must be between 1 and 1048576, got %d", c.MaxRegexLength))
-	}
-	if c.MaxFeedsPerEditor < 0 || c.MaxFeedsPerEditor > 100000 {
-		errs = append(errs, fmt.Errorf("MAX_FEEDS_PER_EDITOR must be between 0 and 100000, got %d", c.MaxFeedsPerEditor))
-	}
-	if c.MaxWebhooksPerEditor < 0 || c.MaxWebhooksPerEditor > 10000 {
-		errs = append(errs, fmt.Errorf("MAX_WEBHOOKS_PER_EDITOR must be between 0 and 10000, got %d", c.MaxWebhooksPerEditor))
-	}
-	if c.EditorMinPollInterval < 0 || c.EditorMinPollInterval > c.MaxPollInterval {
-		errs = append(errs, fmt.Errorf("EDITOR_MIN_POLL_INTERVAL must be between 0 and MAX_POLL_INTERVAL, got %s", c.EditorMinPollInterval))
-	}
-	if c.WebhookMaxAttempts <= 0 || c.WebhookMaxAttempts > 1000 {
-		errs = append(errs, fmt.Errorf("WEBHOOK_MAX_ATTEMPTS must be between 1 and 1000, got %d", c.WebhookMaxAttempts))
-	}
-	if c.WebhookTimeout <= 0 || c.WebhookTimeout > 300*time.Second {
-		errs = append(errs, fmt.Errorf("WEBHOOK_TIMEOUT must be between 1s and 300s, got %s", c.WebhookTimeout))
-	}
-	if c.WebhookRetryBase <= 0 {
-		errs = append(errs, errors.New("WEBHOOK_RETRY_BASE must be > 0"))
-	}
-	if c.WebhookRetryMax <= 0 {
-		errs = append(errs, errors.New("WEBHOOK_RETRY_MAX must be > 0"))
-	}
-	if c.WebhookRetryBase > 0 && c.WebhookRetryMax > 0 && c.WebhookRetryBase > c.WebhookRetryMax {
-		errs = append(errs, fmt.Errorf("WEBHOOK_RETRY_BASE must be <= WEBHOOK_RETRY_MAX (got %s > %s)", c.WebhookRetryBase, c.WebhookRetryMax))
-	}
-	if c.WSClientBuffer <= 0 || c.WSClientBuffer > 100000 {
-		errs = append(errs, fmt.Errorf("WS_CLIENT_BUFFER must be between 1 and 100000, got %d", c.WSClientBuffer))
-	}
-	if c.WSPingInterval <= 0 || c.WSPingInterval > 10*time.Minute {
-		errs = append(errs, fmt.Errorf("WS_PING_INTERVAL must be between 1ms and 10m, got %s", c.WSPingInterval))
+		fail("LOG_FORMAT must be json or text, got %q", c.LogFormat)
 	}
 	switch c.FTSLanguage {
 	case "", "simple", "russian", "ru":
 	default:
-		errs = append(errs, fmt.Errorf("FTS_LANGUAGE must be simple or russian, got %q", c.FTSLanguage))
+		fail("FTS_LANGUAGE must be simple or russian, got %q", c.FTSLanguage)
 	}
 	switch strings.ToLower(strings.TrimSpace(c.StoreEntriesMode)) {
 	case "full", "dedup_only":
 	default:
-		errs = append(errs, fmt.Errorf("STORE_ENTRIES_MODE must be full or dedup_only, got %q", c.StoreEntriesMode))
-	}
-	if c.RateLimitRPS <= 0 || c.RateLimitRPS > 10000 {
-		errs = append(errs, fmt.Errorf("RATE_LIMIT_RPS must be between 0.01 and 10000, got %v", c.RateLimitRPS))
-	}
-	if c.RateLimitBurst <= 0 || c.RateLimitBurst > 100000 {
-		errs = append(errs, fmt.Errorf("RATE_LIMIT_BURST must be between 1 and 100000, got %d", c.RateLimitBurst))
-	}
-	if c.LoginRateLimitRPS <= 0 || c.LoginRateLimitRPS > 1000 {
-		errs = append(errs, fmt.Errorf("LOGIN_RATE_LIMIT_RPS must be between 0.001 and 1000, got %v", c.LoginRateLimitRPS))
-	}
-	if c.LoginRateLimitBurst <= 0 || c.LoginRateLimitBurst > 10000 {
-		errs = append(errs, fmt.Errorf("LOGIN_RATE_LIMIT_BURST must be between 1 and 10000, got %d", c.LoginRateLimitBurst))
-	}
-	if c.MaxRequestBodyBytes < 1024 || c.MaxRequestBodyBytes > 32*1024*1024 {
-		errs = append(errs, fmt.Errorf("MAX_REQUEST_BODY_BYTES must be between 1024 and 33554432, got %d", c.MaxRequestBodyBytes))
-	}
-	if c.MaxImportFeeds <= 0 || c.MaxImportFeeds > 100000 {
-		errs = append(errs, fmt.Errorf("MAX_IMPORT_FEEDS must be between 1 and 100000, got %d", c.MaxImportFeeds))
-	}
-	if strings.TrimSpace(c.PprofListenAddr) == "" {
-		errs = append(errs, errors.New("PPROF_LISTEN_ADDR must not be empty"))
-	}
-	if c.ShutdownTimeout <= 0 || c.ShutdownTimeout > 5*time.Minute {
-		errs = append(errs, fmt.Errorf("SHUTDOWN_TIMEOUT must be between 1ms and 5m, got %s", c.ShutdownTimeout))
+		fail("STORE_ENTRIES_MODE must be full or dedup_only, got %q", c.StoreEntriesMode)
 	}
 
 	return joinErrors(errs)
+}
+
+// shortDuration renders 720h0m0s as 720h: bounds in error messages read
+// like the values people type into .env.
+func shortDuration(d time.Duration) string {
+	s := d.String()
+	if strings.HasSuffix(s, "m0s") {
+		s = strings.TrimSuffix(s, "0s")
+	}
+	if strings.HasSuffix(s, "h0m") {
+		s = strings.TrimSuffix(s, "0m")
+	}
+	return s
 }
 
 // EffectiveDatabaseMaxConns is DATABASE_MAX_CONNS, or worker pools plus HTTP headroom.
@@ -536,9 +476,10 @@ func (e *envReader) storeEntriesMode() string {
 	return "full"
 }
 
-func parseBoolDefault(v string, def bool) bool {
+// parseBoolDefault reads a flag that is on unless explicitly disabled.
+func parseBoolDefault(v string) bool {
 	if strings.TrimSpace(v) == "" {
-		return def
+		return true
 	}
 	return parseBool(v)
 }

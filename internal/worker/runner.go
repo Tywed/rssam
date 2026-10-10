@@ -71,6 +71,7 @@ type Runner struct {
 	WebhookDigest     webhookDigestStore
 	SystemAlerts      SystemAlertsConfig
 	paused            atomic.Bool
+	wake              dueWakers
 }
 
 func (r *Runner) Pause() {
@@ -150,7 +151,10 @@ func (r *Runner) Run(ctx context.Context) error {
 	jobsCh := make(chan storage.Job, r.Cfg.PoolSize*2)
 	webhookLogsCh := make(chan storage.WebhookLog, r.Cfg.WebhookPoolSize*2)
 
-	// Scheduler: enqueue due feeds periodically (deduplicated by unique index).
+	r.wake = newDueWakers()
+	go r.listenDueLoop(ctx)
+
+	// Scheduler: enqueue due feeds (deduplicated by unique index).
 	go r.schedulerLoop(ctx)
 
 	// Retention cleanup: periodically purge old removed entries and logs.
@@ -178,72 +182,65 @@ func (r *Runner) Run(ctx context.Context) error {
 	return nil
 }
 
+// schedulerLoop enqueues due feeds, then sleeps until the earliest
+// next_check_at, a feeds-due notification, or SchedulerTick at most.
 func (r *Runner) schedulerLoop(ctx context.Context) {
-	t := time.NewTicker(r.Cfg.SchedulerTick)
-	defer t.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-t.C:
-			if r.Paused() {
-				continue
-			}
+	for ctx.Err() == nil {
+		next, known := time.Time{}, false
+		if !r.Paused() {
 			ids, err := r.Store.ListFeedsDue(ctx, 1000)
-			if err != nil {
+			switch {
+			case err != nil:
 				r.Log.Error("scheduler: list due feeds failed", "err", err)
-				continue
-			}
-			if len(ids) == 0 {
-				continue
-			}
-			now := time.Now().UTC()
-			if err := r.Store.EnqueuePollFeedJobs(ctx, ids, now); err != nil {
-				r.Log.Error("scheduler: enqueue poll_feed jobs failed", "err", err)
+			case len(ids) > 0:
+				if err := r.Store.EnqueuePollFeedJobs(ctx, ids, time.Now().UTC()); err != nil {
+					r.Log.Error("scheduler: enqueue poll_feed jobs failed", "err", err)
+				}
+			default:
+				if next, known, err = r.Store.NextFeedDueAt(ctx); err != nil {
+					r.Log.Error("scheduler: next feed due failed", "err", err)
+				}
 			}
 		}
+		idleWait(ctx, r.wake.feeds, next, known, r.Cfg.SchedulerTick)
 	}
 }
 
+// dispatchLoop claims due jobs for the worker pool, then sleeps until the
+// earliest run_at, a jobs-due notification, or SchedulerTick at most.
 func (r *Runner) dispatchLoop(ctx context.Context, out chan<- storage.Job) {
-	t := time.NewTicker(1 * time.Second)
-	defer t.Stop()
 	var lastReclaim time.Time
-
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-t.C:
-			if r.Paused() {
-				continue
-			}
-			now := time.Now()
-			if lastReclaim.IsZero() || now.Sub(lastReclaim) >= 20*time.Second {
-				staleAfter := max(r.Cfg.FetchTimeout*2, 2*time.Minute)
-				n, err := r.Store.ReclaimStalePollJobs(ctx, r.Cfg.InstanceID, staleAfter)
-				if err != nil {
-					r.Log.Error("dispatcher: reclaim stale jobs failed", "err", err)
-				} else if n > 0 {
-					r.Log.Warn("dispatcher: reclaimed stale poll_feed locks", "count", n)
-				}
-				lastReclaim = now
-			}
-
-			room := cap(out) - len(out)
-			if room <= 0 {
-				continue
-			}
-			limit := min(r.Cfg.PoolSize, room)
-			jobs, err := r.Store.ClaimDueJobs(ctx, limit, r.Cfg.InstanceID)
+	for ctx.Err() == nil {
+		if r.Paused() {
+			idleWait(ctx, r.wake.jobs, time.Time{}, false, r.Cfg.SchedulerTick)
+			continue
+		}
+		now := time.Now()
+		if lastReclaim.IsZero() || now.Sub(lastReclaim) >= 20*time.Second {
+			staleAfter := max(r.Cfg.FetchTimeout*2, 2*time.Minute)
+			n, err := r.Store.ReclaimStalePollJobs(ctx, r.Cfg.InstanceID, staleAfter)
 			if err != nil {
-				r.Log.Error("dispatcher: claim due jobs failed", "err", err)
-				continue
+				r.Log.Error("dispatcher: reclaim stale jobs failed", "err", err)
+			} else if n > 0 {
+				r.Log.Warn("dispatcher: reclaimed stale poll_feed locks", "count", n)
 			}
-			if len(jobs) == 0 {
-				continue
-			}
+			lastReclaim = now
+		}
+
+		room := cap(out) - len(out)
+		if room <= 0 {
+			// Workers are saturated; a short nap instead of a due-time
+			// lookup nobody can act on.
+			idleWait(ctx, r.wake.jobs, now.Add(time.Second), true, time.Second)
+			continue
+		}
+		jobs, err := r.Store.ClaimDueJobs(ctx, min(r.Cfg.PoolSize, room), r.Cfg.InstanceID)
+		if err != nil {
+			r.Log.Error("dispatcher: claim due jobs failed", "err", err)
+			idleWait(ctx, r.wake.jobs, time.Time{}, false, r.Cfg.SchedulerTick)
+			continue
+		}
+		if len(jobs) > 0 {
 			metrics.ClaimedJobs.Add(float64(len(jobs)))
 			claimedAt := time.Now().UTC()
 			for _, j := range jobs {
@@ -254,7 +251,13 @@ func (r *Runner) dispatchLoop(ctx context.Context, out chan<- storage.Job) {
 					return
 				}
 			}
+			continue
 		}
+		next, known, err := r.Store.NextJobRunAt(ctx)
+		if err != nil {
+			r.Log.Error("dispatcher: next job failed", "err", err)
+		}
+		idleWait(ctx, r.wake.jobs, next, known, r.Cfg.SchedulerTick)
 	}
 }
 

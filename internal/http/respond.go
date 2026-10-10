@@ -46,9 +46,9 @@ type deletedDTO struct {
 	Deleted bool `json:"deleted"`
 }
 
-func parseLimitOffset(r *http.Request, defLimit, capLimit int) (limit, offset int, err error) {
+func parseLimitOffset(r *http.Request, capLimit int) (limit, offset int, err error) {
 	q := r.URL.Query()
-	limit = defLimit
+	limit = 100
 	offset = 0
 
 	if v := q.Get("limit"); v != "" {

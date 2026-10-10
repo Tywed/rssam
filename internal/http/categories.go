@@ -46,7 +46,7 @@ func (s *Server) handleListCategories(w http.ResponseWriter, r *http.Request) {
 	if _, ok := requireStore(w, r, "", s.categories != nil, "category storage is not configured"); !ok {
 		return
 	}
-	limit, offset, err := parseLimitOffset(r, 100, 10000)
+	limit, offset, err := parseLimitOffset(r, 10000)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return

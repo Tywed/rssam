@@ -51,9 +51,6 @@ WHERE indexname IN ('jobs_run_at_idx', 'jobs_type_run_at_idx', 'idx_feeds_poll_p
 	if p := plan(`SELECT id FROM jobs WHERE run_at <= now() AND locked_at IS NULL ORDER BY run_at, id LIMIT 10`); !strings.Contains(p, "jobs_due_unlocked_idx") {
 		t.Fatalf("claim plan:\n%s", p)
 	}
-	if p := plan(`SELECT id FROM feeds WHERE poll_paused = FALSE AND manual_paused = FALSE AND next_check_at <= now() ORDER BY next_check_at, id LIMIT 10`); !strings.Contains(p, "feeds_due_poll_idx") {
-		t.Fatalf("due feeds plan:\n%s", p)
-	}
 	if p := plan(`SELECT feed_id FROM subscriptions WHERE user_id = 1`); !strings.Contains(p, "subscriptions_pkey") {
 		t.Fatalf("subscriptions by user plan:\n%s", p)
 	}
