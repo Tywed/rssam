@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -11,6 +12,13 @@ import (
 type querier interface {
 	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
 	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+}
+
+// dbExecutor is querier plus Exec: a write helper that runs on the pool or
+// inside a transaction.
+type dbExecutor interface {
+	querier
+	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
 }
 
 func withTx(ctx context.Context, db *pgxpool.Pool, fn func(pgx.Tx) error) error {

@@ -107,13 +107,19 @@ RETURNING `+subscriptionColumns, userID, feedID, params.WebhookID))
 		return Subscription{}, fmt.Errorf("subscribe: %w", err)
 	}
 	if _, err := tx.Exec(ctx, `
-INSERT INTO user_entries(user_id, entry_id, feed_id, status, starred, sort_at)
-SELECT $1, e.id, e.feed_id,
-       CASE WHEN row_number() OVER (ORDER BY COALESCE(e.published_at, e.created_at) DESC, e.id DESC) <= $3 THEN $4 ELSE $5 END,
-       FALSE, COALESCE(e.published_at, e.created_at)
-FROM entries e
-WHERE e.feed_id = $2 AND e.removed_at IS NULL
-ON CONFLICT (entry_id, user_id) DO NOTHING`, userID, feedID, SubscribeUnreadBackfill, EntryStatusUnread, EntryStatusRead); err != nil {
+WITH added AS (
+  INSERT INTO user_entries(user_id, entry_id, feed_id, status, starred, sort_at)
+  SELECT $1, e.id, e.feed_id, $4, FALSE, COALESCE(e.published_at, e.created_at)
+  FROM entries e
+  WHERE e.feed_id = $2 AND e.removed_at IS NULL
+  ON CONFLICT (entry_id, user_id) DO NOTHING
+  RETURNING entry_id, user_id, feed_id, sort_at
+)
+INSERT INTO user_unread(entry_id, user_id, feed_id, sort_at)
+SELECT entry_id, user_id, feed_id, sort_at
+FROM added
+ORDER BY sort_at DESC, entry_id DESC
+LIMIT $3`, userID, feedID, SubscribeUnreadBackfill, EntryStatusRead); err != nil {
 		return Subscription{}, fmt.Errorf("subscribe backfill: %w", err)
 	}
 	return sub, nil

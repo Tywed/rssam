@@ -28,7 +28,7 @@ func (s *PostgresStore) LoadWebhookDeliveryContext(ctx context.Context, logID in
 	const q = `
 SELECT
   w.id, w.user_id, w.name, w.url, w.method, w.headers, w.body_template, w.secret, w.enabled, w.on_success_entry, w.kind, w.provider_config, w.system_alerts, w.digest_minutes, w.created_at, w.updated_at,
-  e.id, e.feed_id, e.title, e.url, e.content, e.author, e.published_at, e.hash, COALESCE(ue.status, 'unread'), e.created_at, e.updated_at,
+  e.id, e.feed_id, e.title, e.url, e.content, e.author, e.published_at, e.hash, ` + entryStatusExprOuter + `, e.created_at, e.updated_at,
   fd.id, fd.title,
   f.id, f.user_id, f.name, f.enabled, f.created_at, f.updated_at,
   fm.details
@@ -37,6 +37,7 @@ JOIN webhooks w ON w.id = wl.webhook_id
 JOIN entries e ON e.id = wl.entry_id
 JOIN feeds fd ON fd.id = e.feed_id
 LEFT JOIN user_entries ue ON ue.entry_id = e.id AND ue.user_id = w.user_id
+LEFT JOIN user_unread uu ON uu.entry_id = e.id AND uu.user_id = w.user_id
 LEFT JOIN LATERAL (
   SELECT fm.filter_id, fm.details
   FROM filter_matches fm
@@ -158,6 +159,9 @@ WHERE entry_id = $1
 // other subscribers keep it.
 func (s *PostgresStore) MarkEntryRemovedKeepPayload(ctx context.Context, userID, entryID int64) error {
 	const q = `
+WITH un AS (
+  DELETE FROM user_unread WHERE user_id = $1 AND entry_id = $2
+)
 UPDATE user_entries
 SET status = $3,
     updated_at = now()
@@ -170,12 +174,8 @@ WHERE user_id = $1 AND entry_id = $2 AND status <> $3`
 }
 
 func (s *PostgresStore) MarkEntryReadIfActive(ctx context.Context, userID, entryID int64) error {
-	const q = `
-UPDATE user_entries
-SET status = $3,
-    updated_at = now()
-WHERE user_id = $1 AND entry_id = $2 AND status = $4`
-	_, err := s.db.Exec(ctx, q, userID, entryID, EntryStatusRead, EntryStatusUnread)
+	const q = `DELETE FROM user_unread WHERE user_id = $1 AND entry_id = $2`
+	_, err := s.db.Exec(ctx, q, userID, entryID)
 	if err != nil {
 		return fmt.Errorf("mark entry read after webhook: %w", err)
 	}

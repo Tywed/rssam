@@ -124,8 +124,12 @@ func (r *FeedRefresher) recordFailure(ctx context.Context, feed storage.Feed, no
 	after.LastError = cause.Error()
 	after.LastCheckedAt = &now
 	// Same backoff the worker applies to the job: base interval × 2^errors.
+	// A bot challenge skips the walk: it will not clear by itself.
 	min, max := r.pollBounds()
 	next := storage.FeedNextCheckAfterError(now, feed.IntervalMinutes, after.ParsingErrorCount, min, max)
+	if errors.Is(cause, reader.ErrBotChallenge) {
+		next = now.Add(max)
+	}
 	after.NextCheckAt = &next
 	if err := r.Feeds.RecordFeedPollFailure(ctx, storage.RecordFeedPollFailureParams{
 		ID:          feed.ID,
@@ -264,22 +268,6 @@ func (r *FeedRefresher) refreshLoaded(ctx context.Context, feed storage.Feed, ma
 		return 0, r.failPoll(ctx, feed, now, started, res.BridgeState, fetchErr, ErrFetchFeed, errors.Is(fetchErr, reader.ErrFeedGone))
 	}
 
-	// fresh counts items the feed delivered for the first time, including
-	// hash-only ones that never become entries; it stamps last_entry_at.
-	var fresh int
-	var itemsHash *string
-	if !res.NotModified {
-		var insertedEntries []storage.Entry
-		inserted, insertedEntries, fresh, itemsHash, err = r.storeFetched(ctx, feed, subs, res.Entries)
-		if err != nil {
-			return 0, r.failPoll(ctx, feed, now, started, res.BridgeState, err, ErrCreateEntries, false)
-		}
-		r.applyFiltersBestEffort(ctx, feed, subs, insertedEntries)
-		if r.Realtime != nil && len(insertedEntries) > 0 {
-			r.Realtime.PublishNewEntries(ctx, feed, subs, insertedEntries)
-		}
-	}
-
 	etag := strings.TrimSpace(res.ETag)
 	lastMod := strings.TrimSpace(res.LastModified)
 	if etag == "" {
@@ -296,7 +284,7 @@ func (r *FeedRefresher) refreshLoaded(ctx context.Context, feed storage.Feed, ma
 	if movedTo != "" {
 		r.logger().Info("feed moved permanently", "feed_id", feedID, "from", feed.FeedURL, "to", movedTo)
 	}
-	if err := r.Feeds.UpdateFeedRefreshMeta(ctx, storage.UpdateFeedRefreshMetaParams{
+	meta := storage.UpdateFeedRefreshMetaParams{
 		ID:            feedID,
 		ETag:          etag,
 		LastModified:  lastMod,
@@ -304,11 +292,28 @@ func (r *FeedRefresher) refreshLoaded(ctx context.Context, feed storage.Feed, ma
 		LastError:     "",
 		BridgeState:   bridgeStateJSON(res.BridgeState),
 		NextCheckAt:   &next,
-		NewEntries:    fresh,
 		NewFeedURL:    movedTo,
-		ItemsHash:     itemsHash,
-	}); err != nil {
-		r.logger().Error("update feed refresh meta failed", "feed_id", feedID, "err", err)
+	}
+
+	// NewEntries counts items the feed delivered for the first time,
+	// including hash-only ones that never become entries; it stamps
+	// last_entry_at.
+	metaStored := false
+	if !res.NotModified {
+		var insertedEntries []storage.Entry
+		inserted, insertedEntries, metaStored, err = r.storeFetched(ctx, feed, subs, res.Entries, &meta)
+		if err != nil {
+			return 0, r.failPoll(ctx, feed, now, started, res.BridgeState, err, ErrCreateEntries, false)
+		}
+		r.applyFiltersBestEffort(ctx, feed, subs, insertedEntries)
+		if r.Realtime != nil && len(insertedEntries) > 0 {
+			r.Realtime.PublishNewEntries(ctx, feed, subs, insertedEntries)
+		}
+	}
+	if !metaStored {
+		if err := r.Feeds.UpdateFeedRefreshMeta(ctx, meta); err != nil {
+			r.logger().Error("update feed refresh meta failed", "feed_id", feedID, "err", err)
+		}
 	}
 	r.recordPoll(ctx, feedID, now, started, inserted, nil)
 	if r.Realtime != nil {
@@ -360,27 +365,41 @@ func (r *FeedRefresher) failPoll(ctx context.Context, feed storage.Feed, now, st
 	return err
 }
 
-// storeFetched applies the feed's rules and stores what is new. itemsHash
-// is nil when the item set is the same as last time: then nothing can be
-// inserted (every hash is already in entries or feed_entry_dedup) and the
-// stored hash needs no update.
-func (r *FeedRefresher) storeFetched(ctx context.Context, feed storage.Feed, subs []storage.Subscription, fetched []bridge.Entry) (inserted int, insertedEntries []storage.Entry, fresh int, itemsHash *string, err error) {
+// entryMetaWriter is the store that can write a poll's entries and the
+// feed's refresh metadata in one transaction (PostgresStore); other stores
+// get the two calls.
+type entryMetaWriter interface {
+	CreateEntriesWithRefreshMeta(ctx context.Context, feedID int64, entries []storage.CreateEntryParams, meta storage.UpdateFeedRefreshMetaParams) (int, []storage.Entry, error)
+}
+
+// storeFetched applies the feed's rules and stores what is new, filling in
+// meta.NewEntries and meta.ItemsHash. metaStored reports that meta was
+// written together with the entries and needs no further update. ItemsHash
+// stays nil when the item set is the same as last time: then nothing can
+// be inserted (every hash is already in entries or feed_entry_dedup) and
+// the stored hash needs no update.
+func (r *FeedRefresher) storeFetched(ctx context.Context, feed storage.Feed, subs []storage.Subscription, fetched []bridge.Entry, meta *storage.UpdateFeedRefreshMetaParams) (inserted int, insertedEntries []storage.Entry, metaStored bool, err error) {
 	entries := reader.ApplyFeedRules(fetched, feed.BlockedRules, feed.KeepRules)
 	entries = reader.ApplyURLRewriteRules(entries, feed.RewriteRules)
 	h := itemSetHash(entries)
 	if h != "" && h == feed.ItemsHash {
-		return 0, nil, 0, nil, nil
+		return 0, nil, false, nil
 	}
+	meta.ItemsHash = &h
 	if r.feedUsesHashOnlyStorage(feed) {
-		inserted, insertedEntries, fresh, err = r.processEntriesDedupOnly(ctx, feed, subs, entries)
+		inserted, insertedEntries, meta.NewEntries, err = r.processEntriesDedupOnly(ctx, feed, subs, entries)
+	} else if w, ok := r.Entries.(entryMetaWriter); ok {
+		inserted, insertedEntries, err = w.CreateEntriesWithRefreshMeta(ctx, feed.ID, entries, *meta)
+		meta.NewEntries = inserted
+		metaStored = err == nil
 	} else {
 		inserted, insertedEntries, err = r.Entries.CreateEntries(ctx, feed.ID, entries)
-		fresh = inserted
+		meta.NewEntries = inserted
 	}
 	if err != nil {
-		return 0, nil, 0, nil, err
+		return 0, nil, false, err
 	}
-	return inserted, insertedEntries, fresh, &h, nil
+	return inserted, insertedEntries, metaStored, nil
 }
 
 // nextCheckAfterPoll: the feed's interval, raised by the adaptive schedule

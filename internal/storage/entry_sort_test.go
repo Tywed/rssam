@@ -15,7 +15,7 @@ func TestNormalizeEntrySort(t *testing.T) {
 }
 
 func TestEntryOrderClause(t *testing.T) {
-	if entryOrderClause(EntrySortNewest) == entryOrderClause(EntrySortOldest) {
+	if entryOrderClause(EntrySortNewest, "ue") == entryOrderClause(EntrySortOldest, "ue") {
 		t.Fatal("expected different order clauses")
 	}
 }

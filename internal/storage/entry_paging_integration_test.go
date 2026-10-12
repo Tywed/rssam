@@ -83,24 +83,24 @@ func TestIntegration_EntryListUsesSortIndex(t *testing.T) {
 	if _, err := tx.Exec(ctx, "SET LOCAL enable_seqscan = off; SET LOCAL enable_sort = off"); err != nil {
 		t.Fatal(err)
 	}
-	unread := EntryStatusUnread
 	for _, tc := range []struct {
 		name  string
+		from  string
 		where string
+		want  string
 	}{
-		{"status", "ue.user_id = $1 AND ue.status = $2"},
-		{"all", "ue.user_id = $1 AND ue.status <> $2"},
-		{"feed unread", "ue.user_id = $1 AND ue.status = 'unread' AND ue.feed_id = $2"},
-		{"feed all", "ue.user_id = $1 AND ue.status <> 'removed' AND ue.feed_id = $2"},
+		{"unread", "user_unread uu", "uu.user_id = $1", "user_unread_user_sort_idx"},
+		{"all", "user_entries ue", "ue.user_id = $1 AND ue.status <> 'removed'", "user_entries_user_sort_idx"},
+		// A few rows per feed: either user_unread index is an ordered path.
+		{"feed unread", "user_unread uu", "uu.user_id = $1 AND uu.feed_id = $2", "user_unread_user_"},
+		{"feed all", "user_entries ue", "ue.user_id = $1 AND ue.status <> 'removed' AND ue.feed_id = $2", "user_entries_user_feed_sort_idx"},
 	} {
-		args := []any{owner.ID, unread}
-		if tc.name == "all" {
-			args[1] = EntryStatusRemoved
-		}
+		args := []any{owner.ID}
 		if strings.HasPrefix(tc.name, "feed ") {
-			args[1] = feed.ID
+			args = append(args, feed.ID)
 		}
-		rows, err := tx.Query(ctx, "EXPLAIN SELECT ue.entry_id FROM user_entries ue WHERE "+tc.where+" ORDER BY "+entryOrderClause(EntrySortNewest)+" LIMIT 51", args...)
+		alias := tc.from[strings.LastIndex(tc.from, " ")+1:]
+		rows, err := tx.Query(ctx, "EXPLAIN SELECT "+alias+".entry_id FROM "+tc.from+" WHERE "+tc.where+" ORDER BY "+entryOrderClause(EntrySortNewest, alias)+" LIMIT 51", args...)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -114,12 +114,8 @@ func TestIntegration_EntryListUsesSortIndex(t *testing.T) {
 			plan.WriteByte('\n')
 		}
 		rows.Close()
-		want := "_sort_idx"
-		if strings.HasPrefix(tc.name, "feed ") {
-			want = "user_entries_user_feed_sort_idx"
-		}
-		if !strings.Contains(plan.String(), want) || strings.Contains(plan.String(), "Sort Key") {
-			t.Fatalf("%s: expected an ordered scan of %s, got plan:\n%s", tc.name, want, plan.String())
+		if !strings.Contains(plan.String(), tc.want) || strings.Contains(plan.String(), "Sort Key") {
+			t.Fatalf("%s: expected an ordered scan of %s, got plan:\n%s", tc.name, tc.want, plan.String())
 		}
 	}
 }

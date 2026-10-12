@@ -33,6 +33,29 @@ func IsValidEntryStatus(s string) bool {
 // the INSERT builds a tsvector for every row it is handed before the unique
 // index rejects it, and on a routine poll nearly every item is a repeat.
 func (s *PostgresStore) CreateEntries(ctx context.Context, feedID int64, entries []CreateEntryParams) (inserted int, insertedEntries []Entry, err error) {
+	return s.createEntries(ctx, s.db, feedID, entries)
+}
+
+// CreateEntriesWithRefreshMeta stores a poll's entries and the feed's
+// refresh metadata in one transaction: one WAL flush per productive poll
+// instead of two. meta.NewEntries is set from what was inserted.
+func (s *PostgresStore) CreateEntriesWithRefreshMeta(ctx context.Context, feedID int64, entries []CreateEntryParams, meta UpdateFeedRefreshMetaParams) (inserted int, insertedEntries []Entry, err error) {
+	err = withTx(ctx, s.db, func(tx pgx.Tx) error {
+		var err error
+		inserted, insertedEntries, err = s.createEntries(ctx, tx, feedID, entries)
+		if err != nil {
+			return err
+		}
+		meta.NewEntries = inserted
+		return updateFeedRefreshMeta(ctx, tx, meta)
+	})
+	if err != nil {
+		return 0, nil, err
+	}
+	return inserted, insertedEntries, nil
+}
+
+func (s *PostgresStore) createEntries(ctx context.Context, db dbExecutor, feedID int64, entries []CreateEntryParams) (inserted int, insertedEntries []Entry, err error) {
 	if len(entries) == 0 {
 		return 0, nil, nil
 	}
@@ -97,12 +120,16 @@ WITH ins AS (
   RETURNING id, feed_id, title, url, author, published_at, hash, created_at, updated_at
 ), fan AS (
   INSERT INTO user_entries(user_id, entry_id, feed_id, status, starred, sort_at)
-  SELECT s.user_id, ins.id, ins.feed_id, '` + EntryStatusUnread + `', FALSE, COALESCE(ins.published_at, ins.created_at)
+  SELECT s.user_id, ins.id, ins.feed_id, '` + EntryStatusRead + `', FALSE, COALESCE(ins.published_at, ins.created_at)
+  FROM ins JOIN subscriptions s ON s.feed_id = ins.feed_id
+), unread AS (
+  INSERT INTO user_unread(entry_id, user_id, feed_id, sort_at)
+  SELECT ins.id, s.user_id, ins.feed_id, COALESCE(ins.published_at, ins.created_at)
   FROM ins JOIN subscriptions s ON s.feed_id = ins.feed_id
 )
 SELECT id, feed_id, title, url, author, published_at, hash, created_at, updated_at FROM ins`
 
-	rows, err := s.db.Query(ctx, q, feedID, titles, urls, contents, authors, published, hashes)
+	rows, err := db.Query(ctx, q, feedID, titles, urls, contents, authors, published, hashes)
 	if err != nil {
 		if isForeignKeyViolation(err) {
 			return 0, nil, ErrNotFound
@@ -152,7 +179,7 @@ SELECT id, feed_id, title, url, author, published_at, hash, created_at, updated_
 		}
 		return 0, nil, fmt.Errorf("iterate create entries: %w", err)
 	}
-	if err := s.createEnclosuresBatch(ctx, encEntryIDs, encURLs, encSizes, encMIMEs); err != nil {
+	if err := createEnclosuresBatch(ctx, db, encEntryIDs, encURLs, encSizes, encMIMEs); err != nil {
 		return inserted, insertedEntries, err
 	}
 	return inserted, insertedEntries, nil
@@ -209,52 +236,19 @@ func (s *PostgresStore) listEntries(ctx context.Context, userID int64, filter Li
 	}
 	offset := max(filter.Offset, 0)
 
-	var (
-		where []string
-		args  []any
-	)
-	argN := 1
-	where = append(where, fmt.Sprintf("ue.user_id = $%d", argN))
-	args = append(args, userID)
-	argN++
-	if filter.FeedID != nil {
-		where = append(where, fmt.Sprintf("ue.feed_id = $%d", argN))
-		args = append(args, *filter.FeedID)
-		argN++
+	scope, err := entryListScope(userID, filter.Status, entryListConds{
+		FeedID: filter.FeedID, CategoryID: filter.CategoryID, Starred: filter.Starred, LabelID: filter.LabelID,
+	})
+	if err != nil {
+		return nil, 0, err
 	}
-	if filter.CategoryID != nil {
-		where = append(where, fmt.Sprintf("ue.feed_id IN (SELECT s.feed_id FROM subscriptions s JOIN feeds f ON f.id = s.feed_id WHERE s.user_id = $1 AND f.category_id = $%d)", argN))
-		args = append(args, *filter.CategoryID)
-		argN++
-	}
-	if filter.Status != nil {
-		if !IsValidEntryStatus(*filter.Status) {
-			return nil, 0, fmt.Errorf("invalid entry status: %q", *filter.Status)
-		}
-		// Spelled out, not bound: the status is one of three validated
-		// words, and the partial indexes (WHERE status = 'unread', WHERE
-		// status <> 'removed') are only chosen when the planner sees it.
-		where = append(where, "ue.status = '"+*filter.Status+"'")
-	} else {
-		where = append(where, "ue.status <> '"+EntryStatusRemoved+"'")
-	}
-	if filter.Starred != nil {
-		where = append(where, fmt.Sprintf("ue.starred = $%d", argN))
-		args = append(args, *filter.Starred)
-		argN++
-	}
-	if filter.LabelID != nil {
-		where = append(where, fmt.Sprintf("ue.entry_id IN (SELECT entry_id FROM entry_labels WHERE label_id = $%d)", argN))
-		args = append(args, *filter.LabelID)
-		argN++
-	}
-	whereSQL := "\nWHERE " + strings.Join(where, " AND ")
+	args, argN := scope.args, len(scope.args)+1
 	fetch := limit
 	if !filter.WithTotal {
 		fetch++
 	}
-	q := "SELECT " + entryColumns(filter.WithoutBody) + "\n" + entryFromUser + whereSQL +
-		"\nORDER BY " + entryOrderClause(filter.Sort) +
+	q := "SELECT " + entryColumns(filter.WithoutBody) + "\n" + scope.list +
+		"\nORDER BY " + entryOrderClause(filter.Sort, scope.alias) +
 		"\nLIMIT $" + fmt.Sprint(argN) + " OFFSET $" + fmt.Sprint(argN+1)
 
 	rows, err := s.db.Query(ctx, q, append(args, fetch, offset)...)
@@ -270,7 +264,7 @@ func (s *PostgresStore) listEntries(ctx context.Context, userID int64, filter Li
 		return out, total, nil
 	}
 	var total int
-	if err := s.db.QueryRow(ctx, "SELECT count(*) FROM user_entries ue"+whereSQL, args...).Scan(&total); err != nil {
+	if err := s.db.QueryRow(ctx, scope.count, args...).Scan(&total); err != nil {
 		return nil, 0, fmt.Errorf("count entries: %w", err)
 	}
 	return out, total, nil
@@ -318,6 +312,10 @@ func scanEntries(rows pgx.Rows, capHint int) ([]Entry, error) {
 }
 
 func (s *PostgresStore) UpdateFeedRefreshMeta(ctx context.Context, params UpdateFeedRefreshMetaParams) error {
+	return updateFeedRefreshMeta(ctx, s.db, params)
+}
+
+func updateFeedRefreshMeta(ctx context.Context, db dbExecutor, params UpdateFeedRefreshMetaParams) error {
 	bridgeState := params.BridgeState
 	if bridgeState == nil {
 		bridgeState = []byte("{}")
@@ -338,7 +336,7 @@ SET etag = $2,
     items_hash = COALESCE($10, items_hash),
     updated_at = now()
 WHERE id = $1`
-	cmd, err := s.db.Exec(ctx, q, params.ID, params.ETag, params.LastModified, params.LastCheckedAt, params.LastError, bridgeState, params.NextCheckAt, params.NewEntries > 0, params.NewFeedURL, params.ItemsHash)
+	cmd, err := db.Exec(ctx, q, params.ID, params.ETag, params.LastModified, params.LastCheckedAt, params.LastError, bridgeState, params.NextCheckAt, params.NewEntries > 0, params.NewFeedURL, params.ItemsHash)
 	if err != nil {
 		return fmt.Errorf("update feed refresh meta: %w", err)
 	}
@@ -364,11 +362,8 @@ WHERE id = $1`
 	return nil
 }
 
-// The unread counters spell the status out instead of binding it, like the
-// list filters: a generic plan for a bound status cannot use the partial
-// indexes and estimates nothing about the value.
 func (s *PostgresStore) CountUnreadByFeed(ctx context.Context, userID, feedID int64) (int, error) {
-	const q = `SELECT count(*) FROM user_entries WHERE user_id = $1 AND feed_id = $2 AND status = '` + EntryStatusUnread + `'`
+	const q = `SELECT count(*) FROM user_unread WHERE user_id = $1 AND feed_id = $2`
 	var total int
 	if err := s.db.QueryRow(ctx, q, userID, feedID).Scan(&total); err != nil {
 		return 0, fmt.Errorf("count unread by feed: %w", err)
@@ -379,9 +374,9 @@ func (s *PostgresStore) CountUnreadByFeed(ctx context.Context, userID, feedID in
 func (s *PostgresStore) CountUnreadByCategory(ctx context.Context, userID, categoryID int64) (int, error) {
 	const q = `
 SELECT count(*)
-FROM user_entries ue
-JOIN feeds f ON f.id = ue.feed_id
-WHERE ue.user_id = $1 AND f.category_id = $2 AND ue.status = '` + EntryStatusUnread + `'`
+FROM user_unread uu
+JOIN feeds f ON f.id = uu.feed_id
+WHERE uu.user_id = $1 AND f.category_id = $2`
 	var total int
 	if err := s.db.QueryRow(ctx, q, userID, categoryID).Scan(&total); err != nil {
 		return 0, fmt.Errorf("count unread by category: %w", err)
@@ -400,7 +395,7 @@ SET content = $3,
     content_fetched = $5,
     search_vector = ` + vecExpr + `,
     updated_at = now()
-FROM user_entries ue
+FROM user_entries ue ` + entryUnreadJoin + `
 WHERE e.id = $1 AND ue.entry_id = e.id AND ue.user_id = $2
 RETURNING ` + entrySelectColumns
 	return s.scanEntry(s.db.QueryRow(ctx, q, params.ID, userID, params.Content, params.OriginalContent, params.ContentFetched))
@@ -408,7 +403,7 @@ RETURNING ` + entrySelectColumns
 
 // CountUnreadGlobalForUser counts the user's unread entries.
 func (s *PostgresStore) CountUnreadGlobalForUser(ctx context.Context, userID int64) (int, error) {
-	const q = `SELECT count(*) FROM user_entries WHERE user_id = $1 AND status = '` + EntryStatusUnread + `'`
+	const q = `SELECT count(*) FROM user_unread WHERE user_id = $1`
 	var total int
 	if err := s.db.QueryRow(ctx, q, userID).Scan(&total); err != nil {
 		return 0, fmt.Errorf("count unread global for user: %w", err)
@@ -424,8 +419,8 @@ func (s *PostgresStore) UnreadCountsForUser(ctx context.Context, userID int64) (
 SELECT c.feed_id, f.category_id, c.n
 FROM (
 	SELECT feed_id, count(*)::int AS n
-	FROM user_entries
-	WHERE user_id = $1 AND status = '`+EntryStatusUnread+`'
+	FROM user_unread
+	WHERE user_id = $1
 	GROUP BY feed_id
 ) c
 JOIN feeds f ON f.id = c.feed_id`, userID)

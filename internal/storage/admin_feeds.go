@@ -105,12 +105,16 @@ WHERE f.id = $1`
 const adminFeedSelectCols = `
   ` + feedColumns + `, f.icon_data,
   COALESCE((SELECT COUNT(*)::int FROM entries e WHERE e.feed_id = f.id), 0),
-  COALESCE((SELECT COUNT(*)::int FROM user_entries ue WHERE ue.feed_id = f.id AND ue.status = 'unread'), 0),
+  COALESCE(un.n, 0),
   COALESCE((SELECT COUNT(*)::int FROM subscriptions s WHERE s.feed_id = f.id), 0),
   EXISTS(SELECT 1 FROM jobs j WHERE j.type = 'poll_feed' AND j.feed_id = f.id)`
 
+// The unread counts come from one pass over user_unread (no index leads
+// with feed_id; a per-row subquery scanned the table once per feed on the
+// page: 1.1 s against 29 ms for 200 feeds and 60 000 unread rows).
 const adminFeedFromJoins = `
-FROM feeds f ` + catalogJoin
+FROM feeds f ` + catalogJoin + `
+LEFT JOIN (SELECT feed_id, COUNT(*)::int AS n FROM user_unread GROUP BY feed_id) un ON un.feed_id = f.id`
 
 // adminFeedsSilentWhere: a feed that polls fine but has not produced a new
 // item (entry or dedup hash) for silentAfter. Feeds younger than that count
@@ -178,7 +182,7 @@ func adminFeedsOrderClause(sortKey, order string) string {
 	case "entries":
 		return fmt.Sprintf("COALESCE((SELECT COUNT(*) FROM entries e WHERE e.feed_id = f.id), 0) %s, f.id ASC", dir)
 	case "unread":
-		return fmt.Sprintf("COALESCE((SELECT COUNT(*) FROM user_entries ue WHERE ue.feed_id = f.id AND ue.status = 'unread'), 0) %s, f.id ASC", dir)
+		return fmt.Sprintf("COALESCE(un.n, 0) %s, f.id ASC", dir)
 	default:
 		return fmt.Sprintf("f.title %s, f.id ASC", dir)
 	}
@@ -281,7 +285,7 @@ SELECT
       AND COALESCE(last_entry_at, created_at) < now() - make_interval(secs => $1::bigint)
   )::int,
   COALESCE((SELECT GREATEST(reltuples, 0)::bigint FROM pg_class WHERE oid = 'public.entries'::regclass), 0)::int,
-  COALESCE((SELECT COUNT(*)::int FROM user_entries WHERE status = 'unread'), 0),
+  COALESCE((SELECT COUNT(*)::int FROM user_unread), 0),
   COALESCE((SELECT COUNT(*)::int FROM subscriptions), 0),
   COALESCE((SELECT GREATEST(reltuples, 0)::bigint FROM pg_class WHERE oid = 'public.user_entries'::regclass), 0)::int,
   COALESCE((SELECT COUNT(*)::int FROM category_followers), 0)

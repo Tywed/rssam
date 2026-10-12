@@ -17,14 +17,14 @@ func NormalizeEntrySort(s string) string {
 	}
 }
 
-// entrySortExpr is user_entries.sort_at = COALESCE(published_at, created_at)
-// frozen at insert; the user_entries_* indexes of migration 0050 order by
-// it, so a page is an index range, never a sort of the whole set.
-const entrySortExpr = "ue.sort_at"
-
-func entryOrderClause(sort string) string {
+// Lists are index ranges, never sorts: user_entries.sort_at =
+// COALESCE(published_at, created_at) frozen at insert, copied to
+// user_unread, and the indexes of both tables order by it. The alias names
+// the table that drives the list (ue, or uu for unread lists); sorting by
+// the other one would hide the index from the planner.
+func entryOrderClause(sort, alias string) string {
 	if NormalizeEntrySort(sort) == EntrySortOldest {
-		return entrySortExpr + " ASC, ue.entry_id ASC"
+		return alias + ".sort_at ASC, " + alias + ".entry_id ASC"
 	}
-	return entrySortExpr + " DESC, ue.entry_id DESC"
+	return alias + ".sort_at DESC, " + alias + ".entry_id DESC"
 }

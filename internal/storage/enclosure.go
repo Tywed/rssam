@@ -5,7 +5,7 @@ import (
 	"fmt"
 )
 
-func (s *PostgresStore) createEnclosuresBatch(ctx context.Context, entryIDs []int64, urls []string, sizes []int64, mimeTypes []string) error {
+func createEnclosuresBatch(ctx context.Context, db dbExecutor, entryIDs []int64, urls []string, sizes []int64, mimeTypes []string) error {
 	if len(entryIDs) == 0 {
 		return nil
 	}
@@ -13,7 +13,7 @@ func (s *PostgresStore) createEnclosuresBatch(ctx context.Context, entryIDs []in
 INSERT INTO enclosures(entry_id, url, size, mime_type)
 SELECT x.entry_id, x.url, x.size, x.mime_type
 FROM unnest($1::bigint[], $2::text[], $3::bigint[], $4::text[]) AS x(entry_id, url, size, mime_type)`
-	if _, err := s.db.Exec(ctx, q, entryIDs, urls, sizes, mimeTypes); err != nil {
+	if _, err := db.Exec(ctx, q, entryIDs, urls, sizes, mimeTypes); err != nil {
 		return fmt.Errorf("create enclosures: %w", err)
 	}
 	return nil

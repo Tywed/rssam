@@ -115,6 +115,23 @@ func TestRSSFetcher_ServerFreshnessHints(t *testing.T) {
 			t.Fatalf("err=%v", err)
 		}
 	})
+	t.Run("Cloudflare challenge is ErrBotChallenge", func(t *testing.T) {
+		headers, status, body = http.Header{"Cf-Mitigated": {"challenge"}, "Retry-After": {"120"}}, 403, "<html>Just a moment...</html>"
+		_, err := fetch()
+		if !errors.Is(err, ErrBotChallenge) {
+			t.Fatalf("403: err=%v", err)
+		}
+		status = 503
+		_, err = fetch()
+		if !errors.Is(err, ErrBotChallenge) {
+			t.Fatalf("503 with challenge header must not pass as a rate limit: err=%v", err)
+		}
+		headers, status = http.Header{"Server": {"cloudflare"}}, 403
+		_, err = fetch()
+		if errors.Is(err, ErrBotChallenge) || err == nil {
+			t.Fatalf("plain 403 is an ordinary failure: err=%v", err)
+		}
+	})
 }
 
 func TestFeedTTL_MalformedIgnored(t *testing.T) {

@@ -259,6 +259,7 @@ func TestIntegration_Migration0050_SharedFeedsMerge(t *testing.T) {
 	store := isolatedStore(t)
 	ctx := context.Background()
 	for _, q := range []string{
+		`DROP TABLE user_unread`,
 		`DROP TABLE user_entries`,
 		`DROP TABLE subscriptions`,
 		`DROP TABLE category_followers`,
@@ -314,6 +315,17 @@ func TestIntegration_Migration0050_SharedFeedsMerge(t *testing.T) {
 		}
 	}
 
+	// 0058 on top (twice): unread markers move to user_unread.
+	body58, err := migrations.Source("0058_user_unread.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for run := 1; run <= 2; run++ {
+		if _, err := store.db.Exec(ctx, body58); err != nil {
+			t.Fatalf("0058 run %d: %v", run, err)
+		}
+	}
+
 	feeds, err := store.ListAllFeeds(ctx, 10)
 	if err != nil || len(feeds) != 2 || feeds[0].ID != 1 || feeds[0].OwnerID != 11 || feeds[1].ID != 3 {
 		t.Fatalf("feeds after merge: %+v err=%v", feeds, err)
@@ -337,8 +349,13 @@ func TestIntegration_Migration0050_SharedFeedsMerge(t *testing.T) {
 	}
 	state := func(userID, entryID int64) st {
 		var s st
-		_ = store.db.QueryRow(ctx, `SELECT status, starred FROM user_entries WHERE user_id = $1 AND entry_id = $2`, userID, entryID).Scan(&s.status, &s.starred)
+		_ = store.db.QueryRow(ctx, `SELECT `+entryStatusExpr+`, ue.starred FROM user_entries ue `+entryUnreadJoin+` WHERE ue.user_id = $1 AND ue.entry_id = $2`, userID, entryID).Scan(&s.status, &s.starred)
 		return s
+	}
+	var n int
+	_ = store.db.QueryRow(ctx, `SELECT count(*) FROM user_entries WHERE status NOT IN ('read', 'removed')`).Scan(&n)
+	if n != 0 {
+		t.Fatalf("%d user_entries rows still carry the unread status", n)
 	}
 	if got := state(11, 1); got != (st{"read", false}) {
 		t.Fatalf("a's state on the shared entry: %+v", got)
@@ -349,7 +366,6 @@ func TestIntegration_Migration0050_SharedFeedsMerge(t *testing.T) {
 	if got := state(12, 3); got != (st{"unread", false}) {
 		t.Fatalf("b's moved entry: %+v", got)
 	}
-	var n int
 	_ = store.db.QueryRow(ctx, `SELECT count(*) FROM entries WHERE id = 2`).Scan(&n)
 	if n != 0 {
 		t.Fatal("duplicate entry survived")

@@ -59,16 +59,12 @@ func (s *PostgresStore) SearchEntries(ctx context.Context, userID int64, filter 
 	}
 	offset := max(filter.Offset, 0)
 
-	var (
-		where []string
-		args  []any
-	)
-	argN := 1
-
-	where = append(where, fmt.Sprintf("ue.user_id = $%d", argN))
-	args = append(args, userID)
-	argN++
-
+	scope, err := entryListScope(userID, filter.Status, entryListConds{FeedID: filter.FeedID, Starred: filter.Starred})
+	if err != nil {
+		return nil, 0, err
+	}
+	args := scope.args
+	argN := len(args) + 1
 	tsq := ftsWebsearchExpr(s.ftsLanguage, fmt.Sprintf("$%d", argN))
 	args = append(args, query)
 	argN++
@@ -83,31 +79,8 @@ func (s *PostgresStore) SearchEntries(ctx context.Context, userID int64, filter 
 		args = append(args, ftsPrefixQuery(query))
 		argN++
 	}
-	where = append(where, "e.search_vector @@ "+tsq)
+	fromWhere := scope.list + " AND e.search_vector @@ " + tsq
 
-	if filter.FeedID != nil {
-		where = append(where, fmt.Sprintf("ue.feed_id = $%d", argN))
-		args = append(args, *filter.FeedID)
-		argN++
-	}
-	if filter.Status != nil {
-		if !IsValidEntryStatus(*filter.Status) {
-			return nil, 0, fmt.Errorf("invalid entry status: %q", *filter.Status)
-		}
-		// Spelled out, not bound: the status is one of three validated
-		// words, and the partial indexes (WHERE status = 'unread', WHERE
-		// status <> 'removed') are only chosen when the planner sees it.
-		where = append(where, "ue.status = '"+*filter.Status+"'")
-	} else {
-		where = append(where, "ue.status <> '"+EntryStatusRemoved+"'")
-	}
-	if filter.Starred != nil {
-		where = append(where, fmt.Sprintf("ue.starred = $%d", argN))
-		args = append(args, *filter.Starred)
-		argN++
-	}
-
-	whereSQL := "\nWHERE " + strings.Join(where, " AND ")
 	fetch := limit
 	if !filter.WithTotal {
 		fetch++
@@ -131,19 +104,21 @@ func (s *PostgresStore) SearchEntries(ctx context.Context, userID int64, filter 
 	if filter.Rank {
 		window = SearchRankWindow
 	}
-	orderBy := entryOrderClause(filter.Sort)
-	q := "WITH hits AS MATERIALIZED (SELECT ue.entry_id, ue.user_id " + entryFromUser + whereSQL +
+	orderBy := entryOrderClause(filter.Sort, scope.alias)
+	q := "WITH hits AS MATERIALIZED (SELECT ue.entry_id, ue.user_id " + fromWhere +
 		"\nORDER BY " + orderBy + "\nLIMIT " + fmt.Sprint(window) + ")\n" +
 		"SELECT " + entryColumns(filter.WithoutBody) + "\n" + entryFromUser + "\nWHERE (ue.entry_id, ue.user_id) IN (SELECT entry_id, user_id FROM hits)"
 	if filter.Rank {
-		orderBy = fmt.Sprintf("ts_rank_cd(e.search_vector, %s) DESC, ", tsq) + orderBy
+		orderBy = fmt.Sprintf("ts_rank_cd(e.search_vector, %s) DESC, ", tsq) + entryOrderClause(filter.Sort, "ue")
+	} else {
+		orderBy = entryOrderClause(filter.Sort, "ue")
 	}
 	q += "\nORDER BY " + orderBy +
 		"\nLIMIT $" + fmt.Sprint(argN) + " OFFSET $" + fmt.Sprint(argN+1)
 
 	var out []Entry
 	total := 0
-	err := withTx(ctx, s.db, func(tx pgx.Tx) error {
+	err = withTx(ctx, s.db, func(tx pgx.Tx) error {
 		// pgx extended protocol: one statement per Exec.
 		if _, err := tx.Exec(ctx, "SET LOCAL enable_seqscan = off"); err != nil {
 			return err
@@ -164,7 +139,7 @@ func (s *PostgresStore) SearchEntries(ctx context.Context, userID int64, filter 
 		if !filter.WithTotal {
 			return nil
 		}
-		return tx.QueryRow(ctx, "SELECT count(*) FROM (SELECT 1 "+entryFromUser+whereSQL+
+		return tx.QueryRow(ctx, "SELECT count(*) FROM (SELECT 1 "+fromWhere+
 			"\nLIMIT "+fmt.Sprint(SearchTotalCap)+") c", args...).Scan(&total)
 	})
 	if err != nil {

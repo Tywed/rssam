@@ -89,6 +89,8 @@ WITH e AS (
       updated_at = now()
   WHERE id = $1
   RETURNING id, feed_id, hash, url
+), un AS (
+  DELETE FROM user_unread WHERE entry_id = $1
 ), ue AS (
   UPDATE user_entries SET status = $2, updated_at = now()
   WHERE entry_id = $1 AND status <> $2

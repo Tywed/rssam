@@ -132,24 +132,25 @@ ON CONFLICT (entry_id, label_id) DO NOTHING`
 }
 
 func (s *PostgresStore) EntryCountsByLabel(ctx context.Context, userID int64) (map[int64]int, error) {
-	return s.countsByLabel(ctx, userID, "<>", EntryStatusRemoved)
+	return s.countsByLabel(ctx, userID, `
+JOIN user_entries ue ON ue.entry_id = el.entry_id AND ue.user_id = $1
+WHERE ue.status <> '`+EntryStatusRemoved+`'`)
 }
 
 func (s *PostgresStore) UnreadCountsByLabel(ctx context.Context, userID int64) (map[int64]int, error) {
-	return s.countsByLabel(ctx, userID, "=", EntryStatusUnread)
+	return s.countsByLabel(ctx, userID, `
+JOIN user_unread uu ON uu.entry_id = el.entry_id AND uu.user_id = $1`)
 }
 
-// countsByLabel groups the user's entries whose status compares to status
-// with op ("=" or "<>") by label.
-func (s *PostgresStore) countsByLabel(ctx context.Context, userID int64, op, status string) (map[int64]int, error) {
+// countsByLabel groups the user's labelled entries that pass scope (a join
+// and/or WHERE on the entry_labels row el) by label.
+func (s *PostgresStore) countsByLabel(ctx context.Context, userID int64, scope string) (map[int64]int, error) {
 	q := `
 SELECT el.label_id, count(*)
 FROM entry_labels el
-JOIN labels l ON l.id = el.label_id AND l.user_id = $1
-JOIN user_entries ue ON ue.entry_id = el.entry_id AND ue.user_id = $1
-WHERE ue.status ` + op + ` $2
+JOIN labels l ON l.id = el.label_id AND l.user_id = $1` + scope + `
 GROUP BY el.label_id`
-	rows, err := s.db.Query(ctx, q, userID, status)
+	rows, err := s.db.Query(ctx, q, userID)
 	if err != nil {
 		return nil, fmt.Errorf("entry counts by label: %w", err)
 	}

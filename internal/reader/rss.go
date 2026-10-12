@@ -54,6 +54,23 @@ func bodyHash(body []byte) string {
 // good, so retrying only costs both sides traffic.
 var ErrFeedGone = errors.New("feed gone (410)")
 
+// ErrBotChallenge is returned when the source answers with a bot
+// challenge page instead of the feed: the response is the same on every
+// retry until a human or the site operator intervenes, so the poll is
+// put off for the maximum interval straight away instead of walking the
+// error backoff and logging each step.
+var ErrBotChallenge = errors.New("blocked by a bot challenge (Cloudflare)")
+
+// isBotChallenge recognises Cloudflare's managed challenge by the header it
+// sets on 403/503 challenge pages.
+func isBotChallenge(resp *http.Response) bool {
+	switch resp.StatusCode {
+	case http.StatusForbidden, http.StatusServiceUnavailable:
+		return strings.EqualFold(resp.Header.Get("cf-mitigated"), "challenge")
+	}
+	return false
+}
+
 // rateLimitedError carries Retry-After from a 429/503 response.
 type rateLimitedError struct {
 	status int
@@ -235,6 +252,9 @@ func (f *RSSFetcher) FetchWith(ctx context.Context, p FetchParams) (FetchResult,
 	defer resp.Body.Close()
 
 	now := time.Now().UTC()
+	if isBotChallenge(resp) {
+		return FetchResult{}, ErrBotChallenge
+	}
 	switch resp.StatusCode {
 	case http.StatusNotModified:
 		return FetchResult{

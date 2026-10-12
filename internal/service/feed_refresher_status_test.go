@@ -322,3 +322,25 @@ func TestRefreshLoadedFeed_SourceFreshnessPostponesNextCheck(t *testing.T) {
 		t.Fatalf("next_check_at delay=%s, want ≤1h", d)
 	}
 }
+
+func TestRefreshLoadedFeed_BotChallengeWaitsTheMaximumInterval(t *testing.T) {
+	feed := storage.Feed{ID: 12, OwnerID: 1, FeedURL: "https://example.com/f.xml", IntervalMinutes: 10}
+	r, fs, pl, pub := newStatusRefresher(&stubHandler{err: reader.ErrBotChallenge}, feed)
+	r.MaxPollInterval = 6 * time.Hour
+
+	_, err := r.RefreshLoadedFeed(context.Background(), feed)
+	if !errors.Is(err, ErrFetchFeed) || !errors.Is(err, reader.ErrBotChallenge) {
+		t.Fatalf("err=%v", err)
+	}
+	// One failure counted (the circuit still opens eventually), no manual
+	// pause, and the next poll is at the maximum interval instead of 20 min.
+	if fs.failures != 1 || fs.feed.ManualPaused || fs.feed.PollPaused {
+		t.Fatalf("failures=%d manual=%v circuit=%v", fs.failures, fs.feed.ManualPaused, fs.feed.PollPaused)
+	}
+	if d := time.Until(fs.next); d < 6*time.Hour-5*time.Second || d > 6*time.Hour+5*time.Second {
+		t.Fatalf("next_check_at delay=%s, want ~6h", d)
+	}
+	if len(pl.rows) != 1 || pl.rows[0].OK || len(pub.feeds) != 1 || pub.feeds[0].LastError != reader.ErrBotChallenge.Error() {
+		t.Fatalf("poll log %+v published %+v", pl.rows, pub.feeds)
+	}
+}
