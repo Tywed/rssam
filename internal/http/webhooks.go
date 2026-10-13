@@ -361,7 +361,7 @@ func (s *Server) runWebhookTest(ctx context.Context, userID, webhookID int64) (w
 	}
 
 	feed := storage.WebhookFeed{Title: "test feed"}
-	entry := storage.Entry{Title: "test entry", URL: "https://example.com/test"}
+	entry := storage.Entry{Title: "test entry", URL: "https://example.com/test", UpdatedAt: time.Now().UTC()}
 	kind, _ := storage.NormalizeWebhookKind(wh.Kind)
 
 	out, err := storage.BuildWebhookOutbound(wh, feed, entry, nil)

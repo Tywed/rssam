@@ -241,6 +241,7 @@ func (h *Handler) handleFeedShow(w http.ResponseWriter, r *http.Request) {
 	data.Title = feed.Title
 	h.loadFollowState(r, &data, p.UserID)
 	h.loadFeedSubscribers(r, &data, id)
+	h.loadInboundDelivery(r, &data, feed)
 	h.render(w, r, "feeds_show", data)
 }
 
@@ -338,7 +339,7 @@ func (h *Handler) handleFeedUpdate(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	if h.cfg.Refresher != nil {
+	if h.cfg.Refresher != nil && existing.FeedType != reader.FeedTypeInbound {
 		// The feed row is already saved; a failed reschedule only delays the
 		// next poll until the scheduler picks the row up on its own.
 		if err := h.cfg.Refresher.RescheduleFeed(r.Context(), id, params.IntervalMinutes); err != nil {

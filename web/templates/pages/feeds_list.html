@@ -34,6 +34,7 @@
       {{if .CanEdit}}
       <div class="toolbar-actions">
         <a class="btn btn-primary" href="/ui/feeds/new">+ Лента</a>
+        {{if .InboundEnabled}}<a class="btn" href="/ui/feeds/new-inbound">+ Входящий вебхук</a>{{end}}
         <details class="cat-actions cat-new">
           <summary class="btn cat-actions-toggle">+ Категория</summary>
           <form method="post" action="/ui/categories" class="cat-actions-menu cat-new-form">

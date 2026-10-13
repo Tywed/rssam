@@ -1,0 +1,32 @@
+{{define "body_feeds_inbound_form"}}
+<div class="settings-layout">
+  {{template "settings_nav" .}}
+  <div class="settings-content">
+    <h1>Новый входящий вебхук</h1>
+    <p class="meta">Лента, которую никто не опрашивает: записи в неё присылает другой rssam своим исходящим HTTP-вебхуком. Подписка, категории, фильтры и метки работают как у обычной ленты.</p>
+    <form method="post" action="/ui/feeds/inbound">
+      <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+      <div class="form-group"><label>Название</label><input name="title" required></div>
+      <div class="form-group"><label>Категория</label>
+        <select name="category_id">
+          <option value="">— без категории —</option>
+          {{range .Categories}}<option value="{{.ID}}">{{.Title}}</option>{{end}}
+        </select>
+        <p class="meta">Категория общая для всех: лента сразу появится у тех, кто читает категорию целиком.</p>
+      </div>
+      <div class="form-group">
+        <label class="checkbox-label"><input type="checkbox" name="subscribe_self" value="1" checked> Подписаться самому</label>
+        <input type="hidden" name="subscribe_self" value="0">
+      </div>
+      <div class="form-group">
+        <label>Хранить записи (дней)</label>
+        <input name="entry_retention_days" type="number" min="1" max="3650" placeholder="не удалять">
+      </div>
+      <div class="toolbar">
+        <button class="btn btn-primary" type="submit">Создать</button>
+        <a class="btn" href="/ui/feeds">Отмена</a>
+      </div>
+    </form>
+  </div>
+</div>
+{{end}}

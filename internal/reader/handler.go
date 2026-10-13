@@ -117,12 +117,14 @@ const (
 	FeedTypeSmotrim     = "smotrim"
 	FeedTypePage        = "page"
 	FeedTypeCustom      = "custom"
+	// FeedTypeInbound is never fetched: entries are POSTed to /hooks/{id}.
+	FeedTypeInbound = "inbound"
 )
 
 // NormalizeFeedType returns a canonical feed type or empty string.
 func NormalizeFeedType(t string) string {
 	switch t {
-	case FeedTypeRSS, FeedTypeAtom, FeedTypeJSON, FeedTypeTelegram, FeedTypeVK, FeedTypeVKSearch, FeedTypeMax, FeedTypeMaxstat, FeedTypeRutube, FeedTypeDzenNews, FeedTypeDzenChannel, FeedTypeSmotrim, FeedTypePage, FeedTypeCustom:
+	case FeedTypeRSS, FeedTypeAtom, FeedTypeJSON, FeedTypeTelegram, FeedTypeVK, FeedTypeVKSearch, FeedTypeMax, FeedTypeMaxstat, FeedTypeRutube, FeedTypeDzenNews, FeedTypeDzenChannel, FeedTypeSmotrim, FeedTypePage, FeedTypeCustom, FeedTypeInbound:
 		return t
 	default:
 		return ""

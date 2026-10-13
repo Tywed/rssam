@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"net/netip"
 	"os"
 	"strconv"
 	"strings"
@@ -152,9 +153,13 @@ type Config struct {
 	MaxRequestBodyBytes int64
 	MaxImportFeeds      int
 	CompressEnabled     bool
-	PprofEnabled        bool
-	PprofListenAddr     string
-	ShutdownTimeout     time.Duration
+	// InboundWebhooks mounts POST /hooks/{id} for deliveries from other
+	// rssam instances; InboundAllowCIDRs optionally restricts the senders.
+	InboundWebhooks   bool
+	InboundAllowCIDRs []netip.Prefix
+	PprofEnabled      bool
+	PprofListenAddr   string
+	ShutdownTimeout   time.Duration
 }
 
 func Load() (Config, error) {
@@ -272,6 +277,8 @@ func Load() (Config, error) {
 		MaxRequestBodyBytes: int64(env.int("MAX_REQUEST_BODY_BYTES", 1048576)),
 		MaxImportFeeds:      env.int("MAX_IMPORT_FEEDS", 500),
 		CompressEnabled:     parseBoolDefault(os.Getenv("COMPRESS_ENABLED")),
+		InboundWebhooks:     parseBool(os.Getenv("INBOUND_WEBHOOKS")),
+		InboundAllowCIDRs:   env.prefixes("INBOUND_WEBHOOK_ALLOW_CIDRS"),
 		PprofEnabled:        parseBool(os.Getenv("PPROF_ENABLED")),
 		PprofListenAddr:     getEnv("PPROF_LISTEN_ADDR", "127.0.0.1:6060"),
 		ShutdownTimeout:     env.duration("SHUTDOWN_TIMEOUT", 15*time.Second),
@@ -571,6 +578,25 @@ func (e *envReader) float(key string, def float64) float64 {
 		return def
 	}
 	return n
+}
+
+// prefixes parses a comma-separated list of IPs and CIDRs; a bare IP is a
+// /32 or /128.
+func (e *envReader) prefixes(key string) []netip.Prefix {
+	var out []netip.Prefix
+	for _, item := range parseCSV(os.Getenv(key)) {
+		p, err := netip.ParsePrefix(item)
+		if err != nil {
+			a, aerr := netip.ParseAddr(item)
+			if aerr != nil {
+				e.errs = append(e.errs, fmt.Errorf("%s: %q is not an IP or CIDR", key, item))
+				continue
+			}
+			p = netip.PrefixFrom(a, a.BitLen())
+		}
+		out = append(out, p.Masked())
+	}
+	return out
 }
 
 func (e *envReader) duration(key string, def time.Duration, aliases ...string) time.Duration {

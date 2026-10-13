@@ -380,6 +380,10 @@ func (s *Server) handleRefreshFeed(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadGateway, "feed fetch failed")
 			return
 		}
+		if errors.Is(err, service.ErrInboundFeed) {
+			writeError(w, http.StatusConflict, "inbound feed is not polled")
+			return
+		}
 		if at, ok := reader.RetryAt(err); ok {
 			w.Header().Set("Retry-After", strconv.Itoa(max(1, int(time.Until(at).Seconds()))))
 			writeError(w, http.StatusServiceUnavailable, "source rate limited, retry later")

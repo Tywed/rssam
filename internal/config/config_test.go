@@ -458,3 +458,29 @@ func TestValidate_Messages(t *testing.T) {
 		}
 	}
 }
+
+func TestLoad_InboundWebhooks(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://u:p@localhost:5432/db?sslmode=disable")
+	t.Setenv("INBOUND_WEBHOOKS", "")
+	t.Setenv("INBOUND_WEBHOOK_ALLOW_CIDRS", "")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.InboundWebhooks || len(cfg.InboundAllowCIDRs) != 0 {
+		t.Fatalf("defaults: enabled=%v cidrs=%v", cfg.InboundWebhooks, cfg.InboundAllowCIDRs)
+	}
+	t.Setenv("INBOUND_WEBHOOKS", "true")
+	t.Setenv("INBOUND_WEBHOOK_ALLOW_CIDRS", "10.0.0.0/8, 192.168.1.20 ,::1")
+	cfg, err = Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.InboundWebhooks || len(cfg.InboundAllowCIDRs) != 3 || cfg.InboundAllowCIDRs[1].String() != "192.168.1.20/32" || cfg.InboundAllowCIDRs[2].String() != "::1/128" {
+		t.Fatalf("parsed: enabled=%v cidrs=%v", cfg.InboundWebhooks, cfg.InboundAllowCIDRs)
+	}
+	t.Setenv("INBOUND_WEBHOOK_ALLOW_CIDRS", "10.0.0.0/8,not-an-ip")
+	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "INBOUND_WEBHOOK_ALLOW_CIDRS") {
+		t.Fatalf("bad cidr: err=%v", err)
+	}
+}

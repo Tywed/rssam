@@ -42,6 +42,10 @@
     {
       "name": "users",
       "description": "Users, own profile, API keys."
+    },
+    {
+      "name": "inbound",
+      "description": "Deliveries from other rssam instances."
     }
   ],
   "security": [
@@ -3152,6 +3156,118 @@
           }
         }
       }
+    },
+    "/hooks/{id}": {
+      "post": {
+        "tags": [
+          "inbound"
+        ],
+        "summary": "Deliver entries to an inbound feed",
+        "operationId": "inboundWebhook",
+        "description": "Exists only with `INBOUND_WEBHOOKS=true`; otherwise the path is 404. Receives the body of an rssam outgoing HTTP webhook — a per-entry event (`entry`) or a digest (`items[].entry`) — for the inbound feed `id` and stores the entries exactly as a poll would (feed rules, subscribers, filters, webhooks, poll log). No session or API key: the request is authenticated by `X-RSSAM-Signature: sha256=<hex HMAC-SHA256(secret, raw body)>`, the signature the sender's webhook worker produces when its webhook secret equals the feed's inbound secret. `sent_at` must be within 10 minutes of the server clock; a replay inside the window inserts nothing (entries are deduplicated by URL hash). Body ≤ 1 MB, ≤ 200 entries. With `INBOUND_WEBHOOK_ALLOW_CIDRS` set, other sources get 403. Not subject to the per-IP rate limit: a node may deliver a burst of entries; a rejected request costs one primary-key lookup and one HMAC.",
+        "security": [],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "description": "Inbound feed id."
+          },
+          {
+            "name": "X-RSSAM-Signature",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "`sha256=` + hex HMAC-SHA256 of the raw body with the feed's inbound secret."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InboundDelivery"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Accepted; `received` entries parsed, `inserted` new.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "received": {
+                      "type": "integer"
+                    },
+                    "inserted": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed JSON, unsupported `event_version`, `sent_at` outside the window, no entries, an entry without URL, or more than 200 entries.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or wrong signature.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Source outside INBOUND_WEBHOOK_ALLOW_CIDRS.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown feed, a polled (not inbound) feed, or inbound webhooks disabled.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Body larger than 1 MB.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -5387,6 +5503,74 @@
           "data",
           "total"
         ]
+      },
+      "InboundEntry": {
+        "type": "object",
+        "description": "storage entry as the sender marshals it; field names are matched case-insensitively.",
+        "properties": {
+          "Title": {
+            "type": "string"
+          },
+          "URL": {
+            "type": "string",
+            "description": "Required unless `Hash` is given; the dedup hash is derived from the normalized URL."
+          },
+          "Content": {
+            "type": "string",
+            "description": "HTML, sanitized on receipt."
+          },
+          "Author": {
+            "type": "string",
+            "nullable": true
+          },
+          "PublishedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "Hash": {
+            "type": "string",
+            "description": "Used only when URL is empty."
+          }
+        }
+      },
+      "InboundDelivery": {
+        "type": "object",
+        "required": [
+          "event_version",
+          "sent_at"
+        ],
+        "properties": {
+          "event_version": {
+            "type": "integer",
+            "enum": [
+              1
+            ]
+          },
+          "event_type": {
+            "type": "string",
+            "description": "`new_entry`, `entry_matched` or `digest`; informational."
+          },
+          "sent_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "entry": {
+            "$ref": "#/components/schemas/InboundEntry"
+          },
+          "items": {
+            "type": "array",
+            "maxItems": 200,
+            "items": {
+              "type": "object",
+              "properties": {
+                "entry": {
+                  "$ref": "#/components/schemas/InboundEntry"
+                }
+              }
+            }
+          }
+        }
       }
     }
   }

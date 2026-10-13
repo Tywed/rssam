@@ -232,6 +232,9 @@ func (r *FeedRefresher) refreshLoaded(ctx context.Context, feed storage.Feed, ma
 		return 0, errors.New("feed refresher is not configured")
 	}
 	feedID := feed.ID
+	if feed.FeedType == reader.FeedTypeInbound {
+		return 0, ErrInboundFeed
+	}
 	if !manual && storage.FeedPollingBlocked(feed) {
 		return 0, ErrFeedCircuitOpen
 	}

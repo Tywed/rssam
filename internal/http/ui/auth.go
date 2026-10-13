@@ -62,12 +62,19 @@ type pageData struct {
 	Feeds                      []storage.Feed
 	// FeedsScope on the subscriptions page: "" = the whole catalog, "mine"
 	// = only the feeds the user reads.
-	FeedsScope                string
-	CatalogFeedCount          int
-	FollowedCategories        map[int64]bool
-	CategoryFollowerCounts    map[int64]int
-	FeedSubscriberCounts      map[int64]int
-	FeedSubscribers           []storage.FeedSubscriber
+	FeedsScope             string
+	CatalogFeedCount       int
+	FollowedCategories     map[int64]bool
+	CategoryFollowerCounts map[int64]int
+	FeedSubscriberCounts   map[int64]int
+	FeedSubscribers        []storage.FeedSubscriber
+	// InboundEnabled: this instance accepts inbound webhooks (buttons shown).
+	// InboundFeed + InboundHookURL + InboundSecret: delivery details of the
+	// inbound feed on its page, editors only.
+	InboundEnabled            bool
+	InboundFeed               bool
+	InboundHookURL            string
+	InboundSecret             string
 	Categories                []storage.Category
 	CategoryPollHours         bool
 	FeedID                    int64
@@ -372,17 +379,18 @@ func assetVersion() string {
 func (h *Handler) baseData(r *http.Request, nav string) pageData {
 	p, _ := principal(r)
 	data := pageData{
-		Layout:       true,
-		Nav:          nav,
-		CSRFToken:    h.csrfToken(r),
-		CSPNonce:     middleware.CSPNonce(r.Context()),
-		IsAdmin:      p.IsAdmin(),
-		CanEdit:      p.CanEdit(),
-		EntrySort:    parseEntrySort(r),
-		AssetVersion: assetVersion(),
-		AppVersion:   version.Version,
-		GitHubURL:    githubURL,
-		DocsURL:      docsURL,
+		Layout:         true,
+		Nav:            nav,
+		CSRFToken:      h.csrfToken(r),
+		CSPNonce:       middleware.CSPNonce(r.Context()),
+		IsAdmin:        p.IsAdmin(),
+		CanEdit:        p.CanEdit(),
+		InboundEnabled: h.cfg.InboundFeeds != nil && p.CanEdit(),
+		EntrySort:      parseEntrySort(r),
+		AssetVersion:   assetVersion(),
+		AppVersion:     version.Version,
+		GitHubURL:      githubURL,
+		DocsURL:        docsURL,
 	}
 	if code := r.URL.Query().Get(flashErrParam); code != "" {
 		data.FlashErr = flashErrText(code, r.URL.Query().Get(flashErrRequest))

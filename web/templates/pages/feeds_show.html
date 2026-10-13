@@ -23,10 +23,22 @@
       <p class="meta">{{.Feed.FeedURL}} · {{feedTypeLabel .Feed.FeedType}}{{if .Feed.TLSInsecure}} · <span title="TLS-проверка отключена для этой ленты">TLS: без проверки</span>{{end}}</p>
       <p class="meta">Категория: {{if .Feed.CategoryID}}{{range .Categories}}{{if eq .ID (deref $.Feed.CategoryID)}}{{.Title}}{{end}}{{end}}{{else}}без категории{{end}}{{if .FeedSubscribers}} · читают: {{len .FeedSubscribers}}{{if .IsAdmin}} — {{range $i, $s := .FeedSubscribers}}{{if $i}}, {{end}}{{$s.Username}}{{end}}{{end}}{{end}}</p>
       {{if .Feed.LastError}}<div class="flash flash-err">{{.Feed.LastError}}</div>{{end}}
+      {{if .InboundFeed}}
+      <h3>Приём записей</h3>
+      <p class="meta">На узле-отправителе создайте вебхук вида HTTP с этим адресом и секретом (шаблон тела пустой) и укажите его у подписки как «вебхук на каждую новую запись» — или в фильтре. Дайджесты тоже принимаются.</p>
+      <div class="form-group"><label>Адрес</label><input value="{{.InboundHookURL}}" readonly></div>
+      <div class="form-group"><label>Секрет (HMAC)</label><input value="{{.InboundSecret}}" readonly autocomplete="off"></div>
+      <form method="post" action="/ui/feeds/{{.Feed.ID}}/inbound-secret" data-confirm="Выпустить новый секрет? Отправители со старым секретом начнут получать 401, пока вы не обновите его у них.">
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+        <button type="submit" class="btn">Перевыпустить секрет</button>
+      </form>
+      {{else if and .CanEdit (eq .Feed.FeedType "inbound")}}
+      <p class="meta">Приём записей выключен на этом экземпляре (INBOUND_WEBHOOKS=false): отправители получают 404.</p>
+      {{end}}
       <div class="toolbar">
         {{template "feed_subscribe_toggle" .}}
         {{if .Feed.Subscribed}}
-        <form method="post" action="/ui/feeds/{{.Feed.ID}}/refresh"><input type="hidden" name="csrf_token" value="{{.CSRFToken}}"><button class="btn">Обновить сейчас</button></form>
+        {{if ne .Feed.FeedType "inbound"}}<form method="post" action="/ui/feeds/{{.Feed.ID}}/refresh"><input type="hidden" name="csrf_token" value="{{.CSRFToken}}"><button class="btn">Обновить сейчас</button></form>{{end}}
         <a class="btn" href="/ui/unread?feed_id={{.Feed.ID}}">Записи</a>
         {{end}}
         {{if .CanEdit}}<a class="btn" href="/ui/feeds/{{.Feed.ID}}/edit">Редактировать</a>{{end}}

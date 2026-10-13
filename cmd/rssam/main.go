@@ -418,6 +418,8 @@ func main() {
 		CSRFSecret:              csrfSecret,
 		MinPollInterval:         cfg.MinPollInterval,
 		MaxPollInterval:         cfg.MaxPollInterval,
+		InboundWebhooks:         cfg.InboundWebhooks,
+		InboundAllowCIDRs:       cfg.InboundAllowCIDRs,
 		AdaptiveMaxInterval:     cfg.AdaptiveMaxInterval,
 		FeedActivityStore:       pgStore,
 		FeedSilentDays:          cfg.FeedSilentDays,

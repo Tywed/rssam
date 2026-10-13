@@ -109,6 +109,11 @@ func (s *Server) exportOPMLForUser(w http.ResponseWriter, ctx context.Context, u
 	}
 	exportFeeds := make([]opml.ExportFeed, 0, len(feeds))
 	for _, f := range feeds {
+		// An inbound feed has no fetchable URL; its secret belongs to this
+		// instance.
+		if f.FeedType == storage.FeedTypeInbound {
+			continue
+		}
 		settings := opml.FeedSettings{
 			FeedType:         f.FeedType,
 			IntervalMinutes:  f.IntervalMinutes,

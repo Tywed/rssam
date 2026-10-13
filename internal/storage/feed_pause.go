@@ -7,7 +7,7 @@ import (
 
 // FeedPollingBlocked reports whether background polling should be skipped.
 func FeedPollingBlocked(f Feed) bool {
-	return f.ManualPaused || f.PollPaused
+	return f.ManualPaused || f.PollPaused || f.FeedType == FeedTypeInbound
 }
 
 // SetFeedManualPaused sets or clears admin manual pause without touching circuit breaker state.

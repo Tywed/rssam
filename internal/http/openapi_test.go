@@ -117,7 +117,10 @@ func TestOpenAPI_MatchesRouter(t *testing.T) {
 // registered on a different mux.
 func TestOpenAPI_OperationsAreReachable(t *testing.T) {
 	ops, keys := openAPIOps(t)
-	env := newRouterEnv(t, nil)
+	env := newRouterEnv(t, func(d *Dependencies) {
+		d.InboundWebhooks = true
+		d.InboundFeedStore = stubInboundFeeds{}
+	})
 	param := regexp.MustCompile(`\{[^}]+}`)
 	for _, k := range keys {
 		method, path, _ := strings.Cut(k, " ")

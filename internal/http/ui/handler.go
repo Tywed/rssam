@@ -38,27 +38,30 @@ type Config struct {
 	// CategoryPollHours stores the per-category polling window (nil = field hidden).
 	CategoryPollHours storage.CategoryPollHoursStore
 	Feeds             storage.FeedStore
-	Entries           storage.EntryStore
-	Filters           storage.FilterStore
-	FilterMatches     storage.FilterMatchStore
-	Labels            storage.LabelStore
-	Webhooks          storage.WebhookStore
-	WebhookLogs       storage.WebhookLogStore
-	FilterEngine      *filter.Engine
-	QueryMatcher      filter.QueryMatcher
-	Refresher         *service.FeedRefresher
-	ContentFetcher    *service.ContentFetcher
-	SSRFGuard         *ssrf.Guard
-	CSRFSecret        string
-	HSTSEnabled       bool
-	SessionMaxAge     time.Duration
-	MaxImportFeeds    int
-	Quotas            quota.Limits
-	RateLimit         func(http.Handler) http.Handler
-	OPMLImport        func(r *http.Request, userID int64, data []byte) ImportReport
-	OPMLExport        func(w http.ResponseWriter, r *http.Request, userID int64) error
-	RefreshAllFeeds   func(r *http.Request, userID int64) error
-	TestWebhook       func(r *http.Request, userID, webhookID int64) (WebhookTestResult, error)
+	// InboundFeeds: inbound webhook feeds can be created and managed
+	// (nil = the instance does not accept inbound webhooks).
+	InboundFeeds    storage.InboundFeedStore
+	Entries         storage.EntryStore
+	Filters         storage.FilterStore
+	FilterMatches   storage.FilterMatchStore
+	Labels          storage.LabelStore
+	Webhooks        storage.WebhookStore
+	WebhookLogs     storage.WebhookLogStore
+	FilterEngine    *filter.Engine
+	QueryMatcher    filter.QueryMatcher
+	Refresher       *service.FeedRefresher
+	ContentFetcher  *service.ContentFetcher
+	SSRFGuard       *ssrf.Guard
+	CSRFSecret      string
+	HSTSEnabled     bool
+	SessionMaxAge   time.Duration
+	MaxImportFeeds  int
+	Quotas          quota.Limits
+	RateLimit       func(http.Handler) http.Handler
+	OPMLImport      func(r *http.Request, userID int64, data []byte) ImportReport
+	OPMLExport      func(w http.ResponseWriter, r *http.Request, userID int64) error
+	RefreshAllFeeds func(r *http.Request, userID int64) error
+	TestWebhook     func(r *http.Request, userID, webhookID int64) (WebhookTestResult, error)
 	// DiscoverFeed resolves a URL (feed, HTML page or redirect) to the feed
 	// address and title; nil disables server-side checks on the feed form.
 	DiscoverFeed       func(ctx context.Context, feedURL, feedType string, tlsInsecure bool) (reader.Discovery, error)
@@ -467,6 +470,11 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.Handle("GET /ui/feeds", auth(http.HandlerFunc(h.handleFeedsList)))
 	mux.Handle("GET /ui/feeds/new", auth(h.requireEditor(http.HandlerFunc(h.handleFeedNew))))
 	mux.Handle("POST /ui/feeds", auth(h.requireEditor(http.HandlerFunc(h.handleFeedCreate))))
+	if h.cfg.InboundFeeds != nil {
+		mux.Handle("GET /ui/feeds/new-inbound", auth(h.requireEditor(http.HandlerFunc(h.handleInboundFeedNew))))
+		mux.Handle("POST /ui/feeds/inbound", auth(h.requireEditor(http.HandlerFunc(h.handleInboundFeedCreate))))
+		mux.Handle("POST /ui/feeds/{id}/inbound-secret", auth(h.requireEditor(http.HandlerFunc(h.handleInboundSecretRotate))))
+	}
 	mux.Handle("GET /ui/feeds/export", auth(h.requireEditor(http.HandlerFunc(h.handleFeedsExport))))
 	mux.Handle("POST /ui/feeds/import", auth(h.requireEditor(http.HandlerFunc(h.handleFeedsImport))))
 	mux.Handle("GET /ui/feeds/{id}", auth(http.HandlerFunc(h.handleFeedShow)))

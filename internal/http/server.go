@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/netip"
 	"time"
 
 	"rssam/internal/audit"
@@ -104,6 +105,11 @@ type Dependencies struct {
 
 	MinPollInterval time.Duration
 	MaxPollInterval time.Duration
+	// InboundWebhooks mounts POST /hooks/{id}; off, the path does not exist.
+	// InboundFeedStore defaults to the Postgres store when DB is set.
+	InboundWebhooks   bool
+	InboundAllowCIDRs []netip.Prefix
+	InboundFeedStore  storage.InboundFeedStore
 	// AdaptiveMaxInterval + FeedActivityStore: adaptive polling for manual
 	// refreshes (same rule as the worker).
 	AdaptiveMaxInterval time.Duration
@@ -191,6 +197,9 @@ type Server struct {
 	bridgeManager         *bridgeconfig.Manager
 	refreshAll            refreshAllEnqueuer
 	workerControl         WorkerControl
+	inboundFeeds          storage.InboundFeedStore
+	inboundEnabled        bool
+	inboundAllowCIDRs     []netip.Prefix
 }
 
 func New(dep Dependencies) *Server {
@@ -206,8 +215,12 @@ func New(dep Dependencies) *Server {
 	labelStore := dep.LabelStore
 	webhookStore := dep.WebhookStore
 	webhookLogStore := dep.WebhookLogStore
+	inboundFeeds := dep.InboundFeedStore
 	if dep.DB != nil {
 		pgStore := storage.NewPostgresStore(dep.DB)
+		if inboundFeeds == nil {
+			inboundFeeds = pgStore
+		}
 		if categoryStore == nil {
 			categoryStore = pgStore
 		}
@@ -432,6 +445,9 @@ func New(dep Dependencies) *Server {
 		bridgeManager:         dep.BridgeManager,
 		refreshAll:            jobStore,
 		workerControl:         dep.WorkerControl,
+		inboundFeeds:          inboundFeeds,
+		inboundEnabled:        dep.InboundWebhooks && inboundFeeds != nil,
+		inboundAllowCIDRs:     dep.InboundAllowCIDRs,
 	}
 }
 
@@ -444,6 +460,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/openapi.json", s.handleOpenAPISpec)
 	mux.HandleFunc("/docs", s.handleDocs)
 	mux.Handle("/metrics", s.wrapMetrics(promhttp.Handler()))
+	if s.inboundEnabled {
+		mux.HandleFunc("POST /hooks/{id}", s.handleInboundWebhook)
+	}
 
 	api := http.NewServeMux()
 	api.HandleFunc("GET /v1/categories", s.handleListCategories)

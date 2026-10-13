@@ -23,6 +23,7 @@ FROM feeds f
 LEFT JOIN jobs j ON j.type = 'poll_feed' AND j.feed_id = f.id
 WHERE f.poll_paused = FALSE
   AND f.manual_paused = FALSE
+  AND f.feed_type <> 'inbound'
   AND j.id IS NULL
   AND EXISTS (SELECT 1 FROM subscriptions s WHERE s.feed_id = f.id)`
 	return s.nextAt(ctx, q, "next feed due")

@@ -108,6 +108,8 @@ func FeedTypeLabel(feedType string) string {
 		return "Smotrim"
 	case FeedTypePage:
 		return "Страница"
+	case FeedTypeInbound:
+		return "Входящий вебхук"
 	default:
 		return "RSS/Atom"
 	}

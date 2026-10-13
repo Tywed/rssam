@@ -16,6 +16,10 @@ func (s *Server) registerUI(mux *http.ServeMux) {
 	if !s.uiEnabled {
 		return
 	}
+	var inboundFeeds storage.InboundFeedStore
+	if s.inboundEnabled {
+		inboundFeeds = s.inboundFeeds
+	}
 	cfg := ui.Config{
 		Logger:            s.log,
 		Users:             s.users,
@@ -23,6 +27,7 @@ func (s *Server) registerUI(mux *http.ServeMux) {
 		Categories:        s.categories,
 		CategoryPollHours: s.pollHours,
 		Feeds:             s.feeds,
+		InboundFeeds:      inboundFeeds,
 		Subscriptions:     s.subscriptions,
 		Entries:           s.entries,
 		Filters:           s.filters,

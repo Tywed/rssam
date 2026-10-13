@@ -101,11 +101,13 @@
             <td>{{.UnreadCount}}</td>
             <td>{{.SubscriberCount}}</td>
             <td class="admin-feeds-actions">
+              {{if ne .FeedType "inbound"}}
               <form method="post" action="/ui/admin/feeds/{{.ID}}/refresh" class="inline-form">
                 <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
                 {{template "admin_feeds_return_fields" $}}
                 <button type="submit" class="btn btn-sm" title="Обновить (сброс автостопа)">↻</button>
               </form>
+              {{end}}
               {{if .ManualPaused}}
               <form method="post" action="/ui/admin/feeds/{{.ID}}/unpause" class="inline-form">
                 <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
