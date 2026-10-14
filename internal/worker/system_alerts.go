@@ -26,7 +26,8 @@ const AppSettingSystemAlertState = "system_alert_state"
 
 // SystemAlertsConfig is what the alerter needs beyond the runner config.
 type SystemAlertsConfig struct {
-	// SilentAfter mirrors FEED_SILENT_DAYS (0 = no silent-feed alert).
+	// SilentAfter mirrors FEED_SILENT_DAYS (0 = polled feeds are never
+	// silent; inbound feeds are judged by their interval_minutes).
 	SilentAfter time.Duration
 	// BackupDir is checked for a fresh dump ("" = no backup alert);
 	// BackupMaxAge is how old the newest dump may be before an alert.
@@ -193,23 +194,26 @@ func (a *systemAlerter) diff(ctx context.Context) ([]alertMessage, systemAlertSt
 		msgs = append(msgs, feedsAlert("feeds_paused", "Ленты остановлены (ошибки)", newPaused, true))
 	}
 
-	if a.cfg.SilentAfter > 0 {
-		silent, err := a.store.ListSilentFeeds(ctx, a.cfg.SilentAfter)
-		if err != nil {
-			return nil, next, err
+	// Inbound feeds are judged by their own interval_minutes, so the list
+	// is consulted even when the global window is off.
+	silent, err := a.store.ListSilentFeeds(ctx, a.cfg.SilentAfter)
+	if err != nil {
+		return nil, next, err
+	}
+	next.Silent = map[int64]bool{}
+	var newSilent []storage.SystemAlertFeed
+	for _, f := range silent {
+		next.Silent[f.ID] = true
+		if !a.state.Silent[f.ID] {
+			newSilent = append(newSilent, f)
 		}
-		next.Silent = map[int64]bool{}
-		var newSilent []storage.SystemAlertFeed
-		for _, f := range silent {
-			next.Silent[f.ID] = true
-			if !a.state.Silent[f.ID] {
-				newSilent = append(newSilent, f)
-			}
+	}
+	if len(newSilent) > 0 {
+		title := "Ленты молчат дольше ожидаемого"
+		if days := int(a.cfg.SilentAfter.Hours() / 24); days > 0 {
+			title = fmt.Sprintf("Ленты молчат дольше %d дн.", days)
 		}
-		if len(newSilent) > 0 {
-			days := int(a.cfg.SilentAfter.Hours() / 24)
-			msgs = append(msgs, feedsAlert("feeds_silent", fmt.Sprintf("Ленты молчат дольше %d дн.", days), newSilent, false))
-		}
+		msgs = append(msgs, feedsAlert("feeds_silent", title, newSilent, true))
 	}
 
 	failing, err := a.store.ListFailingWebhooks(ctx)

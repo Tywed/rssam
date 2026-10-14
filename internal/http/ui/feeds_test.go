@@ -254,8 +254,8 @@ func (m *uiMemFeeds) BulkUpdateFeedsByCategory(_ context.Context, userID, catego
 		if update.WebhookSet {
 			m.feeds[i].WebhookID = update.WebhookID
 		}
-		if update.StoreHashOnly != nil {
-			m.feeds[i].StoreHashOnly = *update.StoreHashOnly
+		if update.StoreMode != nil {
+			m.feeds[i].StoreMode = *update.StoreMode
 		}
 		if update.ManualPaused != nil {
 			m.feeds[i].ManualPaused = *update.ManualPaused

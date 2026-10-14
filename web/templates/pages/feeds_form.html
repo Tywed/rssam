@@ -34,7 +34,8 @@
         <input type="hidden" name="subscribe_self" value="0">
       </div>
       {{end}}
-      <div class="form-group"><label>Интервал (мин)</label><input name="interval_minutes" type="number" value="{{if .Feed.IntervalMinutes}}{{.Feed.IntervalMinutes}}{{else}}60{{end}}" min="1" max="10080">
+      <div class="form-group"><label>{{if eq .Feed.FeedType "inbound"}}Ожидаемая пауза между доставками (мин){{else}}Интервал (мин){{end}}</label><input name="interval_minutes" type="number" value="{{if .Feed.IntervalMinutes}}{{.Feed.IntervalMinutes}}{{else}}60{{end}}" min="1" max="10080">
+        {{if eq .Feed.FeedType "inbound"}}<p class="meta">Без доставок дольше этого срока лента считается молчащей.</p>{{end}}
         <label class="checkbox-label"><input type="checkbox" name="adaptive_interval" value="1" {{if .Feed.AdaptiveInterval}}checked{{end}}> Адаптивный интервал</label>
         <p class="meta">Для редко обновляемых источников интервал растягивается от указанного до <code>ADAPTIVE_MAX_INTERVAL</code> (по умолчанию 6 ч): половина среднего промежутка между записями за неделю. Лента без записей неделю опрашивается раз в <code>ADAPTIVE_MAX_INTERVAL</code>, за каждую следующую неделю тишины интервал удваивается до <code>MAX_POLL_INTERVAL</code> (по умолчанию 24 ч); первая же новая запись возвращает обычный расчёт.</p>
         <p class="meta">Минимум 1 мин, максимум 10080 мин (7 суток).</p>
@@ -61,8 +62,10 @@
       </div>
 
       <div class="form-group">
-        <label class="checkbox-label"><input type="checkbox" name="store_hash_only" value="1" {{if .Feed.StoreHashOnly}}checked{{end}}> Только хеш до срабатывания фильтра</label>
-        <p class="meta">Новые записи сохраняются только как хеш для дедупликации; полный текст записывается при совпадении фильтра.</p>
+        <label>Хранение записей</label>
+        <label class="checkbox-label"><input type="radio" name="store_mode" value="full" {{if or (eq .Feed.StoreMode "full") (eq .Feed.StoreMode "")}}checked{{end}}> Полное — все записи хранятся и видны подписчикам</label>
+        <label class="checkbox-label"><input type="radio" name="store_mode" value="filtered" {{if eq .Feed.StoreMode "filtered"}}checked{{end}}> Хеш до фильтра — запись сохраняется только при совпадении фильтра, остальные как хеш</label>
+        <label class="checkbox-label"><input type="radio" name="store_mode" value="relay" {{if eq .Feed.StoreMode "relay"}}checked{{end}}> Только передача — совпавшая запись живёт до доставки вебхука: без поиска, непрочитанного и журнала фильтров</label>
       </div>
 
       <div class="card feed-type-settings" id="feed-settings-telegram" data-feed-type="telegram" {{if .Feed.ID}}{{if ne .Feed.FeedType "telegram"}}hidden{{end}}{{else}}hidden{{end}}>

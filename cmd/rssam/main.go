@@ -321,7 +321,7 @@ func main() {
 			WebhookTimeout:     cfg.WebhookTimeout,
 			WebhookRetryBase:   cfg.WebhookRetryBase,
 			WebhookRetryMax:    cfg.WebhookRetryMax,
-			DedupOnlyStorage:   cfg.StoreEntriesMode == "dedup_only",
+			DedupOnlyStorage:   cfg.StoreEntriesMode == "dedup_only" || cfg.StoreEntriesMode == "relay",
 
 			RemovedRetentionDays:     cfg.RemovedRetentionDays,
 			WebhookLogRetentionDays:  cfg.WebhookLogRetentionDays,

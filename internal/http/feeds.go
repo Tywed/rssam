@@ -34,6 +34,7 @@ type feedDTO struct {
 	TLSInsecure        bool   `json:"tls_insecure"`
 	Crawler            bool   `json:"crawler"`
 	UserAgent          string `json:"user_agent,omitempty"`
+	StoreMode          string `json:"store_mode"`
 	StoreHashOnly      bool   `json:"store_hash_only,omitempty"`
 	EntryRetentionDays *int   `json:"entry_retention_days,omitempty"`
 	AdaptiveInterval   bool   `json:"adaptive_interval,omitempty"`
@@ -44,18 +45,21 @@ type feedDTO struct {
 }
 
 type feedWriteRequest struct {
-	FeedURL            string `json:"feed_url"`
-	Title              string `json:"title"`
-	CategoryID         *int64 `json:"category_id"`
-	IntervalMinutes    int    `json:"interval_minutes"`
-	ScraperRules       string `json:"scraper_rules"`
-	RewriteRules       string `json:"rewrite_rules"`
-	BlockedRules       string `json:"blocked_rules"`
-	KeepRules          string `json:"keep_rules"`
-	FetchViaProxy      bool   `json:"fetch_via_proxy"`
-	TLSInsecure        bool   `json:"tls_insecure"`
-	Crawler            bool   `json:"crawler"`
-	UserAgent          string `json:"user_agent"`
+	FeedURL         string `json:"feed_url"`
+	Title           string `json:"title"`
+	CategoryID      *int64 `json:"category_id"`
+	IntervalMinutes int    `json:"interval_minutes"`
+	ScraperRules    string `json:"scraper_rules"`
+	RewriteRules    string `json:"rewrite_rules"`
+	BlockedRules    string `json:"blocked_rules"`
+	KeepRules       string `json:"keep_rules"`
+	FetchViaProxy   bool   `json:"fetch_via_proxy"`
+	TLSInsecure     bool   `json:"tls_insecure"`
+	Crawler         bool   `json:"crawler"`
+	UserAgent       string `json:"user_agent"`
+	// StoreMode: full | filtered | relay. StoreHashOnly is the former
+	// boolean and means filtered when StoreMode is empty.
+	StoreMode          string `json:"store_mode,omitempty"`
 	StoreHashOnly      bool   `json:"store_hash_only,omitempty"`
 	EntryRetentionDays *int   `json:"entry_retention_days,omitempty"`
 	AdaptiveInterval   bool   `json:"adaptive_interval,omitempty"`
@@ -213,7 +217,7 @@ func (s *Server) handleUpdateFeed(w http.ResponseWriter, r *http.Request) {
 		TLSInsecure:        params.TLSInsecure,
 		Crawler:            params.Crawler,
 		UserAgent:          params.UserAgent,
-		StoreHashOnly:      params.StoreHashOnly,
+		StoreMode:          params.StoreMode,
 		EntryRetentionDays: params.EntryRetentionDays,
 		AdaptiveInterval:   params.AdaptiveInterval,
 	})
@@ -295,6 +299,14 @@ func validateFeedWriteRequest(req feedWriteRequest, guard *ssrf.Guard) (storage.
 	if err := storage.ValidateEntryRetentionDays(req.EntryRetentionDays); err != nil {
 		return storage.CreateFeedParams{}, err
 	}
+	storeMode := req.StoreMode
+	if storeMode == "" && req.StoreHashOnly {
+		storeMode = storage.StoreModeFiltered
+	}
+	storeMode, err := storage.NormalizeStoreMode(storeMode)
+	if err != nil {
+		return storage.CreateFeedParams{}, err
+	}
 	return storage.CreateFeedParams{
 		FeedURL:               feedURL,
 		FeedType:              feedType,
@@ -309,7 +321,7 @@ func validateFeedWriteRequest(req feedWriteRequest, guard *ssrf.Guard) (storage.
 		TLSInsecure:           req.TLSInsecure,
 		Crawler:               req.Crawler,
 		UserAgent:             strings.TrimSpace(req.UserAgent),
-		StoreHashOnly:         req.StoreHashOnly,
+		StoreMode:             storeMode,
 		EntryRetentionDays:    req.EntryRetentionDays,
 		AdaptiveInterval:      req.AdaptiveInterval,
 		SkipOwnerSubscription: req.SubscribeSelf != nil && !*req.SubscribeSelf,
@@ -336,7 +348,8 @@ func toFeedDTO(f storage.Feed) feedDTO {
 		TLSInsecure:        f.TLSInsecure,
 		Crawler:            f.Crawler,
 		UserAgent:          f.UserAgent,
-		StoreHashOnly:      f.StoreHashOnly,
+		StoreMode:          f.StoreMode,
+		StoreHashOnly:      f.StoreMode != "" && f.StoreMode != storage.StoreModeFull,
 		EntryRetentionDays: f.EntryRetentionDays,
 		AdaptiveInterval:   f.AdaptiveInterval,
 		LastEntryAt:        f.LastEntryAt,

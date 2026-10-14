@@ -98,7 +98,7 @@ func TestSettingsRoundtrip(t *testing.T) {
 					TLSInsecure:      true,
 					FetchViaProxy:    true,
 					Crawler:          true,
-					StoreHashOnly:    true,
+					StoreMode:        "filtered",
 					AdaptiveInterval: true,
 					RetentionDays:    &retention,
 					UserAgent:        "custom-ua/1.0",
@@ -141,7 +141,7 @@ func TestSettingsRoundtrip(t *testing.T) {
 	}
 	want := in.Feeds[0].Settings
 	if got.Settings.FeedType != want.FeedType || got.Settings.IntervalMinutes != want.IntervalMinutes ||
-		!got.Settings.TLSInsecure || !got.Settings.FetchViaProxy || !got.Settings.Crawler || !got.Settings.StoreHashOnly || !got.Settings.AdaptiveInterval ||
+		!got.Settings.TLSInsecure || !got.Settings.FetchViaProxy || !got.Settings.Crawler || got.Settings.StoreMode != "filtered" || !got.Settings.AdaptiveInterval ||
 		got.Settings.RetentionDays == nil || *got.Settings.RetentionDays != retention ||
 		got.Settings.UserAgent != want.UserAgent || got.Settings.WebhookName != want.WebhookName ||
 		got.Settings.ScraperRules != want.ScraperRules || got.Settings.RewriteRules != want.RewriteRules ||
@@ -169,7 +169,7 @@ func TestSettingsInvalidAttributesReported(t *testing.T) {
 	if len(a.SettingsErrors) != 3 {
 		t.Fatalf("expected 3 attribute errors, got %v", a.SettingsErrors)
 	}
-	if a.Settings.IntervalMinutes != 0 || a.Settings.TLSInsecure || a.Settings.RetentionDays != nil || !a.Settings.StoreHashOnly {
+	if a.Settings.IntervalMinutes != 0 || a.Settings.TLSInsecure || a.Settings.RetentionDays != nil || a.Settings.StoreMode != "filtered" {
 		t.Fatalf("invalid attributes must fall back to zero values: %+v", a.Settings)
 	}
 	// Attributes outside the rssam namespace are foreign and ignored.

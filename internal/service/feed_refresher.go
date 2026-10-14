@@ -55,7 +55,8 @@ type FeedRefresher struct {
 	// disappear either (nil = slog.Default()).
 	Log *slog.Logger
 
-	// StoreEntriesMode: "full" (default) or "dedup_only" — see STORE_ENTRIES_MODE.
+	// StoreEntriesMode is the instance floor of feeds' store_mode — see
+	// STORE_ENTRIES_MODE.
 	StoreEntriesMode string
 
 	// CircuitBreakerThreshold consecutive poll errors before pausing background polling (0 = default 10).
@@ -75,12 +76,23 @@ type FeedRefresher struct {
 	pollHoursCache ttlCache[pollHoursCacheItem]
 }
 
-func (r *FeedRefresher) dedupOnlyStorage() bool {
-	return strings.EqualFold(strings.TrimSpace(r.StoreEntriesMode), "dedup_only")
-}
-
-func (r *FeedRefresher) feedUsesHashOnlyStorage(feed storage.Feed) bool {
-	return r.dedupOnlyStorage() || feed.StoreHashOnly
+// storeMode resolves the feed's effective storage mode: the instance
+// setting only ever raises it (dedup_only → at least filtered, relay →
+// relay).
+func (r *FeedRefresher) storeMode(feed storage.Feed) string {
+	mode, err := storage.NormalizeStoreMode(feed.StoreMode)
+	if err != nil {
+		mode = storage.StoreModeFull
+	}
+	switch strings.ToLower(strings.TrimSpace(r.StoreEntriesMode)) {
+	case storage.StoreModeRelay:
+		return storage.StoreModeRelay
+	case "dedup_only", storage.StoreModeFiltered:
+		if mode == storage.StoreModeFull {
+			return storage.StoreModeFiltered
+		}
+	}
+	return mode
 }
 
 type RealtimePublisher interface {
@@ -308,10 +320,7 @@ func (r *FeedRefresher) refreshLoaded(ctx context.Context, feed storage.Feed, ma
 		if err != nil {
 			return 0, r.failPoll(ctx, feed, now, started, res.BridgeState, err, ErrCreateEntries, false)
 		}
-		r.applyFiltersBestEffort(ctx, feed, subs, insertedEntries)
-		if r.Realtime != nil && len(insertedEntries) > 0 {
-			r.Realtime.PublishNewEntries(ctx, feed, subs, insertedEntries)
-		}
+		r.afterStore(ctx, feed, subs, insertedEntries)
 	}
 	if !metaStored {
 		if err := r.Feeds.UpdateFeedRefreshMeta(ctx, meta); err != nil {
@@ -389,8 +398,8 @@ func (r *FeedRefresher) storeFetched(ctx context.Context, feed storage.Feed, sub
 		return 0, nil, false, nil
 	}
 	meta.ItemsHash = &h
-	if r.feedUsesHashOnlyStorage(feed) {
-		inserted, insertedEntries, meta.NewEntries, err = r.processEntriesDedupOnly(ctx, feed, subs, entries)
+	if mode := r.storeMode(feed); mode != storage.StoreModeFull {
+		inserted, insertedEntries, meta.NewEntries, metaStored, err = r.processEntriesFiltered(ctx, feed, subs, entries, mode == storage.StoreModeRelay, meta)
 	} else if w, ok := r.Entries.(entryMetaWriter); ok {
 		inserted, insertedEntries, err = w.CreateEntriesWithRefreshMeta(ctx, feed.ID, entries, *meta)
 		meta.NewEntries = inserted
@@ -466,19 +475,23 @@ func bridgeStateJSON(st reader.BridgeState) []byte {
 	return b
 }
 
-// applyFiltersBestEffort runs every subscriber's filters over the new
-// entries and enqueues their subscription webhooks. The `query` rules are
-// evaluated once per distinct pattern set, filter actions per subscriber.
-func (r *FeedRefresher) applyFiltersBestEffort(ctx context.Context, feed storage.Feed, subs []storage.Subscription, entries []storage.Entry) {
+// afterStore runs the subscribers' filters over the new entries and
+// announces them. Relay entries exist for webhooks only: no filter_matches,
+// no label or delete actions, no realtime push.
+func (r *FeedRefresher) afterStore(ctx context.Context, feed storage.Feed, subs []storage.Subscription, entries []storage.Entry) {
 	if len(entries) == 0 {
 		return
 	}
+	relay := r.storeMode(feed) == storage.StoreModeRelay
 	for _, sub := range subs {
-		r.applySubscriberFilters(ctx, feed, sub, entries)
+		r.applySubscriberFilters(ctx, feed, sub, entries, relay)
+	}
+	if r.Realtime != nil && !relay {
+		r.Realtime.PublishNewEntries(ctx, feed, subs, entries)
 	}
 }
 
-func (r *FeedRefresher) applySubscriberFilters(ctx context.Context, feed storage.Feed, sub storage.Subscription, entries []storage.Entry) {
+func (r *FeedRefresher) applySubscriberFilters(ctx context.Context, feed storage.Feed, sub storage.Subscription, entries []storage.Entry, relay bool) {
 	var filters []storage.Filter
 	if r.Filters != nil && r.Matches != nil && r.Engine != nil {
 		filters, _ = r.listEnabledFiltersCached(ctx, sub.UserID)
@@ -501,7 +514,12 @@ func (r *FeedRefresher) applySubscriberFilters(ctx context.Context, feed storage
 			continue
 		}
 		matchedFilterIDs := make(map[int64]struct{}, len(matches))
-		if len(matches) > 0 {
+		if len(matches) > 0 && relay {
+			for _, m := range matches {
+				matchedFilterIDs[m.FilterID] = struct{}{}
+			}
+			r.applyFilterActions(ctx, sub.UserID, e, filters, matchedFilterIDs, true)
+		} else if len(matches) > 0 {
 			toInsert := make([]storage.CreateFilterMatchParams, 0, len(matches))
 			for _, m := range matches {
 				toInsert = append(toInsert, storage.CreateFilterMatchParams{
@@ -515,7 +533,7 @@ func (r *FeedRefresher) applySubscriberFilters(ctx context.Context, feed storage
 			if inserted, err := r.Matches.CreateFilterMatches(ctx, toInsert); err == nil && inserted > 0 {
 				metrics.FilterMatchesTotal.Add(float64(inserted))
 			}
-			r.applyFilterActions(ctx, sub.UserID, e, filters, matchedFilterIDs)
+			r.applyFilterActions(ctx, sub.UserID, e, filters, matchedFilterIDs, false)
 		}
 		if sub.WebhookID != nil && r.WebhookLogs != nil {
 			_ = r.WebhookLogs.EnqueueWebhookLogs(ctx, []int64{*sub.WebhookID}, e.ID)

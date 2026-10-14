@@ -286,7 +286,7 @@ func (r *Runner) applyOnSuccessEntry(ctx context.Context, store webhookDeliveryS
 			r.Log.Error("webhook on_success: delete entry", "entry_id", l.EntryID, "err", err)
 		}
 	}
-	if r.Cfg.DedupOnlyStorage {
+	if r.Cfg.DedupOnlyStorage || delCtx.Feed.StoreMode == storage.StoreModeRelay {
 		if err := store.StripEntryPayloadAfterWebhook(ctx, l.EntryID); err != nil && r.Log != nil {
 			r.Log.Error("webhook on_success: dedup strip", "entry_id", l.EntryID, "err", err)
 		}

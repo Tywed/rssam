@@ -35,6 +35,7 @@ type Outline struct {
 	RssamFetchViaProxy string `xml:"https://github.com/Tywed/rssam/opml fetchViaProxy,attr"`
 	RssamCrawler       string `xml:"https://github.com/Tywed/rssam/opml crawler,attr"`
 	RssamHashOnly      string `xml:"https://github.com/Tywed/rssam/opml hashOnly,attr"`
+	RssamStoreMode     string `xml:"https://github.com/Tywed/rssam/opml storeMode,attr"`
 	RssamAdaptive      string `xml:"https://github.com/Tywed/rssam/opml adaptiveInterval,attr"`
 	RssamRetentionDays string `xml:"https://github.com/Tywed/rssam/opml retentionDays,attr"`
 	RssamUserAgent     string `xml:"https://github.com/Tywed/rssam/opml userAgent,attr"`
@@ -48,12 +49,13 @@ type Outline struct {
 // FeedSettings are the rssam-specific per-feed settings carried in OPML.
 // Zero values mean "not specified": the importer keeps its defaults.
 type FeedSettings struct {
-	FeedType         string
-	IntervalMinutes  int // 0 = not specified
-	TLSInsecure      bool
-	FetchViaProxy    bool
-	Crawler          bool
-	StoreHashOnly    bool
+	FeedType        string
+	IntervalMinutes int // 0 = not specified
+	TLSInsecure     bool
+	FetchViaProxy   bool
+	Crawler         bool
+	// StoreMode is the feed's store_mode; empty means not specified.
+	StoreMode        string
 	AdaptiveInterval bool
 	RetentionDays    *int // nil = not specified
 	UserAgent        string
@@ -211,7 +213,19 @@ func settingsFromOutline(o Outline) (FeedSettings, []string) {
 	boolAttr("tlsInsecure", o.RssamTLSInsecure, &fs.TLSInsecure)
 	boolAttr("fetchViaProxy", o.RssamFetchViaProxy, &fs.FetchViaProxy)
 	boolAttr("crawler", o.RssamCrawler, &fs.Crawler)
-	boolAttr("hashOnly", o.RssamHashOnly, &fs.StoreHashOnly)
+	var hashOnly bool
+	boolAttr("hashOnly", o.RssamHashOnly, &hashOnly)
+	if hashOnly {
+		fs.StoreMode = "filtered"
+	}
+	if v := strings.TrimSpace(o.RssamStoreMode); v != "" {
+		switch strings.ToLower(v) {
+		case "full", "filtered", "relay":
+			fs.StoreMode = strings.ToLower(v)
+		default:
+			errs = append(errs, "rssam:storeMode: expected full/filtered/relay, got "+strconv.Quote(v))
+		}
+	}
 	boolAttr("adaptiveInterval", o.RssamAdaptive, &fs.AdaptiveInterval)
 	fs.UserAgent = strings.TrimSpace(o.RssamUserAgent)
 	fs.WebhookName = strings.TrimSpace(o.RssamWebhook)
@@ -343,8 +357,8 @@ func writeSettingsAttrs(b *bytes.Buffer, s FeedSettings) {
 	if s.Crawler {
 		attr("crawler", "true")
 	}
-	if s.StoreHashOnly {
-		attr("hashOnly", "true")
+	if m := strings.ToLower(strings.TrimSpace(s.StoreMode)); m != "" && m != "full" {
+		attr("storeMode", m)
 	}
 	if s.AdaptiveInterval {
 		attr("adaptiveInterval", "true")

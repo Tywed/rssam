@@ -351,8 +351,8 @@ rssam не шлёт дубликат `(webhook_id, entry_id)`, но при **р�
 ## 8. Ограничения и заметки
 
 - Исходящие запросы проходят SSRF-guard; private IP разрешены только если у rssam `FETCH_ALLOW_PRIVATE_NETWORK=true`.
-- На ленте с `store_hash_only` поле `Content` может быть пустым до срабатывания фильтра.
-- При `STORE_ENTRIES_MODE=dedup_only` после успешной доставки rssam может очистить `Content` записи в БД (на payload это не влияет — он уже отправлен).
+- На ленте с `store_mode=filtered|relay` запись существует только после срабатывания фильтра.
+- При `STORE_ENTRIES_MODE=dedup_only` и на лентах `store_mode=relay` после успешной доставки rssam очищает тело записи в БД (на payload это не влияет — он уже отправлен).
 - Ключи JSON в `entry`/`filter` — **PascalCase**; при парсинге в JS/Python учитывайте регистр или используйте `body_template` с нужным форматом.
 
 ---

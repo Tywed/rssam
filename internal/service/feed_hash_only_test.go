@@ -149,12 +149,12 @@ func TestFeedRefresherPerFeedHashOnly(t *testing.T) {
 		Filters: filters,
 		Engine:  filter.New(filter.Config{}),
 	}
-	feed := storage.Feed{ID: 1, OwnerID: 1, StoreHashOnly: true}
+	feed := storage.Feed{ID: 1, OwnerID: 1, StoreMode: storage.StoreModeFiltered}
 
-	inserted, created, fresh, err := r.processEntriesDedupOnly(context.Background(), feed, []storage.Subscription{{UserID: 1, FeedID: feed.ID}}, []storage.CreateEntryParams{
+	inserted, created, fresh, _, err := r.processEntriesFiltered(context.Background(), feed, []storage.Subscription{{UserID: 1, FeedID: feed.ID}}, []storage.CreateEntryParams{
 		{Title: "skip me", Hash: "h1", URL: "https://example.com/1"},
 		{Title: "match item", Hash: "h2", URL: "https://example.com/2", Content: "body"},
-	})
+	}, false, &storage.UpdateFeedRefreshMetaParams{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -169,18 +169,23 @@ func TestFeedRefresherPerFeedHashOnly(t *testing.T) {
 	}
 }
 
-func TestFeedUsesHashOnlyStorage(t *testing.T) {
+func TestStoreMode(t *testing.T) {
 	r := &FeedRefresher{StoreEntriesMode: "full"}
-	if r.feedUsesHashOnlyStorage(storage.Feed{StoreHashOnly: true}) {
-		// ok per-feed
-	} else {
-		t.Fatal("per-feed flag should enable hash-only")
+	if got := r.storeMode(storage.Feed{StoreMode: storage.StoreModeFiltered}); got != storage.StoreModeFiltered {
+		t.Fatalf("per-feed filtered: got %q", got)
 	}
-	if r.feedUsesHashOnlyStorage(storage.Feed{}) {
-		t.Fatal("full mode without per-feed flag should be false")
+	if got := r.storeMode(storage.Feed{}); got != storage.StoreModeFull {
+		t.Fatalf("default: got %q", got)
 	}
 	r.StoreEntriesMode = "dedup_only"
-	if !r.feedUsesHashOnlyStorage(storage.Feed{}) {
-		t.Fatal("global dedup_only should enable hash-only")
+	if got := r.storeMode(storage.Feed{}); got != storage.StoreModeFiltered {
+		t.Fatalf("dedup_only floor: got %q", got)
+	}
+	if got := r.storeMode(storage.Feed{StoreMode: storage.StoreModeRelay}); got != storage.StoreModeRelay {
+		t.Fatalf("dedup_only keeps relay: got %q", got)
+	}
+	r.StoreEntriesMode = "relay"
+	if got := r.storeMode(storage.Feed{}); got != storage.StoreModeRelay {
+		t.Fatalf("relay floor: got %q", got)
 	}
 }

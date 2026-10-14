@@ -17,14 +17,18 @@ func NormalizeEntrySort(s string) string {
 	}
 }
 
-// Lists are index ranges, never sorts: user_entries.sort_at =
+// Lists are index ranges, never sorts: entries.sort_at =
 // COALESCE(published_at, created_at) frozen at insert, copied to
-// user_unread, and the indexes of both tables order by it. The alias names
-// the table that drives the list (ue, or uu for unread lists); sorting by
-// the other one would hide the index from the planner.
+// user_unread and user_entries, and the indexes of all three order by it.
+// The alias names the table that drives the list (e, uu or ue); sorting by
+// another one would hide the index from the planner.
 func entryOrderClause(sort, alias string) string {
-	if NormalizeEntrySort(sort) == EntrySortOldest {
-		return alias + ".sort_at ASC, " + alias + ".entry_id ASC"
+	id := alias + ".entry_id"
+	if alias == "e" || alias == "cand" {
+		id = alias + ".id"
 	}
-	return alias + ".sort_at DESC, " + alias + ".entry_id DESC"
+	if NormalizeEntrySort(sort) == EntrySortOldest {
+		return alias + ".sort_at ASC, " + id + " ASC"
+	}
+	return alias + ".sort_at DESC, " + id + " DESC"
 }

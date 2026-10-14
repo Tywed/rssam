@@ -107,19 +107,13 @@ RETURNING `+subscriptionColumns, userID, feedID, params.WebhookID))
 		return Subscription{}, fmt.Errorf("subscribe: %w", err)
 	}
 	if _, err := tx.Exec(ctx, `
-WITH added AS (
-  INSERT INTO user_entries(user_id, entry_id, feed_id, status, starred, sort_at)
-  SELECT $1, e.id, e.feed_id, $4, FALSE, COALESCE(e.published_at, e.created_at)
-  FROM entries e
-  WHERE e.feed_id = $2 AND e.removed_at IS NULL
-  ON CONFLICT (entry_id, user_id) DO NOTHING
-  RETURNING entry_id, user_id, feed_id, sort_at
-)
 INSERT INTO user_unread(entry_id, user_id, feed_id, sort_at)
-SELECT entry_id, user_id, feed_id, sort_at
-FROM added
-ORDER BY sort_at DESC, entry_id DESC
-LIMIT $3`, userID, feedID, SubscribeUnreadBackfill, EntryStatusRead); err != nil {
+SELECT e.id, $1, e.feed_id, e.sort_at
+FROM entries e
+WHERE e.feed_id = $2 AND e.removed_at IS NULL
+ORDER BY e.sort_at DESC, e.id DESC
+LIMIT $3
+ON CONFLICT DO NOTHING`, userID, feedID, SubscribeUnreadBackfill); err != nil {
 		return Subscription{}, fmt.Errorf("subscribe backfill: %w", err)
 	}
 	return sub, nil
@@ -202,7 +196,13 @@ func unsubscribeTx(ctx context.Context, tx pgx.Tx, userID, feedID int64) error {
 	if cmd.RowsAffected() == 0 {
 		return ErrNotFound
 	}
-	if _, err := tx.Exec(ctx, `DELETE FROM user_entries WHERE user_id = $1 AND feed_id = $2`, userID, feedID); err != nil {
+	if _, err := tx.Exec(ctx, `DELETE FROM user_unread WHERE user_id = $1 AND feed_id = $2`, userID, feedID); err != nil {
+		return fmt.Errorf("unsubscribe unread: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `
+DELETE FROM user_entries ue
+USING entries e
+WHERE ue.user_id = $1 AND e.id = ue.entry_id AND e.feed_id = $2`, userID, feedID); err != nil {
 		return fmt.Errorf("unsubscribe entries: %w", err)
 	}
 	if _, err := tx.Exec(ctx, `

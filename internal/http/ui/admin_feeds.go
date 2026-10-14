@@ -48,6 +48,9 @@ func classifyAdminFeedStatus(row storage.AdminFeedRow, now time.Time) string {
 	if row.LastError != "" || row.ParsingErrorCount > 0 {
 		return "errors"
 	}
+	if row.InboundLate {
+		return "silent"
+	}
 	if row.HasQueuedJob || row.NextCheckAt == nil || !row.NextCheckAt.After(now) {
 		return "waiting"
 	}
@@ -64,6 +67,8 @@ func adminFeedStatusLabel(status string) string {
 		return "На паузе"
 	case "waiting":
 		return "Ждёт обновления"
+	case "silent":
+		return "Молчит"
 	default:
 		return status
 	}
@@ -73,7 +78,7 @@ func adminFeedStatusClass(status string) string {
 	switch status {
 	case "ok":
 		return "feed-status-ok"
-	case "errors":
+	case "errors", "silent":
 		return "feed-status-error"
 	case "paused":
 		return "feed-status-paused"

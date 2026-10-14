@@ -133,8 +133,10 @@ ON CONFLICT (entry_id, label_id) DO NOTHING`
 
 func (s *PostgresStore) EntryCountsByLabel(ctx context.Context, userID int64) (map[int64]int, error) {
 	return s.countsByLabel(ctx, userID, `
-JOIN user_entries ue ON ue.entry_id = el.entry_id AND ue.user_id = $1
-WHERE ue.status <> '`+EntryStatusRemoved+`'`)
+JOIN entries e ON e.id = el.entry_id
+JOIN subscriptions s ON s.feed_id = e.feed_id AND s.user_id = $1
+LEFT JOIN user_entries ue ON ue.entry_id = el.entry_id AND ue.user_id = $1
+WHERE `+entryNotRemoved)
 }
 
 func (s *PostgresStore) UnreadCountsByLabel(ctx context.Context, userID int64) (map[int64]int, error) {

@@ -121,7 +121,7 @@ func (h *Handler) handleCategoryBulkWebhook(w http.ResponseWriter, r *http.Reque
 	h.renderFeedsListFlash(w, r, fmt.Sprintf("Вебхук назначен для %d лент", count))
 }
 
-func (h *Handler) handleCategoryBulkHashOnly(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) handleCategoryBulkStoreMode(w http.ResponseWriter, r *http.Request) {
 	if !h.validateCSRF(r) {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
@@ -133,19 +133,13 @@ func (h *Handler) handleCategoryBulkHashOnly(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	_ = r.ParseForm()
-	action := strings.TrimSpace(r.FormValue("action"))
-	var enabled bool
-	switch action {
-	case "enable":
-		enabled = true
-	case "disable":
-		enabled = false
-	default:
-		http.Error(w, "invalid action", http.StatusBadRequest)
+	mode, err := storage.NormalizeStoreMode(r.FormValue("store_mode"))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 	_, count, err := h.cfg.Feeds.BulkUpdateFeedsByCategory(r.Context(), p.UserID, categoryID, storage.BulkFeedUpdate{
-		StoreHashOnly: &enabled,
+		StoreMode: &mode,
 	})
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
@@ -155,17 +149,24 @@ func (h *Handler) handleCategoryBulkHashOnly(w http.ResponseWriter, r *http.Requ
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	label := "выключен"
-	if enabled {
-		label = "включён"
-	}
-	flash := fmt.Sprintf("Режим «хеш до фильтра» %s для %d лент", label, count)
-	if enabled && h.cfg.Dedup != nil {
+	flash := fmt.Sprintf("Режим хранения «%s» установлен для %d лент", storeModeLabel(mode), count)
+	if mode != storage.StoreModeFull && h.cfg.Dedup != nil {
 		if n, err := h.collapseEntries(r, p.UserID, nil, &categoryID, false); err == nil && n > 0 {
 			flash += fmt.Sprintf(". Свёрнуто в хеш: %d записей", n)
 		}
 	}
 	h.renderFeedsListFlash(w, r, flash)
+}
+
+func storeModeLabel(mode string) string {
+	switch mode {
+	case storage.StoreModeFiltered:
+		return "хеш до фильтра"
+	case storage.StoreModeRelay:
+		return "только передача"
+	default:
+		return "полный"
+	}
 }
 
 func (h *Handler) handleCategoryBulkAdaptive(w http.ResponseWriter, r *http.Request) {

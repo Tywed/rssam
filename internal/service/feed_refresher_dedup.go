@@ -22,21 +22,29 @@ func entryFromCreateParams(feedID int64, p storage.CreateEntryParams) storage.En
 	}
 }
 
-// processEntriesDedupOnly is the hash-only path: a new item becomes an
+// filteredPollWriter stores a filtered poll in one transaction.
+type filteredPollWriter interface {
+	StoreFilteredPoll(ctx context.Context, params storage.FilteredPollParams) (int, []storage.Entry, error)
+}
+
+// processEntriesFiltered is the filtered/relay path: a new item becomes an
 // entry only when it matches a filter of at least one subscriber (the
-// entry is then shared by all of them and the actions run in
-// applyFiltersBestEffort); otherwise only its hash is kept.
-func (r *FeedRefresher) processEntriesDedupOnly(
+// entry is then shared by all of them and the actions run in afterStore);
+// otherwise only its hash is kept. metaStored reports that meta went into
+// the same transaction.
+func (r *FeedRefresher) processEntriesFiltered(
 	ctx context.Context,
 	feed storage.Feed,
 	subs []storage.Subscription,
 	entries []storage.CreateEntryParams,
-) (inserted int, insertedEntries []storage.Entry, fresh int, err error) {
+	relay bool,
+	meta *storage.UpdateFeedRefreshMetaParams,
+) (inserted int, insertedEntries []storage.Entry, fresh int, metaStored bool, err error) {
 	if r.Dedup == nil {
-		return 0, nil, 0, fmt.Errorf("dedup store is not configured")
+		return 0, nil, 0, false, fmt.Errorf("dedup store is not configured")
 	}
 	if len(entries) == 0 {
-		return 0, nil, 0, nil
+		return 0, nil, 0, false, nil
 	}
 	feedID := feed.ID
 
@@ -48,7 +56,7 @@ func (r *FeedRefresher) processEntriesDedupOnly(
 	}
 	known, err := r.Dedup.FilterKnownEntryHashes(ctx, feedID, hashes)
 	if err != nil {
-		return 0, nil, 0, err
+		return 0, nil, 0, false, err
 	}
 
 	type subscriberFilters struct {
@@ -60,7 +68,7 @@ func (r *FeedRefresher) processEntriesDedupOnly(
 		for _, sub := range subs {
 			filters, err := r.listEnabledFiltersCached(ctx, sub.UserID)
 			if err != nil {
-				return 0, nil, 0, fmt.Errorf("list filters: %w", err)
+				return 0, nil, 0, false, fmt.Errorf("list filters: %w", err)
 			}
 			if len(filters) == 0 {
 				continue
@@ -92,6 +100,7 @@ func (r *FeedRefresher) processEntriesDedupOnly(
 		queryHits[i] = r.queryHitsBestEffort(ctx, feedID, sf.filters, freshEntries)
 	}
 
+	wantedParams := make([]storage.CreateEntryParams, 0, len(freshParams))
 	for i, e := range freshEntries {
 		p := freshParams[i]
 		wanted := false
@@ -106,23 +115,33 @@ func (r *FeedRefresher) processEntriesDedupOnly(
 				break
 			}
 		}
-		if !wanted {
+		if wanted {
+			wantedParams = append(wantedParams, p)
+		} else {
 			toDedup = append(toDedup, storage.FeedEntryDedupParams{Hash: p.Hash, URL: p.URL})
-			continue
 		}
-
-		n, created, createErr := r.Entries.CreateEntries(ctx, feedID, []storage.CreateEntryParams{p})
-		if createErr != nil {
-			return inserted, insertedEntries, fresh, createErr
-		}
-		inserted += n
-		insertedEntries = append(insertedEntries, created...)
 	}
 
+	if w, ok := r.Entries.(filteredPollWriter); ok {
+		meta.NewEntries = fresh
+		inserted, insertedEntries, err = w.StoreFilteredPoll(ctx, storage.FilteredPollParams{
+			FeedID: feedID, Entries: wantedParams, Dedup: toDedup, Relay: relay, Meta: meta,
+		})
+		if err != nil {
+			return 0, nil, fresh, false, err
+		}
+		return inserted, insertedEntries, fresh, true, nil
+	}
+	if len(wantedParams) > 0 {
+		inserted, insertedEntries, err = r.Entries.CreateEntries(ctx, feedID, wantedParams)
+		if err != nil {
+			return inserted, insertedEntries, fresh, false, err
+		}
+	}
 	if len(toDedup) > 0 {
 		if _, err := r.Dedup.RecordFeedEntryDedup(ctx, feedID, toDedup); err != nil {
-			return inserted, insertedEntries, fresh, err
+			return inserted, insertedEntries, fresh, false, err
 		}
 	}
-	return inserted, insertedEntries, fresh, nil
+	return inserted, insertedEntries, fresh, false, nil
 }

@@ -137,7 +137,7 @@ func TestApplyFilterActions(t *testing.T) {
 			{ActionType: storage.FilterActionDelete},
 		},
 	}}
-	r.applyFilterActions(context.Background(), 1, entry, filters, map[int64]struct{}{1: {}})
+	r.applyFilterActions(context.Background(), 1, entry, filters, map[int64]struct{}{1: {}}, false)
 	if len(labels.assign) != 1 || labels.assign[0].labelID != 7 {
 		t.Fatalf("label not assigned: %+v", labels.assign)
 	}

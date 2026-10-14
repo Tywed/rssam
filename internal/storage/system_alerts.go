@@ -26,7 +26,8 @@ type SystemAlertStore interface {
 	ListSystemAlertWebhooks(ctx context.Context) ([]Webhook, error)
 	// ListPausedFeeds: feeds stopped by the circuit breaker or a 410.
 	ListPausedFeeds(ctx context.Context) ([]SystemAlertFeed, error)
-	// ListSilentFeeds: healthy feeds without a new item for silentAfter.
+	// ListSilentFeeds: healthy feeds without a new item for silentAfter;
+	// inbound feeds without a delivery for their interval_minutes.
 	ListSilentFeeds(ctx context.Context, silentAfter time.Duration) ([]SystemAlertFeed, error)
 	// ListFailingWebhooks: enabled webhooks whose last final delivery died.
 	ListFailingWebhooks(ctx context.Context) ([]SystemAlertWebhook, error)
@@ -61,11 +62,9 @@ ORDER BY id`)
 }
 
 func (s *PostgresStore) ListSilentFeeds(ctx context.Context, silentAfter time.Duration) ([]SystemAlertFeed, error) {
-	if silentAfter <= 0 {
-		return nil, nil
-	}
 	return s.queryAlertFeeds(ctx, `
-SELECT f.id, f.title, ''
+SELECT f.id, f.title,
+  CASE WHEN f.feed_type = '`+FeedTypeInbound+`' THEN 'нет доставок дольше ' || f.interval_minutes || ' мин.' ELSE '' END
 FROM feeds f
 WHERE `+adminFeedsSilentWhere(silentAfter)+`
 ORDER BY f.id`)

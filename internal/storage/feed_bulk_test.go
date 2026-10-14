@@ -4,7 +4,7 @@ import "testing"
 
 func TestValidateBulkFeedUpdate(t *testing.T) {
 	interval := 30
-	hash := true
+	mode := StoreModeFiltered
 	pause := false
 
 	tests := []struct {
@@ -16,7 +16,8 @@ func TestValidateBulkFeedUpdate(t *testing.T) {
 		{"interval ok", BulkFeedUpdate{IntervalMinutes: &interval}, false},
 		{"interval low", BulkFeedUpdate{IntervalMinutes: new(0)}, true},
 		{"webhook set", BulkFeedUpdate{WebhookSet: true}, false},
-		{"hash only", BulkFeedUpdate{StoreHashOnly: &hash}, false},
+		{"store mode", BulkFeedUpdate{StoreMode: &mode}, false},
+		{"store mode invalid", BulkFeedUpdate{StoreMode: new("x")}, true},
 		{"pause", BulkFeedUpdate{ManualPaused: &pause}, false},
 		{"move", BulkFeedUpdate{MoveCategory: true}, false},
 		{"multiple", BulkFeedUpdate{IntervalMinutes: &interval, ManualPaused: &pause}, true},

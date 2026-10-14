@@ -3567,8 +3567,14 @@
           "user_agent": {
             "type": "string"
           },
+          "store_mode": {
+            "type": "string",
+            "enum": ["full", "filtered", "relay"],
+            "description": "full: every item is stored and shown. filtered: an item is stored only when it matches a subscriber's filter, the rest as hash. relay: a matched item lives only until its webhooks are delivered — no search vector, no unread rows, no filter_matches, hidden from lists. Replaces `store_hash_only` (still accepted on write: true means filtered; reported as true for filtered and relay)."
+          },
           "store_hash_only": {
-            "type": "boolean"
+            "type": "boolean",
+            "deprecated": true
           },
           "adaptive_interval": {
             "type": "boolean",
@@ -3644,8 +3650,14 @@
           "user_agent": {
             "type": "string"
           },
+          "store_mode": {
+            "type": "string",
+            "enum": ["full", "filtered", "relay"],
+            "description": "full: every item is stored and shown. filtered: an item is stored only when it matches a subscriber's filter, the rest as hash. relay: a matched item lives only until its webhooks are delivered — no search vector, no unread rows, no filter_matches, hidden from lists. Replaces `store_hash_only` (still accepted on write: true means filtered; reported as true for filtered and relay)."
+          },
           "store_hash_only": {
-            "type": "boolean"
+            "type": "boolean",
+            "deprecated": true
           },
           "adaptive_interval": {
             "type": "boolean",

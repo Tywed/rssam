@@ -121,6 +121,7 @@
       <div class="filter-panel hidden" data-panel="actions">
         <h2>Действия при совпадении</h2>
         {{if not .Labels}}<p class="meta">Нет меток. <a href="/ui/labels">Создайте метки</a> в настройках.</p>{{end}}
+        <p class="meta">В лентах с режимом хранения «только передача» выполняется только действие «вебхук»: записи таких лент не попадают в список и журнал фильтров, поэтому метки и удаление для них не применяются.</p>
         <table class="filter-actions-table" id="actions-table">
           <thead><tr><th>Тип</th><th>Параметр</th><th></th></tr></thead>
           <tbody>

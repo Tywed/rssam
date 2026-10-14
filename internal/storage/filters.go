@@ -375,7 +375,7 @@ func (s *PostgresStore) ListFilterMatches(ctx context.Context, filterID int64, l
 	}
 	const q = `
 SELECT fm.id, fm.filter_id, fm.entry_id, fm.matched_at, fm.details,
-       e.id, e.feed_id, e.title, e.url, e.content, e.author, e.published_at, e.hash, ` + entryStatusExprOuter + `, e.created_at, e.updated_at,
+       e.id, e.feed_id, e.title, e.url, e.content, e.author, e.published_at, e.hash, ` + entryStatusExpr + `, e.created_at, e.updated_at,
        count(*) OVER()
 FROM filter_matches fm
 JOIN filters f ON f.id = fm.filter_id

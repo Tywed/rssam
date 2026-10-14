@@ -132,8 +132,9 @@ type Config struct {
 	// FTSLanguage is the PostgreSQL text search config for entries (simple|russian).
 	FTSLanguage string
 
-	// StoreEntriesMode: full (default) stores all polled entries; dedup_only keeps hash/url for
-	// non-matches and strips entry payload after successful webhook delivery.
+	// StoreEntriesMode is the instance-wide floor of feeds' store_mode:
+	// full (default) leaves each feed its own; dedup_only (filtered for every
+	// feed, payload stripped after webhook delivery); relay for every feed.
 	StoreEntriesMode string
 
 	// Hardening / HTTP
@@ -425,9 +426,9 @@ func (c Config) Validate() error {
 		fail("FTS_LANGUAGE must be simple or russian, got %q", c.FTSLanguage)
 	}
 	switch strings.ToLower(strings.TrimSpace(c.StoreEntriesMode)) {
-	case "full", "dedup_only":
+	case "full", "dedup_only", "relay":
 	default:
-		fail("STORE_ENTRIES_MODE must be full or dedup_only, got %q", c.StoreEntriesMode)
+		fail("STORE_ENTRIES_MODE must be full, dedup_only or relay, got %q", c.StoreEntriesMode)
 	}
 
 	return joinErrors(errs)

@@ -64,7 +64,7 @@ type Feed struct {
 	ParsingErrorCount  int
 	PollPaused         bool
 	ManualPaused       bool
-	StoreHashOnly      bool
+	StoreMode          string
 	EntryRetentionDays *int
 	// AdaptiveInterval stretches the poll interval up to the configured
 	// maximum according to how often the feed actually publishes.
@@ -106,8 +106,8 @@ type Job struct {
 }
 
 // Entry is stored once per feed; Status and Starred are the state of the
-// user it was loaded for (user_entries) — "unread"/false on rows returned
-// by CreateEntries.
+// user it was loaded for (user_unread, user_entries exceptions) —
+// "unread"/false on rows returned by CreateEntries.
 type Entry struct {
 	ID              int64
 	FeedID          int64
@@ -498,7 +498,7 @@ type CreateFeedParams struct {
 	Crawler               bool
 	UserAgent             string
 	WebhookID             *int64
-	StoreHashOnly         bool
+	StoreMode             string
 	EntryRetentionDays    *int
 	AdaptiveInterval      bool
 	BridgeState           []byte
@@ -519,7 +519,7 @@ type UpdateFeedParams struct {
 	Crawler            bool
 	UserAgent          string
 	WebhookID          *int64
-	StoreHashOnly      bool
+	StoreMode          string
 	EntryRetentionDays *int
 	AdaptiveInterval   bool
 	BridgeState        []byte
@@ -572,7 +572,7 @@ type BulkFeedUpdate struct {
 	IntervalMinutes  *int
 	WebhookSet       bool
 	WebhookID        *int64
-	StoreHashOnly    *bool
+	StoreMode        *string
 	AdaptiveInterval *bool
 	ManualPaused     *bool
 	MoveCategory     bool

@@ -27,11 +27,17 @@ type InboundFeedStore interface {
 }
 
 type CreateInboundFeedParams struct {
-	Title                 string
-	CategoryID            *int64
+	Title      string
+	CategoryID *int64
+	// IntervalMinutes is the expected silence: with no delivery for this
+	// long the feed counts as silent (admin page, system alert). 0 means
+	// InboundDefaultIntervalMinutes.
+	IntervalMinutes       int
 	EntryRetentionDays    *int
 	SkipOwnerSubscription bool
 }
+
+const InboundDefaultIntervalMinutes = 1440
 
 // inboundNeverDue keeps an inbound feed out of every "due" query and shows
 // it as OK on the admin page: next_check_at a century away.
@@ -49,12 +55,16 @@ func (s *PostgresStore) CreateInboundFeed(ctx context.Context, userID int64, par
 	if err != nil {
 		return Feed{}, "", err
 	}
+	interval := params.IntervalMinutes
+	if interval <= 0 {
+		interval = InboundDefaultIntervalMinutes
+	}
 	f, err := s.CreateFeed(ctx, userID, CreateFeedParams{
 		FeedURL:               "inbound://" + id[:16],
 		FeedType:              FeedTypeInbound,
 		Title:                 params.Title,
 		CategoryID:            params.CategoryID,
-		IntervalMinutes:       60,
+		IntervalMinutes:       interval,
 		EntryRetentionDays:    params.EntryRetentionDays,
 		SkipOwnerSubscription: params.SkipOwnerSubscription,
 	})

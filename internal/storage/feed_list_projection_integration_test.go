@@ -49,7 +49,7 @@ func TestIntegration_FeedListsMatchGetFeed(t *testing.T) {
 		TLSInsecure:        true,
 		Crawler:            true,
 		UserAgent:          "UA/1",
-		StoreHashOnly:      true,
+		StoreMode:          StoreModeFiltered,
 		EntryRetentionDays: &retention,
 		BridgeState:        []byte(`{"k":"v"}`),
 	})

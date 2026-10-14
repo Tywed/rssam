@@ -73,7 +73,7 @@
         <tr><th>Записей</th><td>{{.AdminFeedDetail.EntryCount}}</td></tr>
         <tr><th>Непрочитанных</th><td>{{.AdminFeedDetail.UnreadCount}}</td></tr>
         <tr><th>Подписчиков</th><td>{{.AdminFeedDetail.SubscriberCount}}{{if .FeedSubscribers}} — {{range $i, $s := .FeedSubscribers}}{{if $i}}, {{end}}{{$s.Username}}{{end}}{{end}}</td></tr>
-        <tr><th>Режим хранения</th><td>{{if .AdminFeedDetail.Feed.StoreHashOnly}}только хеш до фильтра{{else}}полный{{end}}</td></tr>
+        <tr><th>Режим хранения</th><td>{{storeModeLabel .AdminFeedDetail.Feed.StoreMode}}</td></tr>
       </table>
     </div>
 

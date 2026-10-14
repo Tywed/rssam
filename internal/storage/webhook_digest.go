@@ -62,7 +62,7 @@ func (s *PostgresStore) LoadWebhookDigestContext(ctx context.Context, webhookID 
 		return Webhook{}, nil, fmt.Errorf("load digest webhook: %w", err)
 	}
 	const q = `
-SELECT wl.id, e.id, e.feed_id, e.title, e.url, e.author, e.published_at, e.created_at, f.id, f.title
+SELECT wl.id, e.id, e.feed_id, e.title, e.url, e.author, e.published_at, e.created_at, f.id, f.title, f.store_mode
 FROM webhook_logs wl
 JOIN entries e ON e.id = wl.entry_id
 JOIN feeds f ON f.id = e.feed_id
@@ -76,7 +76,7 @@ ORDER BY f.title, e.id`
 	items := make([]WebhookDigestItem, 0, len(logIDs))
 	for rows.Next() {
 		var it WebhookDigestItem
-		if err := rows.Scan(&it.LogID, &it.Entry.ID, &it.Entry.FeedID, &it.Entry.Title, &it.Entry.URL, &it.Entry.Author, &it.Entry.PublishedAt, &it.Entry.CreatedAt, &it.Feed.ID, &it.Feed.Title); err != nil {
+		if err := rows.Scan(&it.LogID, &it.Entry.ID, &it.Entry.FeedID, &it.Entry.Title, &it.Entry.URL, &it.Entry.Author, &it.Entry.PublishedAt, &it.Entry.CreatedAt, &it.Feed.ID, &it.Feed.Title, &it.Feed.StoreMode); err != nil {
 			return Webhook{}, nil, fmt.Errorf("scan digest item: %w", err)
 		}
 		items = append(items, it)

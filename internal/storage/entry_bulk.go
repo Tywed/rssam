@@ -10,32 +10,40 @@ import (
 )
 
 // entrySelectColumns reads an entry together with the per-user state: the
-// user_entries row aliased ue and, left-joined on it, the user_unread row
-// aliased uu whose presence is the unread status (entryFromUser, or an
-// UPDATE ... FROM pair).
-const entrySelectColumns = `e.id, e.feed_id, e.title, e.url, e.content, e.original_content, e.content_fetched, e.author, e.published_at, e.hash, ` + entryStatusExpr + `, ue.starred, e.created_at, e.updated_at`
+// optional user_entries exception row aliased ue (starred / removed) and
+// the optional user_unread row aliased uu whose presence is the unread
+// status. An entry without either row is read and not starred.
+const entrySelectColumns = `e.id, e.feed_id, e.title, e.url, e.content, e.original_content, e.content_fetched, e.author, e.published_at, e.hash, ` + entryStatusExpr + `, ` + entryStarredExpr + `, e.created_at, e.updated_at`
 
-const entryStatusExpr = `CASE WHEN uu.entry_id IS NULL THEN ue.status ELSE '` + EntryStatusUnread + `' END`
+const entryStatusExpr = `CASE WHEN uu.entry_id IS NOT NULL THEN '` + EntryStatusUnread + `' WHEN e.removed_at IS NOT NULL THEN '` + EntryStatusRemoved + `' ELSE COALESCE(ue.status, '` + EntryStatusRead + `') END`
 
-// entryStatusExprOuter is entryStatusExpr for contexts where the
-// user_entries row itself may be missing (then the entry counts as unread,
-// as a row returned by the poll does).
-const entryStatusExprOuter = `CASE WHEN ue.entry_id IS NULL OR uu.entry_id IS NOT NULL THEN '` + EntryStatusUnread + `' ELSE ue.status END`
+const entryStarredExpr = `COALESCE(ue.starred, FALSE)`
 
-const entryUnreadJoin = `LEFT JOIN user_unread uu ON uu.entry_id = ue.entry_id AND uu.user_id = ue.user_id`
+// entryUserJoins attaches ue and uu to an entry alias e for user $1.
+const entryUserJoins = `LEFT JOIN user_entries ue ON ue.entry_id = e.id AND ue.user_id = $1
+LEFT JOIN user_unread uu ON uu.entry_id = e.id AND uu.user_id = $1`
 
-const entryFromUser = `FROM user_entries ue JOIN entries e ON e.id = ue.entry_id ` + entryUnreadJoin
+// entryFromEntries reads entries e with the user's state attached.
+const entryFromEntries = `FROM entries e
+` + entryUserJoins
 
 // entryFromUnread drives an unread list from user_unread, whose indexes
 // order it; user_entries only contributes starred.
-const entryFromUnread = `FROM user_unread uu JOIN user_entries ue ON ue.entry_id = uu.entry_id AND ue.user_id = uu.user_id JOIN entries e ON e.id = ue.entry_id`
+const entryFromUnread = `FROM user_unread uu
+JOIN entries e ON e.id = uu.entry_id
+LEFT JOIN user_entries ue ON ue.entry_id = uu.entry_id AND ue.user_id = uu.user_id`
+
+// entryFromExceptions drives starred lists from user_entries.
+const entryFromExceptions = `FROM user_entries ue
+JOIN entries e ON e.id = ue.entry_id
+LEFT JOIN user_unread uu ON uu.entry_id = ue.entry_id AND uu.user_id = ue.user_id`
 
 // entryListColumns is entrySelectColumns with the two body columns replaced
 // by empty literals, so the same scanner serves list pages that never render
 // a body (the reader loads it per entry). On typical feeds the bodies are
 // ~3 kB per row — 150 kB per 50-row page that was read from TOAST, sent and
 // dropped.
-const entryListColumns = `e.id, e.feed_id, e.title, e.url, '' AS content, '' AS original_content, e.content_fetched, e.author, e.published_at, e.hash, ` + entryStatusExpr + `, ue.starred, e.created_at, e.updated_at`
+const entryListColumns = `e.id, e.feed_id, e.title, e.url, '' AS content, '' AS original_content, e.content_fetched, e.author, e.published_at, e.hash, ` + entryStatusExpr + `, ` + entryStarredExpr + `, e.created_at, e.updated_at`
 
 func entryColumns(withoutBody bool) string {
 	if withoutBody {
@@ -51,38 +59,110 @@ type entryListConds struct {
 	Starred                     *bool
 }
 
-// entryScope is the SQL of one list: the page query (list, without
-// ORDER BY and LIMIT), the alias of the table that drives it (ue or uu),
-// the matching count and the bound arguments of both.
+// entryScope is the SQL of one list. Lists driven by the user's own rows
+// (uu for unread, ue for starred) are one query: list is the FROM/WHERE,
+// alias the table whose index orders it. Lists driven by entries (all,
+// read, removed) are two-stage: cand selects the page of ids from entries
+// alone (its WHERE holds only subqueries on the small per-user tables, so
+// the planner walks entries_sort_idx / entries_feed_sort_idx and stops at
+// the page) and the per-user state is attached to those rows only. The
+// one-query form joined user_entries and user_unread for every row it
+// walked past: 5 500 buffers against 850 for the second page of 50.
 type entryScope struct {
-	list, alias, count string
-	args               []any
+	list, cand, alias, count string
+	args                     []any
 }
 
-// where renders the conditions against the driving table alias; starred
-// lives in user_entries and is always ue.starred (the caller joins ue when
-// uu drives). Spelled-out status words let the planner see the partial
-// index WHERE status <> 'removed'.
-func (c entryListConds) where(alias string, status string) string {
-	conds := []string{alias + ".user_id = $1"}
-	argN := 2
+// page is the query of one page: columns, ORDER BY and LIMIT $limitArg
+// OFFSET $limitArg+1.
+func (sc entryScope) page(columns, sort string, limitArg int) string {
+	order := entryOrderClause(sort, sc.alias)
+	limit := fmt.Sprintf("\nLIMIT $%d OFFSET $%d", limitArg, limitArg+1)
+	if sc.cand == "" {
+		return "SELECT " + columns + "\n" + sc.list + "\nORDER BY " + order + limit
+	}
+	return "SELECT " + columns + "\nFROM (SELECT e.id, e.sort_at " + sc.cand + "\nORDER BY " + order + limit + ") cand\n" +
+		"JOIN entries e ON e.id = cand.id\n" + entryUserJoins + "\nORDER BY " + entryOrderClause(sort, "cand")
+}
+
+// The feeds visible to user $1 and the feeds of category $n, kept as two
+// single-table subqueries: the planner memoizes each per feed_id while it
+// walks the ordered entries index, whereas a joined subquery was probed
+// twice per row (8 800 buffers against 400 for the first page of a
+// category).
+const subscribedFeeds = "SELECT s.feed_id FROM subscriptions s WHERE s.user_id = $1"
+
+func categoryFeeds(categoryArg int) string {
+	return fmt.Sprintf("SELECT f.id FROM feeds f WHERE f.category_id = $%d", categoryArg)
+}
+
+// argNums returns the parameter numbers of the optional filters, in the
+// order args binds them.
+func (c entryListConds) argNums() (feedArg, catArg, starArg, labelArg int) {
+	n := 2
 	if c.FeedID != nil {
-		conds = append(conds, fmt.Sprintf("%s.feed_id = $%d", alias, argN))
-		argN++
+		feedArg = n
+		n++
 	}
 	if c.CategoryID != nil {
-		conds = append(conds, fmt.Sprintf("%s.feed_id IN (SELECT s.feed_id FROM subscriptions s JOIN feeds f ON f.id = s.feed_id WHERE s.user_id = $1 AND f.category_id = $%d)", alias, argN))
-		argN++
-	}
-	if status != "" {
-		conds = append(conds, status)
+		catArg = n
+		n++
 	}
 	if c.Starred != nil {
-		conds = append(conds, fmt.Sprintf("ue.starred = $%d", argN))
-		argN++
+		starArg = n
+		n++
 	}
 	if c.LabelID != nil {
-		conds = append(conds, fmt.Sprintf("%s.entry_id IN (SELECT entry_id FROM entry_labels WHERE label_id = $%d)", alias, argN))
+		labelArg = n
+	}
+	return
+}
+
+// where renders the conditions of a list driven by the user's own table
+// (alias uu or ue, both already the user's): feed and category narrow its
+// feed_id, extra is appended as is.
+func (c entryListConds) where(alias, extra string) string {
+	feedArg, catArg, starArg, labelArg := c.argNums()
+	conds := []string{alias + ".user_id = $1"}
+	if feedArg != 0 {
+		conds = append(conds, fmt.Sprintf("%s.feed_id = $%d", alias, feedArg))
+	}
+	if catArg != 0 {
+		conds = append(conds, fmt.Sprintf("%s.feed_id IN (%s)", alias, categoryFeeds(catArg)))
+	}
+	if extra != "" {
+		conds = append(conds, extra)
+	}
+	if starArg != 0 {
+		conds = append(conds, fmt.Sprintf("%s = $%d", entryStarredExpr, starArg))
+	}
+	if labelArg != 0 {
+		conds = append(conds, fmt.Sprintf("e.id IN (SELECT entry_id FROM entry_labels WHERE label_id = $%d)", labelArg))
+	}
+	return "\nWHERE " + strings.Join(conds, " AND ")
+}
+
+// whereEntries renders the conditions of a list driven by entries e: a
+// subscription to the feed, the state subqueries in extra, and the
+// optional filters as subqueries on the user's rows.
+func (c entryListConds) whereEntries(extra string) string {
+	feedArg, catArg, starArg, labelArg := c.argNums()
+	var conds []string
+	if feedArg != 0 {
+		conds = append(conds, fmt.Sprintf("e.feed_id = $%d", feedArg))
+	}
+	if catArg != 0 {
+		conds = append(conds, fmt.Sprintf("e.feed_id IN (%s)", categoryFeeds(catArg)))
+	}
+	conds = append(conds, "e.feed_id IN ("+subscribedFeeds+")")
+	if extra != "" {
+		conds = append(conds, extra)
+	}
+	if starArg != 0 {
+		conds = append(conds, fmt.Sprintf("$%d = EXISTS (SELECT 1 FROM user_entries x WHERE x.entry_id = e.id AND x.user_id = $1 AND x.starred)", starArg))
+	}
+	if labelArg != 0 {
+		conds = append(conds, fmt.Sprintf("e.id IN (SELECT entry_id FROM entry_labels WHERE label_id = $%d)", labelArg))
 	}
 	return "\nWHERE " + strings.Join(conds, " AND ")
 }
@@ -104,52 +184,116 @@ func (c entryListConds) args(userID int64) []any {
 	return args
 }
 
+// State of entry e for user $1 as subqueries on the per-user tables.
+const (
+	entryNotRemoved = `(ue.status IS NULL OR ue.status <> '` + EntryStatusRemoved + `') AND e.removed_at IS NULL`
+	entryNoRemoval  = `e.removed_at IS NULL AND NOT EXISTS (SELECT 1 FROM user_entries x WHERE x.entry_id = e.id AND x.user_id = $1 AND x.status = '` + EntryStatusRemoved + `')`
+	entryNoUnread   = `NOT EXISTS (SELECT 1 FROM user_unread x WHERE x.entry_id = e.id AND x.user_id = $1)`
+	// Removed covers the user's own removals and entries stripped after
+	// webhook delivery; both sets are small and indexed.
+	entryRemovedSet = `e.id IN (SELECT x.entry_id FROM user_entries x WHERE x.user_id = $1 AND x.status = '` + EntryStatusRemoved + `'
+      UNION ALL SELECT r.id FROM entries r WHERE r.removed_at IS NOT NULL)`
+)
+
 // entryListScope picks the tables of a list by its status filter. Unread
-// lists are driven by user_unread, whose indexes order them; everything
-// else by user_entries, where "read" means no user_unread row. Counts
-// never touch entries: the unread count is user_unread alone, the read
-// count the difference of the two index-only counts (an anti-join of
-// 200 000 rows took twice as long).
+// lists are driven by user_unread and starred ones by user_entries, whose
+// indexes order them; everything else walks entries by (feed_id, sort_at)
+// or (sort_at) and filters on the subscription.
 func entryListScope(userID int64, status *string, c entryListConds) (entryScope, error) {
-	unreadFrom := "FROM user_unread uu"
-	if c.Starred != nil {
-		unreadFrom += " JOIN user_entries ue ON ue.entry_id = uu.entry_id AND ue.user_id = uu.user_id"
+	scope := entryScope{alias: "e", args: c.args(userID)}
+	st := ""
+	if status != nil {
+		st = *status
 	}
-	unreadCount := "SELECT count(*) " + unreadFrom + c.where("uu", "")
-	allCount := "SELECT count(*) FROM user_entries ue" + c.where("ue", "ue.status <> '"+EntryStatusRemoved+"'")
-	scope := entryScope{alias: "ue", args: c.args(userID)}
-	if status == nil {
-		scope.list = entryFromUser + c.where("ue", "ue.status <> '"+EntryStatusRemoved+"'")
-		scope.count = allCount
-		return scope, nil
-	}
-	switch *status {
+	switch st {
+	case "", EntryStatusRead:
+		if c.Starred != nil && *c.Starred {
+			extra := entryNotRemoved
+			if st == EntryStatusRead {
+				extra += " AND uu.entry_id IS NULL"
+			}
+			scope.alias = "ue"
+			scope.list = entryFromExceptions + c.where("ue", "ue.starred AND "+extra)
+			scope.count = "SELECT count(*) " + scope.list
+			return scope, nil
+		}
+		extra := entryNoRemoval
+		if st == EntryStatusRead {
+			extra += " AND " + entryNoUnread
+		}
+		scope.cand = "FROM entries e" + c.whereEntries(extra)
+		scope.count = c.countEntries(st == EntryStatusRead, scope.cand)
 	case EntryStatusUnread:
 		scope.alias = "uu"
 		scope.list = entryFromUnread + c.where("uu", "")
-		scope.count = unreadCount
-	case EntryStatusRead:
-		scope.list = entryFromUser + c.where("ue", "ue.status = '"+EntryStatusRead+"' AND uu.entry_id IS NULL")
-		scope.count = "SELECT (" + allCount + ") - (" + unreadCount + ")"
+		scope.count = "SELECT count(*) " + scope.list
 	case EntryStatusRemoved:
-		scope.list = entryFromUser + c.where("ue", "ue.status = '"+EntryStatusRemoved+"'")
-		scope.count = "SELECT count(*) FROM user_entries ue" + c.where("ue", "ue.status = '"+EntryStatusRemoved+"'")
+		scope.cand = "FROM entries e" + c.whereEntries(entryRemovedSet)
+		scope.count = "SELECT count(*) " + scope.cand
 	default:
 		return entryScope{}, fmt.Errorf("invalid entry status: %q", *status)
 	}
 	return scope, nil
 }
 
+// countEntries counts an all/read list. Without starred or label filters
+// it is arithmetic on index-only counts: entries per subscribed feed via
+// entries_feed_sort_idx, minus the stripped shells, the user's removals
+// and (read) the user's unread rows, each from its own small index.
+// count(*) over the candidate query read the whole heap instead (10 000
+// buffers and three parallel workers against 1 800 for 200 feeds).
+func (c entryListConds) countEntries(read bool, cand string) string {
+	if c.Starred != nil || c.LabelID != nil {
+		return "SELECT count(*) " + cand
+	}
+	feedArg, catArg, _, _ := c.argNums()
+	subs := subscribedFeeds
+	if feedArg != 0 {
+		subs += fmt.Sprintf(" AND s.feed_id = $%d", feedArg)
+	}
+	if catArg != 0 {
+		subs += fmt.Sprintf(" AND s.feed_id IN (%s)", categoryFeeds(catArg))
+	}
+	q := `SELECT (SELECT COALESCE(sum(x.c), 0) FROM (` + subs + `) s, LATERAL (SELECT count(*) AS c FROM entries e WHERE e.feed_id = s.feed_id) x)
+ - (SELECT count(*) FROM entries r WHERE r.removed_at IS NOT NULL AND r.feed_id IN (` + subs + `))
+ - (SELECT count(*) FROM user_entries x JOIN entries r ON r.id = x.entry_id WHERE x.user_id = $1 AND x.status = '` + EntryStatusRemoved + `' AND r.removed_at IS NULL AND r.feed_id IN (` + subs + `))`
+	if read {
+		q += `
+ - (SELECT count(*) FROM user_unread x WHERE x.user_id = $1 AND x.feed_id IN (` + subs + `))`
+	}
+	return q
+}
+
 // Status writes. Unread is the presence of a user_unread row, so marking
-// read is a DELETE and marking unread an INSERT copied from user_entries;
-// user_entries itself is only written for starred and removed. Each helper
-// is a CTE fragment named by its caller.
+// read is a DELETE and marking unread an INSERT copied from entries;
+// user_entries holds only exceptions, so starring inserts a row and
+// unstarring deletes it; a removed row keeps its star, as before, so the
+// removal is never lost.
 const (
 	entryMarkRead   = `DELETE FROM user_unread WHERE user_id = $1 AND entry_id = ANY($2::bigint[]) RETURNING entry_id`
 	entryMarkUnread = `INSERT INTO user_unread(entry_id, user_id, feed_id, sort_at)
-  SELECT entry_id, user_id, feed_id, sort_at FROM user_entries
-  WHERE user_id = $1 AND entry_id = ANY($2::bigint[]) AND status = '` + EntryStatusRead + `'
+  SELECT e.id, $1, e.feed_id, e.sort_at FROM entries e
+  WHERE e.id = ANY($2::bigint[]) AND e.removed_at IS NULL
+    AND e.feed_id IN (SELECT feed_id FROM subscriptions WHERE user_id = $1)
+    AND NOT EXISTS (SELECT 1 FROM user_entries x WHERE x.entry_id = e.id AND x.user_id = $1 AND x.status = '` + EntryStatusRemoved + `')
   ON CONFLICT DO NOTHING RETURNING entry_id`
+	entryStar = `INSERT INTO user_entries(entry_id, user_id, starred, sort_at)
+  SELECT e.id, $1, TRUE, e.sort_at FROM entries e
+  WHERE e.id = ANY($2::bigint[]) AND e.removed_at IS NULL
+    AND e.feed_id IN (SELECT feed_id FROM subscriptions WHERE user_id = $1)
+  ON CONFLICT (entry_id, user_id) DO UPDATE SET starred = TRUE, updated_at = now()
+  WHERE NOT user_entries.starred AND user_entries.status <> '` + EntryStatusRemoved + `'
+  RETURNING entry_id`
+	entryUnstar = `DELETE FROM user_entries
+  WHERE user_id = $1 AND entry_id = ANY($2::bigint[]) AND starred AND status <> '` + EntryStatusRemoved + `'
+  RETURNING entry_id`
+	entryRemove = `INSERT INTO user_entries(entry_id, user_id, status, sort_at)
+  SELECT e.id, $1, '` + EntryStatusRemoved + `', e.sort_at FROM entries e
+  WHERE e.id = ANY($2::bigint[])
+    AND e.feed_id IN (SELECT feed_id FROM subscriptions WHERE user_id = $1)
+  ON CONFLICT (entry_id, user_id) DO UPDATE SET status = '` + EntryStatusRemoved + `', updated_at = now()
+  WHERE user_entries.status <> '` + EntryStatusRemoved + `'
+  RETURNING entry_id`
 )
 
 // BulkUpdateEntries updates the user's status and/or starred flag and
@@ -164,7 +308,6 @@ func (s *PostgresStore) BulkUpdateEntries(ctx context.Context, userID int64, ent
 	}
 
 	var ctes []string
-	args := []any{userID, entryIDs}
 	if update.Status != nil {
 		switch strings.TrimSpace(*update.Status) {
 		case EntryStatusRead:
@@ -176,11 +319,11 @@ func (s *PostgresStore) BulkUpdateEntries(ctx context.Context, userID int64, ent
 		}
 	}
 	if update.Starred != nil {
-		ctes = append(ctes, `sr AS (
-  UPDATE user_entries SET starred = $3, updated_at = now()
-  WHERE user_id = $1 AND entry_id = ANY($2::bigint[]) AND status <> '`+EntryStatusRemoved+`' AND starred <> $3
-  RETURNING entry_id)`)
-		args = append(args, *update.Starred)
+		if *update.Starred {
+			ctes = append(ctes, "sr AS ("+entryStar+")")
+		} else {
+			ctes = append(ctes, "sr AS ("+entryUnstar+")")
+		}
 	}
 	q := "WITH " + strings.Join(ctes, ",\n") + "\nSELECT count(DISTINCT entry_id) FROM ("
 	switch {
@@ -194,15 +337,15 @@ func (s *PostgresStore) BulkUpdateEntries(ctx context.Context, userID int64, ent
 	q += ") c"
 
 	var n int
-	if err := s.db.QueryRow(ctx, q, args...).Scan(&n); err != nil {
+	if err := s.db.QueryRow(ctx, q, userID, entryIDs).Scan(&n); err != nil {
 		return 0, fmt.Errorf("bulk update entries: %w", err)
 	}
 	return n, nil
 }
 
-// MarkEntriesRemoved sets status=removed on the user's entries (soft delete
-// used by the filter "delete" action). BulkUpdateEntries deliberately refuses
-// the removed status because it backs the user-facing bulk API; this is the
+// MarkEntriesRemoved records a removal for the user (soft delete used by
+// the filter "delete" action). BulkUpdateEntries deliberately refuses the
+// removed status because it backs the user-facing bulk API; this is the
 // internal counterpart. Already removed rows are left untouched.
 func (s *PostgresStore) MarkEntriesRemoved(ctx context.Context, userID int64, entryIDs []int64) (int, error) {
 	if len(entryIDs) == 0 {
@@ -211,16 +354,13 @@ func (s *PostgresStore) MarkEntriesRemoved(ctx context.Context, userID int64, en
 	const q = `
 WITH un AS (
   DELETE FROM user_unread WHERE user_id = $1 AND entry_id = ANY($2::bigint[])
-)
-UPDATE user_entries
-SET status = $3,
-    updated_at = now()
-WHERE user_id = $1 AND entry_id = ANY($2::bigint[]) AND status <> $3`
-	cmd, err := s.db.Exec(ctx, q, userID, entryIDs, EntryStatusRemoved)
-	if err != nil {
+), rm AS (` + entryRemove + `)
+SELECT count(*) FROM rm`
+	var n int
+	if err := s.db.QueryRow(ctx, q, userID, entryIDs).Scan(&n); err != nil {
 		return 0, fmt.Errorf("mark entries removed: %w", err)
 	}
-	return int(cmd.RowsAffected()), nil
+	return n, nil
 }
 
 // MarkAllFeedEntriesRead marks all unread entries in a feed as read.
@@ -300,48 +440,49 @@ func (s *PostgresStore) UpdateEntry(ctx context.Context, userID, feedID, entryID
 			return Entry{}, fmt.Errorf("invalid entry status: %q", status)
 		}
 	}
-	var out Entry
 	err := withTx(ctx, s.db, func(tx pgx.Tx) error {
-		var err error
-		switch status {
-		case EntryStatusRead:
-			_, err = tx.Exec(ctx, `DELETE FROM user_unread WHERE user_id = $1 AND entry_id = $2 AND feed_id = $3`, userID, entryID, feedID)
-		case EntryStatusUnread:
-			_, err = tx.Exec(ctx, `INSERT INTO user_unread(entry_id, user_id, feed_id, sort_at)
-  SELECT entry_id, user_id, feed_id, sort_at FROM user_entries
-  WHERE user_id = $1 AND entry_id = $2 AND feed_id = $3 AND status = '`+EntryStatusRead+`'
-  ON CONFLICT DO NOTHING`, userID, entryID, feedID)
-		case EntryStatusRemoved:
-			_, err = tx.Exec(ctx, `WITH un AS (
-  DELETE FROM user_unread WHERE user_id = $1 AND entry_id = $2 AND feed_id = $3
-)
-UPDATE user_entries SET status = '`+EntryStatusRemoved+`', updated_at = now()
-WHERE user_id = $1 AND entry_id = $2 AND feed_id = $3 AND status <> '`+EntryStatusRemoved+`'`, userID, entryID, feedID)
-		}
-		if err != nil {
+		if _, err := s.scanEntry(tx.QueryRow(ctx, entryByFeedQuery, userID, entryID, feedID)); err != nil {
 			return err
 		}
-		if params.Starred != nil {
-			if _, err := tx.Exec(ctx, `UPDATE user_entries SET starred = $4, updated_at = now()
-WHERE user_id = $1 AND entry_id = $2 AND feed_id = $3 AND starred <> $4`, userID, entryID, feedID, *params.Starred); err != nil {
+		ids := []int64{entryID}
+		var stmt string
+		switch status {
+		case EntryStatusRead:
+			stmt = entryMarkRead
+		case EntryStatusUnread:
+			stmt = entryMarkUnread
+		case EntryStatusRemoved:
+			stmt = "WITH un AS (DELETE FROM user_unread WHERE user_id = $1 AND entry_id = ANY($2::bigint[])) " + entryRemove
+		}
+		if stmt != "" {
+			if _, err := tx.Exec(ctx, stmt, userID, ids); err != nil {
 				return err
 			}
 		}
-		q := `SELECT ` + entrySelectColumns + ` ` + entryFromUser + ` WHERE ue.entry_id = $1 AND ue.user_id = $2 AND ue.feed_id = $3`
-		out, err = s.scanEntry(tx.QueryRow(ctx, q, entryID, userID, feedID))
-		return err
-	})
-	if err != nil {
-		if errors.Is(err, ErrNotFound) {
-			return Entry{}, ErrNotFound
+		if params.Starred != nil {
+			stmt = entryUnstar
+			if *params.Starred {
+				stmt = entryStar
+			}
+			if _, err := tx.Exec(ctx, stmt, userID, ids); err != nil {
+				return err
+			}
 		}
-		return Entry{}, fmt.Errorf("update entry: %w", err)
+		return nil
+	})
+	if err == nil {
+		return s.GetFeedEntry(ctx, userID, feedID, entryID)
 	}
-	return out, nil
+	if errors.Is(err, ErrNotFound) {
+		return Entry{}, ErrNotFound
+	}
+	return Entry{}, fmt.Errorf("update entry: %w", err)
 }
+
+const entryByFeedQuery = `SELECT ` + entrySelectColumns + ` ` + entryFromEntries + `
+WHERE e.id = $2 AND e.feed_id = $3 AND EXISTS (SELECT 1 FROM subscriptions s WHERE s.user_id = $1 AND s.feed_id = $3)`
 
 // GetFeedEntry returns an entry scoped to feed and user.
 func (s *PostgresStore) GetFeedEntry(ctx context.Context, userID, feedID, entryID int64) (Entry, error) {
-	q := `SELECT ` + entrySelectColumns + ` ` + entryFromUser + ` WHERE ue.entry_id = $1 AND ue.user_id = $2 AND ue.feed_id = $3`
-	return s.scanEntry(s.db.QueryRow(ctx, q, entryID, userID, feedID))
+	return s.scanEntry(s.db.QueryRow(ctx, entryByFeedQuery, userID, entryID, feedID))
 }

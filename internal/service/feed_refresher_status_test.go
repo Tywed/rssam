@@ -226,7 +226,7 @@ func TestRefreshLoadedFeed_SuccessPublishesClearedStateAndLogsPoll(t *testing.T)
 }
 
 func TestRefreshLoadedFeed_HashOnlyFeedStampsLastEntry(t *testing.T) {
-	feed := storage.Feed{ID: 9, OwnerID: 1, FeedURL: "https://example.com/h.xml", IntervalMinutes: 15, StoreHashOnly: true}
+	feed := storage.Feed{ID: 9, OwnerID: 1, FeedURL: "https://example.com/h.xml", IntervalMinutes: 15, StoreMode: storage.StoreModeFiltered}
 	h := &stubHandler{res: reader.FetchResponse{Entries: []storage.CreateEntryParams{
 		{Title: "a", URL: "https://example.com/a", Hash: "a"},
 	}}}

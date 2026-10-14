@@ -120,7 +120,7 @@ func (s *Server) exportOPMLForUser(w http.ResponseWriter, ctx context.Context, u
 			TLSInsecure:      f.TLSInsecure,
 			FetchViaProxy:    f.FetchViaProxy,
 			Crawler:          f.Crawler,
-			StoreHashOnly:    f.StoreHashOnly,
+			StoreMode:        f.StoreMode,
 			AdaptiveInterval: f.AdaptiveInterval,
 			RetentionDays:    f.EntryRetentionDays,
 			UserAgent:        f.UserAgent,
@@ -428,7 +428,7 @@ func importFeedParams(feedURL string, entry opml.FeedEntry, webhookByName map[st
 		Crawler:            st.Crawler,
 		UserAgent:          st.UserAgent,
 		WebhookID:          webhookID,
-		StoreHashOnly:      st.StoreHashOnly,
+		StoreMode:          st.StoreMode,
 		EntryRetentionDays: retention,
 		AdaptiveInterval:   st.AdaptiveInterval,
 	}, notes

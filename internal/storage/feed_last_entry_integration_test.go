@@ -98,3 +98,67 @@ WHERE f.last_entry_at IS NULL`); err != nil {
 	}
 	_ = fresh
 }
+
+func TestIntegration_InboundFeedSilentByInterval(t *testing.T) {
+	store := isolatedStore(t)
+	ctx := context.Background()
+	owner := newIntegrationUser(t, store, "inbound-silent")
+
+	hourly, _, err := store.CreateInboundFeed(ctx, owner.ID, CreateInboundFeedParams{Title: "hourly", IntervalMinutes: 60})
+	if err != nil {
+		t.Fatal(err)
+	}
+	daily, _, err := store.CreateInboundFeed(ctx, owner.ID, CreateInboundFeedParams{Title: "daily"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if daily.IntervalMinutes != InboundDefaultIntervalMinutes {
+		t.Fatalf("default interval: %d", daily.IntervalMinutes)
+	}
+	// Both received their last delivery 3 hours ago: hourly is late, daily
+	// is within its expected pause.
+	if _, err := store.db.Exec(ctx, `UPDATE feeds SET created_at = now() - interval '2 days', last_entry_at = now() - interval '3 hours' WHERE id = ANY($1)`, []int64{hourly.ID, daily.ID}); err != nil {
+		t.Fatal(err)
+	}
+
+	// The global window is off: polled feeds are never silent, the inbound
+	// feed is judged by its own interval.
+	sum, err := store.AdminFeedSummary(ctx, 0)
+	if err != nil || sum.SilentCount != 1 {
+		t.Fatalf("summary: %+v err=%v", sum, err)
+	}
+	rows, total, err := store.ListAdminFeedsPage(ctx, AdminFeedsListParams{Status: "silent"})
+	if err != nil || total != 1 || len(rows) != 1 || rows[0].ID != hourly.ID || !rows[0].InboundLate {
+		t.Fatalf("list silent: total=%d rows=%+v err=%v", total, rows, err)
+	}
+	rows, _, err = store.ListAdminFeedsPage(ctx, AdminFeedsListParams{SortKey: "id", Order: "asc"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range rows {
+		if r.InboundLate != (r.ID == hourly.ID) {
+			t.Fatalf("InboundLate on feed %d = %v", r.ID, r.InboundLate)
+		}
+	}
+	silent, err := store.ListSilentFeeds(ctx, 0)
+	if err != nil || len(silent) != 1 || silent[0].ID != hourly.ID || silent[0].Error != "нет доставок дольше 60 мин." {
+		t.Fatalf("alert list: %+v err=%v", silent, err)
+	}
+
+	// A delivery resets the clock.
+	if err := store.UpdateFeedRefreshMeta(ctx, UpdateFeedRefreshMetaParams{ID: hourly.ID, LastCheckedAt: time.Now(), NewEntries: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if sum, _ := store.AdminFeedSummary(ctx, 0); sum.SilentCount != 0 {
+		t.Fatalf("after delivery: %+v", sum)
+	}
+	// The global window of 7 days does not apply to inbound feeds: 3 hours
+	// of silence on the daily feed is fine, and the hourly feed, silent for
+	// 2 hours, is late again.
+	if _, err := store.db.Exec(ctx, `UPDATE feeds SET last_entry_at = now() - interval '2 hours' WHERE id = $1`, hourly.ID); err != nil {
+		t.Fatal(err)
+	}
+	if sum, _ := store.AdminFeedSummary(ctx, 7*24*time.Hour); sum.SilentCount != 1 {
+		t.Fatalf("with window: %+v", sum)
+	}
+}

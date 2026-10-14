@@ -183,6 +183,7 @@ func parseTemplates() (*template.Template, error) {
 			}
 			return *p
 		},
+		"storeModeLabel": storeModeLabel,
 		"derefInt": func(p *int) string {
 			if p == nil {
 				return ""
@@ -504,7 +505,7 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.Handle("POST /ui/categories/{categoryID}/mark-read", auth(http.HandlerFunc(h.handleCategoryMarkRead)))
 	mux.Handle("POST /ui/categories/{categoryID}/feeds/bulk-interval", auth(h.requireEditor(http.HandlerFunc(h.handleCategoryBulkInterval))))
 	mux.Handle("POST /ui/categories/{categoryID}/feeds/bulk-webhook", auth(h.requireEditor(http.HandlerFunc(h.handleCategoryBulkWebhook))))
-	mux.Handle("POST /ui/categories/{categoryID}/feeds/bulk-hash-only", auth(h.requireEditor(http.HandlerFunc(h.handleCategoryBulkHashOnly))))
+	mux.Handle("POST /ui/categories/{categoryID}/feeds/bulk-store-mode", auth(h.requireEditor(http.HandlerFunc(h.handleCategoryBulkStoreMode))))
 	mux.Handle("POST /ui/categories/{categoryID}/feeds/bulk-adaptive", auth(h.requireEditor(http.HandlerFunc(h.handleCategoryBulkAdaptive))))
 	mux.Handle("POST /ui/categories/{categoryID}/feeds/bulk-hash-entries", auth(h.requireEditor(http.HandlerFunc(h.handleCategoryBulkHashEntries))))
 	mux.Handle("POST /ui/categories/{categoryID}/feeds/bulk-refresh", auth(h.requireEditor(http.HandlerFunc(h.handleCategoryBulkRefresh))))

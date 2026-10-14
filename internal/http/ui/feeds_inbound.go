@@ -2,6 +2,7 @@ package ui
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -40,6 +41,15 @@ func (h *Handler) handleInboundFeedCreate(w http.ResponseWriter, r *http.Request
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	interval := storage.InboundDefaultIntervalMinutes
+	if v := strings.TrimSpace(r.FormValue("interval_minutes")); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < storage.MinFeedIntervalMinutes || n > storage.MaxFeedIntervalMinutes {
+			http.Error(w, fmt.Sprintf("interval_minutes must be between %d and %d", storage.MinFeedIntervalMinutes, storage.MaxFeedIntervalMinutes), http.StatusBadRequest)
+			return
+		}
+		interval = n
+	}
 	if err := h.feedQuota(r, p, 60, true); err != nil {
 		http.Error(w, err.Error(), http.StatusUnprocessableEntity)
 		return
@@ -47,6 +57,7 @@ func (h *Handler) handleInboundFeedCreate(w http.ResponseWriter, r *http.Request
 	feed, _, err := h.cfg.InboundFeeds.CreateInboundFeed(r.Context(), p.UserID, storage.CreateInboundFeedParams{
 		Title:                 title,
 		CategoryID:            catID,
+		IntervalMinutes:       interval,
 		EntryRetentionDays:    retention,
 		SkipOwnerSubscription: r.FormValue("subscribe_self") == "0",
 	})

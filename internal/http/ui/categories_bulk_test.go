@@ -99,22 +99,22 @@ func TestCategoryBulkPause(t *testing.T) {
 	}
 }
 
-func TestCategoryBulkHashOnly(t *testing.T) {
+func TestCategoryBulkStoreMode(t *testing.T) {
 	mux, feedStore := newCategoryBulkTestHandler(t, true)
 	sid := uiSessionCookie(t, nil, mux)
 	token := auth.CSRFToken("csrf-test", sid)
 
-	form := url.Values{"csrf_token": {token}, "action": {"enable"}}
-	req := httptest.NewRequest(http.MethodPost, "/ui/categories/10/feeds/bulk-hash-only", strings.NewReader(form.Encode()))
+	form := url.Values{"csrf_token": {token}, "store_mode": {"filtered"}}
+	req := httptest.NewRequest(http.MethodPost, "/ui/categories/10/feeds/bulk-store-mode", strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: sid})
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
-		t.Fatalf("bulk hash-only: status=%d", rec.Code)
+		t.Fatalf("bulk store-mode: status=%d", rec.Code)
 	}
-	if !feedStore.feeds[0].StoreHashOnly || !feedStore.feeds[1].StoreHashOnly {
-		t.Fatal("expected store_hash_only on category feeds")
+	if feedStore.feeds[0].StoreMode != storage.StoreModeFiltered || feedStore.feeds[1].StoreMode != storage.StoreModeFiltered {
+		t.Fatal("expected store_mode=filtered on category feeds")
 	}
 }
 

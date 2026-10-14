@@ -100,7 +100,7 @@ func (s *opmlFeedStore) CreateFeed(_ context.Context, _ int64, params storage.Cr
 		Crawler:            params.Crawler,
 		UserAgent:          params.UserAgent,
 		WebhookID:          params.WebhookID,
-		StoreHashOnly:      params.StoreHashOnly,
+		StoreMode:          params.StoreMode,
 		EntryRetentionDays: params.EntryRetentionDays,
 	}
 	s.next++
@@ -314,7 +314,7 @@ func TestOPMLSettingsRoundtrip(t *testing.T) {
 	webhookID := int64(7)
 	if _, err := src.CreateFeed(context.Background(), 1, storage.CreateFeedParams{
 		FeedURL: "https://example.com/tg", FeedType: "telegram", Title: "TG", IntervalMinutes: 5,
-		TLSInsecure: true, FetchViaProxy: true, Crawler: true, StoreHashOnly: true, EntryRetentionDays: &retention,
+		TLSInsecure: true, FetchViaProxy: true, Crawler: true, StoreMode: "filtered", EntryRetentionDays: &retention,
 		UserAgent: "ua/2", WebhookID: &webhookID, ScraperRules: "div.post", RewriteRules: "rw", BlockedRules: "ads", KeepRules: "go",
 	}); err != nil {
 		t.Fatal(err)
@@ -330,7 +330,7 @@ func TestOPMLSettingsRoundtrip(t *testing.T) {
 		t.Fatalf("export status %d", exportRec.Code)
 	}
 	exported := exportRec.Body.String()
-	for _, want := range []string{`rssam:feedType="telegram"`, `rssam:interval="5"`, `rssam:tlsInsecure="true"`, `rssam:hashOnly="true"`, `rssam:retentionDays="30"`, `rssam:webhook="Alerts"`, `rssam:scraperRules="div.post"`} {
+	for _, want := range []string{`rssam:feedType="telegram"`, `rssam:interval="5"`, `rssam:tlsInsecure="true"`, `rssam:storeMode="filtered"`, `rssam:retentionDays="30"`, `rssam:webhook="Alerts"`, `rssam:scraperRules="div.post"`} {
 		if !strings.Contains(exported, want) {
 			t.Fatalf("export lacks %s:\n%s", want, exported)
 		}
@@ -365,7 +365,7 @@ func TestOPMLSettingsRoundtrip(t *testing.T) {
 		byURL[f.FeedURL] = f
 	}
 	tg := byURL["https://example.com/tg"]
-	if tg.FeedType != "telegram" || tg.IntervalMinutes != 5 || !tg.TLSInsecure || !tg.FetchViaProxy || !tg.Crawler || !tg.StoreHashOnly ||
+	if tg.FeedType != "telegram" || tg.IntervalMinutes != 5 || !tg.TLSInsecure || !tg.FetchViaProxy || !tg.Crawler || tg.StoreMode != "filtered" ||
 		tg.EntryRetentionDays == nil || *tg.EntryRetentionDays != 30 || tg.UserAgent != "ua/2" ||
 		tg.WebhookID == nil || *tg.WebhookID != 7 || tg.ScraperRules != "div.post" || tg.RewriteRules != "rw" || tg.BlockedRules != "ads" || tg.KeepRules != "go" {
 		t.Fatalf("settings lost on import: %+v", tg)

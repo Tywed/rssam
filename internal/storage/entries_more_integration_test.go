@@ -16,7 +16,7 @@ func TestIntegration_EntryDedupAndCollapse(t *testing.T) {
 	owner := newIntegrationUser(t, store, "dedup")
 	feed, entries := newIntegrationFeedWithEntries(t, store, owner.ID, 4)
 	hashOnly, hashEntries := newIntegrationFeedWithEntries(t, store, owner.ID, 2)
-	if _, err := store.UpdateFeed(ctx, owner.ID, UpdateFeedParams{ID: hashOnly.ID, FeedURL: hashOnly.FeedURL, Title: hashOnly.Title, IntervalMinutes: 60, StoreHashOnly: true}); err != nil {
+	if _, err := store.UpdateFeed(ctx, owner.ID, UpdateFeedParams{ID: hashOnly.ID, FeedURL: hashOnly.FeedURL, Title: hashOnly.Title, IntervalMinutes: 60, StoreMode: StoreModeFiltered}); err != nil {
 		t.Fatal(err)
 	}
 

@@ -4,8 +4,6 @@ import (
 	"context"
 	"fmt"
 	"time"
-
-	"github.com/jackc/pgx/v5"
 )
 
 const deleteBatchSize = 5000
@@ -141,59 +139,28 @@ WHERE (feed_id, hash) IN (
 	return result, nil
 }
 
-// purgeRemovedEntries drops per-user removed rows older than before and the
-// entries left without any reader: those every subscriber removed and those
-// stripped after webhook delivery (removed_at). Each batch is one
-// transaction of two statements: a single statement cannot see its own
-// deletes, and the "any reader left" check written against a CTE of purged
-// rows was evaluated as a nested loop over that CTE (3.7 s per batch of
-// 5 000 on 200 k entries; 15 ms this way). Returns the number of entries
-// deleted.
+// purgeRemovedEntries drops the entries left without any reader: those
+// every current subscriber of the feed removed before `before` (the
+// removal rows are kept until then; the table holds only exceptions and
+// stays small) and those stripped after webhook delivery (removed_at).
+// Returns the number of entries deleted.
 func (s *PostgresStore) purgeRemovedEntries(ctx context.Context, before time.Time) (int64, error) {
-	var total int64
-	for {
-		if err := ctx.Err(); err != nil {
-			return total, err
-		}
-		var purged int
-		var deleted int64
-		err := withTx(ctx, s.db, func(tx pgx.Tx) error {
-			rows, err := tx.Query(ctx, `
-DELETE FROM user_entries ue
-WHERE (ue.entry_id, ue.user_id) IN (
-  SELECT entry_id, user_id FROM user_entries
-  WHERE status = $1 AND updated_at < $2
-  LIMIT $3
-)
-RETURNING ue.entry_id`, EntryStatusRemoved, before, deleteBatchSize)
-			if err != nil {
-				return err
-			}
-			ids, err := pgx.CollectRows(rows, pgx.RowTo[int64])
-			if err != nil {
-				return err
-			}
-			purged = len(ids)
-			if purged == 0 {
-				return nil
-			}
-			cmd, err := tx.Exec(ctx, `
-DELETE FROM entries e
-WHERE e.id = ANY($1)
-  AND NOT EXISTS (SELECT 1 FROM user_entries ue WHERE ue.entry_id = e.id)`, ids)
-			if err != nil {
-				return err
-			}
-			deleted = cmd.RowsAffected()
-			return nil
-		})
-		if err != nil {
-			return total, err
-		}
-		total += deleted
-		if purged < deleteBatchSize {
-			break
-		}
+	total, err := s.deleteInBatches(ctx, `
+DELETE FROM entries
+WHERE id IN (
+  SELECT e.id
+  FROM entries e
+  WHERE EXISTS (SELECT 1 FROM user_entries ue WHERE ue.entry_id = e.id AND ue.status = '`+EntryStatusRemoved+`' AND ue.updated_at < $1)
+    AND EXISTS (SELECT 1 FROM subscriptions s WHERE s.feed_id = e.feed_id)
+    AND NOT EXISTS (
+      SELECT 1 FROM subscriptions s
+      WHERE s.feed_id = e.feed_id
+        AND NOT EXISTS (SELECT 1 FROM user_entries x WHERE x.entry_id = e.id AND x.user_id = s.user_id AND x.status = '`+EntryStatusRemoved+`' AND x.updated_at < $1))
+    AND NOT EXISTS (SELECT 1 FROM user_entries x WHERE x.entry_id = e.id AND x.starred)
+  LIMIT $2
+)`, before, deleteBatchSize)
+	if err != nil {
+		return total, err
 	}
 	n, err := s.deleteInBatches(ctx, `
 DELETE FROM entries

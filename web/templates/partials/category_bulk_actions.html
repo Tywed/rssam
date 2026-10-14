@@ -20,21 +20,17 @@
       </select>
       <button type="submit" class="btn btn-sm">Применить</button>
     </form>
-    <div class="cat-action-row cat-action-buttons">
-      <span class="cat-action-label">Хеш до фильтра</span>
-      <form method="post" action="/ui/categories/{{.CategoryID}}/feeds/bulk-hash-only">
-        <input type="hidden" name="csrf_token" value="{{.Root.CSRFToken}}">
-        <input type="hidden" name="filter" value="{{.Root.FeedsFilter}}">
-        <input type="hidden" name="action" value="enable">
-        <button type="submit" class="btn btn-sm">Вкл</button>
-      </form>
-      <form method="post" action="/ui/categories/{{.CategoryID}}/feeds/bulk-hash-only">
-        <input type="hidden" name="csrf_token" value="{{.Root.CSRFToken}}">
-        <input type="hidden" name="filter" value="{{.Root.FeedsFilter}}">
-        <input type="hidden" name="action" value="disable">
-        <button type="submit" class="btn btn-sm">Выкл</button>
-      </form>
-    </div>
+    <form method="post" action="/ui/categories/{{.CategoryID}}/feeds/bulk-store-mode" class="cat-action-row">
+      <input type="hidden" name="csrf_token" value="{{.Root.CSRFToken}}">
+      <input type="hidden" name="filter" value="{{.Root.FeedsFilter}}">
+      <label class="cat-action-label">Хранение</label>
+      <select name="store_mode" class="cat-action-input">
+        <option value="full">полный</option>
+        <option value="filtered">хеш до фильтра</option>
+        <option value="relay">только передача</option>
+      </select>
+      <button type="submit" class="btn btn-sm">Применить</button>
+    </form>
     <div class="cat-action-row cat-action-buttons">
       <span class="cat-action-label">Адаптивный интервал</span>
       <form method="post" action="/ui/categories/{{.CategoryID}}/feeds/bulk-adaptive">

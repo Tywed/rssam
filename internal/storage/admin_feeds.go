@@ -17,6 +17,8 @@ type AdminFeedRow struct {
 	UnreadCount     int
 	SubscriberCount int
 	HasQueuedJob    bool
+	// InboundLate: an inbound feed past its expected silence.
+	InboundLate bool
 }
 
 // AdminFeedSummary holds aggregate counters for the admin feeds dashboard.
@@ -27,7 +29,7 @@ type AdminFeedSummary struct {
 	PausedCount  int
 	WaitingCount int
 	// SilentCount: active feeds (not paused, no error) whose last new item is
-	// older than SilentAfter; 0 when SilentAfter is zero.
+	// older than SilentAfter (inbound feeds: than their interval_minutes).
 	SilentCount  int
 	TotalEntries int
 	TotalUnread  int
@@ -107,7 +109,8 @@ const adminFeedSelectCols = `
   COALESCE((SELECT COUNT(*)::int FROM entries e WHERE e.feed_id = f.id), 0),
   COALESCE(un.n, 0),
   COALESCE((SELECT COUNT(*)::int FROM subscriptions s WHERE s.feed_id = f.id), 0),
-  EXISTS(SELECT 1 FROM jobs j WHERE j.type = 'poll_feed' AND j.feed_id = f.id)`
+  EXISTS(SELECT 1 FROM jobs j WHERE j.type = 'poll_feed' AND j.feed_id = f.id),
+  ` + adminFeedsSilentInbound
 
 // The unread counts come from one pass over user_unread (no index leads
 // with feed_id; a per-row subquery scanned the table once per feed on the
@@ -117,20 +120,30 @@ FROM feeds f ` + catalogJoin + `
 LEFT JOIN (SELECT feed_id, COUNT(*)::int AS n FROM user_unread GROUP BY feed_id) un ON un.feed_id = f.id`
 
 // adminFeedsSilentWhere: a feed that polls fine but has not produced a new
-// item (entry or dedup hash) for silentAfter. Feeds younger than that count
-// from creation. Paused/erroring feeds are reported by their own filters.
+// item (entry or dedup hash) for silentAfter, or an inbound feed that has
+// not received one for its interval_minutes (its expected silence; the
+// global window does not apply and 0 does not disable it). Feeds younger
+// than that count from creation. Paused/erroring feeds are reported by
+// their own filters.
 func adminFeedsSilentWhere(silentAfter time.Duration) string {
-	return fmt.Sprintf(`(f.poll_paused = FALSE AND f.manual_paused = FALSE
-  AND COALESCE(NULLIF(f.last_error, ''), '') = '' AND f.parsing_error_count = 0
-  AND COALESCE(f.last_entry_at, f.created_at) < now() - interval '%d seconds')`, int64(silentAfter/time.Second))
+	secs := int64(silentAfter / time.Second)
+	return fmt.Sprintf(`(`+adminFeedsHealthy+`
+  AND CASE WHEN f.feed_type = '`+FeedTypeInbound+`'
+       THEN `+adminFeedsInboundLate+`
+       ELSE %d > 0 AND COALESCE(f.last_entry_at, f.created_at) < now() - interval '%d seconds' END)`, secs, secs)
 }
+
+const (
+	adminFeedsHealthy     = `f.poll_paused = FALSE AND f.manual_paused = FALSE AND COALESCE(NULLIF(f.last_error, ''), '') = '' AND f.parsing_error_count = 0`
+	adminFeedsInboundLate = `COALESCE(f.last_entry_at, f.created_at) < now() - make_interval(mins => f.interval_minutes)`
+	// adminFeedsSilentInbound is the inbound half of adminFeedsSilentWhere,
+	// for marking rows on the admin page.
+	adminFeedsSilentInbound = `(f.feed_type = '` + FeedTypeInbound + `' AND ` + adminFeedsHealthy + ` AND ` + adminFeedsInboundLate + `)`
+)
 
 func adminFeedsStatusWhere(status string, silentAfter time.Duration) string {
 	switch status {
 	case "silent":
-		if silentAfter <= 0 {
-			return "FALSE"
-		}
 		return adminFeedsSilentWhere(silentAfter)
 	case "paused":
 		return `(f.poll_paused = TRUE OR f.manual_paused = TRUE)`
@@ -190,7 +203,7 @@ func adminFeedsOrderClause(sortKey, order string) string {
 
 func scanAdminFeedRow(rows pgx.Rows) (AdminFeedRow, error) {
 	var row AdminFeedRow
-	err := rows.Scan(append(feedScanTargets(&row.Feed), &row.IconData, &row.EntryCount, &row.UnreadCount, &row.SubscriberCount, &row.HasQueuedJob)...)
+	err := rows.Scan(append(feedScanTargets(&row.Feed), &row.IconData, &row.EntryCount, &row.UnreadCount, &row.SubscriberCount, &row.HasQueuedJob, &row.InboundLate)...)
 	return row, err
 }
 
@@ -277,12 +290,13 @@ SELECT
       )
   )::int,
   COUNT(*) FILTER (
-    WHERE $1::bigint > 0
-      AND poll_paused = FALSE
+    WHERE poll_paused = FALSE
       AND manual_paused = FALSE
       AND COALESCE(NULLIF(last_error, ''), '') = ''
       AND parsing_error_count = 0
-      AND COALESCE(last_entry_at, created_at) < now() - make_interval(secs => $1::bigint)
+      AND CASE WHEN feed_type = '` + FeedTypeInbound + `'
+           THEN COALESCE(last_entry_at, created_at) < now() - make_interval(mins => interval_minutes)
+           ELSE $1::bigint > 0 AND COALESCE(last_entry_at, created_at) < now() - make_interval(secs => $1::bigint) END
   )::int,
   COALESCE((SELECT GREATEST(reltuples, 0)::bigint FROM pg_class WHERE oid = 'public.entries'::regclass), 0)::int,
   COALESCE((SELECT COUNT(*)::int FROM user_unread), 0),

@@ -33,7 +33,41 @@ func IsValidEntryStatus(s string) bool {
 // the INSERT builds a tsvector for every row it is handed before the unique
 // index rejects it, and on a routine poll nearly every item is a repeat.
 func (s *PostgresStore) CreateEntries(ctx context.Context, feedID int64, entries []CreateEntryParams) (inserted int, insertedEntries []Entry, err error) {
-	return s.createEntries(ctx, s.db, feedID, entries)
+	return s.createEntries(ctx, s.db, feedID, entries, false)
+}
+
+// FilteredPollParams is what a poll of a filtered or relay feed leaves
+// behind: the items that matched a filter as entries, the hashes of the
+// rest, and the feed's refresh metadata.
+type FilteredPollParams struct {
+	FeedID  int64
+	Entries []CreateEntryParams
+	Dedup   []FeedEntryDedupParams
+	Relay   bool
+	Meta    *UpdateFeedRefreshMetaParams
+}
+
+// StoreFilteredPoll writes all of FilteredPollParams in one transaction:
+// one WAL flush per poll instead of one per matched entry plus two.
+func (s *PostgresStore) StoreFilteredPoll(ctx context.Context, params FilteredPollParams) (inserted int, insertedEntries []Entry, err error) {
+	err = withTx(ctx, s.db, func(tx pgx.Tx) error {
+		var err error
+		inserted, insertedEntries, err = s.createEntries(ctx, tx, params.FeedID, params.Entries, params.Relay)
+		if err != nil {
+			return err
+		}
+		if _, err := recordFeedEntryDedup(ctx, tx, params.FeedID, params.Dedup); err != nil {
+			return err
+		}
+		if params.Meta == nil {
+			return nil
+		}
+		return updateFeedRefreshMeta(ctx, tx, *params.Meta)
+	})
+	if err != nil {
+		return 0, nil, err
+	}
+	return inserted, insertedEntries, nil
 }
 
 // CreateEntriesWithRefreshMeta stores a poll's entries and the feed's
@@ -42,7 +76,7 @@ func (s *PostgresStore) CreateEntries(ctx context.Context, feedID int64, entries
 func (s *PostgresStore) CreateEntriesWithRefreshMeta(ctx context.Context, feedID int64, entries []CreateEntryParams, meta UpdateFeedRefreshMetaParams) (inserted int, insertedEntries []Entry, err error) {
 	err = withTx(ctx, s.db, func(tx pgx.Tx) error {
 		var err error
-		inserted, insertedEntries, err = s.createEntries(ctx, tx, feedID, entries)
+		inserted, insertedEntries, err = s.createEntries(ctx, tx, feedID, entries, false)
 		if err != nil {
 			return err
 		}
@@ -55,7 +89,7 @@ func (s *PostgresStore) CreateEntriesWithRefreshMeta(ctx context.Context, feedID
 	return inserted, insertedEntries, nil
 }
 
-func (s *PostgresStore) createEntries(ctx context.Context, db dbExecutor, feedID int64, entries []CreateEntryParams) (inserted int, insertedEntries []Entry, err error) {
+func (s *PostgresStore) createEntries(ctx context.Context, db dbExecutor, feedID int64, entries []CreateEntryParams, relay bool) (inserted int, insertedEntries []Entry, err error) {
 	if len(entries) == 0 {
 		return 0, nil, nil
 	}
@@ -108,25 +142,33 @@ func (s *PostgresStore) createEntries(ctx context.Context, db dbExecutor, feedID
 	// deleted by retention; without this filter every such item would come
 	// back as a fresh unread entry on the next poll. Same rule as
 	// FilterKnownEntryHashes on the hash-only path.
+	// A relay entry exists only for filters and webhooks: no search vector,
+	// no unread rows, and removed_at set from the start so that lists skip
+	// it and retention drops it even when no webhook ever succeeds.
 	vecExpr := ftsVectorExprPlaceholders(s.ftsLanguage, "x.title", "x.content")
+	removedAt := "NULL"
+	if relay {
+		vecExpr = "''::tsvector"
+		removedAt = "now()"
+	}
 	q := `
 WITH ins AS (
-  INSERT INTO entries(feed_id, title, url, content, author, published_at, hash, search_vector)
-  SELECT $1, x.title, x.url, x.content, NULLIF(x.author, ''), x.published_at, x.hash, ` + vecExpr + `
+  INSERT INTO entries(feed_id, title, url, content, author, published_at, hash, search_vector, sort_at, removed_at)
+  SELECT $1, x.title, x.url, x.content, NULLIF(x.author, ''), x.published_at, x.hash, ` + vecExpr + `, COALESCE(x.published_at, now()), ` + removedAt + `
   FROM unnest($2::text[], $3::text[], $4::text[], $5::text[], $6::timestamptz[], $7::text[])
     AS x(title, url, content, author, published_at, hash)
   WHERE NOT EXISTS (SELECT 1 FROM feed_entry_dedup d WHERE d.feed_id = $1 AND d.hash = x.hash)
   ON CONFLICT (feed_id, hash) DO NOTHING
-  RETURNING id, feed_id, title, url, author, published_at, hash, created_at, updated_at
-), fan AS (
-  INSERT INTO user_entries(user_id, entry_id, feed_id, status, starred, sort_at)
-  SELECT s.user_id, ins.id, ins.feed_id, '` + EntryStatusRead + `', FALSE, COALESCE(ins.published_at, ins.created_at)
-  FROM ins JOIN subscriptions s ON s.feed_id = ins.feed_id
-), unread AS (
+  RETURNING id, feed_id, title, url, author, published_at, hash, sort_at, created_at, updated_at
+)`
+	if !relay {
+		q += `, unread AS (
   INSERT INTO user_unread(entry_id, user_id, feed_id, sort_at)
-  SELECT ins.id, s.user_id, ins.feed_id, COALESCE(ins.published_at, ins.created_at)
+  SELECT ins.id, s.user_id, ins.feed_id, ins.sort_at
   FROM ins JOIN subscriptions s ON s.feed_id = ins.feed_id
-)
+)`
+	}
+	q += `
 SELECT id, feed_id, title, url, author, published_at, hash, created_at, updated_at FROM ins`
 
 	rows, err := db.Query(ctx, q, feedID, titles, urls, contents, authors, published, hashes)
@@ -186,8 +228,9 @@ SELECT id, feed_id, title, url, author, published_at, hash, created_at, updated_
 }
 
 func (s *PostgresStore) GetEntry(ctx context.Context, userID int64, id int64) (Entry, error) {
-	q := `SELECT ` + entrySelectColumns + ` ` + entryFromUser + ` WHERE ue.user_id = $2 AND ue.entry_id = $1`
-	return s.scanEntry(s.db.QueryRow(ctx, q, id, userID))
+	q := `SELECT ` + entrySelectColumns + ` ` + entryFromEntries + `
+WHERE e.id = $2 AND e.feed_id IN (SELECT feed_id FROM subscriptions WHERE user_id = $1)`
+	return s.scanEntry(s.db.QueryRow(ctx, q, userID, id))
 }
 
 func (s *PostgresStore) scanEntry(row pgx.Row) (Entry, error) {
@@ -247,9 +290,7 @@ func (s *PostgresStore) listEntries(ctx context.Context, userID int64, filter Li
 	if !filter.WithTotal {
 		fetch++
 	}
-	q := "SELECT " + entryColumns(filter.WithoutBody) + "\n" + scope.list +
-		"\nORDER BY " + entryOrderClause(filter.Sort, scope.alias) +
-		"\nLIMIT $" + fmt.Sprint(argN) + " OFFSET $" + fmt.Sprint(argN+1)
+	q := scope.page(entryColumns(filter.WithoutBody), filter.Sort, argN)
 
 	rows, err := s.db.Query(ctx, q, append(args, fetch, offset)...)
 	if err != nil {
@@ -395,10 +436,15 @@ SET content = $3,
     content_fetched = $5,
     search_vector = ` + vecExpr + `,
     updated_at = now()
-FROM user_entries ue ` + entryUnreadJoin + `
-WHERE e.id = $1 AND ue.entry_id = e.id AND ue.user_id = $2
-RETURNING ` + entrySelectColumns
-	return s.scanEntry(s.db.QueryRow(ctx, q, params.ID, userID, params.Content, params.OriginalContent, params.ContentFetched))
+WHERE e.id = $1 AND e.feed_id IN (SELECT feed_id FROM subscriptions WHERE user_id = $2)`
+	cmd, err := s.db.Exec(ctx, q, params.ID, userID, params.Content, params.OriginalContent, params.ContentFetched)
+	if err != nil {
+		return Entry{}, fmt.Errorf("update entry content: %w", err)
+	}
+	if cmd.RowsAffected() == 0 {
+		return Entry{}, ErrNotFound
+	}
+	return s.GetEntry(ctx, userID, params.ID)
 }
 
 // CountUnreadGlobalForUser counts the user's unread entries.

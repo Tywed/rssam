@@ -79,7 +79,11 @@ func (s *PostgresStore) SearchEntries(ctx context.Context, userID int64, filter 
 		args = append(args, ftsPrefixQuery(query))
 		argN++
 	}
-	fromWhere := scope.list + " AND e.search_vector @@ " + tsq
+	fromWhere := scope.list
+	if scope.cand != "" {
+		fromWhere = scope.cand
+	}
+	fromWhere += " AND e.search_vector @@ " + tsq
 
 	fetch := limit
 	if !filter.WithTotal {
@@ -92,7 +96,7 @@ func (s *PostgresStore) SearchEntries(ctx context.Context, userID int64, filter 
 	// index is allowed to find the hits: pg_stats keeps at most 1 000
 	// common lexemes of a tsvector column, so any other word is estimated
 	// at ~1 000 rows and the planner happily walks the whole table
-	// through entries_user_sort_idx or a sequential scan, detoasting every
+	// through entries_sort_idx or a sequential scan, detoasting every
 	// row on the way (405–856 ms and 0.8 M buffers for a word with 50
 	// hits). With the two scan types off the same query runs the GIN
 	// bitmap path in 0.5–58 ms; the settings are transaction-local. The
@@ -105,13 +109,13 @@ func (s *PostgresStore) SearchEntries(ctx context.Context, userID int64, filter 
 		window = SearchRankWindow
 	}
 	orderBy := entryOrderClause(filter.Sort, scope.alias)
-	q := "WITH hits AS MATERIALIZED (SELECT ue.entry_id, ue.user_id " + fromWhere +
+	q := "WITH hits AS MATERIALIZED (SELECT e.id " + fromWhere +
 		"\nORDER BY " + orderBy + "\nLIMIT " + fmt.Sprint(window) + ")\n" +
-		"SELECT " + entryColumns(filter.WithoutBody) + "\n" + entryFromUser + "\nWHERE (ue.entry_id, ue.user_id) IN (SELECT entry_id, user_id FROM hits)"
+		"SELECT " + entryColumns(filter.WithoutBody) + "\n" + entryFromEntries + "\nWHERE e.id IN (SELECT id FROM hits)"
 	if filter.Rank {
-		orderBy = fmt.Sprintf("ts_rank_cd(e.search_vector, %s) DESC, ", tsq) + entryOrderClause(filter.Sort, "ue")
+		orderBy = fmt.Sprintf("ts_rank_cd(e.search_vector, %s) DESC, ", tsq) + entryOrderClause(filter.Sort, "e")
 	} else {
-		orderBy = entryOrderClause(filter.Sort, "ue")
+		orderBy = entryOrderClause(filter.Sort, "e")
 	}
 	q += "\nORDER BY " + orderBy +
 		"\nLIMIT $" + fmt.Sprint(argN) + " OFFSET $" + fmt.Sprint(argN+1)

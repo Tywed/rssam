@@ -410,9 +410,11 @@ func TestUI_AdminFeedsSilentCard(t *testing.T) {
 		t.Fatal("silent filter must list only the quiet feed")
 	}
 
+	// With FEED_SILENT_DAYS=0 the card stays for inbound feeds, which are
+	// judged by their own interval.
 	body = get(newHandler(0), "/ui/admin/feeds")
-	if strings.Contains(body, "status=silent") {
-		t.Fatal("FEED_SILENT_DAYS=0 must hide the card")
+	if !strings.Contains(body, "status=silent") || strings.Contains(body, "Молчат &gt;") {
+		t.Fatal("FEED_SILENT_DAYS=0 must keep the card without the day count")
 	}
 }
 

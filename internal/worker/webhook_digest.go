@@ -164,8 +164,8 @@ func (r *Runner) digestFailure(ctx context.Context, store webhookDigestStore, id
 // entry of the batch, the same way a single delivery does.
 func (r *Runner) applyDigestOnSuccess(ctx context.Context, wh storage.Webhook, items []storage.WebhookDigestItem) {
 	delivery := r.webhookDelivery()
-	delCtx := storage.WebhookDeliveryContext{Webhook: wh}
 	for _, it := range items {
+		delCtx := storage.WebhookDeliveryContext{Webhook: wh, Feed: it.Feed}
 		r.applyOnSuccessEntry(ctx, delivery, storage.WebhookLog{ID: it.LogID, WebhookID: wh.ID, EntryID: it.Entry.ID}, delCtx)
 	}
 }

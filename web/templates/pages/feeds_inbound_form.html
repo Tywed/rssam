@@ -19,6 +19,11 @@
         <input type="hidden" name="subscribe_self" value="0">
       </div>
       <div class="form-group">
+        <label>Ожидаемая пауза между доставками (мин)</label>
+        <input name="interval_minutes" type="number" value="1440" min="1" max="10080">
+        <p class="meta">Если доставок нет дольше — лента помечается как молчащая на странице администратора и попадает в системное оповещение «ленты молчат».</p>
+      </div>
+      <div class="form-group">
         <label>Хранить записи (дней)</label>
         <input name="entry_retention_days" type="number" min="1" max="3650" placeholder="не удалять">
       </div>

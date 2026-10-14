@@ -58,8 +58,8 @@ func TestIntegration_EntryListPaging(t *testing.T) {
 	}
 }
 
-// The ORDER BY expression must match the indexed expression from migration
-// 0050 or the planner sorts the whole user's set again.
+// The ORDER BY expression must match an indexed expression or the planner
+// sorts the whole user's set again.
 func TestIntegration_EntryListUsesSortIndex(t *testing.T) {
 	store := testStore(t)
 	ctx := context.Background()
@@ -74,7 +74,7 @@ func TestIntegration_EntryListUsesSortIndex(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	if _, err := tx.Exec(ctx, "ANALYZE user_entries"); err != nil {
+	if _, err := tx.Exec(ctx, "ANALYZE entries, user_unread"); err != nil {
 		t.Fatal(err)
 	}
 	// Stale statistics on a tiny table can make the planner prefer a
@@ -90,17 +90,17 @@ func TestIntegration_EntryListUsesSortIndex(t *testing.T) {
 		want  string
 	}{
 		{"unread", "user_unread uu", "uu.user_id = $1", "user_unread_user_sort_idx"},
-		{"all", "user_entries ue", "ue.user_id = $1 AND ue.status <> 'removed'", "user_entries_user_sort_idx"},
+		{"all", "entries e", "e.feed_id IN (SELECT feed_id FROM subscriptions WHERE user_id = $1::bigint)", "entries_sort_idx"},
 		// A few rows per feed: either user_unread index is an ordered path.
 		{"feed unread", "user_unread uu", "uu.user_id = $1 AND uu.feed_id = $2", "user_unread_user_"},
-		{"feed all", "user_entries ue", "ue.user_id = $1 AND ue.status <> 'removed' AND ue.feed_id = $2", "user_entries_user_feed_sort_idx"},
+		{"feed all", "entries e", "e.feed_id = $2 AND $1::bigint > 0", "entries_feed_sort_idx"},
 	} {
 		args := []any{owner.ID}
 		if strings.HasPrefix(tc.name, "feed ") {
 			args = append(args, feed.ID)
 		}
 		alias := tc.from[strings.LastIndex(tc.from, " ")+1:]
-		rows, err := tx.Query(ctx, "EXPLAIN SELECT "+alias+".entry_id FROM "+tc.from+" WHERE "+tc.where+" ORDER BY "+entryOrderClause(EntrySortNewest, alias)+" LIMIT 51", args...)
+		rows, err := tx.Query(ctx, "EXPLAIN SELECT 1 FROM "+tc.from+" WHERE "+tc.where+" ORDER BY "+entryOrderClause(EntrySortNewest, alias)+" LIMIT 51", args...)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -116,6 +116,43 @@ func TestIntegration_EntryListUsesSortIndex(t *testing.T) {
 		rows.Close()
 		if !strings.Contains(plan.String(), tc.want) || strings.Contains(plan.String(), "Sort Key") {
 			t.Fatalf("%s: expected an ordered scan of %s, got plan:\n%s", tc.name, tc.want, plan.String())
+		}
+	}
+
+	// The real candidate stage of the entries-driven lists: its WHERE
+	// must leave the ordered entries index usable.
+	read := EntryStatusRead
+	for _, tc := range []struct {
+		name   string
+		status *string
+		conds  entryListConds
+		want   string
+	}{
+		{"all", nil, entryListConds{}, "entries_sort_idx"},
+		{"read", &read, entryListConds{}, "entries_sort_idx"},
+		{"feed all", nil, entryListConds{FeedID: &feed.ID}, "entries_feed_sort_idx"},
+	} {
+		scope, err := entryListScope(owner.ID, tc.status, tc.conds)
+		if err != nil {
+			t.Fatal(err)
+		}
+		rows, err := tx.Query(ctx, "EXPLAIN SELECT e.id, e.sort_at "+scope.cand+" ORDER BY "+entryOrderClause(EntrySortNewest, "e")+" LIMIT 51", scope.args...)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var plan strings.Builder
+		for rows.Next() {
+			var line string
+			if err := rows.Scan(&line); err != nil {
+				t.Fatal(err)
+			}
+			plan.WriteString(line)
+			plan.WriteByte('\n')
+		}
+		rows.Close()
+		got := plan.String()
+		if !strings.Contains(got, tc.want) || strings.Contains(got, "Sort Key") {
+			t.Fatalf("%s: expected an ordered scan of %s, got plan:\n%s", tc.name, tc.want, got)
 		}
 	}
 }

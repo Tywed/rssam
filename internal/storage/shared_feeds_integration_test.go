@@ -153,7 +153,7 @@ func TestIntegration_SharedFeed_RemovalAndRetention(t *testing.T) {
 			t.Fatalf("strip did not remove for user %d: %+v", u.ID, e)
 		}
 	}
-	if _, err := store.db.Exec(ctx, `UPDATE user_entries SET updated_at = now() - interval '40 days' WHERE feed_id = $1`, feed.ID); err != nil {
+	if _, err := store.db.Exec(ctx, `UPDATE user_entries SET updated_at = now() - interval '40 days' WHERE entry_id IN (SELECT id FROM entries WHERE feed_id = $1)`, feed.ID); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := store.db.Exec(ctx, `UPDATE entries SET removed_at = now() - interval '40 days' WHERE id = $1`, entries[2].ID); err != nil {
@@ -176,9 +176,9 @@ func TestIntegration_SharedFeed_RemovalAndRetention(t *testing.T) {
 	if rows != 1 {
 		t.Fatalf("entries left = %d, want 1", rows)
 	}
-	_ = store.db.QueryRow(ctx, `SELECT count(*) FROM user_entries WHERE entry_id = $1`, entries[0].ID).Scan(&rows)
+	_ = store.db.QueryRow(ctx, `SELECT count(*) FROM user_entries WHERE entry_id = $1 AND user_id = $2 AND status = 'removed'`, entries[0].ID, bob.ID).Scan(&rows)
 	if rows != 1 {
-		t.Fatalf("user_entries for the surviving entry = %d, want 1 (alice)", rows)
+		t.Fatalf("bob's removal of the surviving entry = %d rows, want 1", rows)
 	}
 	// The poll dedup still knows the stripped item.
 	if known, _ := store.FilterKnownEntryHashes(ctx, feed.ID, []string{entries[2].Hash}); len(known) != 1 {
@@ -315,14 +315,17 @@ func TestIntegration_Migration0050_SharedFeedsMerge(t *testing.T) {
 		}
 	}
 
-	// 0058 on top (twice): unread markers move to user_unread.
-	body58, err := migrations.Source("0058_user_unread.sql")
-	if err != nil {
-		t.Fatal(err)
-	}
-	for run := 1; run <= 2; run++ {
-		if _, err := store.db.Exec(ctx, body58); err != nil {
-			t.Fatalf("0058 run %d: %v", run, err)
+	// 0058 (unread markers move to user_unread) and 0060 (user_entries
+	// keeps exceptions only) on top, twice each.
+	for _, name := range []string{"0058_user_unread.sql", "0060_entry_exceptions_store_mode.sql"} {
+		body, err := migrations.Source(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for run := 1; run <= 2; run++ {
+			if _, err := store.db.Exec(ctx, body); err != nil {
+				t.Fatalf("%s run %d: %v", name, run, err)
+			}
 		}
 	}
 
@@ -349,13 +352,13 @@ func TestIntegration_Migration0050_SharedFeedsMerge(t *testing.T) {
 	}
 	state := func(userID, entryID int64) st {
 		var s st
-		_ = store.db.QueryRow(ctx, `SELECT `+entryStatusExpr+`, ue.starred FROM user_entries ue `+entryUnreadJoin+` WHERE ue.user_id = $1 AND ue.entry_id = $2`, userID, entryID).Scan(&s.status, &s.starred)
+		_ = store.db.QueryRow(ctx, `SELECT `+entryStatusExpr+`, `+entryStarredExpr+` `+entryFromEntries+` WHERE e.id = $2`, userID, entryID).Scan(&s.status, &s.starred)
 		return s
 	}
 	var n int
-	_ = store.db.QueryRow(ctx, `SELECT count(*) FROM user_entries WHERE status NOT IN ('read', 'removed')`).Scan(&n)
+	_ = store.db.QueryRow(ctx, `SELECT count(*) FROM user_entries WHERE NOT starred AND status <> 'removed'`).Scan(&n)
 	if n != 0 {
-		t.Fatalf("%d user_entries rows still carry the unread status", n)
+		t.Fatalf("%d user_entries rows are not exceptions", n)
 	}
 	if got := state(11, 1); got != (st{"read", false}) {
 		t.Fatalf("a's state on the shared entry: %+v", got)
@@ -484,9 +487,9 @@ func TestIntegration_SharedFeed_CatalogAndDelete(t *testing.T) {
 	}
 	for _, u := range []User{alice, bob} {
 		var n int
-		_ = store.db.QueryRow(ctx, `SELECT count(*) FROM user_entries WHERE user_id = $1 AND feed_id = $2`, u.ID, feed.ID).Scan(&n)
+		_ = store.db.QueryRow(ctx, `SELECT count(*) FROM user_unread WHERE user_id = $1 AND feed_id = $2`, u.ID, feed.ID).Scan(&n)
 		if n != 0 {
-			t.Fatalf("user %d keeps %d user_entries after catalog delete", u.ID, n)
+			t.Fatalf("user %d keeps %d user_unread after catalog delete", u.ID, n)
 		}
 	}
 	if _, total, _ := store.CatalogFeeds(ctx, alice.ID, nil, 50, 0); total != 1 {

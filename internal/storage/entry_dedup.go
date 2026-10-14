@@ -41,6 +41,10 @@ SELECT hash FROM entries WHERE feed_id = $1 AND hash = ANY($2)`
 
 // RecordFeedEntryDedup inserts dedup rows idempotently. Returns count of newly inserted rows.
 func (s *PostgresStore) RecordFeedEntryDedup(ctx context.Context, feedID int64, items []FeedEntryDedupParams) (int, error) {
+	return recordFeedEntryDedup(ctx, s.db, feedID, items)
+}
+
+func recordFeedEntryDedup(ctx context.Context, db dbExecutor, feedID int64, items []FeedEntryDedupParams) (int, error) {
 	if len(items) == 0 {
 		return 0, nil
 	}
@@ -64,7 +68,7 @@ VALUES `)
 	}
 	b.WriteString(`
 ON CONFLICT (feed_id, hash) DO NOTHING`)
-	tag, err := s.db.Exec(ctx, b.String(), args...)
+	tag, err := db.Exec(ctx, b.String(), args...)
 	if err != nil {
 		return 0, fmt.Errorf("record feed entry dedup: %w", err)
 	}
@@ -92,8 +96,7 @@ WITH e AS (
 ), un AS (
   DELETE FROM user_unread WHERE entry_id = $1
 ), ue AS (
-  UPDATE user_entries SET status = $2, updated_at = now()
-  WHERE entry_id = $1 AND status <> $2
+  DELETE FROM user_entries WHERE entry_id = $1
 ), d AS (
   INSERT INTO feed_entry_dedup(feed_id, hash, url)
   SELECT feed_id, hash, url FROM e
@@ -101,7 +104,7 @@ WITH e AS (
 )
 SELECT count(*) FROM e`
 	var n int
-	if err := s.db.QueryRow(ctx, q, entryID, EntryStatusRemoved).Scan(&n); err != nil {
+	if err := s.db.QueryRow(ctx, q, entryID).Scan(&n); err != nil {
 		return fmt.Errorf("strip entry payload after webhook: %w", err)
 	}
 	if n == 0 {
@@ -159,7 +162,7 @@ WITH doomed AS (
       SELECT 1 FROM webhook_logs wl
       WHERE wl.entry_id = e.id AND wl.status NOT IN ('sent', 'dead')
     )
-    AND (NOT $4::boolean OR f.store_hash_only)
+    AND (NOT $4::boolean OR f.store_mode <> 'full')
   LIMIT $5
 ),
 ins AS (

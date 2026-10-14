@@ -31,9 +31,9 @@ func entryStatuses(t *testing.T, store *PostgresStore, userID int64, status *str
 	return out
 }
 
-// Unread is a row in user_unread; user_entries.status only ever says read
-// or removed. Every status write keeps the two in step and the lists and
-// counters report the combined view.
+// Unread is a row in user_unread; user_entries holds only exceptions
+// (starred, removed). Every status write keeps the two in step and the
+// lists and counters report the combined view.
 func TestIntegration_UserUnreadPresence(t *testing.T) {
 	store := isolatedStore(t)
 	ctx := context.Background()
@@ -48,11 +48,11 @@ func TestIntegration_UserUnreadPresence(t *testing.T) {
 		t.Fatalf("fan-out created %d unread rows, want 5", n)
 	}
 	var stored int
-	_ = store.db.QueryRow(ctx, `SELECT count(*) FROM user_entries WHERE user_id = $1 AND status = 'read'`, alice.ID).Scan(&stored)
-	if stored != 5 {
-		t.Fatalf("user_entries rows with status read: %d, want 5", stored)
+	_ = store.db.QueryRow(ctx, `SELECT count(*) FROM user_entries WHERE user_id = $1`, alice.ID).Scan(&stored)
+	if stored != 0 {
+		t.Fatalf("user_entries rows after fan-out: %d, want 0", stored)
 	}
-	if _, err := store.db.Exec(ctx, `UPDATE user_entries SET status = 'unread' WHERE user_id = $1 AND entry_id = $2`, alice.ID, ids[0]); err == nil {
+	if _, err := store.db.Exec(ctx, `INSERT INTO user_entries(entry_id, user_id, status, sort_at) VALUES ($2, $1, 'unread', now())`, alice.ID, ids[0]); err == nil {
 		t.Fatal("user_entries must refuse the unread status")
 	}
 
@@ -125,8 +125,8 @@ func TestIntegration_UserUnreadPresence(t *testing.T) {
 		t.Fatalf("unread after mark feed read: %d", c)
 	}
 
-	// A user_entries row takes its marker along (FK cascade), so unsubscribe
-	// and entry deletion need no extra statement.
+	// The marker references entries directly (FK cascade), so entry
+	// deletion needs no extra statement.
 	if _, err := store.BulkUpdateEntries(ctx, alice.ID, ids[3:5], BulkEntryUpdate{Status: &unread}); err != nil {
 		t.Fatal(err)
 	}
@@ -154,8 +154,11 @@ func TestIntegration_UserUnreadSubscribeBackfill(t *testing.T) {
 	}
 	var total int
 	_ = store.db.QueryRow(ctx, `SELECT count(*) FROM user_entries WHERE user_id = $1`, bob.ID).Scan(&total)
-	if total != len(entries) {
-		t.Fatalf("backfilled user_entries rows: %d, want %d", total, len(entries))
+	if total != 0 {
+		t.Fatalf("subscribe wrote %d user_entries rows, want 0", total)
+	}
+	if _, total, err := store.ListEntries(ctx, bob.ID, ListEntriesFilter{WithTotal: true}); err != nil || total != len(entries) {
+		t.Fatalf("bob sees %d entries (err=%v), want %d", total, err, len(entries))
 	}
 	unread := EntryStatusUnread
 	list, _, err := store.ListFeedEntries(ctx, bob.ID, feed.ID, ListEntriesFilter{Status: &unread, Limit: 200, Sort: EntrySortOldest})

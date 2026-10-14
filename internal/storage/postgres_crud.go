@@ -28,21 +28,26 @@ func (s *PostgresStore) CreateFeed(ctx context.Context, userID int64, params Cre
 	if err := ValidateEntryRetentionDays(params.EntryRetentionDays); err != nil {
 		return Feed{}, err
 	}
+	mode, err := NormalizeStoreMode(params.StoreMode)
+	if err != nil {
+		return Feed{}, err
+	}
+	params.StoreMode = mode
 	feedType := strings.TrimSpace(params.FeedType)
 	if feedType == "" {
 		feedType = "rss"
 	}
 	var f Feed
-	err := withTx(ctx, s.db, func(tx pgx.Tx) error {
+	err = withTx(ctx, s.db, func(tx pgx.Tx) error {
 		const q = `
-INSERT INTO feeds(owner_id, feed_url, feed_type, title, interval_minutes, scraper_rules, rewrite_rules, blocked_rules, keep_rules, fetch_via_proxy, tls_insecure, crawler, user_agent, store_hash_only, entry_retention_days, bridge_state, adaptive_interval, category_id)
+INSERT INTO feeds(owner_id, feed_url, feed_type, title, interval_minutes, scraper_rules, rewrite_rules, blocked_rules, keep_rules, fetch_via_proxy, tls_insecure, crawler, user_agent, store_mode, entry_retention_days, bridge_state, adaptive_interval, category_id)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, COALESCE($16::jsonb, '{}'::jsonb), $17, $18)
 RETURNING id, created_at, updated_at`
 		if err := tx.QueryRow(ctx, q,
 			userID,
 			params.FeedURL, feedType, params.Title, params.IntervalMinutes,
 			params.ScraperRules, params.RewriteRules, params.BlockedRules, params.KeepRules,
-			params.FetchViaProxy, params.TLSInsecure, params.Crawler, params.UserAgent, params.StoreHashOnly, params.EntryRetentionDays, nullableJSON(params.BridgeState), params.AdaptiveInterval,
+			params.FetchViaProxy, params.TLSInsecure, params.Crawler, params.UserAgent, params.StoreMode, params.EntryRetentionDays, nullableJSON(params.BridgeState), params.AdaptiveInterval,
 			params.CategoryID,
 		).Scan(&f.ID, &f.CreatedAt, &f.UpdatedAt); err != nil {
 			return err
@@ -92,7 +97,7 @@ RETURNING id, created_at, updated_at`
 	f.Crawler = params.Crawler
 	f.UserAgent = params.UserAgent
 	f.WebhookID = params.WebhookID
-	f.StoreHashOnly = params.StoreHashOnly
+	f.StoreMode = params.StoreMode
 	f.EntryRetentionDays = params.EntryRetentionDays
 	f.AdaptiveInterval = params.AdaptiveInterval
 	return f, nil
@@ -114,7 +119,7 @@ func (s *PostgresStore) GetFeedByID(ctx context.Context, id int64) (Feed, error)
 // GetFeed (rules, flags, poll state, bridge state). webhook_id and
 // Subscribed come from the subscription alias s.
 const feedColumns = `f.id, COALESCE(f.owner_id, 0), f.feed_url, f.feed_type, f.title, f.category_id, f.interval_minutes, f.etag, f.last_modified, f.last_checked_at, f.last_error,
-       f.parsing_error_count, f.poll_paused, f.manual_paused, f.store_hash_only, f.entry_retention_days, f.adaptive_interval, f.next_check_at,
+       f.parsing_error_count, f.poll_paused, f.manual_paused, f.store_mode, f.entry_retention_days, f.adaptive_interval, f.next_check_at,
        f.bridge_state, f.items_hash, f.scraper_rules, f.rewrite_rules, f.blocked_rules, f.keep_rules, f.fetch_via_proxy, f.tls_insecure, f.crawler, f.user_agent,
        s.webhook_id, s.user_id IS NOT NULL, f.icon_url, f.last_entry_at, f.created_at, f.updated_at`
 
@@ -129,7 +134,7 @@ const catalogJoin = `LEFT JOIN (SELECT NULL::bigint AS webhook_id, NULL::bigint 
 func feedScanTargets(f *Feed) []any {
 	return []any{
 		&f.ID, &f.OwnerID, &f.FeedURL, &f.FeedType, &f.Title, &f.CategoryID, &f.IntervalMinutes, &f.ETag, &f.LastModified, &f.LastCheckedAt, &f.LastError,
-		&f.ParsingErrorCount, &f.PollPaused, &f.ManualPaused, &f.StoreHashOnly, &f.EntryRetentionDays, &f.AdaptiveInterval, &f.NextCheckAt,
+		&f.ParsingErrorCount, &f.PollPaused, &f.ManualPaused, &f.StoreMode, &f.EntryRetentionDays, &f.AdaptiveInterval, &f.NextCheckAt,
 		&f.BridgeState, &f.ItemsHash, &f.ScraperRules, &f.RewriteRules, &f.BlockedRules, &f.KeepRules, &f.FetchViaProxy, &f.TLSInsecure, &f.Crawler, &f.UserAgent,
 		&f.WebhookID, &f.Subscribed, &f.IconURL, &f.LastEntryAt, &f.CreatedAt, &f.UpdatedAt,
 	}
@@ -296,8 +301,13 @@ func (s *PostgresStore) UpdateFeed(ctx context.Context, userID int64, params Upd
 	if err := ValidateEntryRetentionDays(params.EntryRetentionDays); err != nil {
 		return Feed{}, err
 	}
+	mode, err := NormalizeStoreMode(params.StoreMode)
+	if err != nil {
+		return Feed{}, err
+	}
+	params.StoreMode = mode
 	var f Feed
-	err := withTx(ctx, s.db, func(tx pgx.Tx) error {
+	err = withTx(ctx, s.db, func(tx pgx.Tx) error {
 		if err := checkSubscriptionRefs(ctx, tx, userID, SubscriptionParams{WebhookID: params.WebhookID}); err != nil {
 			return err
 		}
@@ -317,7 +327,7 @@ UPDATE feeds f
 SET feed_url = $2, title = $3, interval_minutes = $4,
     scraper_rules = $5, rewrite_rules = $6, blocked_rules = $7, keep_rules = $8,
     fetch_via_proxy = $9, tls_insecure = $10, crawler = $11, user_agent = $12,
-    store_hash_only = $13,
+    store_mode = $13,
     entry_retention_days = $14,
     bridge_state = COALESCE($15::jsonb, bridge_state),
     adaptive_interval = $16,
@@ -328,7 +338,7 @@ WHERE f.id = $1`
 		if _, err := tx.Exec(ctx, q,
 			params.ID, params.FeedURL, params.Title, params.IntervalMinutes,
 			params.ScraperRules, params.RewriteRules, params.BlockedRules, params.KeepRules,
-			params.FetchViaProxy, params.TLSInsecure, params.Crawler, params.UserAgent, params.StoreHashOnly, params.EntryRetentionDays, nullableJSON(params.BridgeState), params.AdaptiveInterval,
+			params.FetchViaProxy, params.TLSInsecure, params.Crawler, params.UserAgent, params.StoreMode, params.EntryRetentionDays, nullableJSON(params.BridgeState), params.AdaptiveInterval,
 			params.CategoryID); err != nil {
 			return err
 		}

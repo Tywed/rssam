@@ -36,9 +36,9 @@ func TestIntegration_CategoriesAndFeedUpdate(t *testing.T) {
 	feed := newFeedForUser(t, store, owner.ID, "cat", 15)
 	inTech, err := store.UpdateFeed(ctx, owner.ID, UpdateFeedParams{
 		ID: feed.ID, FeedURL: feed.FeedURL, Title: "renamed", CategoryID: &tech.ID, IntervalMinutes: 45,
-		UserAgent: "ua/1", Crawler: true, StoreHashOnly: true, EntryRetentionDays: ptr(7), BridgeState: []byte(`{"cursor":1}`),
+		UserAgent: "ua/1", Crawler: true, StoreMode: StoreModeFiltered, EntryRetentionDays: ptr(7), BridgeState: []byte(`{"cursor":1}`),
 	})
-	if err != nil || inTech.Title != "renamed" || inTech.CategoryID == nil || *inTech.CategoryID != tech.ID || inTech.IntervalMinutes != 45 || !inTech.Crawler || !inTech.StoreHashOnly || inTech.EntryRetentionDays == nil || *inTech.EntryRetentionDays != 7 {
+	if err != nil || inTech.Title != "renamed" || inTech.CategoryID == nil || *inTech.CategoryID != tech.ID || inTech.IntervalMinutes != 45 || !inTech.Crawler || inTech.StoreMode != StoreModeFiltered || inTech.EntryRetentionDays == nil || *inTech.EntryRetentionDays != 7 {
 		t.Fatalf("update feed: %+v err=%v", inTech, err)
 	}
 	// Any editor edits any catalog feed; editing does not subscribe them.
@@ -128,7 +128,7 @@ func TestIntegration_BulkUpdateFeedsByCategory(t *testing.T) {
 
 	bad := []BulkFeedUpdate{
 		{},
-		{IntervalMinutes: ptr(10), StoreHashOnly: ptr(true)},
+		{IntervalMinutes: ptr(10), StoreMode: ptr(StoreModeFiltered)},
 		{IntervalMinutes: ptr(MaxFeedIntervalMinutes + 1)},
 		{IntervalMinutes: ptr(MinFeedIntervalMinutes - 1)},
 	}
@@ -155,7 +155,7 @@ func TestIntegration_BulkUpdateFeedsByCategory(t *testing.T) {
 	if n != 2 {
 		t.Fatalf("webhook set n=%d", n)
 	}
-	_, n, _ = store.BulkUpdateFeedsByCategory(ctx, owner.ID, cat.ID, BulkFeedUpdate{StoreHashOnly: ptr(true)})
+	_, n, _ = store.BulkUpdateFeedsByCategory(ctx, owner.ID, cat.ID, BulkFeedUpdate{StoreMode: ptr(StoreModeFiltered)})
 	if n != 2 {
 		t.Fatalf("hash only n=%d", n)
 	}
@@ -164,7 +164,7 @@ func TestIntegration_BulkUpdateFeedsByCategory(t *testing.T) {
 		t.Fatalf("pause n=%d", n)
 	}
 	got, _ := store.GetFeed(ctx, owner.ID, a.ID)
-	if got.IntervalMinutes != 120 || got.WebhookID == nil || *got.WebhookID != wh.ID || !got.StoreHashOnly || !got.ManualPaused {
+	if got.IntervalMinutes != 120 || got.WebhookID == nil || *got.WebhookID != wh.ID || got.StoreMode != StoreModeFiltered || !got.ManualPaused {
 		t.Fatalf("after bulk: %+v", got)
 	}
 	_, n, _ = store.BulkUpdateFeedsByCategory(ctx, owner.ID, cat.ID, BulkFeedUpdate{WebhookSet: true})

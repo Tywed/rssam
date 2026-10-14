@@ -329,7 +329,7 @@ func (h *Handler) handleFeedUpdate(w http.ResponseWriter, r *http.Request) {
 		CategoryID:         params.CategoryID,
 		IntervalMinutes:    params.IntervalMinutes,
 		TLSInsecure:        params.TLSInsecure,
-		StoreHashOnly:      params.StoreHashOnly,
+		StoreMode:          params.StoreMode,
 		EntryRetentionDays: params.EntryRetentionDays,
 		AdaptiveInterval:   params.AdaptiveInterval,
 		WebhookID:          params.WebhookID,
@@ -510,13 +510,21 @@ func feedParamsFromForm(r *http.Request) (storage.CreateFeedParams, error) {
 	if err != nil {
 		return storage.CreateFeedParams{}, err
 	}
+	storeMode := r.FormValue("store_mode")
+	if storeMode == "" && r.FormValue("store_hash_only") == "1" {
+		storeMode = storage.StoreModeFiltered
+	}
+	storeMode, err = storage.NormalizeStoreMode(storeMode)
+	if err != nil {
+		return storage.CreateFeedParams{}, err
+	}
 	return storage.CreateFeedParams{
 		FeedURL:            feedURL,
 		Title:              title,
 		CategoryID:         catID,
 		IntervalMinutes:    interval,
 		TLSInsecure:        r.FormValue("tls_insecure") == "1",
-		StoreHashOnly:      r.FormValue("store_hash_only") == "1",
+		StoreMode:          storeMode,
 		EntryRetentionDays: retention,
 		AdaptiveInterval:   r.FormValue("adaptive_interval") == "1",
 		WebhookID:          parseFeedWebhookID(r.FormValue("webhook_id")),

@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"sync"
 	"time"
 
 	bridge "rssam/internal/bridge/v1"
@@ -12,6 +13,12 @@ import (
 
 // ErrInboundFeed: polling was asked of a feed that only receives deliveries.
 var ErrInboundFeed = errors.New("inbound feed is not polled")
+
+// inboundLocks serializes deliveries to the same inbound feed, as the
+// scheduler does polls: a sender's worker pool delivers several entries at
+// once, and concurrent ingests of one feed would each log a poll row and
+// race on the item-set hash.
+var inboundLocks [64]sync.Mutex
 
 // Ingest stores entries delivered to an inbound feed exactly as a poll
 // would: sanitized, filtered by the feed's rules, fanned out to the
@@ -24,6 +31,9 @@ func (r *FeedRefresher) Ingest(ctx context.Context, feed storage.Feed, entries [
 	if feed.FeedType != reader.FeedTypeInbound {
 		return 0, ErrInboundFeed
 	}
+	mu := &inboundLocks[uint64(feed.ID)%uint64(len(inboundLocks))]
+	mu.Lock()
+	defer mu.Unlock()
 	started := time.Now()
 	now := started.UTC()
 	subs := r.feedSubscribers(ctx, feed.ID)
@@ -40,10 +50,7 @@ func (r *FeedRefresher) Ingest(ctx context.Context, feed storage.Feed, entries [
 		r.recordPoll(ctx, feed.ID, now, started, 0, err)
 		return 0, err
 	}
-	r.applyFiltersBestEffort(ctx, feed, subs, insertedEntries)
-	if r.Realtime != nil && len(insertedEntries) > 0 {
-		r.Realtime.PublishNewEntries(ctx, feed, subs, insertedEntries)
-	}
+	r.afterStore(ctx, feed, subs, insertedEntries)
 	if !metaStored {
 		if err := r.Feeds.UpdateFeedRefreshMeta(ctx, meta); err != nil {
 			r.logger().Error("update feed refresh meta failed", "feed_id", feed.ID, "err", err)

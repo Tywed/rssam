@@ -14,6 +14,7 @@ func (r *FeedRefresher) applyFilterActions(
 	entry storage.Entry,
 	filters []storage.Filter,
 	matchedFilterIDs map[int64]struct{},
+	relay bool,
 ) {
 	if len(matchedFilterIDs) == 0 {
 		return
@@ -28,6 +29,9 @@ func (r *FeedRefresher) applyFilterActions(
 			continue
 		}
 		for _, action := range f.Actions {
+			if relay && !strings.EqualFold(strings.TrimSpace(action.ActionType), storage.FilterActionWebhook) {
+				continue
+			}
 			r.applyFilterAction(ctx, userID, entry, action)
 		}
 	}

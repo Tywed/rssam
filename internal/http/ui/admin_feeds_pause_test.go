@@ -168,7 +168,7 @@ func TestFeedParamsStoreHashOnly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !params.StoreHashOnly {
-		t.Fatal("expected store_hash_only=true")
+	if params.StoreMode != storage.StoreModeFiltered {
+		t.Fatalf("store_mode=%q, want filtered", params.StoreMode)
 	}
 }

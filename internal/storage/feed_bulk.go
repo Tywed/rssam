@@ -20,7 +20,12 @@ func validateBulkFeedUpdate(update BulkFeedUpdate) error {
 	if update.WebhookSet {
 		n++
 	}
-	if update.StoreHashOnly != nil {
+	if update.StoreMode != nil {
+		mode, err := NormalizeStoreMode(*update.StoreMode)
+		if err != nil {
+			return err
+		}
+		*update.StoreMode = mode
 		n++
 	}
 	if update.AdaptiveInterval != nil {
@@ -94,9 +99,9 @@ func (s *PostgresStore) BulkUpdateFeedsByCategory(ctx context.Context, userID, c
 			subSet = append(subSet, "webhook_id = NULL")
 		}
 	}
-	if update.StoreHashOnly != nil {
-		feedSet = append(feedSet, fmt.Sprintf("store_hash_only = $%d", argN))
-		args = append(args, *update.StoreHashOnly)
+	if update.StoreMode != nil {
+		feedSet = append(feedSet, fmt.Sprintf("store_mode = $%d", argN))
+		args = append(args, *update.StoreMode)
 		argN++
 	}
 	if update.AdaptiveInterval != nil {
