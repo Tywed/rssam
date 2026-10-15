@@ -247,7 +247,7 @@ func TestRefreshLoadedFeed_HashOnlyFeedStampsLastEntry(t *testing.T) {
 	}
 }
 
-func TestRefreshLoadedFeed_RetryAfterIsLoggedButNotAnError(t *testing.T) {
+func TestRefreshLoadedFeed_RetryAfterIsNeitherErrorNorPoll(t *testing.T) {
 	feed := storage.Feed{ID: 9, OwnerID: 1, FeedURL: "https://example.com/f.xml", IntervalMinutes: 5}
 	r, fs, pl, pub := newStatusRefresher(&stubHandler{err: retryAfterErr{at: time.Now().Add(time.Hour)}}, feed)
 
@@ -258,8 +258,8 @@ func TestRefreshLoadedFeed_RetryAfterIsLoggedButNotAnError(t *testing.T) {
 	if fs.failures != 0 || len(pub.feeds) != 0 {
 		t.Fatalf("rate limiting must not count as a feed error: failures=%d events=%d", fs.failures, len(pub.feeds))
 	}
-	if len(pl.rows) != 1 || pl.rows[0].OK || pl.rows[0].Error == "" {
-		t.Fatalf("poll log rows = %+v", pl.rows)
+	if len(pl.rows) != 0 {
+		t.Fatalf("a deferred poll must leave no poll log row, got %+v", pl.rows)
 	}
 }
 

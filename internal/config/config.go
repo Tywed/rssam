@@ -89,6 +89,9 @@ type Config struct {
 	WebhookLogRetentionDays  int
 	FilterMatchRetentionDays int
 	FeedPollLogRetentionDays int
+	// DedupRetentionDays drops feed_entry_dedup hashes older than this,
+	// whatever the feed's own entry_retention_days (0 keeps them forever).
+	DedupRetentionDays int
 	// FeedSilentDays: an active feed without a new item for this long is
 	// listed as "silent" in the admin dashboard (0 disables).
 	FeedSilentDays int
@@ -235,6 +238,7 @@ func Load() (Config, error) {
 		WebhookLogRetentionDays:  env.int("WEBHOOK_LOG_RETENTION_DAYS", 90),
 		FilterMatchRetentionDays: env.int("FILTER_MATCH_RETENTION_DAYS", 90),
 		FeedPollLogRetentionDays: env.int("FEED_POLL_LOG_RETENTION_DAYS", 14),
+		DedupRetentionDays:       env.int("DEDUP_RETENTION_DAYS", 0),
 		FeedSilentDays:           env.int("FEED_SILENT_DAYS", 7),
 		BackupDir:                strings.TrimSpace(os.Getenv("BACKUP_DIR")),
 		BackupMaxAge:             env.duration("BACKUP_MAX_AGE", 36*time.Hour),
@@ -348,6 +352,7 @@ func (c Config) Validate() error {
 		{"FEED_SILENT_DAYS", int64(c.FeedSilentDays), 0, 3650, " (0 disables)"},
 		{"FEED_POLL_LOG_RETENTION_DAYS", int64(c.FeedPollLogRetentionDays), 0, 3650, " (0 disables)"},
 		{"AUDIT_LOG_RETENTION_DAYS", int64(c.AuditLogRetentionDays), 0, 3650, " (0 disables)"},
+		{"DEDUP_RETENTION_DAYS", int64(c.DedupRetentionDays), 0, 3650, " (0 disables)"},
 		{"WORKER_POOL_SIZE", int64(c.WorkerPoolSize), 1, 1000, ""},
 		{"WEBHOOK_WORKER_POOL_SIZE", int64(c.WebhookWorkerPoolSize), 1, 1000, ""},
 		{"MAX_FILTER_RULES_PER_FILTER", int64(c.MaxFilterRulesPerFilter), 1, 10000, ""},

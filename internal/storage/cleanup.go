@@ -23,6 +23,9 @@ type RetentionCleanupOpts struct {
 	FeedPollLogBefore time.Time
 	// AuditLogBefore zero value skips audit_log cleanup.
 	AuditLogBefore time.Time
+	// DedupBefore drops feed_entry_dedup rows first seen before it, on top
+	// of the per-feed entry_retention_days rule; zero skips it.
+	DedupBefore time.Time
 }
 
 // RetentionCleanupResult reports how many rows were deleted per table.
@@ -129,6 +132,22 @@ WHERE (feed_id, hash) IN (
 		return result, fmt.Errorf("delete feed entry dedup by retention: %w", err)
 	}
 	result.FeedEntryDedup = n
+
+	if !opts.DedupBefore.IsZero() {
+		// No index on first_seen_at alone: rows are appended in time order,
+		// so the scan meets the old ones first and the LIMIT stops it.
+		n, err = s.deleteInBatches(ctx, `
+DELETE FROM feed_entry_dedup
+WHERE (feed_id, hash) IN (
+  SELECT feed_id, hash FROM feed_entry_dedup
+  WHERE first_seen_at < $1
+  LIMIT $2
+)`, opts.DedupBefore.UTC(), deleteBatchSize)
+		if err != nil {
+			return result, fmt.Errorf("delete feed entry dedup by age: %w", err)
+		}
+		result.FeedEntryDedup += n
+	}
 
 	n, err = s.DeleteExpiredSessions(ctx, now)
 	if err != nil {

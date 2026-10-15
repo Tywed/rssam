@@ -328,6 +328,7 @@ func main() {
 			FilterMatchRetentionDays: cfg.FilterMatchRetentionDays,
 			FeedPollLogRetentionDays: cfg.FeedPollLogRetentionDays,
 			AuditLogRetentionDays:    cfg.AuditLogRetentionDays,
+			DedupRetentionDays:       cfg.DedupRetentionDays,
 			CleanupInterval:          cfg.CleanupInterval,
 
 			FeedPollDailyResetEnabled: cfg.FeedPollDailyResetEnabled,
@@ -438,6 +439,7 @@ func main() {
 			FilterMatchRetentionDays: cfg.FilterMatchRetentionDays,
 			FeedPollLogRetentionDays: cfg.FeedPollLogRetentionDays,
 			AuditLogRetentionDays:    cfg.AuditLogRetentionDays,
+			DedupRetentionDays:       cfg.DedupRetentionDays,
 			CleanupInterval:          cfg.CleanupInterval,
 		},
 		RunRetentionCleanup: w.RetentionCleanupNow,

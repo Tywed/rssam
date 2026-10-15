@@ -13,7 +13,6 @@ func TestRecommend_OK_FewFeeds(t *testing.T) {
 		Samples:       20,
 		Overdue:       0,
 		MaxLag:        0,
-		Waiting:       0,
 		ErrorFraction: 0,
 	})
 	if got.Action != ActionOK {
@@ -71,22 +70,6 @@ func TestRecommend_FixFeeds_LagWithErrors(t *testing.T) {
 	}
 	if got.SuggestedWorkers != 10 {
 		t.Fatalf("should not bump workers on fix_feeds, got %d", got.SuggestedWorkers)
-	}
-}
-
-func TestRecommend_SchedulerLimit(t *testing.T) {
-	got := Recommend(Input{
-		Workers:       10,
-		OfferedPerMin: 5,
-		AvgDuration:   time.Second,
-		Samples:       10,
-		Overdue:       2,
-		MaxLag:        time.Second,
-		Waiting:       1500,
-		ErrorFraction: 0,
-	})
-	if got.Action != ActionSchedulerLimit {
-		t.Fatalf("action=%s want scheduler_limit; %+v", got.Action, got)
 	}
 }
 

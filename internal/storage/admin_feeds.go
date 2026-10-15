@@ -2,7 +2,6 @@ package storage
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -16,7 +15,6 @@ type AdminFeedRow struct {
 	EntryCount      int
 	UnreadCount     int
 	SubscriberCount int
-	HasQueuedJob    bool
 	// InboundLate: an inbound feed past its expected silence.
 	InboundLate bool
 }
@@ -41,22 +39,17 @@ type AdminFeedSummary struct {
 	TotalCategoryFollows int
 }
 
-// PollFeedJobCounts is a snapshot of poll_feed jobs in the queue.
+// PollFeedJobCounts is a snapshot of the poll backlog. Pending/Overdue and
+// MaxLagSeconds come from feeds (pollable rows whose next_check_at has
+// passed, including the ones being polled right now); Running and Stale are
+// filled in by the process that runs the workers (worker.Runner.Inflight),
+// since the in-flight set lives in its memory.
 type PollFeedJobCounts struct {
 	Pending       int
 	Running       int
 	Overdue       int
 	Stale         int
 	MaxLagSeconds float64
-}
-
-// AdminFeedJob is the current poll_feed job for a feed, if any.
-type AdminFeedJob struct {
-	ID        int64
-	RunAt     time.Time
-	Attempts  int
-	LastError *string
-	LockedAt  *time.Time
 }
 
 // AdminFeedsListParams filters and paginates the admin feeds table.
@@ -78,7 +71,6 @@ type AdminFeedStore interface {
 	PollFeedJobCounts(ctx context.Context) (PollFeedJobCounts, error)
 	OfferedPollsPerMin(ctx context.Context) (float64, error)
 	DueWebhookLogCount(ctx context.Context) (int, error)
-	GetPollFeedJob(ctx context.Context, feedID int64) (*AdminFeedJob, error)
 	EstimateDatabaseSize(ctx context.Context) (int64, error)
 }
 
@@ -109,7 +101,6 @@ const adminFeedSelectCols = `
   COALESCE((SELECT COUNT(*)::int FROM entries e WHERE e.feed_id = f.id), 0),
   COALESCE(un.n, 0),
   COALESCE((SELECT COUNT(*)::int FROM subscriptions s WHERE s.feed_id = f.id), 0),
-  EXISTS(SELECT 1 FROM jobs j WHERE j.type = 'poll_feed' AND j.feed_id = f.id),
   ` + adminFeedsSilentInbound
 
 // The unread counts come from one pass over user_unread (no index leads
@@ -152,13 +143,11 @@ func adminFeedsStatusWhere(status string, silentAfter time.Duration) string {
 	case "waiting":
 		return `(f.poll_paused = FALSE AND f.manual_paused = FALSE
   AND COALESCE(NULLIF(f.last_error, ''), '') = '' AND f.parsing_error_count = 0
-  AND (f.next_check_at IS NULL OR f.next_check_at <= now()
-       OR EXISTS(SELECT 1 FROM jobs j WHERE j.type = 'poll_feed' AND j.feed_id = f.id)))`
+  AND (f.next_check_at IS NULL OR f.next_check_at <= now()))`
 	case "ok":
 		return `(f.poll_paused = FALSE AND f.manual_paused = FALSE
   AND COALESCE(NULLIF(f.last_error, ''), '') = '' AND f.parsing_error_count = 0
-  AND f.next_check_at IS NOT NULL AND f.next_check_at > now()
-  AND NOT EXISTS(SELECT 1 FROM jobs j WHERE j.type = 'poll_feed' AND j.feed_id = f.id))`
+  AND f.next_check_at IS NOT NULL AND f.next_check_at > now())`
 	default:
 		return ""
 	}
@@ -171,18 +160,17 @@ func adminFeedsOrderClause(sortKey, order string) string {
 		dir = "DESC"
 		nulls = "NULLS LAST"
 	}
-	pollJob := `EXISTS(SELECT 1 FROM jobs j WHERE j.type = 'poll_feed' AND j.feed_id = f.id)`
 	switch sortKey {
 	case "id":
 		return fmt.Sprintf("f.id %s", dir)
 	case "status":
-		expr := fmt.Sprintf(`(
+		const expr = `(
   CASE
     WHEN f.poll_paused OR f.manual_paused THEN 1
     WHEN COALESCE(NULLIF(f.last_error, ''), '') <> '' OR f.parsing_error_count > 0 THEN 2
-    WHEN f.next_check_at IS NULL OR f.next_check_at <= now() OR %s THEN 3
+    WHEN f.next_check_at IS NULL OR f.next_check_at <= now() THEN 3
     ELSE 4
-  END)`, pollJob)
+  END)`
 		return fmt.Sprintf("%s %s, f.id ASC", expr, dir)
 	case "last_checked":
 		return fmt.Sprintf("f.last_checked_at %s %s, f.id ASC", dir, nulls)
@@ -203,7 +191,7 @@ func adminFeedsOrderClause(sortKey, order string) string {
 
 func scanAdminFeedRow(rows pgx.Rows) (AdminFeedRow, error) {
 	var row AdminFeedRow
-	err := rows.Scan(append(feedScanTargets(&row.Feed), &row.IconData, &row.EntryCount, &row.UnreadCount, &row.SubscriberCount, &row.HasQueuedJob, &row.InboundLate)...)
+	err := rows.Scan(append(feedScanTargets(&row.Feed), &row.IconData, &row.EntryCount, &row.UnreadCount, &row.SubscriberCount, &row.InboundLate)...)
 	return row, err
 }
 
@@ -274,7 +262,6 @@ SELECT
       AND parsing_error_count = 0
       AND next_check_at IS NOT NULL
       AND next_check_at > now()
-      AND NOT EXISTS (SELECT 1 FROM jobs j WHERE j.type = 'poll_feed' AND j.feed_id = feeds.id)
   )::int,
   COUNT(*) FILTER (
     WHERE COALESCE(NULLIF(last_error, ''), '') <> '' OR parsing_error_count > 0
@@ -286,7 +273,6 @@ SELECT
       AND (
         next_check_at IS NULL
         OR next_check_at <= now()
-        OR EXISTS (SELECT 1 FROM jobs j WHERE j.type = 'poll_feed' AND j.feed_id = feeds.id)
       )
   )::int,
   COUNT(*) FILTER (
@@ -326,18 +312,16 @@ FROM feeds`
 
 func (s *PostgresStore) PollFeedJobCounts(ctx context.Context) (PollFeedJobCounts, error) {
 	const q = `
-SELECT
-  COUNT(*) FILTER (WHERE locked_at IS NULL)::int,
-  COUNT(*) FILTER (WHERE locked_at IS NOT NULL)::int,
-  COUNT(*) FILTER (WHERE locked_at IS NULL AND run_at <= now())::int,
-  COUNT(*) FILTER (WHERE locked_at IS NOT NULL AND locked_at < now() - interval '2 minutes')::int,
-  COALESCE(EXTRACT(EPOCH FROM MAX(now() - run_at) FILTER (WHERE locked_at IS NULL AND run_at <= now())), 0)
-FROM jobs
-WHERE type = 'poll_feed'`
+SELECT COUNT(*)::int,
+       COALESCE(EXTRACT(EPOCH FROM MAX(now() - COALESCE(f.next_check_at, f.created_at))), 0)
+FROM feeds f
+WHERE ` + pollableWhere + `
+  AND (f.next_check_at IS NULL OR f.next_check_at <= now())`
 	var counts PollFeedJobCounts
-	if err := s.db.QueryRow(ctx, q).Scan(&counts.Pending, &counts.Running, &counts.Overdue, &counts.Stale, &counts.MaxLagSeconds); err != nil {
-		return PollFeedJobCounts{}, fmt.Errorf("poll feed job counts: %w", err)
+	if err := s.db.QueryRow(ctx, q).Scan(&counts.Pending, &counts.MaxLagSeconds); err != nil {
+		return PollFeedJobCounts{}, fmt.Errorf("poll backlog counts: %w", err)
 	}
+	counts.Overdue = counts.Pending
 	return counts, nil
 }
 
@@ -364,23 +348,6 @@ WHERE status = 'pending'
 		return 0, fmt.Errorf("due webhook log count: %w", err)
 	}
 	return n, nil
-}
-
-func (s *PostgresStore) GetPollFeedJob(ctx context.Context, feedID int64) (*AdminFeedJob, error) {
-	const q = `
-SELECT id, run_at, attempts, last_error, locked_at
-FROM jobs
-WHERE type = 'poll_feed' AND feed_id = $1
-LIMIT 1`
-	var job AdminFeedJob
-	err := s.db.QueryRow(ctx, q, feedID).Scan(&job.ID, &job.RunAt, &job.Attempts, &job.LastError, &job.LockedAt)
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, nil
-		}
-		return nil, fmt.Errorf("get poll feed job: %w", err)
-	}
-	return &job, nil
 }
 
 func (s *PostgresStore) EstimateDatabaseSize(ctx context.Context) (int64, error) {

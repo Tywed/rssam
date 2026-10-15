@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"runtime"
@@ -22,8 +23,9 @@ type adminFeedDetailView struct {
 	UnreadCount     int
 	SubscriberCount int
 	Status          string
-	Job             *storage.AdminFeedJob
-	OwnerName       string
+	// PollingSince is set while the worker is polling this feed.
+	PollingSince *time.Time
+	OwnerName    string
 	// PollLog is the last adminFeedPollLogLimit poll attempts, newest first;
 	// PollLogEnabled is false when history is not wired at all.
 	PollLog        []storage.FeedPollLogEntry
@@ -51,7 +53,7 @@ func classifyAdminFeedStatus(row storage.AdminFeedRow, now time.Time) string {
 	if row.InboundLate {
 		return "silent"
 	}
-	if row.HasQueuedJob || row.NextCheckAt == nil || !row.NextCheckAt.After(now) {
+	if row.NextCheckAt == nil || !row.NextCheckAt.After(now) {
 		return "waiting"
 	}
 	return "ok"
@@ -190,7 +192,7 @@ func (h *Handler) loadAdminFeedsDashboard(r *http.Request) (pageData, error) {
 	data.AdminFeedSummary = summary
 	data.FeedSilentDays = h.cfg.FeedSilentDays
 
-	jobs, err := h.cfg.AdminFeeds.PollFeedJobCounts(ctx)
+	jobs, err := h.pollBacklog(ctx)
 	if err != nil {
 		return data, err
 	}
@@ -281,8 +283,10 @@ func (h *Handler) handleAdminFeedShow(w http.ResponseWriter, r *http.Request) {
 			detail.SubscriberCount = row.SubscriberCount
 			detail.Status = classifyAdminFeedStatus(row, time.Now())
 		}
-		if job, err := h.cfg.AdminFeeds.GetPollFeedJob(r.Context(), id); err == nil {
-			detail.Job = job
+	}
+	if h.cfg.PollingSince != nil {
+		if since, ok := h.cfg.PollingSince(id); ok {
+			detail.PollingSince = &since
 		}
 	}
 	if detail.Status == "" {
@@ -475,4 +479,20 @@ func adminFeedsRedirect(r *http.Request) string {
 		return adminFeedsListURL(status, sortKey, order, page)
 	}
 	return refererOr(r, "/ui/admin/feeds")
+}
+
+// pollBacklog merges the due-feed counters from storage with the polls the
+// worker in this process has in flight; a feed being polled is still due in
+// the table until its poll records the outcome.
+func (h *Handler) pollBacklog(ctx context.Context) (storage.PollFeedJobCounts, error) {
+	counts, err := h.cfg.AdminFeeds.PollFeedJobCounts(ctx)
+	if err != nil {
+		return storage.PollFeedJobCounts{}, err
+	}
+	if h.cfg.PollInflight != nil {
+		counts.Running, counts.Stale = h.cfg.PollInflight()
+		counts.Pending = max(counts.Pending-counts.Running, 0)
+		counts.Overdue = counts.Pending
+	}
+	return counts, nil
 }

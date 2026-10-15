@@ -39,6 +39,7 @@ type Config struct {
 	FilterMatchRetentionDays int
 	FeedPollLogRetentionDays int
 	AuditLogRetentionDays    int
+	DedupRetentionDays       int
 	CleanupInterval          time.Duration
 
 	FeedPollDailyResetEnabled bool
@@ -51,10 +52,8 @@ type FeedRefreshService interface {
 	RefreshLoadedFeed(ctx context.Context, feed storage.Feed) (inserted int, err error)
 }
 
-// pollJobStore is the storage surface used by poll_feed job processing.
-type pollJobStore interface {
-	CompleteJob(ctx context.Context, jobID int64, lockedBy string) (deleted bool, err error)
-	RescheduleJob(ctx context.Context, jobID int64, lockedBy string, runAt time.Time, lastError string) error
+// pollStore is the storage surface used by a single feed poll.
+type pollStore interface {
 	GetFeedByID(ctx context.Context, id int64) (storage.Feed, error)
 	SetFeedNextCheckAt(ctx context.Context, feedID int64, nextCheckAt time.Time) error
 }
@@ -72,6 +71,7 @@ type Runner struct {
 	SystemAlerts      SystemAlertsConfig
 	paused            atomic.Bool
 	wake              dueWakers
+	inflight          inflightPolls
 }
 
 func (r *Runner) Pause() {
@@ -134,9 +134,9 @@ func (r *Runner) Run(ctx context.Context) error {
 		r.Cfg.InstanceID = DefaultInstanceID()
 	}
 
-	// Two processes polling the same database double every fetch and race
-	// on the same jobs; the second one keeps serving HTTP but runs no
-	// workers.
+	// Two processes polling the same database would double every fetch;
+	// the second one keeps serving HTTP but runs no workers. The lock is
+	// also what lets the in-flight set live in memory instead of a table.
 	release, ok, err := r.Store.TryWorkerLock(ctx)
 	if err != nil {
 		return fmt.Errorf("worker lock: %w", err)
@@ -148,14 +148,12 @@ func (r *Runner) Run(ctx context.Context) error {
 
 	metrics.Init()
 
-	jobsCh := make(chan storage.Job, r.Cfg.PoolSize*2)
+	feedsCh := make(chan storage.DueFeed, r.Cfg.PoolSize*2)
 	webhookLogsCh := make(chan storage.WebhookLog, r.Cfg.WebhookPoolSize*2)
 
 	r.wake = newDueWakers()
+	r.inflight.init(max(r.Cfg.FetchTimeout*2, 2*time.Minute))
 	go r.listenDueLoop(ctx)
-
-	// Scheduler: enqueue due feeds (deduplicated by unique index).
-	go r.schedulerLoop(ctx)
 
 	// Retention cleanup: periodically purge old removed entries and logs.
 	go r.cleanupLoop(ctx)
@@ -164,12 +162,12 @@ func (r *Runner) Run(ctx context.Context) error {
 	go r.dailyFeedResetLoop(ctx)
 	go r.systemAlertsLoop(ctx)
 
-	// Dispatcher: claim jobs and feed to the worker pool.
-	go r.dispatchLoop(ctx, jobsCh)
+	// Dispatcher: hand due feeds to the worker pool.
+	go r.dispatchLoop(ctx, feedsCh)
 
 	// Worker pool.
 	for i := 0; i < r.Cfg.PoolSize; i++ {
-		go r.workerLoop(ctx, jobsCh)
+		go r.workerLoop(ctx, feedsCh)
 	}
 
 	// Webhooks dispatcher + workers.
@@ -182,133 +180,101 @@ func (r *Runner) Run(ctx context.Context) error {
 	return nil
 }
 
-// schedulerLoop enqueues due feeds, then sleeps until the earliest
-// next_check_at, a feeds-due notification, or SchedulerTick at most.
-func (r *Runner) schedulerLoop(ctx context.Context) {
-	for ctx.Err() == nil {
-		next, known := time.Time{}, false
-		if !r.Paused() {
-			ids, err := r.Store.ListFeedsDue(ctx, 1000)
-			switch {
-			case err != nil:
-				r.Log.Error("scheduler: list due feeds failed", "err", err)
-			case len(ids) > 0:
-				if err := r.Store.EnqueuePollFeedJobs(ctx, ids, time.Now().UTC()); err != nil {
-					r.Log.Error("scheduler: enqueue poll_feed jobs failed", "err", err)
-				}
-			default:
-				if next, known, err = r.Store.NextFeedDueAt(ctx); err != nil {
-					r.Log.Error("scheduler: next feed due failed", "err", err)
-				}
-			}
-		}
-		idleWait(ctx, r.wake.feeds, next, known, r.Cfg.SchedulerTick)
-	}
-}
-
-// dispatchLoop claims due jobs for the worker pool, then sleeps until the
-// earliest run_at, a jobs-due notification, or SchedulerTick at most.
-func (r *Runner) dispatchLoop(ctx context.Context, out chan<- storage.Job) {
-	var lastReclaim time.Time
+// dispatchLoop hands due feeds to the worker pool, then sleeps until the
+// earliest next_check_at, a feeds-due notification, or SchedulerTick at
+// most. A feed stays due in the table while its poll runs, so the in-flight
+// set is excluded from both queries.
+func (r *Runner) dispatchLoop(ctx context.Context, out chan<- storage.DueFeed) {
 	for ctx.Err() == nil {
 		if r.Paused() {
-			idleWait(ctx, r.wake.jobs, time.Time{}, false, r.Cfg.SchedulerTick)
+			idleWait(ctx, r.wake.feeds, time.Time{}, false, r.Cfg.SchedulerTick)
 			continue
 		}
 		now := time.Now()
-		if lastReclaim.IsZero() || now.Sub(lastReclaim) >= 20*time.Second {
-			staleAfter := max(r.Cfg.FetchTimeout*2, 2*time.Minute)
-			n, err := r.Store.ReclaimStalePollJobs(ctx, r.Cfg.InstanceID, staleAfter)
-			if err != nil {
-				r.Log.Error("dispatcher: reclaim stale jobs failed", "err", err)
-			} else if n > 0 {
-				r.Log.Warn("dispatcher: reclaimed stale poll_feed locks", "count", n)
-			}
-			lastReclaim = now
-		}
-
 		room := cap(out) - len(out)
 		if room <= 0 {
 			// Workers are saturated; a short nap instead of a due-time
 			// lookup nobody can act on.
-			idleWait(ctx, r.wake.jobs, now.Add(time.Second), true, time.Second)
+			idleWait(ctx, r.wake.feeds, now.Add(time.Second), true, time.Second)
 			continue
 		}
-		jobs, err := r.Store.ClaimDueJobs(ctx, min(r.Cfg.PoolSize, room), r.Cfg.InstanceID)
+		exclude := r.inflight.exclude(now)
+		due, err := r.Store.ListFeedsDue(ctx, min(r.Cfg.PoolSize, room), exclude)
 		if err != nil {
-			r.Log.Error("dispatcher: claim due jobs failed", "err", err)
-			idleWait(ctx, r.wake.jobs, time.Time{}, false, r.Cfg.SchedulerTick)
+			r.Log.Error("dispatcher: list due feeds failed", "err", err)
+			idleWait(ctx, r.wake.feeds, time.Time{}, false, r.Cfg.SchedulerTick)
 			continue
 		}
-		if len(jobs) > 0 {
-			metrics.ClaimedJobs.Add(float64(len(jobs)))
+		if len(due) > 0 {
+			metrics.ClaimedJobs.Add(float64(len(due)))
 			claimedAt := time.Now().UTC()
-			for _, j := range jobs {
-				metrics.ObserveJobLag(j.RunAt, claimedAt)
+			for _, d := range due {
+				metrics.ObserveJobLag(d.DueAt, claimedAt)
+				r.inflight.start(d.ID, claimedAt)
 				select {
-				case out <- j:
+				case out <- d:
 				case <-ctx.Done():
 					return
 				}
 			}
 			continue
 		}
-		next, known, err := r.Store.NextJobRunAt(ctx)
+		next, known, err := r.Store.NextFeedDueAt(ctx, exclude)
 		if err != nil {
-			r.Log.Error("dispatcher: next job failed", "err", err)
+			r.Log.Error("dispatcher: next feed due failed", "err", err)
 		}
-		idleWait(ctx, r.wake.jobs, next, known, r.Cfg.SchedulerTick)
+		idleWait(ctx, r.wake.feeds, next, known, r.Cfg.SchedulerTick)
 	}
 }
 
-func (r *Runner) workerLoop(ctx context.Context, in <-chan storage.Job) {
+func (r *Runner) workerLoop(ctx context.Context, in <-chan storage.DueFeed) {
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case j := <-in:
-			r.processJob(ctx, j)
+		case d := <-in:
+			processPollFeed(ctx, d.ID, r.Store, r.Refresher, r.Cfg, r.Log)
+			r.inflight.done(d.ID, time.Now())
 		}
 	}
 }
 
-func (r *Runner) processJob(ctx context.Context, j storage.Job) {
-	switch j.Type {
-	case "poll_feed":
-		r.processPollFeed(ctx, j)
-	default:
-		r.Log.Warn("unknown job type, dropping", "job_id", j.ID, "type", j.Type)
-		_, _ = r.Store.CompleteJob(ctx, j.ID, r.Cfg.InstanceID)
+// Inflight reports the polls running right now and how many of them have
+// run longer than the stale threshold (a fetch that ignored its timeout).
+func (r *Runner) Inflight() (running, stale int) {
+	if r == nil {
+		return 0, 0
 	}
+	return r.inflight.counts(time.Now())
 }
 
-func (r *Runner) processPollFeed(ctx context.Context, j storage.Job) {
-	processPollFeedJob(ctx, j, r.Store, r.Refresher, r.Cfg, r.Log)
+// PollingSince is when the poll of feedID started, if one is running.
+func (r *Runner) PollingSince(feedID int64) (time.Time, bool) {
+	if r == nil {
+		return time.Time{}, false
+	}
+	return r.inflight.since(feedID)
 }
 
-func processPollFeedJob(ctx context.Context, j storage.Job, store pollJobStore, refresher FeedRefreshService, cfg Config, log *slog.Logger) {
+// processPollFeed polls one feed. Every exit leaves the feed not due any
+// more: the refresher persists next_check_at on success and on error, a
+// retry-after hint is written here, and a paused or deleted feed is not
+// listed by ListFeedsDue.
+func processPollFeed(ctx context.Context, feedID int64, store pollStore, refresher FeedRefreshService, cfg Config, log *slog.Logger) {
 	if log == nil {
 		log = slog.Default()
 	}
 	if store == nil || refresher == nil {
 		return
 	}
-	if j.FeedID == nil || *j.FeedID <= 0 {
-		log.Warn("poll_feed job missing feed_id, dropping", "job_id", j.ID)
-		_, _ = store.CompleteJob(ctx, j.ID, cfg.InstanceID)
-		return
-	}
-	feedID := *j.FeedID
 
 	feed, feedErr := store.GetFeedByID(ctx, feedID)
 	if feedErr != nil {
-		log.Warn("poll_feed feed lookup failed", "feed_id", feedID, "job_id", j.ID, "err", feedErr)
-		_, _ = store.CompleteJob(ctx, j.ID, cfg.InstanceID)
+		log.Warn("poll_feed feed lookup failed", "feed_id", feedID, "err", feedErr)
 		return
 	}
 	if storage.FeedPollingBlocked(feed) {
-		log.Info("poll_feed skipped: paused", "feed_id", feedID, "job_id", j.ID, "manual", feed.ManualPaused, "circuit", feed.PollPaused, "errors", feed.ParsingErrorCount)
-		_, _ = store.CompleteJob(ctx, j.ID, cfg.InstanceID)
+		log.Info("poll_feed skipped: paused", "feed_id", feedID, "manual", feed.ManualPaused, "circuit", feed.PollPaused, "errors", feed.ParsingErrorCount)
 		return
 	}
 
@@ -324,14 +290,12 @@ func processPollFeedJob(ctx context.Context, j storage.Job, store pollJobStore, 
 	dur := time.Since(start)
 	now := time.Now().UTC()
 	if at, ok := reader.RetryAt(err); ok {
+		metrics.PollAttempts.WithLabelValues("deferred").Inc()
 		if at.Before(now.Add(50 * time.Millisecond)) {
 			at = now.Add(time.Second)
 		}
 		if err := store.SetFeedNextCheckAt(ctx, feedID, at); err != nil {
 			log.Warn("poll_feed: set next_check_at after retry-after failed", "feed_id", feedID, "err", err)
-		}
-		if _, err := store.CompleteJob(ctx, j.ID, cfg.InstanceID); err != nil {
-			log.Warn("poll_feed: complete job failed", "job_id", j.ID, "err", err)
 		}
 		return
 	}
@@ -344,42 +308,26 @@ func processPollFeedJob(ctx context.Context, j storage.Job, store pollJobStore, 
 		metrics.PollAttempts.WithLabelValues("error").Inc()
 
 		feedAfter, feedErr := store.GetFeedByID(ctx, feedID)
+		if feedErr != nil {
+			log.Warn("poll_feed failed", "feed_id", feedID, "err", err, "lookup_err", feedErr)
+			return
+		}
 		var next time.Time
-		errCount := 0
-		persisted := false
-		switch {
-		case feedErr != nil:
-			next = now.Add(Backoff(j.Attempts+1, cfg.MinPollInterval, cfg.MaxPollInterval))
-		case feedAfter.NextCheckAt != nil && feedAfter.NextCheckAt.After(now):
-			// The refresher already persisted the error backoff (and published
-			// it over WebSocket); reuse it so job.run_at == feeds.next_check_at.
-			errCount = feedAfter.ParsingErrorCount
+		if feedAfter.NextCheckAt != nil && feedAfter.NextCheckAt.After(now) {
+			// The refresher already persisted the error backoff (and
+			// published it over WebSocket).
 			next = *feedAfter.NextCheckAt
-			persisted = true
-		default:
-			errCount = feedAfter.ParsingErrorCount
+		} else {
 			next = storage.FeedNextCheckAfterError(now, feedAfter.IntervalMinutes, feedAfter.ParsingErrorCount, cfg.MinPollInterval, cfg.MaxPollInterval)
-		}
-		// If these fail the job may be reclaimed by the stale-job sweeper or,
-		// worse, never rescheduled — that must not be silent.
-		if rerr := store.RescheduleJob(ctx, j.ID, cfg.InstanceID, next, err.Error()); rerr != nil {
-			log.Error("poll_feed: reschedule job failed", "job_id", j.ID, "feed_id", feedID, "err", rerr)
-		}
-		if !persisted {
+			// A feed left due would be picked up again at once; that must
+			// not be silent.
 			if serr := store.SetFeedNextCheckAt(ctx, feedID, next); serr != nil {
-				log.Warn("poll_feed: set next_check_at failed", "feed_id", feedID, "err", serr)
+				log.Error("poll_feed: set next_check_at failed", "feed_id", feedID, "err", serr)
 			}
 		}
-		log.Warn("poll_feed failed", "feed_id", feedID, "job_id", j.ID, "attempts", j.Attempts+1, "error_count", errCount, "next_check_at", next, "err", err)
+		log.Warn("poll_feed failed", "feed_id", feedID, "error_count", feedAfter.ParsingErrorCount, "next_check_at", next, "err", err)
 		return
 	}
 
 	metrics.PollAttempts.WithLabelValues("success").Inc()
-
-	deleted, delErr := store.CompleteJob(ctx, j.ID, cfg.InstanceID)
-	if delErr != nil {
-		log.Error("complete job failed", "job_id", j.ID, "err", delErr)
-	} else if !deleted {
-		log.Warn("complete job: job was not deleted", "job_id", j.ID)
-	}
 }

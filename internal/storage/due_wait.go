@@ -7,32 +7,11 @@ import (
 )
 
 // Due channels the worker listens on; raised by the triggers of migration
-// 0057 when a row becomes due earlier than the loops expect.
+// 0057 when a feed or delivery becomes due earlier than the loops expect.
 const (
 	NotifyFeedsDue    = "rssam_feeds_due"
-	NotifyJobsDue     = "rssam_jobs_due"
 	NotifyWebhooksDue = "rssam_webhooks_due"
 )
-
-// NextFeedDueAt is the earliest next_check_at among pollable feeds without a
-// queued job; ok=false when there is none.
-func (s *PostgresStore) NextFeedDueAt(ctx context.Context) (time.Time, bool, error) {
-	const q = `
-SELECT min(COALESCE(f.next_check_at, now()))
-FROM feeds f
-LEFT JOIN jobs j ON j.type = 'poll_feed' AND j.feed_id = f.id
-WHERE f.poll_paused = FALSE
-  AND f.manual_paused = FALSE
-  AND f.feed_type <> 'inbound'
-  AND j.id IS NULL
-  AND EXISTS (SELECT 1 FROM subscriptions s WHERE s.feed_id = f.id)`
-	return s.nextAt(ctx, q, "next feed due")
-}
-
-// NextJobRunAt is the earliest run_at of an unclaimed job.
-func (s *PostgresStore) NextJobRunAt(ctx context.Context) (time.Time, bool, error) {
-	return s.nextAt(ctx, `SELECT min(run_at) FROM jobs WHERE locked_at IS NULL`, "next job")
-}
 
 // NextWebhookRetryAt is the earliest next_retry_at of a pending or failed
 // delivery.
@@ -62,7 +41,7 @@ func (s *PostgresStore) ListenDue(ctx context.Context, onNotify func(channel str
 	// A connection that was listening must not go back to the pool.
 	conn := pooled.Hijack()
 	defer func() { _ = conn.Close(context.Background()) }()
-	for _, ch := range []string{NotifyFeedsDue, NotifyJobsDue, NotifyWebhooksDue} {
+	for _, ch := range []string{NotifyFeedsDue, NotifyWebhooksDue} {
 		if _, err := conn.Exec(ctx, "LISTEN "+ch); err != nil {
 			return fmt.Errorf("listen %s: %w", ch, err)
 		}

@@ -157,7 +157,7 @@ WITH ins AS (
   SELECT $1, x.title, x.url, x.content, NULLIF(x.author, ''), x.published_at, x.hash, ` + vecExpr + `, COALESCE(x.published_at, now()), ` + removedAt + `
   FROM unnest($2::text[], $3::text[], $4::text[], $5::text[], $6::timestamptz[], $7::text[])
     AS x(title, url, content, author, published_at, hash)
-  WHERE NOT EXISTS (SELECT 1 FROM feed_entry_dedup d WHERE d.feed_id = $1 AND d.hash = x.hash)
+  WHERE NOT EXISTS (SELECT 1 FROM feed_entry_dedup d WHERE d.feed_id = $1 AND d.hash = rssam_dedup_key(x.hash))
   ON CONFLICT (feed_id, hash) DO NOTHING
   RETURNING id, feed_id, title, url, author, published_at, hash, sort_at, created_at, updated_at
 )`

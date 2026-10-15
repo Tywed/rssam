@@ -77,15 +77,11 @@
       </table>
     </div>
 
-    {{if .AdminFeedDetail.Job}}
+    {{if .AdminFeedDetail.PollingSince}}
     <div class="card">
-      <h2>Очередь</h2>
+      <h2>Опрос</h2>
       <table>
-        <tr><th>Job ID</th><td>{{.AdminFeedDetail.Job.ID}}</td></tr>
-        <tr><th>Запуск</th><td>{{formatTime .AdminFeedDetail.Job.RunAt}}</td></tr>
-        <tr><th>Попытки</th><td>{{.AdminFeedDetail.Job.Attempts}}</td></tr>
-        <tr><th>В работе</th><td>{{if .AdminFeedDetail.Job.LockedAt}}да ({{formatTime .AdminFeedDetail.Job.LockedAt}}){{else}}нет{{end}}</td></tr>
-        {{if .AdminFeedDetail.Job.LastError}}<tr><th>Ошибка job</th><td class="admin-feeds-error">{{.AdminFeedDetail.Job.LastError}}</td></tr>{{end}}
+        <tr><th>В работе</th><td>да, с {{formatTime .AdminFeedDetail.PollingSince}}</td></tr>
       </table>
     </div>
     {{end}}

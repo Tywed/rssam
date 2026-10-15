@@ -29,7 +29,7 @@ import (
 )
 
 type refreshAllEnqueuer interface {
-	EnqueueRefreshAllPollJobs(ctx context.Context) (feeds int, queued int, err error)
+	RefreshAllFeeds(ctx context.Context) (feeds int, queued int, err error)
 }
 
 type Dependencies struct {
@@ -132,11 +132,14 @@ type Dependencies struct {
 	WorkerControl WorkerControl
 }
 
-// WorkerControl pauses poll and webhook workers without stopping HTTP/UI.
+// WorkerControl pauses poll and webhook workers without stopping HTTP/UI
+// and exposes the polls in flight (kept in the worker's memory).
 type WorkerControl interface {
 	Pause()
 	Resume()
 	Paused() bool
+	Inflight() (running, stale int)
+	PollingSince(feedID int64) (time.Time, bool)
 }
 
 type Server struct {

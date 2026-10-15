@@ -46,6 +46,9 @@ func (r *Runner) RetentionCleanupNow(ctx context.Context) (storage.RetentionClea
 	if r.Cfg.AuditLogRetentionDays > 0 {
 		opts.AuditLogBefore = storage.RetentionCutoff(now, r.Cfg.AuditLogRetentionDays)
 	}
+	if r.Cfg.DedupRetentionDays > 0 {
+		opts.DedupBefore = storage.RetentionCutoff(now, r.Cfg.DedupRetentionDays)
+	}
 	return r.Store.RunRetentionCleanup(ctx, opts)
 }
 

@@ -25,12 +25,13 @@ type retentionForm struct {
 	FilterMatchRetentionDays int
 	FeedPollLogRetentionDays int
 	AuditLogRetentionDays    int
+	DedupRetentionDays       int
 	CleanupInterval          time.Duration
 }
 
 // parseRetentionForm validates the retention form values. Rules match
 // internal/config: removed/webhook-log retention 1–3650 days, filter-match,
-// feed-poll-log and audit-log retention 0–3650 (0 disables), cleanup interval 1m–168h (a Go duration such
+// feed-poll-log, audit-log and dedup retention 0–3650 (0 disables), cleanup interval 1m–168h (a Go duration such
 // as "24h", "12h30m" or "90m"; a bare number is treated as hours).
 func parseRetentionForm(get func(string) string) (retentionForm, error) {
 	var f retentionForm
@@ -50,6 +51,9 @@ func parseRetentionForm(get func(string) string) (retentionForm, error) {
 	}
 	if f.AuditLogRetentionDays, err = parseRetentionDays(get("audit_log_retention_days"), 0); err != nil {
 		return f, fmt.Errorf("AUDIT_LOG_RETENTION_DAYS: %w", err)
+	}
+	if f.DedupRetentionDays, err = parseRetentionDays(get("dedup_retention_days"), 0); err != nil {
+		return f, fmt.Errorf("DEDUP_RETENTION_DAYS: %w", err)
 	}
 	if f.CleanupInterval, err = parseCleanupInterval(get("cleanup_interval")); err != nil {
 		return f, fmt.Errorf("CLEANUP_INTERVAL: %w", err)
@@ -126,6 +130,7 @@ func (h *Handler) handleAdminRetentionSave(w http.ResponseWriter, r *http.Reques
 		"FILTER_MATCH_RETENTION_DAYS":  strconv.Itoa(f.FilterMatchRetentionDays),
 		"FEED_POLL_LOG_RETENTION_DAYS": strconv.Itoa(f.FeedPollLogRetentionDays),
 		"AUDIT_LOG_RETENTION_DAYS":     strconv.Itoa(f.AuditLogRetentionDays),
+		"DEDUP_RETENTION_DAYS":         strconv.Itoa(f.DedupRetentionDays),
 		"CLEANUP_INTERVAL":             formatCleanupInterval(f.CleanupInterval),
 	}
 	if err := envfile.SetKeys(h.envPath(), keys); err != nil {

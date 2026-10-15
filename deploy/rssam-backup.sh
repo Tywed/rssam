@@ -9,8 +9,8 @@
 # format, compressed) and <name>.env. The .env is part of the backup because it
 # holds CSRF_SECRET and the tokens: a database restored without it logs every
 # user out and breaks nothing else, but keeping them together makes the
-# restore complete. Queue (jobs) and sessions are schema-only in the dump —
-# both are rebuilt on start.
+# restore complete. Sessions are schema-only in the dump — they are rebuilt
+# on start.
 set -eu
 
 PREFIX="${RSSAM_PREFIX:-/opt/rssam}"
@@ -69,7 +69,7 @@ do_backup() {
   trap 'rm -f "$tmp"' EXIT INT TERM
 
   pg_dump --dbname="$url" --format=custom --no-owner --no-acl \
-    --exclude-table-data=jobs --exclude-table-data=sessions \
+    --exclude-table-data=sessions \
     --file="$tmp"
   # A dump that pg_restore cannot read is not a backup.
   pg_restore --list "$tmp" >/dev/null

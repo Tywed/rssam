@@ -275,9 +275,12 @@ func (r *FeedRefresher) refreshLoaded(ctx context.Context, feed storage.Feed, ma
 	})
 	if fetchErr != nil {
 		if _, ok := reader.RetryAt(fetchErr); ok {
-			// Rate limited by the source: not counted as a feed error, but it
-			// is still a poll that did not deliver anything.
-			r.recordPoll(ctx, feedID, now, started, 0, fetchErr)
+			// Our own limiter (Max rate limit, Telegram slots, proxy pool)
+			// said "not now": nothing was fetched, so the feed is neither
+			// failed nor polled. Like a poll outside poll_hours it leaves no
+			// poll-log row — on a fleet of Max/Telegram feeds the ok/deferred
+			// alternation defeated repeat_count coalescing and produced
+			// 3 M poll-log INSERT+DELETE a month for nothing.
 			return 0, fetchErr
 		}
 		return 0, r.failPoll(ctx, feed, now, started, res.BridgeState, fetchErr, ErrFetchFeed, errors.Is(fetchErr, reader.ErrFeedGone))

@@ -292,7 +292,7 @@ func (h *Handler) handleAdminSystem(w http.ResponseWriter, r *http.Request) {
 			info.Subscriptions = summary.TotalSubscriptions
 			info.CategoryFollows = summary.TotalCategoryFollows
 			info.UserEntries = summary.TotalUserEntries
-			jobs, jerr := h.cfg.AdminFeeds.PollFeedJobCounts(r.Context())
+			jobs, jerr := h.pollBacklog(r.Context())
 			if jerr != nil {
 				jobs = storage.PollFeedJobCounts{}
 			}

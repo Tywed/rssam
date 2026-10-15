@@ -50,26 +50,16 @@ func (s *stubFeedRefresher) RefreshFeed(_ context.Context, feedID int64) (int, e
 
 type stubPollStore struct {
 	feed            storage.Feed
-	completeCalls   int
-	rescheduleCall  bool
-	rescheduledAt   time.Time
 	nextCheckAt     time.Time
+	setCalls        int
 	lastSuccessNext time.Time
 }
 
-func (s *stubPollStore) CompleteJob(context.Context, int64, string) (bool, error) {
-	s.completeCalls++
-	return true, nil
-}
-func (s *stubPollStore) RescheduleJob(_ context.Context, _ int64, _ string, runAt time.Time, _ string) error {
-	s.rescheduleCall = true
-	s.rescheduledAt = runAt
-	return nil
-}
 func (s *stubPollStore) GetFeedByID(context.Context, int64) (storage.Feed, error) {
 	return s.feed, nil
 }
 func (s *stubPollStore) SetFeedNextCheckAt(_ context.Context, _ int64, next time.Time) error {
+	s.setCalls++
 	s.nextCheckAt = next
 	return nil
 }
@@ -86,17 +76,10 @@ func TestProcessPollFeed_SuccessSetsNextCheck(t *testing.T) {
 	}
 	ref := &stubFeedRefresher{inserted: 3, store: store, cfg: cfg}
 
-	j := storage.Job{ID: 9, Type: "poll_feed", FeedID: &feedID, Attempts: 0}
-	processPollFeedJob(context.Background(), j, store, ref, cfg, slog.Default())
+	processPollFeed(context.Background(), feedID, store, ref, cfg, slog.Default())
 
 	if ref.calls != 1 {
 		t.Fatalf("refresh calls=%d", ref.calls)
-	}
-	if store.completeCalls != 1 {
-		t.Fatalf("complete calls=%d", store.completeCalls)
-	}
-	if store.rescheduleCall {
-		t.Fatal("expected no reschedule on success")
 	}
 	if store.nextCheckAt.IsZero() {
 		t.Fatal("expected next_check_at to be set")
@@ -113,9 +96,7 @@ func TestProcessPollFeed_ErrorDoublesInterval(t *testing.T) {
 	}
 	ref := &stubFeedRefresher{err: errors.New("fetch failed"), store: store, cfg: cfg}
 
-	processPollFeedJob(context.Background(), storage.Job{
-		ID: 1, Type: "poll_feed", FeedID: &feedID, Attempts: 0,
-	}, store, ref, cfg, slog.Default())
+	processPollFeed(context.Background(), feedID, store, ref, cfg, slog.Default())
 
 	if store.feed.ParsingErrorCount != 1 {
 		t.Fatalf("error count=%d, want 1", store.feed.ParsingErrorCount)
@@ -142,9 +123,7 @@ func TestProcessPollFeed_SuccessResetsIntervalAfterErrors(t *testing.T) {
 	}
 	ref := &stubFeedRefresher{inserted: 1, store: store, cfg: cfg}
 
-	processPollFeedJob(context.Background(), storage.Job{
-		ID: 9, Type: "poll_feed", FeedID: &feedID,
-	}, store, ref, cfg, slog.Default())
+	processPollFeed(context.Background(), feedID, store, ref, cfg, slog.Default())
 
 	if store.feed.ParsingErrorCount != 0 {
 		t.Fatalf("error count=%d, want 0 after success", store.feed.ParsingErrorCount)
@@ -186,18 +165,10 @@ func TestProcessPollFeed_BackoffSkipsWithoutError(t *testing.T) {
 	cfg := Config{InstanceID: "test"}
 	ref := &stubFeedRefresher{err: testBackoffErr{at: until}, store: store, cfg: cfg}
 
-	processPollFeedJob(context.Background(), storage.Job{
-		ID: 4, Type: "poll_feed", FeedID: &feedID,
-	}, store, ref, cfg, slog.Default())
+	processPollFeed(context.Background(), feedID, store, ref, cfg, slog.Default())
 
 	if store.feed.ParsingErrorCount != 0 {
 		t.Fatalf("error count=%d, want 0", store.feed.ParsingErrorCount)
-	}
-	if store.rescheduleCall {
-		t.Fatal("backoff should complete the job, not reschedule as failure")
-	}
-	if store.completeCalls != 1 {
-		t.Fatalf("complete calls=%d", store.completeCalls)
 	}
 	if store.nextCheckAt.Before(until.Add(-time.Second)) {
 		t.Fatalf("next_check=%s, want ~%s", store.nextCheckAt, until)
@@ -205,8 +176,8 @@ func TestProcessPollFeed_BackoffSkipsWithoutError(t *testing.T) {
 }
 
 // When the refresher has already persisted the error backoff (next_check_at
-// in the future) the worker must reuse it for job.run_at instead of computing
-// a second, slightly different value.
+// in the future) the worker must not write a second, slightly different
+// value.
 func TestProcessPollFeed_ErrorReusesPersistedNextCheck(t *testing.T) {
 	feedID := int64(7)
 	persisted := time.Now().UTC().Add(42 * time.Minute)
@@ -216,17 +187,9 @@ func TestProcessPollFeed_ErrorReusesPersistedNextCheck(t *testing.T) {
 	// Simulate service.FeedRefresher.recordFailure having set next_check_at.
 	ref.store.feed.NextCheckAt = &persisted
 
-	processPollFeedJob(context.Background(), storage.Job{
-		ID: 1, Type: "poll_feed", FeedID: &feedID,
-	}, store, ref, cfg, slog.Default())
+	processPollFeed(context.Background(), feedID, store, ref, cfg, slog.Default())
 
-	if !store.rescheduleCall {
-		t.Fatal("job must be rescheduled")
-	}
-	if !store.rescheduledAt.Equal(persisted) {
-		t.Fatalf("job run_at=%s, want persisted next_check_at %s", store.rescheduledAt, persisted)
-	}
-	if !store.nextCheckAt.IsZero() {
+	if store.setCalls != 0 {
 		t.Fatalf("SetFeedNextCheckAt must not be called again, got %s", store.nextCheckAt)
 	}
 }

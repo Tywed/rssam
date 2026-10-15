@@ -8,7 +8,6 @@ import (
 
 type FeedEntryDedupParams struct {
 	Hash string
-	URL  string
 }
 
 // FilterKnownEntryHashes returns hashes already seen for feedID (entries table or feed_entry_dedup).
@@ -18,7 +17,8 @@ func (s *PostgresStore) FilterKnownEntryHashes(ctx context.Context, feedID int64
 		return out, nil
 	}
 	const q = `
-SELECT hash FROM feed_entry_dedup WHERE feed_id = $1 AND hash = ANY($2)
+SELECT h.hash FROM unnest($2::text[]) AS h(hash)
+WHERE EXISTS (SELECT 1 FROM feed_entry_dedup d WHERE d.feed_id = $1 AND d.hash = rssam_dedup_key(h.hash))
 UNION
 SELECT hash FROM entries WHERE feed_id = $1 AND hash = ANY($2)`
 	rows, err := s.db.Query(ctx, q, feedID, hashes)
@@ -49,11 +49,10 @@ func recordFeedEntryDedup(ctx context.Context, db dbExecutor, feedID int64, item
 		return 0, nil
 	}
 	var b strings.Builder
-	args := make([]any, 0, 1+len(items)*2)
+	args := make([]any, 0, 1+len(items))
 	args = append(args, feedID)
-	argN := 2
 	b.WriteString(`
-INSERT INTO feed_entry_dedup(feed_id, hash, url)
+INSERT INTO feed_entry_dedup(feed_id, hash)
 VALUES `)
 	for i, it := range items {
 		if strings.TrimSpace(it.Hash) == "" {
@@ -62,9 +61,8 @@ VALUES `)
 		if i > 0 {
 			b.WriteString(",")
 		}
-		fmt.Fprintf(&b, "\n($1, $%d, $%d)", argN, argN+1)
-		argN += 2
-		args = append(args, it.Hash, it.URL)
+		fmt.Fprintf(&b, "\n($1, rssam_dedup_key($%d))", i+2)
+		args = append(args, it.Hash)
 	}
 	b.WriteString(`
 ON CONFLICT (feed_id, hash) DO NOTHING`)
@@ -92,14 +90,14 @@ WITH e AS (
       removed_at = COALESCE(removed_at, now()),
       updated_at = now()
   WHERE id = $1
-  RETURNING id, feed_id, hash, url
+  RETURNING id, feed_id, hash
 ), un AS (
   DELETE FROM user_unread WHERE entry_id = $1
 ), ue AS (
   DELETE FROM user_entries WHERE entry_id = $1
 ), d AS (
-  INSERT INTO feed_entry_dedup(feed_id, hash, url)
-  SELECT feed_id, hash, url FROM e
+  INSERT INTO feed_entry_dedup(feed_id, hash)
+  SELECT feed_id, rssam_dedup_key(hash) FROM e WHERE hash <> ''
   ON CONFLICT (feed_id, hash) DO NOTHING
 )
 SELECT count(*) FROM e`
@@ -148,7 +146,7 @@ func (s *PostgresStore) collapseEntriesBatch(ctx context.Context, params Collaps
 
 	const q = `
 WITH doomed AS (
-  SELECT e.id, e.feed_id, e.hash, COALESCE(e.url, '') AS url
+  SELECT e.id, e.feed_id, e.hash
   FROM entries e
   INNER JOIN feeds f ON f.id = e.feed_id
   WHERE ($1::bigint = 0 OR EXISTS (
@@ -166,8 +164,8 @@ WITH doomed AS (
   LIMIT $5
 ),
 ins AS (
-  INSERT INTO feed_entry_dedup (feed_id, hash, url)
-  SELECT feed_id, hash, url FROM doomed
+  INSERT INTO feed_entry_dedup (feed_id, hash)
+  SELECT feed_id, rssam_dedup_key(hash) FROM doomed
   WHERE hash <> ''
   ON CONFLICT (feed_id, hash) DO NOTHING
 ),

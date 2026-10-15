@@ -9,17 +9,18 @@ import (
 	"time"
 )
 
-func jobIDs(jobs []Job) []int64 {
-	out := make([]int64, 0, len(jobs))
-	for _, j := range jobs {
-		out = append(out, j.ID)
+func dueIDs(due []DueFeed) []int64 {
+	out := make([]int64, 0, len(due))
+	for _, d := range due {
+		out = append(out, d.ID)
 	}
 	return out
 }
 
-// The poll queue end to end: due feeds are discovered once, claimed once
-// per instance, and a job ends in exactly one of complete/release/reschedule.
-func TestIntegration_PollQueueLifecycle(t *testing.T) {
+// Due discovery without a queue table: a feed is due until its poll moves
+// next_check_at, the dispatcher's in-flight ids are excluded, and the
+// backlog counters follow.
+func TestIntegration_PollDueDiscovery(t *testing.T) {
 	store := isolatedStore(t)
 	ctx := context.Background()
 	owner := newIntegrationUser(t, store, "queue")
@@ -34,113 +35,56 @@ func TestIntegration_PollQueueLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ids, err := store.ListFeedsDue(ctx, 100)
-	if err != nil || len(ids) != 1 || ids[0] != due.ID {
-		t.Fatalf("due feeds = %v err=%v, want [%d]", ids, err, due.ID)
+	due1, err := store.ListFeedsDue(ctx, 100, nil)
+	if err != nil || len(due1) != 1 || due1[0].ID != due.ID || due1[0].DueAt.IsZero() {
+		t.Fatalf("due feeds = %v err=%v, want [%d]", due1, err, due.ID)
 	}
-	if got, _ := store.ListFeedsDue(ctx, 0); got != nil {
+	if got, _ := store.ListFeedsDue(ctx, 0, nil); got != nil {
 		t.Fatalf("limit 0 must return nothing, got %v", got)
 	}
-
-	if err := store.EnqueuePollFeedJobs(ctx, []int64{due.ID}, time.Now().Add(time.Minute)); err != nil {
-		t.Fatal(err)
+	// An in-flight poll keeps the feed due in the table; the dispatcher
+	// excludes it by id and the idle wait must not be woken by it either.
+	if got, _ := store.ListFeedsDue(ctx, 100, []int64{due.ID}); len(got) != 0 {
+		t.Fatalf("excluded feed listed as due: %v", dueIDs(got))
 	}
-	// Once queued the feed is no longer "due" for the scheduler.
-	if ids, _ = store.ListFeedsDue(ctx, 100); len(ids) != 0 {
-		t.Fatalf("queued feed listed as due: %v", ids)
-	}
-	// A second enqueue only moves run_at earlier, never later.
-	if err := store.EnqueuePollFeedJobs(ctx, []int64{due.ID}, time.Now().Add(-time.Second)); err != nil {
-		t.Fatal(err)
-	}
-	job, err := store.GetPollFeedJob(ctx, due.ID)
-	if err != nil || job == nil || time.Until(job.RunAt) > 0 {
-		t.Fatalf("job=%+v err=%v", job, err)
-	}
-	if none, err := store.GetPollFeedJob(ctx, later.ID); err != nil || none != nil {
-		t.Fatalf("no job expected for later feed: %+v err=%v", none, err)
+	next, known, err := store.NextFeedDueAt(ctx, []int64{due.ID})
+	if err != nil || !known || time.Until(next) < 55*time.Minute {
+		t.Fatalf("next due with in-flight excluded = %s known=%v err=%v", next, known, err)
 	}
 	counts, err := store.PollFeedJobCounts(ctx)
 	if err != nil || counts.Pending != 1 || counts.Overdue != 1 || counts.Running != 0 {
 		t.Fatalf("counts=%+v err=%v", counts, err)
 	}
 
-	a, err := store.ClaimDueJobs(ctx, 10, "inst-a")
-	if err != nil || len(a) != 1 || a[0].FeedID == nil || *a[0].FeedID != due.ID || a[0].Type != "poll_feed" {
-		t.Fatalf("claim a = %+v err=%v", a, err)
+	// A poll outcome moves next_check_at and the feed stops being due.
+	if err := store.SetFeedNextCheckAt(ctx, due.ID, time.Now().Add(10*time.Minute)); err != nil {
+		t.Fatal(err)
 	}
-	if b, _ := store.ClaimDueJobs(ctx, 10, "inst-b"); len(b) != 0 {
-		t.Fatalf("second instance claimed a locked job: %v", jobIDs(b))
+	if got, _ := store.ListFeedsDue(ctx, 100, nil); len(got) != 0 {
+		t.Fatalf("polled feed still due: %v", dueIDs(got))
 	}
-	if none, _ := store.ClaimDueJobs(ctx, 0, "inst-a"); none != nil {
-		t.Fatalf("limit 0 must claim nothing, got %v", jobIDs(none))
+	next, known, err = store.NextFeedDueAt(ctx, nil)
+	if err != nil || !known || time.Until(next) > 10*time.Minute || time.Until(next) < 9*time.Minute {
+		t.Fatalf("next due = %s known=%v err=%v", next, known, err)
 	}
 	counts, _ = store.PollFeedJobCounts(ctx)
-	if counts.Running != 1 || counts.Pending != 0 {
-		t.Fatalf("counts after claim = %+v", counts)
+	if counts.Pending != 0 || counts.Overdue != 0 || counts.MaxLagSeconds != 0 {
+		t.Fatalf("counts after poll = %+v", counts)
 	}
-
-	// Only the locking instance may finish the job.
-	if deleted, err := store.CompleteJob(ctx, a[0].ID, "inst-b"); err != nil || deleted {
-		t.Fatalf("foreign complete: deleted=%v err=%v", deleted, err)
-	}
-	if err := store.RescheduleJob(ctx, a[0].ID, "inst-a", time.Now().Add(-time.Second), "boom"); err != nil {
+	// Making the feed due again brings it back, oldest due first.
+	if err := store.SetFeedNextCheckAt(ctx, due.ID, time.Now().Add(-time.Minute)); err != nil {
 		t.Fatal(err)
 	}
-	job, _ = store.GetPollFeedJob(ctx, due.ID)
-	if job.Attempts != 1 || job.LastError == nil || *job.LastError != "boom" || job.LockedAt != nil {
-		t.Fatalf("rescheduled job = %+v", job)
-	}
-
-	a, _ = store.ClaimDueJobs(ctx, 10, "inst-a")
-	if len(a) != 1 {
-		t.Fatalf("reclaim after reschedule: %v", jobIDs(a))
-	}
-	if deleted, err := store.CompleteJob(ctx, a[0].ID, "inst-a"); err != nil || !deleted {
-		t.Fatalf("complete: deleted=%v err=%v", deleted, err)
-	}
-	if job, _ = store.GetPollFeedJob(ctx, due.ID); job != nil {
-		t.Fatalf("job survived completion: %+v", job)
-	}
-}
-
-func TestIntegration_ReclaimStalePollJobs(t *testing.T) {
-	store := isolatedStore(t)
-	ctx := context.Background()
-	owner := newIntegrationUser(t, store, "stale")
-	f1 := newFeedForUser(t, store, owner.ID, "f1", 10)
-	f2 := newFeedForUser(t, store, owner.ID, "f2", 10)
-	f3 := newFeedForUser(t, store, owner.ID, "f3", 10)
-
-	if err := store.EnqueuePollFeedJobs(ctx, []int64{f1.ID, f2.ID, f3.ID}, time.Now().Add(-time.Minute)); err != nil {
+	if err := store.SetFeedNextCheckAt(ctx, later.ID, time.Now().Add(-time.Hour)); err != nil {
 		t.Fatal(err)
 	}
-	// f1 locked by a dead instance, f2 by us long ago, f3 by us just now.
-	lock := func(feedID int64, by string, age time.Duration) {
-		t.Helper()
-		if _, err := store.db.Exec(ctx, `UPDATE jobs SET locked_by = $2, locked_at = now() - $3::interval WHERE feed_id = $1`, feedID, by, age); err != nil {
-			t.Fatal(err)
-		}
+	got, _ := store.ListFeedsDue(ctx, 100, nil)
+	if ids := dueIDs(got); len(ids) != 2 || ids[0] != later.ID || ids[1] != due.ID {
+		t.Fatalf("due order = %v, want [%d %d]", ids, later.ID, due.ID)
 	}
-	lock(f1.ID, "dead-instance", time.Second)
-	lock(f2.ID, "me", 10*time.Minute)
-	lock(f3.ID, "me", time.Second)
-
-	counts, err := store.PollFeedJobCounts(ctx)
-	if err != nil || counts.Running != 3 || counts.Stale != 1 {
-		t.Fatalf("counts=%+v err=%v", counts, err)
-	}
-	n, err := store.ReclaimStalePollJobs(ctx, "me", 2*time.Minute)
-	if err != nil || n != 2 {
-		t.Fatalf("reclaimed %d err=%v, want 2", n, err)
-	}
-	claimed, err := store.ClaimDueJobs(ctx, 10, "me")
-	if err != nil || len(claimed) != 2 {
-		t.Fatalf("claimed %v err=%v, want the two reclaimed jobs", jobIDs(claimed), err)
-	}
-	// staleAfter <= 0 falls back to two minutes: f3 (locked 1 s ago) stays.
-	if n, _ = store.ReclaimStalePollJobs(ctx, "me", 0); n != 0 {
-		t.Fatalf("fresh own lock reclaimed: %d", n)
+	counts, _ = store.PollFeedJobCounts(ctx)
+	if counts.Pending != 2 || counts.MaxLagSeconds < 3500 {
+		t.Fatalf("counts with backlog = %+v", counts)
 	}
 }
 
@@ -166,7 +110,10 @@ func TestIntegration_RefreshAllResetsCircuitsAndQueuesEverythingButManual(t *tes
 		t.Fatalf("circuit not tripped: %+v", before)
 	}
 
-	feeds, queued, err := store.EnqueueRefreshAllPollJobs(ctx)
+	if err := store.SetFeedNextCheckAt(ctx, healthy.ID, time.Now().Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	feeds, queued, err := store.RefreshAllFeeds(ctx)
 	if err != nil || feeds != 2 || queued != 2 {
 		t.Fatalf("feeds=%d queued=%d err=%v", feeds, queued, err)
 	}
@@ -175,16 +122,17 @@ func TestIntegration_RefreshAllResetsCircuitsAndQueuesEverythingButManual(t *tes
 		t.Fatalf("refresh-all must clear the circuit but keep last_error: %+v", after)
 	}
 	for _, f := range []Feed{healthy, tripped} {
-		if job, _ := store.GetPollFeedJob(ctx, f.ID); job == nil {
-			t.Fatalf("feed %d not queued", f.ID)
+		got, _ := store.GetFeedByID(ctx, f.ID)
+		if got.NextCheckAt == nil || time.Until(*got.NextCheckAt) > RefreshAllSpread(2) {
+			t.Fatalf("feed %d not made due: next_check_at=%v", f.ID, got.NextCheckAt)
 		}
-	}
-	if job, _ := store.GetPollFeedJob(ctx, manual.ID); job != nil {
-		t.Fatalf("manually paused feed queued: %+v", job)
 	}
 	m, _ := store.GetFeedByID(ctx, manual.ID)
 	if !m.ManualPaused {
 		t.Fatal("manual pause lost")
+	}
+	if got, _ := store.ListFeedsDue(ctx, 100, nil); len(got) != 0 && got[0].ID == manual.ID {
+		t.Fatalf("manually paused feed due: %v", dueIDs(got))
 	}
 }
 
@@ -283,9 +231,6 @@ func TestIntegration_AdminFeedDashboard(t *testing.T) {
 	if err := store.SetFeedManualPaused(ctx, paused.ID, true); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.EnqueuePollFeedJobs(ctx, []int64{waiting.ID}, time.Now()); err != nil {
-		t.Fatal(err)
-	}
 
 	sum, err := store.AdminFeedSummary(ctx, 0)
 	if err != nil {
@@ -305,11 +250,11 @@ func TestIntegration_AdminFeedDashboard(t *testing.T) {
 	for _, row := range all {
 		switch row.ID {
 		case waiting.ID:
-			if row.EntryCount != 3 || row.UnreadCount != 2 || !row.HasQueuedJob {
+			if row.EntryCount != 3 || row.UnreadCount != 2 {
 				t.Fatalf("waiting row=%+v", row)
 			}
 		default:
-			if row.EntryCount != 0 || row.HasQueuedJob {
+			if row.EntryCount != 0 {
 				t.Fatalf("row %d=%+v", row.ID, row)
 			}
 		}

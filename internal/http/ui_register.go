@@ -131,6 +131,8 @@ func (s *Server) registerUI(mux *http.ServeMux) {
 		cfg.PauseWorkers = s.workerControl.Pause
 		cfg.ResumeWorkers = s.workerControl.Resume
 		cfg.WorkersPaused = s.workerControl.Paused
+		cfg.PollInflight = s.workerControl.Inflight
+		cfg.PollingSince = s.workerControl.PollingSince
 	}
 	h, err := ui.NewHandler(cfg)
 	if err != nil {
@@ -149,7 +151,7 @@ func (s *Server) refreshAllFeedsForUser(r *http.Request, userID int64) error {
 	if s.refreshAll == nil {
 		return fmt.Errorf("job queue is not configured")
 	}
-	_, _, err = s.refreshAll.EnqueueRefreshAllPollJobs(r.Context())
+	_, _, err = s.refreshAll.RefreshAllFeeds(r.Context())
 	return err
 }
 

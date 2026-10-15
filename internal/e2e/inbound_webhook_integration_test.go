@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
+	"slices"
 	"testing"
 	"time"
 
@@ -89,15 +90,12 @@ func TestE2E_InboundWebhook_NodeToNode(t *testing.T) {
 			t.Fatalf("sender log = %+v", l)
 		}
 	}
-	// The inbound feed is never due and never queued.
-	if due, _ := env.store.ListFeedsDue(ctx, 1000); contains(due, inbound.ID) {
-		t.Fatal("inbound feed listed as due")
-	}
-	if _, _, err := env.store.EnqueueRefreshAllPollJobs(ctx); err != nil {
+	// The inbound feed is never due, not even after refresh-all.
+	if _, _, err := env.store.RefreshAllFeeds(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if j, _ := env.store.GetPollFeedJob(ctx, inbound.ID); j != nil {
-		t.Fatalf("refresh-all queued the inbound feed: %+v", j)
+	if due, _ := env.store.ListFeedsDue(ctx, 1000, nil); slices.ContainsFunc(due, func(d storage.DueFeed) bool { return d.ID == inbound.ID }) {
+		t.Fatal("inbound feed listed as due")
 	}
 
 	// Raw endpoint.
@@ -180,13 +178,4 @@ func TestE2E_InboundWebhook_NodeToNode(t *testing.T) {
 	if code, _ := post(fmt.Sprintf("%s/hooks/%d", off.URL, inbound.ID), signHMAC(rotated, fresh), fresh); code != http.StatusNotFound {
 		t.Fatalf("feature off: %d", code)
 	}
-}
-
-func contains(ids []int64, id int64) bool {
-	for _, x := range ids {
-		if x == id {
-			return true
-		}
-	}
-	return false
 }

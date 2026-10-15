@@ -118,7 +118,7 @@ func (r *FeedRefresher) processEntriesFiltered(
 		if wanted {
 			wantedParams = append(wantedParams, p)
 		} else {
-			toDedup = append(toDedup, storage.FeedEntryDedupParams{Hash: p.Hash, URL: p.URL})
+			toDedup = append(toDedup, storage.FeedEntryDedupParams{Hash: p.Hash})
 		}
 	}
 

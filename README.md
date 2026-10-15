@@ -43,7 +43,7 @@ curl -fsSL https://raw.githubusercontent.com/Tywed/rssam/main/install.sh | sudo 
 | Бэкапы | `/opt/rssam/backups/` (ежедневно, см. ниже) |
 | Health | `GET /healthz` → `ok` (не `/health`) |
 
-Не запускайте второй экземпляр rssam на той же `DATABASE_URL`: два poller’а делят очередь `jobs`.
+Второй экземпляр rssam на той же `DATABASE_URL` ленты не опрашивает (блокировка в БД), только обслуживает HTTP.
 
 Self-update и restart из веб-UI в **Docker не работают** — обновляйте образ.
 
@@ -69,7 +69,7 @@ curl -fsSL https://raw.githubusercontent.com/Tywed/rssam/main/install.sh | sudo 
 
 ## Резервное копирование
 
-Installer ставит `/usr/local/sbin/rssam-backup` и таймер `rssam-backup.timer` (ежедневно в 03:30, `--no-backup` — не ставить). Бэкап — пара файлов в `/opt/rssam/backups/`: `rssam-<дата>.dump` (`pg_dump -Fc`, сжатый, без очереди `jobs` и `sessions` — они пересоздаются) и копия `.env` (в нём токены). Хранятся последние 7 (`RSSAM_BACKUP_KEEP`).
+Installer ставит `/usr/local/sbin/rssam-backup` и таймер `rssam-backup.timer` (ежедневно в 03:30, `--no-backup` — не ставить). Бэкап — пара файлов в `/opt/rssam/backups/`: `rssam-<дата>.dump` (`pg_dump -Fc`, сжатый, без `sessions` — они пересоздаются) и копия `.env` (в нём токены). Хранятся последние 7 (`RSSAM_BACKUP_KEEP`).
 
 ```bash
 sudo rssam-backup backup                       # вручную

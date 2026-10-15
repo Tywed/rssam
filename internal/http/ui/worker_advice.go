@@ -67,7 +67,6 @@ func (h *Handler) loadWorkerAdvice(ctx context.Context, summary storage.AdminFee
 		FetchTimeout:  fetchTimeout,
 		Overdue:       jobs.Overdue,
 		MaxLag:        time.Duration(jobs.MaxLagSeconds * float64(time.Second)),
-		Waiting:       summary.WaitingCount,
 		ErrorFraction: errFrac,
 	})
 
@@ -88,7 +87,7 @@ func (h *Handler) loadWorkerAdvice(ctx context.Context, summary storage.AdminFee
 	}
 
 	switch advice.Action {
-	case capacity.ActionIncrease, capacity.ActionFixFeeds, capacity.ActionSchedulerLimit:
+	case capacity.ActionIncrease, capacity.ActionFixFeeds:
 		view.Tone = "warn"
 	case capacity.ActionDecrease:
 		view.Tone = "ok"
@@ -103,16 +102,14 @@ func (h *Handler) loadWorkerAdvice(ctx context.Context, summary storage.AdminFee
 		view.Title = "Пул опроса можно уменьшить"
 	case capacity.ActionFixFeeds:
 		view.Title = "Сначала разберитесь с ошибками лент"
-	case capacity.ActionSchedulerLimit:
-		view.Title = "Упираетесь в лимит планировщика, не в пул"
 	default:
 		view.Title = "Пул опроса в норме"
 	}
 
 	if jobs.Stale > 0 {
 		view.Tone = "warn"
-		view.Title = "Зависшие задачи опроса"
-		view.Message = fmt.Sprintf("%d задач poll_feed держат lock дольше 2 минут (часто после рестарта). Они не входят в «просрочено», поэтому счётчик может быть 0, пока сотни лент ждут обновления. Диспетчер снимает такие lock автоматически.", jobs.Stale)
+		view.Title = "Зависшие опросы"
+		view.Message = fmt.Sprintf("%d опросов идут дольше 2 минут — источник не отвечает и не отпускает соединение. Диспетчер перестаёт их ждать и снова берёт эти ленты по сроку.", jobs.Stale)
 	}
 
 	if webhookDue > webhookN*2 {

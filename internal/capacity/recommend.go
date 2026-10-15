@@ -7,13 +7,11 @@ import (
 )
 
 const (
-	ActionOK             = "ok"
-	ActionIncrease       = "increase"
-	ActionDecrease       = "decrease"
-	ActionFixFeeds       = "fix_feeds"
-	ActionSchedulerLimit = "scheduler_limit"
+	ActionOK       = "ok"
+	ActionIncrease = "increase"
+	ActionDecrease = "decrease"
+	ActionFixFeeds = "fix_feeds"
 
-	SchedulerDueLimit = 1000
 	maxWorkers        = 1000
 	headroom          = 1.3
 	errorFractionHigh = 0.25
@@ -32,7 +30,6 @@ type Input struct {
 	FetchTimeout  time.Duration
 	Overdue       int
 	MaxLag        time.Duration
-	Waiting       int
 	ErrorFraction float64
 }
 
@@ -114,12 +111,6 @@ func Recommend(in Input) Advice {
 	if in.ErrorFraction >= errorFractionHigh && (in.MaxLag >= lagHigh || in.Overdue > workers) {
 		base.Action = ActionFixFeeds
 		base.Message = "Много лент с ошибками и очередь опроса отстаёт. Сначала почините, поставьте на паузу или увеличьте интервалы; больше воркеров скорее усилит stampede и таймауты."
-		return base
-	}
-
-	if in.Waiting >= SchedulerDueLimit && in.Overdue*2 < in.Waiting {
-		base.Action = ActionSchedulerLimit
-		base.Message = fmt.Sprintf("Ждут обновления %d лент при небольшой просроченной очереди jobs. Узкое место — лимит планировщика (до %d лент за тик), а не размер пула воркеров.", in.Waiting, SchedulerDueLimit)
 		return base
 	}
 

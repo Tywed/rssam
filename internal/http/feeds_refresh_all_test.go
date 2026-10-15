@@ -26,7 +26,7 @@ type enqueueAllStub struct {
 	calls  int
 }
 
-func (j *enqueueAllStub) EnqueueRefreshAllPollJobs(context.Context) (int, int, error) {
+func (j *enqueueAllStub) RefreshAllFeeds(context.Context) (int, int, error) {
 	j.calls++
 	return j.feeds, j.queued, nil
 }

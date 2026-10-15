@@ -13,16 +13,16 @@ func TestIdleWait(t *testing.T) {
 	w := newDueWakers()
 
 	// A wake-up ends the wait at once, and repeats collapse into one slot.
-	w.wake(storage.NotifyJobsDue)
-	w.wake(storage.NotifyJobsDue)
+	w.wake(storage.NotifyFeedsDue)
+	w.wake(storage.NotifyFeedsDue)
 	w.wake("unknown")
 	start := time.Now()
-	idleWait(ctx, w.jobs, time.Time{}, false, time.Minute)
+	idleWait(ctx, w.feeds, time.Time{}, false, time.Minute)
 	if time.Since(start) > 200*time.Millisecond {
 		t.Fatal("wake must end the wait immediately")
 	}
 	select {
-	case <-w.jobs:
+	case <-w.feeds:
 		t.Fatal("second wake must have collapsed into the first")
 	default:
 	}

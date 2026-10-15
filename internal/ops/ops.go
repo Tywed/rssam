@@ -293,7 +293,7 @@ func DualProcessWarning() string {
 		n++
 	}
 	if n > 1 {
-		return "Несколько процессов rssam. Два poller’а на одной БД делят очередь jobs."
+		return "Несколько процессов rssam. Опрос ведёт только тот, кто первым взял блокировку на БД; остальные обслуживают HTTP."
 	}
 	return ""
 }

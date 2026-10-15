@@ -14,12 +14,6 @@ type circuitFeedStore struct {
 	feed storage.Feed
 }
 
-func (c *circuitFeedStore) CompleteJob(_ context.Context, _ int64, _ string) (bool, error) {
-	return true, nil
-}
-func (c *circuitFeedStore) RescheduleJob(_ context.Context, _ int64, _ string, _ time.Time, _ string) error {
-	return nil
-}
 func (c *circuitFeedStore) GetFeedByID(_ context.Context, id int64) (storage.Feed, error) {
 	f := c.feed
 	f.ID = id
@@ -43,7 +37,5 @@ func TestProcessPollFeed_SkipsCircuitOpen(t *testing.T) {
 	store := &circuitFeedStore{
 		feed: storage.Feed{PollPaused: true, ParsingErrorCount: 10},
 	}
-	feedID := int64(7)
-	j := storage.Job{ID: 1, Type: "poll_feed", FeedID: &feedID}
-	processPollFeedJob(context.Background(), j, store, noopRefresher{}, Config{InstanceID: "test"}, slog.Default())
+	processPollFeed(context.Background(), 7, store, noopRefresher{}, Config{InstanceID: "test"}, slog.Default())
 }

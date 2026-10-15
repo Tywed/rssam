@@ -12,7 +12,7 @@ var (
 
 	PollAttempts = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "rssam_poll_attempts_total",
-		Help: "Number of feed poll attempts.",
+		Help: "Number of feed poll attempts by result: success, error, deferred (held back by a local rate limiter, nothing fetched).",
 	}, []string{"result"})
 
 	PollErrors = prometheus.NewCounter(prometheus.CounterOpts{
@@ -28,12 +28,12 @@ var (
 
 	ClaimedJobs = prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "rssam_jobs_claimed_total",
-		Help: "Number of jobs claimed from the queue.",
+		Help: "Number of due feeds handed to the poll workers.",
 	})
 
 	JobLag = prometheus.NewHistogram(prometheus.HistogramOpts{
 		Name:    "rssam_job_lag_seconds",
-		Help:    "Lag between job run_at and claim time.",
+		Help:    "Lag between a feed becoming due and the dispatcher picking it up.",
 		Buckets: prometheus.DefBuckets,
 	})
 

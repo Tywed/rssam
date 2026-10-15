@@ -91,20 +91,6 @@ type Feed struct {
 	UpdatedAt   time.Time
 }
 
-type Job struct {
-	ID        int64
-	Type      string
-	FeedID    *int64
-	RunAt     time.Time
-	Payload   []byte
-	Attempts  int
-	LastError *string
-	LockedAt  *time.Time
-	LockedBy  *string
-	CreatedAt time.Time
-	UpdatedAt time.Time
-}
-
 // Entry is stored once per feed; Status and Starred are the state of the
 // user it was loaded for (user_unread, user_entries exceptions) —
 // "unread"/false on rows returned by CreateEntries.
@@ -355,15 +341,6 @@ type FeedSubscriber struct {
 	UserID    int64
 	Username  string
 	CreatedAt time.Time
-}
-
-type JobStore interface {
-	EnqueuePollFeedJobs(ctx context.Context, feedIDs []int64, runAt time.Time) error
-	EnqueueRefreshAllPollJobs(ctx context.Context) (feeds int, queued int, err error)
-	ClaimDueJobs(ctx context.Context, limit int, lockedBy string) ([]Job, error)
-	CompleteJob(ctx context.Context, jobID int64, lockedBy string) (deleted bool, err error)
-	ReclaimStalePollJobs(ctx context.Context, instanceID string, staleAfter time.Duration) (int64, error)
-	RescheduleJob(ctx context.Context, jobID int64, lockedBy string, runAt time.Time, lastError string) error
 }
 
 // FeedActivityStore answers "how many items did this feed deliver lately"

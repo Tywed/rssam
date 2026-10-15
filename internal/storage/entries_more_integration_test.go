@@ -20,7 +20,7 @@ func TestIntegration_EntryDedupAndCollapse(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	n, err := store.RecordFeedEntryDedup(ctx, feed.ID, []FeedEntryDedupParams{{Hash: "seen-1", URL: "https://example.com/seen"}, {Hash: "seen-2"}})
+	n, err := store.RecordFeedEntryDedup(ctx, feed.ID, []FeedEntryDedupParams{{Hash: "seen-1"}, {Hash: "seen-2"}})
 	if err != nil || n != 2 {
 		t.Fatalf("record dedup: n=%d err=%v", n, err)
 	}

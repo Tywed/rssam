@@ -80,9 +80,6 @@ func (m *uiMemAdminFeeds) OfferedPollsPerMin(context.Context) (float64, error) {
 func (m *uiMemAdminFeeds) DueWebhookLogCount(context.Context) (int, error) {
 	return 0, nil
 }
-func (m *uiMemAdminFeeds) GetPollFeedJob(_ context.Context, feedID int64) (*storage.AdminFeedJob, error) {
-	return nil, nil
-}
 func (m *uiMemAdminFeeds) EstimateDatabaseSize(context.Context) (int64, error) {
 	return 42 * 1024 * 1024, nil
 }

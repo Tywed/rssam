@@ -269,6 +269,7 @@ func TestIntegration_Migration0050_SharedFeedsMerge(t *testing.T) {
 		   ADD COLUMN webhook_id BIGINT REFERENCES webhooks(id) ON DELETE SET NULL`,
 		`ALTER TABLE entries DROP COLUMN removed_at, ADD COLUMN user_id BIGINT NOT NULL DEFAULT 1, ADD COLUMN status TEXT NOT NULL DEFAULT 'unread', ADD COLUMN starred BOOLEAN NOT NULL DEFAULT FALSE`,
 		`ALTER TABLE enclosures ADD COLUMN user_id BIGINT NOT NULL DEFAULT 1`,
+		`ALTER TABLE feed_entry_dedup ADD COLUMN url TEXT NOT NULL DEFAULT ''`,
 		`INSERT INTO users(id, username, password_hash, role) VALUES (11, 'm50_a', 'h', 'admin'), (12, 'm50_b', 'h', 'reader')`,
 		`INSERT INTO categories(id, user_id, title) VALUES (1, 12, 'B')`,
 		`INSERT INTO feeds(id, user_id, feed_url, feed_type, title, interval_minutes, category_id) VALUES
@@ -280,7 +281,7 @@ func TestIntegration_Migration0050_SharedFeedsMerge(t *testing.T) {
 		   (4, 12, 3, 'b1', 'https://x/b1', 'c', 'hb1', 'unread', FALSE, ''),
 		   (5, 11, 1, '', 'https://x/s', '', 'hs', 'removed', FALSE, '')`,
 		`INSERT INTO enclosures(user_id, entry_id, url) VALUES (12, 2, 'https://x/enc')`,
-		`INSERT INTO feed_entry_dedup(feed_id, hash, url) VALUES (2, 'hd', 'https://x/d')`,
+		`INSERT INTO feed_entry_dedup(feed_id, hash) VALUES (2, rssam_dedup_key('hd'))`,
 	} {
 		if _, err := store.db.Exec(ctx, q); err != nil {
 			t.Fatalf("%s: %v", q, err)
@@ -381,7 +382,7 @@ func TestIntegration_Migration0050_SharedFeedsMerge(t *testing.T) {
 	if n != 1 {
 		t.Fatal("enclosure of the collapsed entry not re-pointed")
 	}
-	_ = store.db.QueryRow(ctx, `SELECT count(*) FROM feed_entry_dedup WHERE feed_id = 1 AND hash = 'hd'`).Scan(&n)
+	_ = store.db.QueryRow(ctx, `SELECT count(*) FROM feed_entry_dedup WHERE feed_id = 1 AND hash = rssam_dedup_key('hd')`).Scan(&n)
 	if n != 1 {
 		t.Fatal("dedup hash of the merged feed not moved")
 	}

@@ -93,7 +93,11 @@ type Config struct {
 	PauseWorkers  func()
 	ResumeWorkers func()
 	WorkersPaused func() bool
-	Dedup         storage.EntryDedupStore
+	// PollInflight and PollingSince read the worker's in-flight polls; nil
+	// (a process that serves HTTP only) reports none.
+	PollInflight func() (running, stale int)
+	PollingSince func(feedID int64) (time.Time, bool)
+	Dedup        storage.EntryDedupStore
 	// Retention holds the retention windows the running process was started
 	// with; shown (and editable via .env) on the admin system page.
 	Retention RetentionSettings
@@ -114,6 +118,7 @@ type RetentionSettings struct {
 	FilterMatchRetentionDays int
 	FeedPollLogRetentionDays int
 	AuditLogRetentionDays    int
+	DedupRetentionDays       int
 	CleanupInterval          time.Duration
 }
 

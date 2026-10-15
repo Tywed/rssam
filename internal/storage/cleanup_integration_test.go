@@ -72,18 +72,18 @@ func TestIntegration_FeedEntryRetentionCleanup(t *testing.T) {
 	}
 
 	if _, err := store.RecordFeedEntryDedup(ctx, feed.ID, []FeedEntryDedupParams{
-		{Hash: "dedup-old-" + suffix, URL: "https://example.com/dedup-old"},
-		{Hash: "dedup-new-" + suffix, URL: "https://example.com/dedup-new"},
+		{Hash: "dedup-old-" + suffix},
+		{Hash: "dedup-new-" + suffix},
 	}); err != nil {
 		t.Fatalf("record dedup: %v", err)
 	}
 	if _, err := store.db.Exec(ctx, `
-UPDATE feed_entry_dedup SET first_seen_at = $3 WHERE feed_id = $1 AND hash = $2`,
+UPDATE feed_entry_dedup SET first_seen_at = $3 WHERE feed_id = $1 AND hash = rssam_dedup_key($2)`,
 		feed.ID, "dedup-old-"+suffix, oldTime); err != nil {
 		t.Fatalf("backdate old dedup: %v", err)
 	}
 	if _, err := store.db.Exec(ctx, `
-UPDATE feed_entry_dedup SET first_seen_at = $3 WHERE feed_id = $1 AND hash = $2`,
+UPDATE feed_entry_dedup SET first_seen_at = $3 WHERE feed_id = $1 AND hash = rssam_dedup_key($2)`,
 		feed.ID, "dedup-new-"+suffix, newTime); err != nil {
 		t.Fatalf("backdate new dedup: %v", err)
 	}
@@ -126,5 +126,18 @@ UPDATE feed_entry_dedup SET first_seen_at = $3 WHERE feed_id = $1 AND hash = $2`
 	}
 	if n != 1 || len(inserted) != 1 || inserted[0].Hash != "fresh-"+suffix {
 		t.Fatalf("known dedup hash was re-inserted: n=%d inserted=%+v", n, inserted)
+	}
+
+	// The global DEDUP_RETENTION_DAYS cut-off is independent of the feed's
+	// own retention: a cut-off in the future drops every remaining row of the feed.
+	result, err = store.RunRetentionCleanup(ctx, RetentionCleanupOpts{DedupBefore: time.Now().Add(time.Hour)})
+	if err != nil {
+		t.Fatalf("retention cleanup (dedup age): %v", err)
+	}
+	if result.FeedEntryDedup < 1 {
+		t.Fatalf("dedup deleted by age=%d want ≥1", result.FeedEntryDedup)
+	}
+	if err := store.db.QueryRow(ctx, `SELECT count(*) FROM feed_entry_dedup WHERE feed_id = $1`, feed.ID).Scan(&dedupCount); err != nil || dedupCount != 0 {
+		t.Fatalf("dedup rows after age cleanup=%d err=%v", dedupCount, err)
 	}
 }

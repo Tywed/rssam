@@ -7,17 +7,16 @@ import (
 	"rssam/internal/storage"
 )
 
-// dueWakers are the wake-up channels of the three claim loops; a buffered
+// dueWakers are the wake-up channels of the two claim loops; a buffered
 // slot per loop so a notification that arrives while the loop is busy is
 // kept, and repeats collapse into it.
 type dueWakers struct {
-	feeds, jobs, webhooks chan struct{}
+	feeds, webhooks chan struct{}
 }
 
 func newDueWakers() dueWakers {
 	return dueWakers{
 		feeds:    make(chan struct{}, 1),
-		jobs:     make(chan struct{}, 1),
 		webhooks: make(chan struct{}, 1),
 	}
 }
@@ -27,8 +26,6 @@ func (w dueWakers) wake(channel string) {
 	switch channel {
 	case storage.NotifyFeedsDue:
 		ch = w.feeds
-	case storage.NotifyJobsDue:
-		ch = w.jobs
 	case storage.NotifyWebhooksDue:
 		ch = w.webhooks
 	default:
