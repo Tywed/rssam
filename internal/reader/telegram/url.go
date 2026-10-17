@@ -3,6 +3,7 @@ package telegram
 import (
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -67,4 +68,9 @@ func DetectFeedURL(feedURL string) bool {
 func PreviewURL(username string) string {
 	username = NormalizeUsername(username)
 	return "https://t.me/s/" + url.PathEscape(username)
+}
+
+// AfterURL is the preview page restricted to messages newer than id.
+func AfterURL(username string, id int64) string {
+	return PreviewURL(username) + "?after=" + strconv.FormatInt(id, 10)
 }

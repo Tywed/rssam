@@ -27,6 +27,7 @@ type Proxy struct {
 const badProxyCooldown = 2 * time.Second
 
 type Client struct {
+	Health       Health
 	HTTP         *http.Client
 	ServiceToken string
 

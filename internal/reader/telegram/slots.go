@@ -71,4 +71,5 @@ func (e *ErrSlotsBusy) Error() string {
 	return "telegram: no free fetch slot within the fetch timeout"
 }
 
-func (e *ErrSlotsBusy) RetryAt() time.Time { return e.Until }
+func (e *ErrSlotsBusy) RetryAt() time.Time  { return e.Until }
+func (e *ErrSlotsBusy) DeferReason() string { return "slots" }

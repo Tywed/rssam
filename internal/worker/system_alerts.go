@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"rssam/internal/proxy"
 	"sort"
 	"strings"
 	"time"
@@ -39,6 +40,9 @@ type SystemAlertsConfig struct {
 	CurrentVersion string
 	// Compare orders two version strings (version.CompareSemver).
 	Compare func(a, b string) int
+	// ProxyOutage reports a long streak of proxy-path failures
+	// (proxy.Health.Outage); nil = no proxy alert.
+	ProxyOutage func() (proxy.OutageStatus, bool)
 }
 
 type systemAlertState struct {
@@ -47,6 +51,7 @@ type systemAlertState struct {
 	Webhooks map[int64]bool `json:"webhooks,omitempty"`
 	Release  string         `json:"release,omitempty"`
 	Backup   bool           `json:"backup_stale,omitempty"`
+	Proxy    bool           `json:"proxy_down,omitempty"`
 }
 
 type systemAlertsStore interface {
@@ -253,6 +258,19 @@ func (a *systemAlerter) diff(ctx context.Context) ([]alertMessage, systemAlertSt
 				Plain:   fmt.Sprintf("Бэкап устарел: последний дамп в %s сделан %d ч назад", a.cfg.BackupDir, int(age.Hours())),
 				HTML:    fmt.Sprintf("<b>Бэкап устарел</b>\nпоследний дамп в %s сделан %d ч назад", html.EscapeString(a.cfg.BackupDir), int(age.Hours())),
 				Details: map[string]any{"dir": a.cfg.BackupDir, "age_hours": int(age.Hours())},
+			})
+		}
+	}
+	if a.cfg.ProxyOutage != nil {
+		st, down := a.cfg.ProxyOutage()
+		next.Proxy = down
+		if down && !a.state.Proxy {
+			mins := int(time.Since(st.Since).Minutes())
+			msgs = append(msgs, alertMessage{
+				Kind:    "proxy_down",
+				Plain:   fmt.Sprintf("Прокси недоступен: %d неудачных запросов подряд за %d мин (%s)", st.Failures, mins, st.LastErr),
+				HTML:    fmt.Sprintf("<b>Прокси недоступен</b>\n%d неудачных запросов подряд за %d мин\n%s", st.Failures, mins, html.EscapeString(st.LastErr)),
+				Details: map[string]any{"failures": st.Failures, "minutes": mins, "last_error": st.LastErr},
 			})
 		}
 	}

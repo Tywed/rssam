@@ -127,6 +127,16 @@
         <p class="meta" id="dzen-channel-id"></p>
       </div>
 
+      <div class="card feed-type-settings" id="feed-settings-ok_group" data-feed-type="ok_group" {{if .Feed.ID}}{{if ne .Feed.FeedType "ok_group"}}hidden{{end}}{{else}}hidden{{end}}>
+        <h2>Группа Одноклассников</h2>
+        <p class="meta">Посты одной группы ok.ru (у групп нет RSS). Страница группы показывает ~10 последних постов; каждый новый пост дочитывается со своей страницы — полный текст и точное время. Название подставляется с группы.</p>
+        <ul class="meta">
+          <li><code>https://ok.ru/group/58904363073576</code> или <code>https://ok.ru/rianovosti</code></li>
+          <li>Профили пользователей не поддерживаются</li>
+        </ul>
+        <p class="meta" id="ok-group-id"></p>
+      </div>
+
       <div class="card feed-type-settings" id="feed-settings-smotrim" data-feed-type="smotrim" {{if .Feed.ID}}{{if ne .Feed.FeedType "smotrim"}}hidden{{end}}{{else}}hidden{{end}}>
         <h2>Smotrim</h2>
         <p class="meta">Видео и сюжеты <strong>бренда</strong> на smotrim.ru (ранее api.vgtrk.com).</p>

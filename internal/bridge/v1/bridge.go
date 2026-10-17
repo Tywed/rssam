@@ -101,6 +101,19 @@ func RetryAt(err error) (time.Time, bool) {
 	return time.Time{}, false
 }
 
+// DeferReason labels a RetryAtError for metrics: "poll_hours", "slots", "host",
+// "proxy"; errors without the method count as "rate_limit".
+func DeferReason(err error) string {
+	var e interface {
+		error
+		DeferReason() string
+	}
+	if errors.As(err, &e) {
+		return e.DeferReason()
+	}
+	return "rate_limit"
+}
+
 // DecodeState unmarshals a stored State into v; an empty document is not an
 // error and leaves v untouched.
 func DecodeState(raw json.RawMessage, v any) error {

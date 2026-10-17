@@ -164,7 +164,7 @@ rssam ставит доставку в очередь в двух случаях
 {"text":"{{.count}} новых:{{range .items}}\n• {{.entry.Title}} — {{.entry.URL}}{{end}}"}
 ```
 
-`system_alert` (webhook с `system_alerts`): без записи, без `body_template`. Поле `alert` — одно из `feeds_paused`, `feeds_silent`, `webhooks_failing`, `update`, `backup_stale`; `text` — готовый русский текст; `details` — id затронутых объектов или параметры (`feed_ids`, `webhook_ids`, `latest`/`current`, `dir`/`age_hours`). Каждая проблема сообщается один раз при появлении; повтор — только после того, как она исчезла и появилась снова.
+`system_alert` (webhook с `system_alerts`): без записи, без `body_template`. Поле `alert` — одно из `feeds_paused`, `feeds_silent`, `webhooks_failing`, `update`, `backup_stale`, `proxy_down`; `text` — готовый русский текст; `details` — id затронутых объектов или параметры (`feed_ids`, `webhook_ids`, `latest`/`current`, `dir`/`age_hours`, `failures`/`minutes`/`last_error`). Каждая проблема сообщается один раз при появлении; повтор — только после того, как она исчезла и появилась снова.
 
 ```json
 {

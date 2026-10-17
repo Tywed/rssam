@@ -73,13 +73,21 @@ func (c Config) StaticProxyEndpoint() (proxy.Proxy, error) {
 	return proxy.ParseStaticProxy(c.StaticProxy)
 }
 
-// BridgeOverride is optional per-feed JSON in bridge_state.telegram.
+// BridgeOverride is the per-feed JSON in bridge_state.telegram: proxy
+// settings the feed form writes, plus the poll cursor Fetch maintains.
 type BridgeOverride struct {
 	UseProxy        *bool  `json:"use_proxy,omitempty"`
 	ProxyServiceURL string `json:"proxy_service_url,omitempty"`
 	ProxyTargetURL  string `json:"proxy_target_url,omitempty"`
 	StaticProxy     string `json:"static_proxy,omitempty"`
 	MaxPages        int    `json:"max_pages,omitempty"`
+	// LastMessageID is the newest message id seen on LastChannel; the next
+	// poll asks t.me/s/<channel>?after=<id> for messages newer than it
+	// (a few KB when there are none, against ~150 KB for the full page).
+	// Zero, or a channel that no longer matches the feed URL, means a
+	// full first page.
+	LastMessageID int64  `json:"last_message_id,omitempty"`
+	LastChannel   string `json:"last_channel,omitempty"`
 }
 
 func (c Config) validateFetch() error {

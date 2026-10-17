@@ -50,12 +50,12 @@ func TestRegistry_DzenChannelIsContractBridge(t *testing.T) {
 	for _, c := range bundle.Contract {
 		names[c.Name()] = true
 	}
-	for _, want := range []string{FeedTypeTelegram, FeedTypeMaxstat, FeedTypeRutube, FeedTypeDzenNews, FeedTypeDzenChannel, FeedTypeSmotrim, FeedTypePage} {
+	for _, want := range []string{FeedTypeTelegram, FeedTypeMaxstat, FeedTypeRutube, FeedTypeDzenNews, FeedTypeDzenChannel, FeedTypeOKGroup, FeedTypeSmotrim, FeedTypePage} {
 		if !names[want] {
 			t.Fatalf("Contract lacks %s: %v", want, names)
 		}
 	}
-	if len(bundle.Contract) != 7 || len(bundle.Registry.handlers) != 8 {
+	if len(bundle.Contract) != 8 || len(bundle.Registry.handlers) != 9 {
 		t.Fatalf("contract=%d handlers=%d", len(bundle.Contract), len(bundle.Registry.handlers))
 	}
 }

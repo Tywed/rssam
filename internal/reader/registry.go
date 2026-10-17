@@ -12,6 +12,7 @@ import (
 	"rssam/internal/reader/dzenchannel"
 	"rssam/internal/reader/max"
 	"rssam/internal/reader/maxstat"
+	"rssam/internal/reader/okgroup"
 	"rssam/internal/reader/page"
 	"rssam/internal/reader/rutube"
 	"rssam/internal/reader/smotrim"
@@ -84,6 +85,9 @@ type RegistryBundle struct {
 	Dzen     *dzen.Handler
 	Smotrim  *smotrim.Handler
 	Page     *page.Handler
+	// Proxy is the shared proxy-service client (Telegram); its Health feeds
+	// the proxy_down alert.
+	Proxy *proxy.Client
 	// Contract lists every bridge in registration order (all are registered
 	// through Adapt); the title resolver asks them for names.
 	Contract []bridge.Handler
@@ -215,6 +219,9 @@ func NewRegistry(cfg RegistryConfig) (*RegistryBundle, error) {
 	}))
 	reg.Register(Adapt(dzenChannel))
 
+	okGroup := okgroup.NewHandler(okgroup.NewClient(cfg.HTTPClient, cfg.SSRFGuard, okgroup.Config{}))
+	reg.Register(Adapt(okGroup))
+
 	smotrimClient, err := smotrim.NewClient(cfg.HTTPClient, cfg.SSRFGuard, smotrim.Config{
 		BrandBaseURL: cfg.SmotrimBrandBaseURL,
 		GraphQLURL:   cfg.SmotrimGraphQLURL,
@@ -249,6 +256,7 @@ func NewRegistry(cfg RegistryConfig) (*RegistryBundle, error) {
 		Dzen:     dzenHandler,
 		Smotrim:  smotrimHandler,
 		Page:     pageHandler,
+		Proxy:    proxyClient,
 		Contract: contract,
 	}, nil
 }

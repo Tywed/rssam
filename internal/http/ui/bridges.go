@@ -171,6 +171,7 @@ func (h *Handler) bridgeFeedCounts(r *http.Request) (map[string]int, error) {
 		"vk_search":    0,
 		"dzen_news":    0,
 		"dzen_channel": 0,
+		"ok_group":     0,
 		"smotrim":      0,
 		"rss":          0,
 	}

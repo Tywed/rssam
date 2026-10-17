@@ -80,14 +80,20 @@ func (h *Handler) DetectFeedType(feedURL string) string {
 	return ""
 }
 
-// FetchResult holds entries from a channel poll.
+// FetchResult holds entries from a channel poll and the cursor after it.
 type FetchResult struct {
-	Entries []bridge.Entry
+	Entries       []bridge.Entry
+	LastMessageID int64
 }
 
-// Fetch loads channel messages using configured proxy mode.
-// Fetch implements bridge.Handler; State is an optional BridgeOverride the
-// feed form writes, Fetch never changes it.
+// incrementalMaxPages caps how many ?after= pages one poll follows when
+// more than a page of messages arrived since the cursor; the rest comes
+// with the next poll.
+const incrementalMaxPages = 5
+
+// Fetch implements bridge.Handler; State is the BridgeOverride (proxy
+// settings from the feed form plus the message cursor). Fetch returns it
+// with the cursor advanced and the form's fields untouched.
 func (h *Handler) Fetch(ctx context.Context, req bridge.Request) (bridge.Response, error) {
 	var override *BridgeOverride
 	if len(req.State) > 0 {
@@ -95,7 +101,19 @@ func (h *Handler) Fetch(ctx context.Context, req bridge.Request) (bridge.Respons
 		_ = bridge.DecodeState(req.State, override)
 	}
 	res, err := h.fetch(ctx, req.FeedURL, override)
-	return bridge.Response{Entries: res.Entries}, err
+	if err != nil {
+		return bridge.Response{}, err
+	}
+	if res.LastMessageID <= 0 {
+		return bridge.Response{Entries: res.Entries}, nil
+	}
+	if override == nil {
+		override = &BridgeOverride{}
+	}
+	username, _ := ParseUsernameFromFeedURL(req.FeedURL)
+	override.LastMessageID = res.LastMessageID
+	override.LastChannel = NormalizeUsername(username)
+	return bridge.Response{Entries: res.Entries, State: bridge.EncodeState(override)}, nil
 }
 
 func (h *Handler) fetch(ctx context.Context, feedURL string, override *BridgeOverride) (FetchResult, error) {
@@ -129,6 +147,12 @@ func (h *Handler) fetch(ctx context.Context, feedURL string, override *BridgeOve
 	defer h.slots.release()
 
 	pageURL := PreviewURL(username)
+	var cursor int64
+	if override != nil && override.LastMessageID > 0 && override.LastChannel == NormalizeUsername(username) {
+		cursor = override.LastMessageID
+		pageURL = AfterURL(username, cursor)
+		maxPages = incrementalMaxPages
+	}
 	var all []ParsedMessage
 
 	for page := range maxPages {
@@ -142,11 +166,23 @@ func (h *Handler) fetch(ctx context.Context, feedURL string, override *BridgeOve
 		}
 		all = append(all, msgs...)
 
-		next, ok := NextPageURL(body)
+		var next string
+		var ok bool
+		if cursor > 0 {
+			next, ok = NewerPageURL(body)
+		} else {
+			next, ok = NextPageURL(body)
+		}
 		if !ok || page+1 >= maxPages {
 			break
 		}
 		pageURL = next
+	}
+	last := cursor
+	for _, m := range all {
+		if id := MessageID(m.URI); id > last {
+			last = id
+		}
 	}
 
 	// Oldest-first order (PHP reverses per page then reverses all).
@@ -158,7 +194,7 @@ func (h *Handler) fetch(ctx context.Context, feedURL string, override *BridgeOve
 	for _, m := range all {
 		entries = append(entries, messageToEntry(m))
 	}
-	return FetchResult{Entries: entries}, nil
+	return FetchResult{Entries: entries, LastMessageID: last}, nil
 }
 
 // DiscoverChannelTitle loads t.me/s preview and returns the channel display name.
@@ -230,10 +266,10 @@ func (h *Handler) fetchViaStatic(ctx context.Context, cfg Config, pageURL string
 	}
 	body, status, err := proxy.FetchGET(ctx, p, pageURL, cfg.UserAgent, cfg.ProxyConnectTimeout, cfg.ProxyRequestTimeout, cfg.TLSInsecureSkipVerify)
 	if err != nil {
-		return nil, err
+		return nil, &proxy.Unavailable{Op: "static proxy", Err: err}
 	}
 	if status != http.StatusOK {
-		return nil, fmt.Errorf("telegram: static proxy fetch status %d", status)
+		return nil, &proxy.Unavailable{Op: "static proxy", Err: fmt.Errorf("telegram: status %d", status)}
 	}
 	return body, nil
 }
@@ -253,10 +289,12 @@ func (h *Handler) fetchPageWithRetry(ctx context.Context, cfg Config, pageURL st
 		}
 		p, err := h.proxyClient.WorkingProxy(ctx, cfg.ProxyServiceURL, cfg.ProxyTargetURL)
 		if err != nil {
-			return nil, fmt.Errorf("telegram: get proxy: %w", err)
+			h.proxyClient.Health.Failure(err)
+			return nil, &proxy.Unavailable{Op: "get proxy", Err: err}
 		}
 		body, status, err := h.proxyClient.FetchGET(ctx, p, pageURL, cfg.UserAgent, cfg.ProxyConnectTimeout, cfg.ProxyRequestTimeout, cfg.TLSInsecureSkipVerify)
 		if err == nil && status == http.StatusOK {
+			h.proxyClient.Health.Success()
 			return body, nil
 		}
 		var reason string
@@ -264,15 +302,19 @@ func (h *Handler) fetchPageWithRetry(ctx context.Context, cfg Config, pageURL st
 			reason = err.Error()
 			lastErr = err
 		} else {
-			lastErr = fmt.Errorf("telegram: unexpected status %d", status)
+			lastErr = fmt.Errorf("telegram: status %d", status)
 			reason = lastErr.Error()
 		}
 		_ = h.proxyClient.ReportBadProxy(ctx, cfg.ProxyServiceURL, p.ID, reason)
 	}
-	if lastErr != nil {
-		return nil, lastErr
+	if lastErr == nil {
+		lastErr = fmt.Errorf("telegram: fetch failed after retries")
 	}
-	return nil, fmt.Errorf("telegram: fetch failed after retries")
+	// t.me answers a missing or private channel with a page, never with a
+	// transport error or a non-200 status; whatever failed here is the
+	// proxy path, and the channel must not pay for it with backoff.
+	h.proxyClient.Health.Failure(lastErr)
+	return nil, &proxy.Unavailable{Op: "socks fetch", Err: lastErr}
 }
 
 func messageToEntry(m ParsedMessage) bridge.Entry {

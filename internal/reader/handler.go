@@ -10,6 +10,7 @@ import (
 	"rssam/internal/reader/dzenchannel"
 	maxbridge "rssam/internal/reader/max"
 	maxstatbridge "rssam/internal/reader/maxstat"
+	"rssam/internal/reader/okgroup"
 	"rssam/internal/reader/page"
 	"rssam/internal/reader/rutube"
 	"rssam/internal/reader/smotrim"
@@ -114,9 +115,11 @@ const (
 	FeedTypeDzenNews = "dzen_news"
 	// FeedTypeDzenChannel is served by a contract bridge (dzenchannel).
 	FeedTypeDzenChannel = "dzen_channel"
-	FeedTypeSmotrim     = "smotrim"
-	FeedTypePage        = "page"
-	FeedTypeCustom      = "custom"
+	// FeedTypeOKGroup is served by a contract bridge (okgroup).
+	FeedTypeOKGroup = "ok_group"
+	FeedTypeSmotrim = "smotrim"
+	FeedTypePage    = "page"
+	FeedTypeCustom  = "custom"
 	// FeedTypeInbound is never fetched: entries are POSTed to /hooks/{id}.
 	FeedTypeInbound = "inbound"
 )
@@ -124,7 +127,7 @@ const (
 // NormalizeFeedType returns a canonical feed type or empty string.
 func NormalizeFeedType(t string) string {
 	switch t {
-	case FeedTypeRSS, FeedTypeAtom, FeedTypeJSON, FeedTypeTelegram, FeedTypeVK, FeedTypeVKSearch, FeedTypeMax, FeedTypeMaxstat, FeedTypeRutube, FeedTypeDzenNews, FeedTypeDzenChannel, FeedTypeSmotrim, FeedTypePage, FeedTypeCustom, FeedTypeInbound:
+	case FeedTypeRSS, FeedTypeAtom, FeedTypeJSON, FeedTypeTelegram, FeedTypeVK, FeedTypeVKSearch, FeedTypeMax, FeedTypeMaxstat, FeedTypeRutube, FeedTypeDzenNews, FeedTypeDzenChannel, FeedTypeOKGroup, FeedTypeSmotrim, FeedTypePage, FeedTypeCustom, FeedTypeInbound:
 		return t
 	default:
 		return ""
@@ -153,6 +156,9 @@ func DetectFeedTypeFromURL(feedURL string) string {
 	}
 	if dzenchannel.Detect(feedURL) {
 		return FeedTypeDzenChannel
+	}
+	if okgroup.Detect(feedURL) {
+		return FeedTypeOKGroup
 	}
 	if smotrim.DetectFeedURL(feedURL) {
 		return FeedTypeSmotrim

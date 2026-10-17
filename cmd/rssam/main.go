@@ -285,6 +285,7 @@ func main() {
 		MaxPollInterval:         cfg.MaxPollInterval,
 		AdaptiveMaxInterval:     cfg.AdaptiveMaxInterval,
 		Activity:                pgStore,
+		Hosts:                   service.NewHostLimiter(cfg.PollHostConcurrency),
 	}
 
 	filterEngine := filter.New(filter.Config{
@@ -342,6 +343,7 @@ func main() {
 			BackupMaxAge:   cfg.BackupMaxAge,
 			CurrentVersion: version.Version,
 			Compare:        version.CompareSemver,
+			ProxyOutage:    registryBundle.Proxy.Health.Outage,
 			LatestRelease: func() string {
 				rel, err := releases.Latest()
 				if err != nil {

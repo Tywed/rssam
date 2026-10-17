@@ -9,6 +9,7 @@ import (
 	"rssam/internal/reader/dzenchannel"
 	maxbridge "rssam/internal/reader/max"
 	maxstatbridge "rssam/internal/reader/maxstat"
+	"rssam/internal/reader/okgroup"
 	"rssam/internal/reader/page"
 	"rssam/internal/reader/rutube"
 	"rssam/internal/reader/smotrim"
@@ -23,6 +24,7 @@ var bridgeFeedSchemes = map[string]struct{}{
 	"dzen-news":      {},
 	"dzen-search":    {},
 	"dzen-channel":   {},
+	"ok-group":       {},
 	"rutube-person":  {},
 	"smotrim":        {},
 	"smotrim-brand":  {},
@@ -104,6 +106,8 @@ func FeedTypeLabel(feedType string) string {
 		return "Dzen News"
 	case FeedTypeDzenChannel:
 		return "Dzen"
+	case FeedTypeOKGroup:
+		return "OK"
 	case FeedTypeSmotrim:
 		return "Smotrim"
 	case FeedTypePage:
@@ -154,6 +158,10 @@ func ValidateBridgeFeedURL(feedURL, feedType string) error {
 	case FeedTypeDzenChannel:
 		if !dzenchannel.Detect(feedURL) {
 			return fmt.Errorf("ожидается адрес канала Дзен: https://dzen.ru/имя или https://dzen.ru/id/…")
+		}
+	case FeedTypeOKGroup:
+		if !okgroup.Detect(feedURL) {
+			return fmt.Errorf("ожидается адрес группы Одноклассников: https://ok.ru/group/… или https://ok.ru/имя")
 		}
 	case FeedTypeSmotrim:
 		if _, ok := smotrim.ParseOptionsFromFeedURL(feedURL); !ok {

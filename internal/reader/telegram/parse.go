@@ -8,6 +8,7 @@ import (
 	"html"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -179,6 +180,44 @@ func NextPageURL(body []byte) (string, bool) {
 		return link, true
 	}
 	return "https://t.me/" + strings.TrimPrefix(link, "/"), true
+}
+
+// NewerPageURL is the "more newer messages" link of a ?after= page, present
+// when more messages arrived since the cursor than the page holds.
+func NewerPageURL(body []byte) (string, bool) {
+	doc, err := goquery.NewDocumentFromReader(bytes.NewReader(body))
+	if err != nil {
+		return "", false
+	}
+	var out string
+	doc.Find("div.tgme_widget_message_centered.js-messages_more_wrap a").EachWithBreak(func(_ int, a *goquery.Selection) bool {
+		link, ok := a.Attr("href")
+		if !ok || !strings.Contains(link, "after=") {
+			return true
+		}
+		if strings.HasPrefix(link, "http") {
+			out = link
+		} else {
+			out = "https://t.me/" + strings.TrimPrefix(link, "/")
+		}
+		return false
+	})
+	return out, out != ""
+}
+
+// MessageID is the numeric id in a message URI (https://t.me/<channel>/<id>,
+// possibly ?single); 0 when there is none.
+func MessageID(uri string) int64 {
+	uri, _, _ = strings.Cut(uri, "?")
+	i := strings.LastIndexByte(strings.TrimRight(uri, "/"), '/')
+	if i < 0 {
+		return 0
+	}
+	id, err := strconv.ParseInt(uri[i+1:], 10, 64)
+	if err != nil || id <= 0 {
+		return 0
+	}
+	return id
 }
 
 func parseMessage(msg *goquery.Selection, channelUsername string) ParsedMessage {

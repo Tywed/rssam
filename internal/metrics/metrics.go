@@ -26,6 +26,11 @@ var (
 		Buckets: prometheus.DefBuckets,
 	})
 
+	PollDeferred = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "rssam_poll_deferred_total",
+		Help: "Polls postponed without fetching, by reason: rate_limit, slots, host, poll_hours, proxy.",
+	}, []string{"reason"})
+
 	ClaimedJobs = prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "rssam_jobs_claimed_total",
 		Help: "Number of due feeds handed to the poll workers.",
@@ -76,6 +81,7 @@ func Init() {
 			PollAttempts,
 			PollErrors,
 			PollDuration,
+			PollDeferred,
 			ClaimedJobs,
 			JobLag,
 			WebhookDeliveriesTotal,

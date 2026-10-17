@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"rssam/internal/bridge/v1"
 	"strconv"
 	"sync/atomic"
 	"time"
@@ -291,6 +292,7 @@ func processPollFeed(ctx context.Context, feedID int64, store pollStore, refresh
 	now := time.Now().UTC()
 	if at, ok := reader.RetryAt(err); ok {
 		metrics.PollAttempts.WithLabelValues("deferred").Inc()
+		metrics.PollDeferred.WithLabelValues(bridge.DeferReason(err)).Inc()
 		if at.Before(now.Add(50 * time.Millisecond)) {
 			at = now.Add(time.Second)
 		}

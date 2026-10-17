@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"log/slog"
 	"rssam/internal/bridge/v1"
+	"rssam/internal/proxy"
 	maxbridge "rssam/internal/reader/max"
+	"rssam/internal/reader/telegram"
 	"sort"
 	"strconv"
 	"strings"
@@ -71,6 +73,8 @@ type FeedRefresher struct {
 
 	// PollHours supplies per-category polling windows (nil = no windows).
 	PollHours storage.CategoryPollHoursStore
+	// Hosts caps concurrent polls per source host (nil = no cap).
+	Hosts *HostLimiter
 
 	filterCache    ttlCache[[]storage.Filter]
 	pollHoursCache ttlCache[pollHoursCacheItem]
@@ -258,6 +262,14 @@ func (r *FeedRefresher) refreshLoaded(ctx context.Context, feed storage.Feed, ma
 	if !manual && hasWindow && !window.Contains(now) {
 		return 0, ErrOutsidePollWindow{At: window.NextOpen(now)}
 	}
+	if !manual {
+		host := PollHost(feed.FeedURL, feed.FeedType)
+		release, ok := r.Hosts.Acquire(host)
+		if !ok {
+			return 0, ErrHostBusy{Host: host, At: hostBusyRetry(now, feedID)}
+		}
+		defer release()
+	}
 	bridgeState := reader.ParseBridgeState(feed.BridgeState)
 	if manual {
 		bridgeState = fullRefetchState(&feed, bridgeState)
@@ -274,6 +286,11 @@ func (r *FeedRefresher) refreshLoaded(ctx context.Context, feed storage.Feed, ma
 		TLSInsecure:   feed.TLSInsecure,
 	})
 	if fetchErr != nil {
+		if proxy.IsUnavailable(fetchErr) {
+			// The proxy path failed before the source was asked; the feed
+			// keeps its ordinary schedule and its error counter.
+			fetchErr = ErrProxyUnavailable{At: r.nextCheckAfterPoll(ctx, feed, now, time.Time{}), Err: fetchErr}
+		}
 		if _, ok := reader.RetryAt(fetchErr); ok {
 			// Our own limiter (Max rate limit, Telegram slots, proxy pool)
 			// said "not now": nothing was fetched, so the feed is neither
@@ -345,15 +362,21 @@ func (r *FeedRefresher) refreshLoaded(ctx context.Context, feed storage.Feed, ma
 }
 
 // fullRefetchState strips every shortcut a manual refresh must not take:
-// the RSS body hash, the item-set hash and the Max bridge's time cursor.
+// the RSS body hash, the item-set hash and the Max and Telegram cursors.
 func fullRefetchState(feed *storage.Feed, st reader.BridgeState) reader.BridgeState {
 	st = st.With(reader.FeedTypeRSS, nil)
 	feed.ItemsHash = ""
-	if reader.NormalizeFeedType(feed.FeedType) == reader.FeedTypeMax {
+	switch reader.NormalizeFeedType(feed.FeedType) {
+	case reader.FeedTypeMax:
 		var ms maxbridge.FetchState
 		_ = bridge.DecodeState(st.Raw(reader.FeedTypeMax), &ms)
 		ms.LastEndTimeMs = 0
 		st = st.With(reader.FeedTypeMax, bridge.EncodeState(ms))
+	case reader.FeedTypeTelegram:
+		var o telegram.BridgeOverride
+		_ = bridge.DecodeState(st.Raw(reader.FeedTypeTelegram), &o)
+		o.LastMessageID, o.LastChannel = 0, ""
+		st = st.With(reader.FeedTypeTelegram, bridge.EncodeState(o))
 	}
 	return st
 }

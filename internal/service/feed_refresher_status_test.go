@@ -3,6 +3,8 @@ package service
 import (
 	"context"
 	"errors"
+	"rssam/internal/bridge/v1"
+	"rssam/internal/proxy"
 	"testing"
 	"time"
 
@@ -343,4 +345,95 @@ func TestRefreshLoadedFeed_BotChallengeWaitsTheMaximumInterval(t *testing.T) {
 	if len(pl.rows) != 1 || pl.rows[0].OK || len(pub.feeds) != 1 || pub.feeds[0].LastError != reader.ErrBotChallenge.Error() {
 		t.Fatalf("poll log %+v published %+v", pl.rows, pub.feeds)
 	}
+}
+
+func TestRefreshLoadedFeed_ProxyUnavailableDefersToNextCheck(t *testing.T) {
+	feed := storage.Feed{ID: 12, OwnerID: 1, FeedURL: "https://t.me/s/durov", IntervalMinutes: 30}
+	fetchErr := &proxy.Unavailable{Op: "socks fetch", Err: errors.New("dial tcp: i/o timeout")}
+	r, fs, pl, pub := newStatusRefresher(&stubHandler{err: fetchErr}, feed)
+
+	_, err := r.RefreshLoadedFeed(context.Background(), feed)
+	at, ok := reader.RetryAt(err)
+	if !ok {
+		t.Fatalf("expected a deferred poll, got %v", err)
+	}
+	if d := time.Until(at); d < 30*time.Minute-5*time.Second || d > 30*time.Minute+5*time.Second {
+		t.Fatalf("retry at +%s, want the feed's own interval (~30m)", d)
+	}
+	if bridge.DeferReason(err) != "proxy" || !errors.Is(err, fetchErr) {
+		t.Fatalf("reason=%q err=%v", bridge.DeferReason(err), err)
+	}
+	if fs.failures != 0 || len(pub.feeds) != 0 || len(pl.rows) != 0 {
+		t.Fatalf("proxy outage must not touch the feed: failures=%d events=%d rows=%d", fs.failures, len(pub.feeds), len(pl.rows))
+	}
+}
+
+func TestRefreshLoadedFeed_HostConcurrencyDefers(t *testing.T) {
+	feed := storage.Feed{ID: 13, OwnerID: 1, FeedURL: "https://www.example.com/a.xml", IntervalMinutes: 5}
+	other := storage.Feed{ID: 14, OwnerID: 1, FeedURL: "https://example.com/b.xml", IntervalMinutes: 5}
+	r, fs, pl, _ := newStatusRefresher(&stubHandler{}, feed)
+	r.Hosts = NewHostLimiter(1)
+
+	// Another worker is inside example.com right now.
+	release, ok := r.Hosts.Acquire(PollHost(other.FeedURL, other.FeedType))
+	if !ok {
+		t.Fatal("first slot must be free")
+	}
+	_, err := r.RefreshLoadedFeed(context.Background(), feed)
+	var busy ErrHostBusy
+	if !errors.As(err, &busy) || busy.Host != "example.com" || bridge.DeferReason(err) != "host" {
+		t.Fatalf("want ErrHostBusy for the same host, got %v", err)
+	}
+	if d := time.Until(busy.At); d < 55*time.Second || d > 95*time.Second {
+		t.Fatalf("retry in %s, want 1–1.5 min", d)
+	}
+	if fs.failures != 0 || len(pl.rows) != 0 {
+		t.Fatalf("a busy host is not a feed error: failures=%d rows=%d", fs.failures, len(pl.rows))
+	}
+	release()
+	if _, err := r.RefreshLoadedFeed(context.Background(), feed); err != nil {
+		t.Fatalf("after release: %v", err)
+	}
+	// Manual refresh ignores the cap.
+	release, _ = r.Hosts.Acquire("example.com")
+	defer release()
+	if _, err := r.RefreshFeedManual(context.Background(), feed.ID); err != nil {
+		t.Fatalf("manual: %v", err)
+	}
+}
+
+func TestPollHost(t *testing.T) {
+	cases := map[[2]string]string{
+		{"https://www.Example.com/feed", "rss"}:     "example.com",
+		{"page+https://site.ru/x#sel", "page"}:      "site.ru",
+		{"https://t.me/durov", "telegram"}:          "t.me",
+		{"ok-group://rianovosti", "ok_group"}:       "ok.ru",
+		{"dzen-news://запрос", "dzen_news"}:         "dzen.ru",
+		{"https://ok.ru/group/1234567", "ok_group"}: "ok.ru",
+		{"://bad", "rss"}:                           "",
+		{"https://rutube.ru/channel/1/", "rutube"}:  "rutube.ru",
+	}
+	for in, want := range cases {
+		if got := PollHost(in[0], in[1]); got != want {
+			t.Fatalf("%v: got %q want %q", in, got, want)
+		}
+	}
+	var nilLimiter *HostLimiter
+	if _, ok := nilLimiter.Acquire("x"); !ok {
+		t.Fatal("nil limiter never blocks")
+	}
+	l := NewHostLimiter(2)
+	r1, _ := l.Acquire("h")
+	r2, _ := l.Acquire("h")
+	if _, ok := l.Acquire("h"); ok {
+		t.Fatal("third slot must be refused")
+	}
+	if _, ok := l.Acquire("other"); !ok {
+		t.Fatal("hosts are independent")
+	}
+	r1()
+	if _, ok := l.Acquire("h"); !ok {
+		t.Fatal("released slot is reusable")
+	}
+	r2()
 }

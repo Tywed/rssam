@@ -22,8 +22,21 @@ type pollHoursCacheItem struct {
 // worker re-schedules without counting an error or writing a poll log row.
 type ErrOutsidePollWindow struct{ At time.Time }
 
-func (e ErrOutsidePollWindow) Error() string      { return "outside category poll hours" }
-func (e ErrOutsidePollWindow) RetryAt() time.Time { return e.At }
+func (e ErrOutsidePollWindow) Error() string       { return "outside category poll hours" }
+func (e ErrOutsidePollWindow) RetryAt() time.Time  { return e.At }
+func (e ErrOutsidePollWindow) DeferReason() string { return "poll_hours" }
+
+// ErrProxyUnavailable defers a poll whose proxy path failed to the feed's
+// next ordinary check.
+type ErrProxyUnavailable struct {
+	At  time.Time
+	Err error
+}
+
+func (e ErrProxyUnavailable) Error() string       { return e.Err.Error() }
+func (e ErrProxyUnavailable) Unwrap() error       { return e.Err }
+func (e ErrProxyUnavailable) RetryAt() time.Time  { return e.At }
+func (e ErrProxyUnavailable) DeferReason() string { return "proxy" }
 
 // InvalidatePollHours drops the cached window of a category (0 = all).
 func (r *FeedRefresher) InvalidatePollHours(categoryID int64) {

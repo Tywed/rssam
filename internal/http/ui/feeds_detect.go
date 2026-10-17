@@ -12,6 +12,7 @@ import (
 	dzenbridge "rssam/internal/reader/dzen"
 	"rssam/internal/reader/dzenchannel"
 	maxstatbridge "rssam/internal/reader/maxstat"
+	"rssam/internal/reader/okgroup"
 	"rssam/internal/reader/page"
 	"rssam/internal/reader/rutube"
 	smotrimbridge "rssam/internal/reader/smotrim"
@@ -92,6 +93,11 @@ func (h *Handler) handleFeedDetectType(w http.ResponseWriter, r *http.Request) {
 			resp.ChannelID = ch.String()
 		}
 	}
+	if ft == reader.FeedTypeOKGroup {
+		if g, ok := okgroup.Parse(feedURL); ok {
+			resp.ChannelID = g.String()
+		}
+	}
 	if ft == reader.FeedTypeSmotrim {
 		if opts, ok := smotrimbridge.ParseOptionsFromFeedURL(feedURL); ok {
 			resp.BrandID = opts.BrandID
@@ -102,7 +108,7 @@ func (h *Handler) handleFeedDetectType(w http.ResponseWriter, r *http.Request) {
 	}
 	if h.cfg.DiscoverFeed != nil {
 		switch ft {
-		case reader.FeedTypeTelegram, reader.FeedTypeRSS, reader.FeedTypePage, reader.FeedTypeDzenChannel:
+		case reader.FeedTypeTelegram, reader.FeedTypeRSS, reader.FeedTypePage, reader.FeedTypeDzenChannel, reader.FeedTypeOKGroup:
 			d, err := h.cfg.DiscoverFeed(r.Context(), feedURL, ft, tlsInsecure)
 			if err != nil {
 				if ft != reader.FeedTypeTelegram {
@@ -143,6 +149,12 @@ func formatRSSDetectError(err error) string {
 	}
 	if errors.Is(err, dzenchannel.ErrChannelNotFound) {
 		return "Канал Дзен не найден: проверьте адрес (https://dzen.ru/имя или https://dzen.ru/id/…)"
+	}
+	if errors.Is(err, okgroup.ErrGroupNotFound) {
+		return "Группа Одноклассников не найдена: проверьте адрес (https://ok.ru/group/… или https://ok.ru/имя)"
+	}
+	if errors.Is(err, okgroup.ErrNotGroup) {
+		return "Это не группа Одноклассников (профиль пользователя или другая страница)"
 	}
 	if errors.Is(err, page.ErrSelectorNoMatch) {
 		return "Селектор не нашёл ни одного элемента на странице: " + strings.TrimPrefix(msg, page.ErrSelectorNoMatch.Error()+": ")
@@ -211,7 +223,7 @@ func resolveFeedBeforeCreate(ctx context.Context, h *Handler, params *storage.Cr
 		if params.Title == "" {
 			params.Title = strings.TrimSpace(d.Title)
 		}
-	case reader.FeedTypeTelegram, reader.FeedTypeDzenChannel:
+	case reader.FeedTypeTelegram, reader.FeedTypeDzenChannel, reader.FeedTypeOKGroup:
 		if params.Title == "" {
 			if d, err := h.cfg.DiscoverFeed(ctx, params.FeedURL, params.FeedType, params.TLSInsecure); err == nil {
 				params.Title = strings.TrimSpace(d.Title)

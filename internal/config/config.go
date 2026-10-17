@@ -111,6 +111,8 @@ type Config struct {
 	// AdaptiveMaxInterval caps the stretched interval of feeds with
 	// adaptive_interval enabled (also bounded by MaxPollInterval).
 	AdaptiveMaxInterval time.Duration
+	// PollHostConcurrency caps concurrent polls per source host (0 = off).
+	PollHostConcurrency int
 	WorkerInstanceID    string
 
 	MaxFilterRulesPerFilter int
@@ -250,6 +252,7 @@ func Load() (Config, error) {
 		MinPollInterval:     env.duration("MIN_POLL_INTERVAL", 60*time.Second),
 		MaxPollInterval:     env.duration("MAX_POLL_INTERVAL", 24*time.Hour),
 		AdaptiveMaxInterval: env.duration("ADAPTIVE_MAX_INTERVAL", 6*time.Hour),
+		PollHostConcurrency: env.int("POLL_HOST_CONCURRENCY", 0),
 		WorkerInstanceID:    strings.TrimSpace(os.Getenv("WORKER_INSTANCE_ID")),
 
 		MaxFilterRulesPerFilter: env.int("MAX_FILTER_RULES_PER_FILTER", 50),
@@ -354,6 +357,7 @@ func (c Config) Validate() error {
 		{"AUDIT_LOG_RETENTION_DAYS", int64(c.AuditLogRetentionDays), 0, 3650, " (0 disables)"},
 		{"DEDUP_RETENTION_DAYS", int64(c.DedupRetentionDays), 0, 3650, " (0 disables)"},
 		{"WORKER_POOL_SIZE", int64(c.WorkerPoolSize), 1, 1000, ""},
+		{"POLL_HOST_CONCURRENCY", int64(c.PollHostConcurrency), 0, 1000, " (0 disables)"},
 		{"WEBHOOK_WORKER_POOL_SIZE", int64(c.WebhookWorkerPoolSize), 1, 1000, ""},
 		{"MAX_FILTER_RULES_PER_FILTER", int64(c.MaxFilterRulesPerFilter), 1, 10000, ""},
 		{"MAX_REGEX_LENGTH", int64(c.MaxRegexLength), 1, 1048576, ""},

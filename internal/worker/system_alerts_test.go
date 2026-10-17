@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"rssam/internal/proxy"
 	"strings"
 	"sync"
 	"testing"
@@ -258,5 +259,45 @@ func TestFeedsAlert_ListCapAndEscaping(t *testing.T) {
 	}
 	if !strings.Contains(m.Plain, strings.Repeat("e", 120)+"…") {
 		t.Fatal("error must be truncated to 120 runes")
+	}
+}
+
+func TestSystemAlerts_ProxyDownOnceUntilRecovered(t *testing.T) {
+	sink := &alertSink{}
+	srv := sink.server(t)
+	cfg, _ := json.Marshal(storage.TelegramProviderConfig{APIBase: srv.URL, BotToken: "t", ChatID: "7"})
+	store := &memAlertStore{
+		hooks:    []storage.Webhook{{ID: 1, Enabled: true, SystemAlerts: true, Kind: storage.WebhookKindTelegram, ProviderConfig: cfg}},
+		settings: map[string]json.RawMessage{AppSettingSystemAlertState: json.RawMessage(`{}`)},
+	}
+	down := false
+	a := newAlerter(store, SystemAlertsConfig{
+		ProxyOutage: func() (proxy.OutageStatus, bool) {
+			if !down {
+				return proxy.OutageStatus{}, false
+			}
+			return proxy.OutageStatus{Since: time.Now().Add(-12 * time.Minute), Failures: 31, LastErr: "dial tcp: i/o timeout"}, true
+		},
+	})
+	a.load(context.Background())
+	a.pass(context.Background())
+	if sink.count() != 0 {
+		t.Fatalf("healthy proxy must not alert: %v", sink.bodies)
+	}
+	down = true
+	a.pass(context.Background())
+	a.pass(context.Background())
+	if sink.count() != 1 || !a.state.Proxy {
+		t.Fatalf("want exactly one proxy alert, got %d: %v", sink.count(), sink.bodies)
+	}
+	if b := sink.bodies[0]; !strings.Contains(b, "Прокси недоступен") || !strings.Contains(b, "31") || !strings.Contains(b, "i/o timeout") {
+		t.Fatalf("body: %s", b)
+	}
+	down = false
+	a.pass(context.Background())
+	down = true
+	a.pass(context.Background())
+	if sink.count() != 2 || a.state.Proxy != true {
+		t.Fatalf("a new outage after recovery must alert again: %d", sink.count())
 	}
 }
