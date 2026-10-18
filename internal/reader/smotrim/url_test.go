@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"rssam/internal/bridge/v1"
 	"rssam/internal/reader/smotrim"
 )
 
@@ -70,5 +71,17 @@ func TestExtractVideosFromBrandHTML(t *testing.T) {
 	}
 	if items[0].PublicID <= 0 || items[0].Title == "" {
 		t.Fatalf("unexpected first item: %+v", items[0])
+	}
+}
+
+func TestExtractVideosFromBrandHTML_NoPayloadIsLayout(t *testing.T) {
+	for _, body := range []string{
+		`<html><body><h1>Доступ ограничен</h1></body></html>`,
+		`<html><script type="application/json">[[1,{"a":]]</script></html>`,
+	} {
+		_, _, err := smotrim.ExtractVideosFromBrandHTML([]byte(body), time.Now(), "", 10)
+		if le, ok := bridge.AsLayout(err); !ok || le.Bridge != "smotrim" || le.Marker != "__NUXT__" {
+			t.Fatalf("%q: err=%v", body, err)
+		}
 	}
 }

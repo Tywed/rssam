@@ -88,18 +88,16 @@ func (r *HandlerRegistry) FindHandler(feedURL, feedType string) (Handler, error)
 	return nil, ErrNoHandlerFound
 }
 
-// Fetch resolves a handler and fetches entries.
+// Fetch resolves a handler and fetches entries. Content comes back as the
+// source sent it; the refresher sanitizes what it is about to store or
+// deliver (SanitizeEntries), after the item-set and dedup checks have
+// dropped the items it already knows.
 func (r *HandlerRegistry) Fetch(ctx context.Context, req FetchRequest) (FetchResponse, error) {
 	h, err := r.FindHandler(req.FeedURL, req.FeedType)
 	if err != nil {
 		return FetchResponse{}, err
 	}
-	res, err := h.Fetch(ctx, req)
-	if err != nil {
-		return res, err
-	}
-	SanitizeEntries(res.Entries)
-	return res, nil
+	return h.Fetch(ctx, req)
 }
 
 const (

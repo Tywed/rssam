@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strings"
 
+	"rssam/internal/bridge/v1"
 	"rssam/internal/ssrf"
 )
 
@@ -77,7 +78,7 @@ func (c *Client) ListPersonVideos(ctx context.Context, channelID string) (*perso
 
 	var parsed personVideosResponse
 	if err := json.Unmarshal(body, &parsed); err != nil {
-		return nil, fmt.Errorf("rutube: decode response: %w", err)
+		return nil, &bridge.LayoutError{Bridge: "rutube", Marker: "api json", Err: err}
 	}
 	return &parsed, nil
 }

@@ -37,7 +37,6 @@ func (r *FeedRefresher) Ingest(ctx context.Context, feed storage.Feed, entries [
 	started := time.Now()
 	now := started.UTC()
 	subs := r.feedSubscribers(ctx, feed.ID)
-	reader.SanitizeEntries(entries)
 	meta := storage.UpdateFeedRefreshMetaParams{
 		ID:            feed.ID,
 		ETag:          feed.ETag,

@@ -52,7 +52,7 @@ func TestProcessEntriesDedupOnly_QueryRuleBatched(t *testing.T) {
 		{Title: "already seen", Hash: "old", Content: "цены на нефти"},
 		{Title: "sport", Hash: "h1", Content: "футбол"},
 		{Title: "oil", Hash: "h2", Content: "цены на нефти выросли"},
-	}, false, &storage.UpdateFeedRefreshMetaParams{})
+	}, false, &storage.UpdateFeedRefreshMetaParams{}, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -89,7 +89,7 @@ func TestProcessEntriesDedupOnly_QueryRuleWithoutMatcherKeepsRegexRules(t *testi
 	inserted, _, _, _, err := r.processEntriesFiltered(context.Background(), feed, []storage.Subscription{{UserID: 1, FeedID: feed.ID}}, []storage.CreateEntryParams{
 		{Title: "oil", Hash: "h1", Content: "нефть"},
 		{Title: "gas", Hash: "h2", Content: "нефть"},
-	}, false, &storage.UpdateFeedRefreshMetaParams{})
+	}, false, &storage.UpdateFeedRefreshMetaParams{}, true)
 	if err != nil {
 		t.Fatal(err)
 	}

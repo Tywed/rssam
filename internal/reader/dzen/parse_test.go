@@ -2,6 +2,7 @@ package dzen
 
 import (
 	"errors"
+	"rssam/internal/bridge/v1"
 	"testing"
 )
 
@@ -40,5 +41,8 @@ func TestParseSearchHTML_MissingPayload(t *testing.T) {
 	_, err := ParseSearchHTML([]byte("<html></html>"))
 	if !errors.Is(err, errNeoPayloadNotFound) {
 		t.Fatalf("err=%v", err)
+	}
+	if le, ok := bridge.AsLayout(err); !ok || le.Bridge != "dzen" {
+		t.Fatalf("missing payload must be a layout error: %v", err)
 	}
 }

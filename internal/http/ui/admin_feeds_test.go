@@ -15,9 +15,14 @@ import (
 )
 
 type uiMemAdminFeeds struct {
-	rows    []storage.AdminFeedRow
-	summary storage.AdminFeedSummary
-	jobs    storage.PollFeedJobCounts
+	rows      []storage.AdminFeedRow
+	summary   storage.AdminFeedSummary
+	jobs      storage.PollFeedJobCounts
+	typeStats []storage.FeedTypeStat
+}
+
+func (m *uiMemAdminFeeds) FeedTypeStats(context.Context) ([]storage.FeedTypeStat, error) {
+	return m.typeStats, nil
 }
 
 func (m *uiMemAdminFeeds) GetAdminFeedRow(_ context.Context, feedID int64) (storage.AdminFeedRow, error) {

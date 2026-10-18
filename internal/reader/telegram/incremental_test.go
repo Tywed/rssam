@@ -28,7 +28,7 @@ func (c *cannedTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 
 func tgPage(ids []int, more string) string {
 	var b strings.Builder
-	b.WriteString(`<html><body><div class="tgme_channel_info_header_title"><span>Chan</span></div>`)
+	b.WriteString(`<html><body><div class="tgme_channel_info"><div class="tgme_channel_info_header_title"><span>Chan</span></div></div>`)
 	if more != "" {
 		fmt.Fprintf(&b, `<div class="tgme_widget_message_centered js-messages_more_wrap"><a href="%s">More</a></div>`, more)
 	}

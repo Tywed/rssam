@@ -291,6 +291,9 @@ func (r *FeedRefresher) refreshLoaded(ctx context.Context, feed storage.Feed, ma
 			// keeps its ordinary schedule and its error counter.
 			fetchErr = ErrProxyUnavailable{At: r.nextCheckAfterPoll(ctx, feed, now, time.Time{}), Err: fetchErr}
 		}
+		if le, ok := bridge.AsLayout(fetchErr); ok {
+			return 0, r.deferLayout(ctx, feed, now, le)
+		}
 		if _, ok := reader.RetryAt(fetchErr); ok {
 			// Our own limiter (Max rate limit, Telegram slots, proxy pool)
 			// said "not now": nothing was fetched, so the feed is neither
@@ -403,6 +406,31 @@ func (r *FeedRefresher) failPoll(ctx context.Context, feed storage.Feed, now, st
 	return err
 }
 
+// LayoutErrorPrefix starts feeds.last_error while a bridge cannot read the
+// source's page; the bridges page and the system alerter count such feeds.
+const LayoutErrorPrefix = storage.LayoutErrorPrefix
+
+// deferLayout handles a poll whose page the bridge did not recognise: the
+// source may have changed its markup for everyone, so the feed is neither
+// failed (no error counter, no breaker, no poll-log row) nor silently
+// skipped. One UPDATE marks last_error and the next ordinary check; the
+// worker does not write next_check_at again.
+func (r *FeedRefresher) deferLayout(ctx context.Context, feed storage.Feed, now time.Time, le *bridge.LayoutError) error {
+	next := r.nextCheckAfterPoll(ctx, feed, now, time.Time{})
+	meta := storage.UpdateFeedRefreshMetaParams{
+		ID:            feed.ID,
+		ETag:          feed.ETag,
+		LastModified:  feed.LastModified,
+		LastCheckedAt: now,
+		LastError:     LayoutErrorPrefix + le.Marker,
+		NextCheckAt:   &next,
+	}
+	if err := r.Feeds.UpdateFeedRefreshMeta(ctx, meta); err != nil {
+		r.logger().Error("record layout error failed", "feed_id", feed.ID, "err", err)
+	}
+	return ErrLayoutDeferred{At: next, Err: le}
+}
+
 // entryMetaWriter is the store that can write a poll's entries and the
 // feed's refresh metadata in one transaction (PostgresStore); other stores
 // get the two calls.
@@ -416,7 +444,17 @@ type entryMetaWriter interface {
 // stays nil when the item set is the same as last time: then nothing can
 // be inserted (every hash is already in entries or feed_entry_dedup) and
 // the stored hash needs no update.
+//
+// Sanitizing is the dearest step of a poll (48 % of its CPU on a 20-item
+// feed, with XML parsing at 33 %), so it runs as late as possible: a feed
+// with blocked/keep rules is sanitized before the rules so that they match
+// the text a reader would see; otherwise full feeds are sanitized after the
+// item-set check and filtered/relay feeds after dedup, for new items only.
 func (r *FeedRefresher) storeFetched(ctx context.Context, feed storage.Feed, subs []storage.Subscription, fetched []bridge.Entry, meta *storage.UpdateFeedRefreshMetaParams) (inserted int, insertedEntries []storage.Entry, metaStored bool, err error) {
+	sanitized := strings.TrimSpace(feed.BlockedRules) != "" || strings.TrimSpace(feed.KeepRules) != ""
+	if sanitized {
+		reader.SanitizeEntries(fetched)
+	}
 	entries := reader.ApplyFeedRules(fetched, feed.BlockedRules, feed.KeepRules)
 	entries = reader.ApplyURLRewriteRules(entries, feed.RewriteRules)
 	h := itemSetHash(entries)
@@ -424,8 +462,12 @@ func (r *FeedRefresher) storeFetched(ctx context.Context, feed storage.Feed, sub
 		return 0, nil, false, nil
 	}
 	meta.ItemsHash = &h
-	if mode := r.storeMode(feed); mode != storage.StoreModeFull {
-		inserted, insertedEntries, meta.NewEntries, metaStored, err = r.processEntriesFiltered(ctx, feed, subs, entries, mode == storage.StoreModeRelay, meta)
+	mode := r.storeMode(feed)
+	if mode == storage.StoreModeFull && !sanitized {
+		reader.SanitizeEntries(entries)
+	}
+	if mode != storage.StoreModeFull {
+		inserted, insertedEntries, meta.NewEntries, metaStored, err = r.processEntriesFiltered(ctx, feed, subs, entries, mode == storage.StoreModeRelay, meta, !sanitized)
 	} else if w, ok := r.Entries.(entryMetaWriter); ok {
 		inserted, insertedEntries, err = w.CreateEntriesWithRefreshMeta(ctx, feed.ID, entries, *meta)
 		meta.NewEntries = inserted

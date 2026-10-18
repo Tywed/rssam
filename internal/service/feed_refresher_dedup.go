@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"rssam/internal/filter"
+	"rssam/internal/reader"
 	"rssam/internal/storage"
 )
 
@@ -39,6 +40,7 @@ func (r *FeedRefresher) processEntriesFiltered(
 	entries []storage.CreateEntryParams,
 	relay bool,
 	meta *storage.UpdateFeedRefreshMetaParams,
+	sanitize bool,
 ) (inserted int, insertedEntries []storage.Entry, fresh int, metaStored bool, err error) {
 	if r.Dedup == nil {
 		return 0, nil, 0, false, fmt.Errorf("dedup store is not configured")
@@ -91,6 +93,9 @@ func (r *FeedRefresher) processEntriesFiltered(
 			continue
 		}
 		known[p.Hash] = struct{}{}
+		if sanitize {
+			p.Content = reader.SanitizeHTML(p.Content)
+		}
 		freshParams = append(freshParams, p)
 		freshEntries = append(freshEntries, entryFromCreateParams(feedID, p))
 	}

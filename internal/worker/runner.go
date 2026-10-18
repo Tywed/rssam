@@ -296,6 +296,10 @@ func processPollFeed(ctx context.Context, feedID int64, store pollStore, refresh
 		if at.Before(now.Add(50 * time.Millisecond)) {
 			at = now.Add(time.Second)
 		}
+		var persisted interface{ NextCheckPersisted() bool }
+		if errors.As(err, &persisted) && persisted.NextCheckPersisted() {
+			return
+		}
 		if err := store.SetFeedNextCheckAt(ctx, feedID, at); err != nil {
 			log.Warn("poll_feed: set next_check_at after retry-after failed", "feed_id", feedID, "err", err)
 		}

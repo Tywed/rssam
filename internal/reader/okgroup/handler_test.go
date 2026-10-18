@@ -39,6 +39,8 @@ func newOKServer(t *testing.T, group []byte, topic []byte) *okServer {
 			w.WriteHeader(http.StatusNotFound)
 		case r.URL.Path == "/someuser":
 			_, _ = w.Write(mustRead(t, "profile.html"))
+		case r.URL.Path == "/walled":
+			_, _ = w.Write([]byte(`<html><head><title>Одноклассники</title></head><body><form class="captcha">Введите код</form></body></html>`))
 		case r.URL.Path == "/limited":
 			w.Header().Set("Retry-After", "120")
 			w.WriteHeader(http.StatusTooManyRequests)
@@ -176,7 +178,11 @@ func TestFetch_Errors(t *testing.T) {
 	if _, err := h.Fetch(ctx, bridge.Request{FeedURL: "https://ok.ru/nosuchgroup"}); !errors.Is(err, ErrGroupNotFound) {
 		t.Fatalf("404: %v", err)
 	}
-	_, err := h.Fetch(ctx, bridge.Request{FeedURL: "https://ok.ru/limited"})
+	_, err := h.Fetch(ctx, bridge.Request{FeedURL: "https://ok.ru/walled"})
+	if le, ok := bridge.AsLayout(err); !ok || le.Bridge != "ok_group" || le.Marker != "og:url group" {
+		t.Fatalf("page without group og:url: %v", err)
+	}
+	_, err = h.Fetch(ctx, bridge.Request{FeedURL: "https://ok.ru/limited"})
 	at, ok := bridge.RetryAt(err)
 	if !ok || time.Until(at) < 100*time.Second {
 		t.Fatalf("429: %v (retry at %v)", err, at)

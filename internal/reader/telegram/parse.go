@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html"
 	"regexp"
@@ -13,6 +14,8 @@ import (
 	"time"
 
 	"github.com/PuerkitoBio/goquery"
+
+	"rssam/internal/bridge/v1"
 )
 
 var backgroundImageRegex = regexp.MustCompile(`background-image:\s*url\('([^']+)'\)`)
@@ -28,6 +31,10 @@ type ParsedMessage struct {
 	HasViews       bool // false for non-last items in a legacy split album
 	IsGroupedAlbum bool // data-view p ends with "g" or js-message_grouped_wrap present
 }
+
+// ErrChannelUnavailable: t.me showed its stub page instead of the channel
+// preview — the channel is private, restricted or does not exist.
+var ErrChannelUnavailable = errors.New("telegram: channel is private or does not exist")
 
 // ParseHTML extracts messages from a t.me/s channel page.
 func ParseHTML(body []byte, channelUsername string) ([]ParsedMessage, error) {
@@ -48,11 +55,14 @@ func ParseHTML(body []byte, channelUsername string) ([]ParsedMessage, error) {
 			out = append(out, parsed)
 		}
 	})
-	if len(out) == 0 {
-		title := strings.TrimSpace(doc.Find("div.tgme_channel_info_header_title span").First().Text())
-		if title == "" {
-			return nil, fmt.Errorf("telegram: no messages found (channel may be private or missing)")
+	if len(out) == 0 && doc.Find("div.tgme_channel_info").Length() == 0 {
+		// t.me answers a private or missing channel with its generic
+		// "open in Telegram" page; anything else without the channel
+		// header is markup the parser does not know.
+		if doc.Find("div.tgme_page").Length() > 0 {
+			return nil, ErrChannelUnavailable
 		}
+		return nil, &bridge.LayoutError{Bridge: "telegram", Marker: "tgme_channel_info"}
 	}
 	return mergeGroupedMessages(out), nil
 }

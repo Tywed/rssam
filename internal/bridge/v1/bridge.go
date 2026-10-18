@@ -101,8 +101,34 @@ func RetryAt(err error) (time.Time, bool) {
 	return time.Time{}, false
 }
 
+// LayoutError: the source answered, but not with the page or document the
+// bridge knows how to read — a redesign, a captcha, a stub for bots. The
+// feed itself is fine, so the refresher defers the poll instead of counting
+// a failure and the fleet of such feeds is reported per bridge. Marker
+// names the element whose absence was noticed.
+type LayoutError struct {
+	Bridge string
+	Marker string
+	Err    error
+}
+
+func (e *LayoutError) Error() string {
+	s := e.Bridge + ": layout not recognised (" + e.Marker + ")"
+	if e.Err != nil {
+		s += ": " + e.Err.Error()
+	}
+	return s
+}
+
+func (e *LayoutError) Unwrap() error { return e.Err }
+
+// AsLayout returns the LayoutError inside err, if any.
+func AsLayout(err error) (*LayoutError, bool) {
+	return errors.AsType[*LayoutError](err)
+}
+
 // DeferReason labels a RetryAtError for metrics: "poll_hours", "slots", "host",
-// "proxy"; errors without the method count as "rate_limit".
+// "proxy", "layout"; errors without the method count as "rate_limit".
 func DeferReason(err error) string {
 	var e interface {
 		error

@@ -32,6 +32,9 @@ type SystemAlertStore interface {
 	// ListFailingWebhooks: enabled webhooks whose last final delivery died.
 	ListFailingWebhooks(ctx context.Context) ([]SystemAlertWebhook, error)
 	RecordAudit(ctx context.Context, ev AuditEvent) error
+	// FeedTypeStats: feeds per type with the ones whose page the bridge
+	// cannot read.
+	FeedTypeStats(ctx context.Context) ([]FeedTypeStat, error)
 }
 
 func (s *PostgresStore) ListSystemAlertWebhooks(ctx context.Context) ([]Webhook, error) {

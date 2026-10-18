@@ -665,9 +665,11 @@ type UpdateWebhookParams struct {
 // ListEntriesFilter selects entries. Removed (soft-deleted or hashed) rows
 // are excluded unless Status asks for them explicitly.
 //
-// The total returned alongside the page is exact only when WithTotal is set
-// (a separate count query). Otherwise it is Offset+len(page), plus one when a
-// further page exists — enough for prev/next paging without counting the set.
+// The total returned alongside the page is counted only when WithTotal is
+// set (a separate query, capped at ListTotalCap: a total equal to the cap
+// means "at least that many"). Otherwise it is Offset+len(page), plus one
+// when a further page exists — enough for prev/next paging without counting
+// the set.
 type ListEntriesFilter struct {
 	FeedID     *int64
 	CategoryID *int64

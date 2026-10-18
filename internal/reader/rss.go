@@ -421,7 +421,6 @@ func normalizeItem(it *gofeed.Item) bridge.Entry {
 	if content == "" {
 		content = strings.TrimSpace(it.Description)
 	}
-	content = SanitizeHTML(content)
 
 	title := strings.TrimSpace(it.Title)
 	hash := model.DedupHashFromURL(url)

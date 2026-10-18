@@ -260,6 +260,11 @@ func (s *PostgresStore) scanEntry(row pgx.Row) (Entry, error) {
 	return e, nil
 }
 
+// ListPageCap is the largest page a list returns. 10 000 entries with
+// bodies was a 28.7 MB JSON document built in one request; 1 000 is what
+// Miniflux and the Google Reader API allow.
+const ListPageCap = 1000
+
 func (s *PostgresStore) ListEntries(ctx context.Context, userID int64, filter ListEntriesFilter) ([]Entry, int, error) {
 	return s.listEntries(ctx, userID, filter)
 }
@@ -274,8 +279,8 @@ func (s *PostgresStore) listEntries(ctx context.Context, userID int64, filter Li
 	if limit <= 0 {
 		limit = 100
 	}
-	if limit > 10000 {
-		limit = 10000
+	if limit > ListPageCap {
+		limit = ListPageCap
 	}
 	offset := max(filter.Offset, 0)
 

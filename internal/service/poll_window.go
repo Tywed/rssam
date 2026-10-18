@@ -38,6 +38,20 @@ func (e ErrProxyUnavailable) Unwrap() error       { return e.Err }
 func (e ErrProxyUnavailable) RetryAt() time.Time  { return e.At }
 func (e ErrProxyUnavailable) DeferReason() string { return "proxy" }
 
+// ErrLayoutDeferred defers a poll whose page the bridge did not recognise
+// (bridge.LayoutError) to the feed's next ordinary check; the refresher has
+// already written next_check_at.
+type ErrLayoutDeferred struct {
+	At  time.Time
+	Err error
+}
+
+func (e ErrLayoutDeferred) Error() string            { return e.Err.Error() }
+func (e ErrLayoutDeferred) Unwrap() error            { return e.Err }
+func (e ErrLayoutDeferred) RetryAt() time.Time       { return e.At }
+func (e ErrLayoutDeferred) DeferReason() string      { return "layout" }
+func (e ErrLayoutDeferred) NextCheckPersisted() bool { return true }
+
 // InvalidatePollHours drops the cached window of a category (0 = all).
 func (r *FeedRefresher) InvalidatePollHours(categoryID int64) {
 	if r == nil {

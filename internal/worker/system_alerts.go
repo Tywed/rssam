@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"html"
+	"maps"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -52,6 +53,8 @@ type systemAlertState struct {
 	Release  string         `json:"release,omitempty"`
 	Backup   bool           `json:"backup_stale,omitempty"`
 	Proxy    bool           `json:"proxy_down,omitempty"`
+	// Layout holds the bridges (feed_type) in a markup incident.
+	Layout map[string]bool `json:"layout,omitempty"`
 }
 
 type systemAlertsStore interface {
@@ -164,7 +167,7 @@ func (a *systemAlerter) pass(ctx context.Context) {
 
 func stateChanged(old, cur systemAlertState) bool {
 	return !sameSet(old.Paused, cur.Paused) || !sameSet(old.Silent, cur.Silent) || !sameSet(old.Webhooks, cur.Webhooks) ||
-		old.Release != cur.Release || old.Backup != cur.Backup
+		old.Release != cur.Release || old.Backup != cur.Backup || old.Proxy != cur.Proxy || !maps.Equal(old.Layout, cur.Layout)
 }
 
 func sameSet(a, b map[int64]bool) bool {
@@ -274,7 +277,62 @@ func (a *systemAlerter) diff(ctx context.Context) ([]alertMessage, systemAlertSt
 			})
 		}
 	}
+	layoutMsgs, layout, err := a.layoutDiff(ctx)
+	if err != nil {
+		return nil, next, err
+	}
+	next.Layout = layout
+	msgs = append(msgs, layoutMsgs...)
 	return msgs, next, nil
+}
+
+// layoutIncidentMin is how many feeds of one bridge must see unrecognised
+// markup before it counts as the source's change rather than one feed's
+// oddity; bridges with fewer feeds alert when all of them do.
+const layoutIncidentMin = 3
+
+// layoutDiff: one message when a bridge enters a markup incident and one
+// when it reads every feed again.
+func (a *systemAlerter) layoutDiff(ctx context.Context) ([]alertMessage, map[string]bool, error) {
+	stats, err := a.store.FeedTypeStats(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	var msgs []alertMessage
+	cur := map[string]bool{}
+	for _, st := range stats {
+		// An incident ends only when every feed reads again.
+		if st.Layout == 0 || !a.state.Layout[st.FeedType] && st.Layout < min(layoutIncidentMin, st.Total) {
+			continue
+		}
+		cur[st.FeedType] = true
+		if a.state.Layout[st.FeedType] {
+			continue
+		}
+		msgs = append(msgs, alertMessage{
+			Kind: "bridge_layout",
+			Plain: fmt.Sprintf("Мост %s не узнаёт страницу источника: %d из %d лент (маркер %s). Ленты опрашиваются по расписанию; скорее всего, источник изменил вёрстку.",
+				st.FeedType, st.Layout, st.Total, st.LayoutMarker),
+			HTML: fmt.Sprintf("<b>Мост %s не узнаёт страницу источника</b>\n%d из %d лент, маркер %s\nЛенты опрашиваются по расписанию; скорее всего, источник изменил вёрстку.",
+				html.EscapeString(st.FeedType), st.Layout, st.Total, html.EscapeString(st.LayoutMarker)),
+			Details: map[string]any{"bridge": st.FeedType, "feeds": st.Layout, "total": st.Total, "marker": st.LayoutMarker},
+		})
+	}
+	for bridgeType := range a.state.Layout {
+		if cur[bridgeType] {
+			continue
+		}
+		msgs = append(msgs, alertMessage{
+			Kind:    "bridge_layout",
+			Plain:   fmt.Sprintf("Мост %s снова читает страницы источника", bridgeType),
+			HTML:    fmt.Sprintf("<b>Мост %s снова читает страницы источника</b>", html.EscapeString(bridgeType)),
+			Details: map[string]any{"bridge": bridgeType, "recovered": true},
+		})
+	}
+	if len(cur) == 0 {
+		cur = nil
+	}
+	return msgs, cur, nil
 }
 
 // newestBackupAge returns the age of the newest rssam-*.dump in dir; ok is

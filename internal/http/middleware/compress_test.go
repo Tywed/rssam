@@ -9,23 +9,65 @@ import (
 	"testing"
 )
 
-func TestCompress_HTMLSmallNotGzipped(t *testing.T) {
-	body := strings.Repeat("x", 200)
+// A template page arrives as many small writes; the first one decides
+// nothing but the Content-Type.
+func TestCompress_HTMLChunkedWritesGzipped(t *testing.T) {
 	h := Compress(true)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = w.Write([]byte(body))
+		_, _ = w.Write([]byte("<!DOCTYPE html>"))
+		for range 100 {
+			_, _ = w.Write([]byte("<p>chunk</p>\n"))
+		}
 	}))
 
-	req := httptest.NewRequest(http.MethodGet, "/ui/login", nil)
+	req := httptest.NewRequest(http.MethodGet, "/ui/unread", nil)
 	req.Header.Set("Accept-Encoding", "gzip")
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
 
-	if rec.Header().Get("Content-Encoding") == "gzip" {
-		t.Fatal("small html must not be gzip-encoded")
+	if rec.Header().Get("Content-Encoding") != "gzip" || rec.Header().Get("Vary") != "Accept-Encoding" {
+		t.Fatalf("headers: %v", rec.Header())
 	}
-	if got := rec.Body.String(); got != body {
-		t.Fatalf("body len=%d want %d", len(got), len(body))
+	zr, err := gzip.NewReader(rec.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, _ := io.ReadAll(zr)
+	if !strings.HasPrefix(string(got), "<!DOCTYPE html>") || strings.Count(string(got), "<p>chunk</p>") != 100 {
+		t.Fatalf("decoded: %d bytes", len(got))
+	}
+}
+
+func TestCompress_StaticTypesAndSkips(t *testing.T) {
+	for _, tc := range []struct {
+		ct     string
+		status int
+		rng    string
+		want   bool
+	}{
+		{"text/css; charset=utf-8", 200, "", true},
+		{"text/javascript; charset=utf-8", 200, "", true},
+		{"image/svg+xml", 200, "", true},
+		{"image/png", 200, "", false},
+		{"text/plain; charset=utf-8", 200, "", false},
+		{"text/html; charset=utf-8", 304, "", false},
+		{"text/css", 200, "bytes=0-10", false},
+	} {
+		h := Compress(true)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", tc.ct)
+			w.WriteHeader(tc.status)
+			_, _ = w.Write([]byte(strings.Repeat("y", 100)))
+		}))
+		req := httptest.NewRequest(http.MethodGet, "/ui/static/app.css", nil)
+		req.Header.Set("Accept-Encoding", "gzip")
+		if tc.rng != "" {
+			req.Header.Set("Range", tc.rng)
+		}
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		if got := rec.Header().Get("Content-Encoding") == "gzip"; got != tc.want {
+			t.Fatalf("%s status=%d range=%q: gzip=%v want %v", tc.ct, tc.status, tc.rng, got, tc.want)
+		}
 	}
 }
 

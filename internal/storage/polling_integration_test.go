@@ -333,3 +333,43 @@ func TestIntegration_GetAdminFeedRow(t *testing.T) {
 		t.Fatalf("missing feed: %v", err)
 	}
 }
+
+func TestIntegration_FeedTypeStatsAndLayoutFilter(t *testing.T) {
+	store := isolatedStore(t)
+	ctx := context.Background()
+	owner := newIntegrationUser(t, store, "admin")
+
+	fine := newFeedForUser(t, store, owner.ID, "fine", 30)
+	broken := newFeedForUser(t, store, owner.ID, "broken", 30)
+	if _, err := store.db.Exec(ctx, `UPDATE feeds SET feed_type = 'telegram' WHERE id = ANY($1)`, []int64{fine.ID, broken.ID}); err != nil {
+		t.Fatal(err)
+	}
+	at := time.Now().UTC().Truncate(time.Second)
+	next := at.Add(time.Hour)
+	if err := store.UpdateFeedRefreshMeta(ctx, UpdateFeedRefreshMetaParams{ID: broken.ID, LastCheckedAt: at, LastError: LayoutErrorPrefix + "tgme_channel_info", NextCheckAt: &next}); err != nil {
+		t.Fatal(err)
+	}
+
+	stats, err := store.FeedTypeStats(ctx)
+	if err != nil || len(stats) != 1 {
+		t.Fatalf("stats=%+v err=%v", stats, err)
+	}
+	st := stats[0]
+	if st.FeedType != "telegram" || st.Total != 2 || st.Layout != 1 || st.LayoutMarker != "tgme_channel_info" || st.LayoutAt == nil || !st.LayoutAt.Equal(at) {
+		t.Fatalf("stat=%+v", st)
+	}
+
+	rows, total, err := store.ListAdminFeedsPage(ctx, AdminFeedsListParams{Status: "layout", Limit: 10})
+	if err != nil || total != 1 || len(rows) != 1 || rows[0].ID != broken.ID {
+		t.Fatalf("layout filter: total=%d rows=%d err=%v", total, len(rows), err)
+	}
+
+	// A good poll clears the marker; a feed in error keeps its counter.
+	if err := store.UpdateFeedRefreshMeta(ctx, UpdateFeedRefreshMetaParams{ID: broken.ID, LastCheckedAt: at.Add(time.Minute), NextCheckAt: &next}); err != nil {
+		t.Fatal(err)
+	}
+	stats, err = store.FeedTypeStats(ctx)
+	if err != nil || stats[0].Layout != 0 || stats[0].LayoutAt != nil || stats[0].LayoutMarker != "" {
+		t.Fatalf("after recovery: %+v err=%v", stats[0], err)
+	}
+}

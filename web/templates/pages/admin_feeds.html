@@ -64,6 +64,7 @@
       </div>
     </div>
 
+    {{if eq .AdminFeedsFilter "layout"}}<p class="meta">Фильтр: ленты, чью страницу мост сейчас не узнаёт (вёрстка источника изменилась или показана заглушка). Они опрашиваются по расписанию и не идут в счёт ошибок. <a href="/ui/settings/bridges">К мостам</a> · <a href="{{adminFeedsPageLink "all" .AdminFeedsSort .AdminFeedsOrder 1}}">Все ленты</a></p>{{end}}
     <div class="card admin-feeds-table-wrap">
       <table class="admin-feeds-table">
         <thead>

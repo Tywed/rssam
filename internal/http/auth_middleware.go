@@ -11,15 +11,10 @@ import (
 	"rssam/internal/storage"
 )
 
-// authenticateRequest resolves the caller. When the request is authenticated by
-// the session cookie (a browser), viaCookie is true so callers can apply the
-// cross-origin check to state-changing requests; header tokens are never
-// forgeable cross-site and skip it.
-func (s *Server) authenticateRequest(ctx context.Context, r *http.Request) (auth.Principal, bool) {
-	p, ok, _ := s.authenticateRequestSource(ctx, r)
-	return p, ok
-}
-
+// authenticateRequestSource resolves the caller. When the request is
+// authenticated by the session cookie (a browser), viaCookie is true so
+// callers can apply the cross-origin check to state-changing requests;
+// header tokens are never forgeable cross-site and skip it.
 func (s *Server) authenticateRequestSource(ctx context.Context, r *http.Request) (p auth.Principal, ok bool, viaCookie bool) {
 	// A header token takes precedence: a scripted client that sends one is
 	// not a browser and must not be subject to the origin check even if a

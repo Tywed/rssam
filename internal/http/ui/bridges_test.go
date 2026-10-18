@@ -94,3 +94,44 @@ func withSessionCookie(t *testing.T, h *Handler, req *http.Request) *http.Reques
 	req.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: sid})
 	return req
 }
+
+// Feed counts come from one GROUP BY; a bridge whose feeds see unrecognised
+// markup gets a red card, a badge and the page-level alert with a link to
+// the admin filter.
+func TestSettingsBridgesLayoutErrors(t *testing.T) {
+	h := newTestUIHandler(t, true)
+	at := time.Date(2026, 10, 17, 11, 2, 0, 0, time.UTC)
+	h.cfg.AdminFeeds = &uiMemAdminFeeds{typeStats: []storage.FeedTypeStat{
+		{FeedType: "telegram", Total: 300, Layout: 12, LayoutMarker: "tgme_channel_info", LayoutAt: &at},
+		{FeedType: "atom", Total: 3},
+		{FeedType: "rss", Total: 4},
+		{FeedType: "ok_group", Total: 5},
+	}}
+	mux := http.NewServeMux()
+	h.Register(mux)
+
+	req := httptest.NewRequest(http.MethodGet, "/ui/settings/bridges", nil)
+	req = withSessionCookie(t, h, req)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status=%d", rec.Code)
+	}
+	body := rec.Body.String()
+	for _, want := range []string{
+		`bridge-card bridge-card-alert" href="/ui/settings/bridges/telegram"`,
+		"вёрстка не распознана",
+		"Лент с ошибкой: 12 из 300 · маркер <code>tgme_channel_info</code>",
+		"Telegram: лент с ошибкой 12 из 300",
+		`href="/ui/admin/feeds?status=layout"`,
+		"Лент: 7.", // rss + atom
+		"Лент: 5<",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("missing %q in %s", want, body)
+		}
+	}
+	if strings.Count(body, "bridge-card-alert") != 1 {
+		t.Fatalf("only the telegram card must be red: %d", strings.Count(body, "bridge-card-alert"))
+	}
+}

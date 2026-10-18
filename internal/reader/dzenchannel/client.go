@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"rssam/internal/bridge/v1"
 	"rssam/internal/ssrf"
 )
 
@@ -150,9 +151,14 @@ func (c *Client) Export(ctx context.Context, ch Channel, contentType string) (*e
 	default:
 		return nil, fmt.Errorf("dzen_channel: unexpected status %d", resp.StatusCode)
 	}
+	// 200 with a captcha page, an HTML error or a reshaped document:
+	// the export answer always carries channel.source.
 	var page exportPage
 	if err := json.Unmarshal(body, &page); err != nil {
-		return nil, fmt.Errorf("dzen_channel: decode response: %w", err)
+		return nil, &bridge.LayoutError{Bridge: "dzen_channel", Marker: "export json", Err: err}
+	}
+	if page.Channel.Source.ID == "" && page.Channel.Source.Title == "" {
+		return nil, &bridge.LayoutError{Bridge: "dzen_channel", Marker: "channel.source"}
 	}
 	return &page, nil
 }

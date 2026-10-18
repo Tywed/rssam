@@ -246,6 +246,8 @@ func parseTemplates() (*template.Template, error) {
 		"formatDuration":    formatDuration,
 		"feedTypeLabel":     reader.FeedTypeLabel,
 		"bridgeFeedCount":   bridgeFeedCount,
+		"bridgeLayout":      bridgeLayout,
+		"bridgeTitle":       bridgeTitle,
 		"feedHasError":      feedHasError,
 		"pluralChannels":    pluralChannels,
 		"categoryFeedCount": categoryFeedCount,

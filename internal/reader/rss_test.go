@@ -4,7 +4,6 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 	"time"
 
@@ -92,7 +91,10 @@ func TestRSSFetcher_NotModified(t *testing.T) {
 	}
 }
 
-func TestRSSFetcher_SanitizesContent(t *testing.T) {
+// The fetcher hands content over as the source sent it: sanitizing runs
+// once, in the refresher, for the items that survive the item-set and
+// dedup checks.
+func TestRSSFetcher_KeepsRawContent(t *testing.T) {
 	const rss = `<?xml version="1.0" encoding="UTF-8" ?>
 <rss version="2.0"><channel><title>X</title>
 <item><title>t</title><link>https://example.com/x</link>
@@ -109,14 +111,11 @@ func TestRSSFetcher_SanitizesContent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("fetch: %v", err)
 	}
-	if len(res.Entries) != 1 {
-		t.Fatalf("entries=%d", len(res.Entries))
+	if len(res.Entries) != 1 || res.Entries[0].Content != "<p>safe</p><script>alert(1)</script>" {
+		t.Fatalf("entries=%+v", res.Entries)
 	}
-	if strings.Contains(res.Entries[0].Content, "script") {
-		t.Fatalf("content=%q", res.Entries[0].Content)
-	}
-	if !strings.Contains(res.Entries[0].Content, "safe") {
-		t.Fatalf("content=%q", res.Entries[0].Content)
+	if got := SanitizeHTML(res.Entries[0].Content); got != "<p>safe</p>" {
+		t.Fatalf("sanitized=%q", got)
 	}
 }
 

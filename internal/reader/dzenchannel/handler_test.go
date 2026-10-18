@@ -153,6 +153,23 @@ func TestFetch_Errors(t *testing.T) {
 	if _, err := h.Fetch(context.Background(), bridge.Request{FeedURL: "https://dzen.ru/tass"}); err == nil || strings.Contains(err.Error(), "not found") {
 		t.Fatalf("500: %v", err)
 	}
+	// 200 with a captcha page instead of the export document.
+	captcha := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`<html><body><div class="CheckboxCaptcha">Подтвердите, что запросы отправляли вы</div></body></html>`))
+	}))
+	t.Cleanup(captcha.Close)
+	_, err = newHandler(captcha).Fetch(context.Background(), bridge.Request{FeedURL: "https://dzen.ru/tass"})
+	if le, ok := bridge.AsLayout(err); !ok || le.Bridge != "dzen_channel" || le.Marker != "export json" {
+		t.Fatalf("captcha page: %v", err)
+	}
+	empty := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"feedData":{"items":[]}}`))
+	}))
+	t.Cleanup(empty.Close)
+	_, err = newHandler(empty).Fetch(context.Background(), bridge.Request{FeedURL: "https://dzen.ru/tass"})
+	if le, ok := bridge.AsLayout(err); !ok || le.Marker != "channel.source" {
+		t.Fatalf("document without channel: %v", err)
+	}
 	var nilHandler *Handler
 	if _, err := nilHandler.Fetch(context.Background(), bridge.Request{FeedURL: "https://dzen.ru/tass"}); err == nil {
 		t.Fatal("nil handler must fail")

@@ -101,9 +101,6 @@ func FuzzParseLimitedFeed(f *testing.F) {
 			if e.URL != "" && e.Hash == "" {
 				t.Fatalf("entry with URL %q has empty hash", e.URL)
 			}
-			if strings.Contains(strings.ToLower(e.Content), "<script") {
-				t.Fatalf("unsanitized content: %q", e.Content)
-			}
 			for _, enc := range e.Enclosures {
 				if strings.TrimSpace(enc.URL) == "" {
 					t.Fatalf("enclosure with empty URL kept")

@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"rssam/internal/bridge/v1"
 )
 
 var nuxtPayloadRe = regexp.MustCompile(`(?s)<script[^>]*type="application/json"[^>]*>(\[\[.*?\])\s*</script>`)
@@ -33,11 +35,11 @@ type nuxtArray []json.RawMessage
 func ExtractVideosFromBrandHTML(body []byte, now time.Time, videoType string, limit int) ([]VideoItem, string, error) {
 	m := nuxtPayloadRe.FindSubmatch(body)
 	if len(m) < 2 {
-		return nil, "", fmt.Errorf("smotrim: nuxt payload not found")
+		return nil, "", &bridge.LayoutError{Bridge: "smotrim", Marker: "__NUXT__"}
 	}
 	var arr nuxtArray
 	if err := json.Unmarshal(m[1], &arr); err != nil {
-		return nil, "", fmt.Errorf("smotrim: decode nuxt payload: %w", err)
+		return nil, "", &bridge.LayoutError{Bridge: "smotrim", Marker: "__NUXT__", Err: err}
 	}
 	root := arr.resolve(1, map[int]struct{}{})
 	brandTitle := findBrandTitle(root)

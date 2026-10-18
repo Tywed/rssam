@@ -136,7 +136,7 @@ func parseAdminFeedsSort(r *http.Request) (sortKey, order string) {
 
 func parseAdminFeedsStatus(v string) string {
 	switch strings.TrimSpace(v) {
-	case "errors", "paused", "waiting", "ok", "silent", "all":
+	case "errors", "paused", "waiting", "ok", "silent", "layout", "all":
 		return strings.TrimSpace(v)
 	default:
 		return "all"

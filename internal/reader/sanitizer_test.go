@@ -79,23 +79,25 @@ func TestSanitizeHTML_ImageAttrsEscaped(t *testing.T) {
 	}
 }
 
-// Every handler's output goes through the registry, so content produced by a
-// bridge (Telegram HTML is copied verbatim from t.me) is sanitized the same
-// way as RSS descriptions.
-func TestHandlerRegistry_FetchSanitizesAllHandlers(t *testing.T) {
-	h := &staticHandler{content: `<p>ok</p><script>alert(1)</script><img src="https://x/y.png" onerror="alert(2)"><a href="javascript:alert(3)">l</a>`}
+// The registry passes handler output through untouched; SanitizeEntries
+// is what the refresher applies to the items it keeps, so it must strip
+// what every bridge may carry (Telegram HTML is copied verbatim from t.me).
+func TestHandlerRegistry_FetchKeepsRawAndSanitizeEntriesStrips(t *testing.T) {
+	const raw = `<p>ok</p><script>alert(1)</script><img src="https://x/y.png" onerror="alert(2)"><a href="javascript:alert(3)">l</a>`
+	h := &staticHandler{content: raw}
 	reg := NewHandlerRegistry(h)
 	res, err := reg.Fetch(context.Background(), FetchRequest{FeedURL: "https://example.com/feed"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(res.Entries) != 1 {
-		t.Fatalf("entries=%d", len(res.Entries))
+	if len(res.Entries) != 1 || res.Entries[0].Content != raw {
+		t.Fatalf("entries=%+v", res.Entries)
 	}
+	SanitizeEntries(res.Entries)
 	c := res.Entries[0].Content
 	for _, bad := range []string{"<script", "onerror", "javascript:"} {
 		if strings.Contains(c, bad) {
-			t.Fatalf("%q leaked through registry: %q", bad, c)
+			t.Fatalf("%q survived SanitizeEntries: %q", bad, c)
 		}
 	}
 	if !strings.Contains(c, "<p>ok</p>") || !strings.Contains(c, `<img src="https://x/y.png"`) {

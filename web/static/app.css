@@ -456,6 +456,11 @@ html[data-theme="dark"] .feed-context-item.feed-context-danger:focus { backgroun
 .bridge-settings-table th { width: 11rem; color: var(--text-muted); font-weight: 600; font-size: 0.85rem; }
 .badge-ok { background: #16a34a; }
 .badge-muted { background: #94a3b8; }
+.badge-err { background: #dc2626; }
+.bridge-card-alert { border-color: #dc2626; background: #fef2f2; }
+.bridge-card-alert .bridge-layout { color: #991b1b; }
+html[data-theme="dark"] .bridge-card-alert { background: #3b1515; border-color: #7f1d1d; }
+html[data-theme="dark"] .bridge-card-alert .bridge-layout { color: #fca5a5; }
 
 .admin-feeds-meta { margin: 0.5rem 0 0.85rem; }
 .admin-feeds-cards {

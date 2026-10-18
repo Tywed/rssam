@@ -72,6 +72,51 @@ type AdminFeedStore interface {
 	OfferedPollsPerMin(ctx context.Context) (float64, error)
 	DueWebhookLogCount(ctx context.Context) (int, error)
 	EstimateDatabaseSize(ctx context.Context) (int64, error)
+	FeedTypeStats(ctx context.Context) ([]FeedTypeStat, error)
+}
+
+// LayoutErrorPrefix starts feeds.last_error while a bridge cannot read the
+// source's page (service.LayoutErrorPrefix).
+const LayoutErrorPrefix = "layout: "
+
+// FeedTypeStat is one feed_type on the bridges page: how many feeds use
+// it and how many of them currently see unrecognised markup.
+type FeedTypeStat struct {
+	FeedType string
+	Total    int
+	Layout   int
+	// LayoutMarker is the marker of the latest layout error; LayoutAt the
+	// most recent poll that saw it.
+	LayoutMarker string
+	LayoutAt     *time.Time
+}
+
+// FeedTypeStats is one GROUP BY over feeds; the bridges page used to load
+// every feed row to count them.
+func (s *PostgresStore) FeedTypeStats(ctx context.Context) ([]FeedTypeStat, error) {
+	const q = `
+SELECT feed_type,
+       count(*)::int,
+       count(*) FILTER (WHERE last_error LIKE $1)::int,
+       COALESCE(max(last_error) FILTER (WHERE last_error LIKE $1), ''),
+       max(last_checked_at) FILTER (WHERE last_error LIKE $1)
+FROM feeds
+GROUP BY feed_type`
+	rows, err := s.db.Query(ctx, q, LayoutErrorPrefix+"%")
+	if err != nil {
+		return nil, fmt.Errorf("feed type stats: %w", err)
+	}
+	defer rows.Close()
+	var out []FeedTypeStat
+	for rows.Next() {
+		var st FeedTypeStat
+		if err := rows.Scan(&st.FeedType, &st.Total, &st.Layout, &st.LayoutMarker, &st.LayoutAt); err != nil {
+			return nil, fmt.Errorf("feed type stats: %w", err)
+		}
+		st.LayoutMarker = strings.TrimPrefix(st.LayoutMarker, LayoutErrorPrefix)
+		out = append(out, st)
+	}
+	return out, rows.Err()
 }
 
 // GetAdminFeedRow is one feed with its counters, for the admin feed card.
@@ -140,6 +185,8 @@ func adminFeedsStatusWhere(status string, silentAfter time.Duration) string {
 		return `(f.poll_paused = TRUE OR f.manual_paused = TRUE)`
 	case "errors":
 		return `(COALESCE(NULLIF(f.last_error, ''), '') <> '' OR f.parsing_error_count > 0)`
+	case "layout":
+		return `f.last_error LIKE 'layout: %'`
 	case "waiting":
 		return `(f.poll_paused = FALSE AND f.manual_paused = FALSE
   AND COALESCE(NULLIF(f.last_error, ''), '') = '' AND f.parsing_error_count = 0

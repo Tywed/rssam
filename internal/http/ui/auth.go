@@ -133,6 +133,7 @@ type pageData struct {
 	BridgeSection             string
 	BridgeSettings            BridgeSettings
 	BridgeFeedCounts          map[string]int
+	BridgeLayout              map[string]storage.FeedTypeStat
 	TgUseProxy                bool
 	TgProxyServiceURL         string
 	TgStaticProxy             string

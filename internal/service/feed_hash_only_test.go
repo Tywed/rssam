@@ -154,7 +154,7 @@ func TestFeedRefresherPerFeedHashOnly(t *testing.T) {
 	inserted, created, fresh, _, err := r.processEntriesFiltered(context.Background(), feed, []storage.Subscription{{UserID: 1, FeedID: feed.ID}}, []storage.CreateEntryParams{
 		{Title: "skip me", Hash: "h1", URL: "https://example.com/1"},
 		{Title: "match item", Hash: "h2", URL: "https://example.com/2", Content: "body"},
-	}, false, &storage.UpdateFeedRefreshMetaParams{})
+	}, false, &storage.UpdateFeedRefreshMetaParams{}, true)
 	if err != nil {
 		t.Fatal(err)
 	}

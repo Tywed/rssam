@@ -3300,7 +3300,7 @@
           "maximum": 10000,
           "default": 100
         },
-        "description": "Page size; values above 10000 are clamped."
+        "description": "Page size; values above 10000 are clamped, entry lists (/v1/entries, /v1/feeds/{feedID}/entries, search) clamp at 1000."
       },
       "offset": {
         "name": "offset",
@@ -4967,7 +4967,7 @@
           },
           "total": {
             "type": "integer",
-            "description": "Number of items in data (1 for single objects) or total rows for lists."
+            "description": "Rows in the list, counted up to 10001: a total of 10001 means \"at least that many\"."
           }
         },
         "required": [

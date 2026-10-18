@@ -5,73 +5,96 @@
     <h1>Мосты</h1>
     {{template "bridges_nav" .}}
     <p class="meta">Настройки хранятся в БД и применяются сразу после сохранения. Значения из <code>.env</code> используются как значения по умолчанию.</p>
+    {{if .BridgeLayout}}
+    <div class="flash flash-err">
+      <strong>Мост не узнаёт страницу источника.</strong> Ленты не считаются сломанными и опрашиваются по расписанию; если это не единичные ленты — источник изменил вёрстку и мосту нужна правка.
+      {{range $key, $st := .BridgeLayout}}<br>{{bridgeTitle $key}}: лент с ошибкой {{$st.Layout}} из {{$st.Total}} · маркер <code>{{$st.LayoutMarker}}</code>{{if $st.LayoutAt}} · последняя проверка {{formatTime $st.LayoutAt}}{{end}}{{end}}
+      <br><a href="/ui/admin/feeds?status=layout">Показать эти ленты</a>
+    </div>
+    {{end}}
     <div class="bridge-cards">
-      <a class="card bridge-card" href="/ui/settings/bridges/telegram">
+      <a class="card bridge-card{{if bridgeLayout .BridgeLayout "telegram"}} bridge-card-alert{{end}}" href="/ui/settings/bridges/telegram">
         <div class="bridge-card-head">
           <strong>Telegram</strong>
+          {{if bridgeLayout .BridgeLayout "telegram"}}<span class="badge badge-err">вёрстка не распознана</span>{{end}}
           <span class="badge badge-ok">активен</span>
         </div>
         <p class="meta">Публичные каналы через proxy-service или SOCKS</p>
         <p class="meta">Лент: {{bridgeFeedCount .BridgeFeedCounts "telegram"}} · Прокси: {{if .BridgeSettings.Telegram.ProxyConfigured}}да{{else}}нет{{end}}</p>
+        {{with bridgeLayout .BridgeLayout "telegram"}}<p class="meta bridge-layout">Лент с ошибкой: {{.Layout}} из {{.Total}} · маркер <code>{{.LayoutMarker}}</code>{{if .LayoutAt}} · последняя проверка {{formatTime .LayoutAt}}{{end}}</p>{{end}}
       </a>
-      <a class="card bridge-card" href="/ui/settings/bridges/max">
+      <a class="card bridge-card{{if bridgeLayout .BridgeLayout "max"}} bridge-card-alert{{end}}" href="/ui/settings/bridges/max">
         <div class="bridge-card-head">
           <strong>Max</strong>
+          {{if bridgeLayout .BridgeLayout "max"}}<span class="badge badge-err">вёрстка не распознана</span>{{end}}
           {{if .BridgeSettings.Max.Enabled}}<span class="badge badge-ok">включён</span>{{else}}<span class="badge badge-muted">выключен</span>{{end}}
         </div>
         <p class="meta">Каналы max.ru через локальный Max API</p>
         <p class="meta">Лент: {{bridgeFeedCount .BridgeFeedCounts "max"}}</p>
+        {{with bridgeLayout .BridgeLayout "max"}}<p class="meta bridge-layout">Лент с ошибкой: {{.Layout}} из {{.Total}} · маркер <code>{{.LayoutMarker}}</code>{{if .LayoutAt}} · последняя проверка {{formatTime .LayoutAt}}{{end}}</p>{{end}}
       </a>
-      <a class="card bridge-card" href="/ui/settings/bridges/vk">
+      <a class="card bridge-card{{if bridgeLayout .BridgeLayout "vk_search"}} bridge-card-alert{{end}}" href="/ui/settings/bridges/vk">
         <div class="bridge-card-head">
           <strong>VK Search</strong>
+          {{if bridgeLayout .BridgeLayout "vk_search"}}<span class="badge badge-err">вёрстка не распознана</span>{{end}}
           {{if .BridgeSettings.VK.Enabled}}<span class="badge badge-ok">включён</span>{{else}}<span class="badge badge-muted">выключен</span>{{end}}
         </div>
         <p class="meta">Поиск постов VK (newsfeed.search)</p>
         <p class="meta">Лент: {{bridgeFeedCount .BridgeFeedCounts "vk_search"}}</p>
+        {{with bridgeLayout .BridgeLayout "vk_search"}}<p class="meta bridge-layout">Лент с ошибкой: {{.Layout}} из {{.Total}} · маркер <code>{{.LayoutMarker}}</code>{{if .LayoutAt}} · последняя проверка {{formatTime .LayoutAt}}{{end}}</p>{{end}}
       </a>
-      <a class="card bridge-card" href="/ui/settings/bridges/rutube">
+      <a class="card bridge-card{{if bridgeLayout .BridgeLayout "rutube"}} bridge-card-alert{{end}}" href="/ui/settings/bridges/rutube">
         <div class="bridge-card-head">
           <strong>Rutube</strong>
+          {{if bridgeLayout .BridgeLayout "rutube"}}<span class="badge badge-err">вёрстка не распознана</span>{{end}}
           {{if .BridgeSettings.Rutube.Enabled}}<span class="badge badge-ok">включён</span>{{else}}<span class="badge badge-muted">выключен</span>{{end}}
         </div>
         <p class="meta">Видео канала/person Rutube</p>
         <p class="meta">Лент: {{bridgeFeedCount .BridgeFeedCounts "rutube"}}</p>
+        {{with bridgeLayout .BridgeLayout "rutube"}}<p class="meta bridge-layout">Лент с ошибкой: {{.Layout}} из {{.Total}} · маркер <code>{{.LayoutMarker}}</code>{{if .LayoutAt}} · последняя проверка {{formatTime .LayoutAt}}{{end}}</p>{{end}}
       </a>
-      <div class="card bridge-card bridge-card-static">
+      <div class="card bridge-card{{if bridgeLayout .BridgeLayout "dzen_news"}} bridge-card-alert{{end}} bridge-card-static">
         <div class="bridge-card-head">
           <strong>Dzen News</strong>
+          {{if bridgeLayout .BridgeLayout "dzen_news"}}<span class="badge badge-err">вёрстка не распознана</span>{{end}}
           <span class="badge badge-ok">активен</span>
         </div>
         <p class="meta">Поиск новостей на dzen.ru/news/search</p>
         <p class="meta">Лент: {{bridgeFeedCount .BridgeFeedCounts "dzen_news"}}</p>
+        {{with bridgeLayout .BridgeLayout "dzen_news"}}<p class="meta bridge-layout">Лент с ошибкой: {{.Layout}} из {{.Total}} · маркер <code>{{.LayoutMarker}}</code>{{if .LayoutAt}} · последняя проверка {{formatTime .LayoutAt}}{{end}}</p>{{end}}
         <p class="meta">URL: <code>dzen-news://запрос</code> или ссылка поиска Dzen</p>
       </div>
-      <div class="card bridge-card bridge-card-static">
+      <div class="card bridge-card{{if bridgeLayout .BridgeLayout "dzen_channel"}} bridge-card-alert{{end}} bridge-card-static">
         <div class="bridge-card-head">
           <strong>Dzen (каналы)</strong>
+          {{if bridgeLayout .BridgeLayout "dzen_channel"}}<span class="badge badge-err">вёрстка не распознана</span>{{end}}
           <span class="badge badge-ok">активен</span>
         </div>
         <p class="meta">Публикации канала dzen.ru через API страницы канала</p>
         <p class="meta">Лент: {{bridgeFeedCount .BridgeFeedCounts "dzen_channel"}}</p>
+        {{with bridgeLayout .BridgeLayout "dzen_channel"}}<p class="meta bridge-layout">Лент с ошибкой: {{.Layout}} из {{.Total}} · маркер <code>{{.LayoutMarker}}</code>{{if .LayoutAt}} · последняя проверка {{formatTime .LayoutAt}}{{end}}</p>{{end}}
         <p class="meta">URL: <code>https://dzen.ru/имя</code>, <code>https://dzen.ru/id/…</code> или <code>dzen-channel://имя</code></p>
       </div>
-      <div class="card bridge-card bridge-card-static">
+      <div class="card bridge-card{{if bridgeLayout .BridgeLayout "ok_group"}} bridge-card-alert{{end}} bridge-card-static">
         <div class="bridge-card-head">
           <strong>OK (группы)</strong>
+          {{if bridgeLayout .BridgeLayout "ok_group"}}<span class="badge badge-err">вёрстка не распознана</span>{{end}}
           <span class="badge badge-ok">активен</span>
         </div>
         <p class="meta">Посты группы Одноклассников со страницы группы; новые посты дочитываются по одному</p>
         <p class="meta">Лент: {{bridgeFeedCount .BridgeFeedCounts "ok_group"}}</p>
+        {{with bridgeLayout .BridgeLayout "ok_group"}}<p class="meta bridge-layout">Лент с ошибкой: {{.Layout}} из {{.Total}} · маркер <code>{{.LayoutMarker}}</code>{{if .LayoutAt}} · последняя проверка {{formatTime .LayoutAt}}{{end}}</p>{{end}}
         <p class="meta">URL: <code>https://ok.ru/group/…</code>, <code>https://ok.ru/имя</code> или <code>ok-group://имя</code></p>
       </div>
-      <div class="card bridge-card bridge-card-static">
+      <div class="card bridge-card{{if bridgeLayout .BridgeLayout "smotrim"}} bridge-card-alert{{end}} bridge-card-static">
         <div class="bridge-card-head">
           <strong>Smotrim</strong>
+          {{if bridgeLayout .BridgeLayout "smotrim"}}<span class="badge badge-err">вёрстка не распознана</span>{{end}}
           <span class="badge badge-ok">активен</span>
         </div>
         <p class="meta">Видео и сюжеты бренда на smotrim.ru</p>
         <p class="meta">Лент: {{bridgeFeedCount .BridgeFeedCounts "smotrim"}}</p>
+        {{with bridgeLayout .BridgeLayout "smotrim"}}<p class="meta bridge-layout">Лент с ошибкой: {{.Layout}} из {{.Total}} · маркер <code>{{.LayoutMarker}}</code>{{if .LayoutAt}} · последняя проверка {{formatTime .LayoutAt}}{{end}}</p>{{end}}
         <p class="meta">URL: <code>smotrim://brandId</code> или <code>https://smotrim.ru/brand/…</code></p>
       </div>
     </div>

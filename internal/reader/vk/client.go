@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	"rssam/internal/bridge/v1"
 	"rssam/internal/ssrf"
 )
 
@@ -103,7 +104,7 @@ func (c *Client) Search(ctx context.Context, p SearchParams) (*searchResponseBod
 
 	var parsed searchResponse
 	if err := json.Unmarshal(body, &parsed); err != nil {
-		return nil, nil, fmt.Errorf("vk: decode response: %w", err)
+		return nil, nil, &bridge.LayoutError{Bridge: "vk", Marker: "api json", Err: err}
 	}
 	if parsed.Error != nil {
 		return nil, parsed.Error, nil

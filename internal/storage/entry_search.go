@@ -54,8 +54,8 @@ func (s *PostgresStore) SearchEntries(ctx context.Context, userID int64, filter 
 	if limit <= 0 {
 		limit = 100
 	}
-	if limit > 10000 {
-		limit = 10000
+	if limit > ListPageCap {
+		limit = ListPageCap
 	}
 	offset := max(filter.Offset, 0)
 

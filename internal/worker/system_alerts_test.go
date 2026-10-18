@@ -22,6 +22,7 @@ type memAlertStore struct {
 	paused   []storage.SystemAlertFeed
 	silent   []storage.SystemAlertFeed
 	failing  []storage.SystemAlertWebhook
+	types    []storage.FeedTypeStat
 	audit    []storage.AuditEvent
 	settings map[string]json.RawMessage
 	sets     int
@@ -38,6 +39,9 @@ func (m *memAlertStore) ListSilentFeeds(context.Context, time.Duration) ([]stora
 }
 func (m *memAlertStore) ListFailingWebhooks(context.Context) ([]storage.SystemAlertWebhook, error) {
 	return m.failing, nil
+}
+func (m *memAlertStore) FeedTypeStats(context.Context) ([]storage.FeedTypeStat, error) {
+	return m.types, nil
 }
 func (m *memAlertStore) RecordAudit(_ context.Context, ev storage.AuditEvent) error {
 	m.mu.Lock()
@@ -299,5 +303,50 @@ func TestSystemAlerts_ProxyDownOnceUntilRecovered(t *testing.T) {
 	a.pass(context.Background())
 	if sink.count() != 2 || a.state.Proxy != true {
 		t.Fatalf("a new outage after recovery must alert again: %d", sink.count())
+	}
+}
+
+// A bridge alerts once when at least three of its feeds (or all of a
+// smaller fleet) see unrecognised markup, and once more when it recovers.
+func TestSystemAlerts_BridgeLayoutOncePerIncident(t *testing.T) {
+	sink := &alertSink{}
+	srv := sink.server(t)
+	cfg, _ := json.Marshal(storage.TelegramProviderConfig{APIBase: srv.URL, BotToken: "t", ChatID: "7"})
+	store := &memAlertStore{
+		hooks:    []storage.Webhook{{ID: 1, Enabled: true, SystemAlerts: true, Kind: storage.WebhookKindTelegram, ProviderConfig: cfg}},
+		settings: map[string]json.RawMessage{AppSettingSystemAlertState: json.RawMessage(`{}`)},
+		types: []storage.FeedTypeStat{
+			{FeedType: "telegram", Total: 300, Layout: 2, LayoutMarker: "tgme_channel_info"},
+			{FeedType: "smotrim", Total: 2, Layout: 2, LayoutMarker: "__NUXT__"},
+			{FeedType: "rss", Total: 50},
+		},
+	}
+	a := newAlerter(store, SystemAlertsConfig{})
+	a.load(context.Background())
+	a.pass(context.Background())
+	if sink.count() != 1 || !strings.Contains(sink.bodies[0], "Мост smotrim не узнаёт страницу источника") || !strings.Contains(sink.bodies[0], "2 из 2 лент, маркер __NUXT__") {
+		t.Fatalf("two telegram feeds of 300 are noise, two smotrim of two are an incident: %v", sink.bodies)
+	}
+	store.types[0].Layout = 3
+	a.pass(context.Background())
+	a.pass(context.Background())
+	if sink.count() != 2 || !strings.Contains(sink.bodies[1], "Мост telegram не узнаёт страницу источника") || !strings.Contains(sink.bodies[1], "3 из 300") {
+		t.Fatalf("telegram incident must alert exactly once: %v", sink.bodies)
+	}
+	if !a.state.Layout["telegram"] || !a.state.Layout["smotrim"] {
+		t.Fatalf("state=%+v", a.state.Layout)
+	}
+	store.types[0].Layout = 0
+	store.types[1].Layout = 1
+	a.pass(context.Background())
+	if sink.count() != 3 || !strings.Contains(sink.bodies[2], "Мост telegram снова читает страницы источника") {
+		t.Fatalf("recovery: %v", sink.bodies)
+	}
+	if a.state.Layout["telegram"] || !a.state.Layout["smotrim"] {
+		t.Fatalf("state after recovery=%+v", a.state.Layout)
+	}
+	var saved systemAlertState
+	if err := json.Unmarshal(store.settings[AppSettingSystemAlertState], &saved); err != nil || !saved.Layout["smotrim"] || saved.Layout["telegram"] {
+		t.Fatalf("persisted state=%s err=%v", store.settings[AppSettingSystemAlertState], err)
 	}
 }

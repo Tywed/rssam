@@ -214,7 +214,7 @@ func entryListScope(userID int64, status *string, c entryListConds) (entryScope,
 			}
 			scope.alias = "ue"
 			scope.list = entryFromExceptions + c.where("ue", "ue.starred AND "+extra)
-			scope.count = "SELECT count(*) " + scope.list
+			scope.count = cappedCount(scope.list)
 			return scope, nil
 		}
 		extra := entryNoRemoval
@@ -222,46 +222,29 @@ func entryListScope(userID int64, status *string, c entryListConds) (entryScope,
 			extra += " AND " + entryNoUnread
 		}
 		scope.cand = "FROM entries e" + c.whereEntries(extra)
-		scope.count = c.countEntries(st == EntryStatusRead, scope.cand)
+		scope.count = cappedCount(scope.cand)
 	case EntryStatusUnread:
 		scope.alias = "uu"
 		scope.list = entryFromUnread + c.where("uu", "")
-		scope.count = "SELECT count(*) " + scope.list
+		scope.count = cappedCount(scope.list)
 	case EntryStatusRemoved:
 		scope.cand = "FROM entries e" + c.whereEntries(entryRemovedSet)
-		scope.count = "SELECT count(*) " + scope.cand
+		scope.count = cappedCount(scope.cand)
 	default:
 		return entryScope{}, fmt.Errorf("invalid entry status: %q", *status)
 	}
 	return scope, nil
 }
 
-// countEntries counts an all/read list. Without starred or label filters
-// it is arithmetic on index-only counts: entries per subscribed feed via
-// entries_feed_sort_idx, minus the stripped shells, the user's removals
-// and (read) the user's unread rows, each from its own small index.
-// count(*) over the candidate query read the whole heap instead (10 000
-// buffers and three parallel workers against 1 800 for 200 feeds).
-func (c entryListConds) countEntries(read bool, cand string) string {
-	if c.Starred != nil || c.LabelID != nil {
-		return "SELECT count(*) " + cand
-	}
-	feedArg, catArg, _, _ := c.argNums()
-	subs := subscribedFeeds
-	if feedArg != 0 {
-		subs += fmt.Sprintf(" AND s.feed_id = $%d", feedArg)
-	}
-	if catArg != 0 {
-		subs += fmt.Sprintf(" AND s.feed_id IN (%s)", categoryFeeds(catArg))
-	}
-	q := `SELECT (SELECT COALESCE(sum(x.c), 0) FROM (` + subs + `) s, LATERAL (SELECT count(*) AS c FROM entries e WHERE e.feed_id = s.feed_id) x)
- - (SELECT count(*) FROM entries r WHERE r.removed_at IS NOT NULL AND r.feed_id IN (` + subs + `))
- - (SELECT count(*) FROM user_entries x JOIN entries r ON r.id = x.entry_id WHERE x.user_id = $1 AND x.status = '` + EntryStatusRemoved + `' AND r.removed_at IS NULL AND r.feed_id IN (` + subs + `))`
-	if read {
-		q += `
- - (SELECT count(*) FROM user_unread x WHERE x.user_id = $1 AND x.feed_id IN (` + subs + `))`
-	}
-	return q
+// ListTotalCap bounds the WithTotal count of a list, like SearchTotalCap
+// for search: a total equal to the cap means "at least that many". The
+// exact count grew with the list - 42 ms for 60 000 unread rows, 24 ms
+// for 200 000 entries - on every API page; walking the list's own index
+// to the cap is 3-9 ms whatever the size.
+const ListTotalCap = 10001
+
+func cappedCount(fromWhere string) string {
+	return "SELECT count(*) FROM (SELECT 1 " + fromWhere + "\nLIMIT " + fmt.Sprint(ListTotalCap) + ") c"
 }
 
 // Status writes. Unread is the presence of a user_unread row, so marking

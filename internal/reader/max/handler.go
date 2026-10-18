@@ -223,7 +223,7 @@ func (h *Handler) fetch(ctx context.Context, feedURL string, st FetchState) (Fet
 
 	var parsed APIResponse
 	if err := json.Unmarshal(body, &parsed); err != nil {
-		return FetchResult{}, fmt.Errorf("max: decode response: %w", err)
+		return FetchResult{}, &bridge.LayoutError{Bridge: "max", Marker: "api json", Err: err}
 	}
 
 	entries := make([]bridge.Entry, 0, len(parsed.Messages))

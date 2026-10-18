@@ -2,9 +2,10 @@ package dzen
 
 import (
 	"encoding/json"
-	"fmt"
 	"html"
 	"strings"
+
+	"rssam/internal/bridge/v1"
 )
 
 type NewsItem struct {
@@ -53,7 +54,7 @@ func ParseSearchHTML(body []byte) ([]NewsItem, error) {
 	}
 	var payload neoPayload
 	if err := json.Unmarshal(raw, &payload); err != nil {
-		return nil, fmt.Errorf("dzen: decode payload: %w", err)
+		return nil, &bridge.LayoutError{Bridge: "dzen", Marker: "window.Ya.Neo", Err: err}
 	}
 
 	out := make([]NewsItem, 0)

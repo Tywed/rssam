@@ -144,8 +144,9 @@ func (h *Handler) bridgeSettingsData(r *http.Request, section string) pageData {
 		data.FlashMsg = "Настройки сохранены и применены"
 	}
 	if p, ok := auth.PrincipalFromContext(r.Context()); ok && p.IsAdmin() {
-		if counts, err := h.bridgeFeedCounts(r); err == nil {
+		if counts, layout, err := h.bridgeFeedCounts(r); err == nil {
 			data.BridgeFeedCounts = counts
+			data.BridgeLayout = layout
 		}
 	}
 	return data
@@ -163,7 +164,9 @@ func normalizeBridgeFeedType(feedType string) string {
 	}
 }
 
-func (h *Handler) bridgeFeedCounts(r *http.Request) (map[string]int, error) {
+// bridgeFeedCounts: feeds per bridge card and, per bridge, the feeds whose
+// page the bridge currently cannot read.
+func (h *Handler) bridgeFeedCounts(r *http.Request) (map[string]int, map[string]storage.FeedTypeStat, error) {
 	counts := map[string]int{
 		"telegram":     0,
 		"max":          0,
@@ -175,17 +178,34 @@ func (h *Handler) bridgeFeedCounts(r *http.Request) (map[string]int, error) {
 		"smotrim":      0,
 		"rss":          0,
 	}
-	if h.cfg.Feeds == nil {
-		return counts, nil
+	layout := map[string]storage.FeedTypeStat{}
+	if h.cfg.AdminFeeds == nil {
+		return counts, layout, nil
 	}
-	feeds, err := h.cfg.Feeds.ListAllFeeds(r.Context(), 10000)
+	stats, err := h.cfg.AdminFeeds.FeedTypeStats(r.Context())
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	for _, f := range feeds {
-		counts[normalizeBridgeFeedType(f.FeedType)]++
+	for _, st := range stats {
+		key := normalizeBridgeFeedType(st.FeedType)
+		counts[key] += st.Total
+		if st.Layout == 0 {
+			continue
+		}
+		cur := layout[key]
+		cur.FeedType = key
+		cur.Total += st.Total
+		cur.Layout += st.Layout
+		if cur.LayoutAt == nil || (st.LayoutAt != nil && st.LayoutAt.After(*cur.LayoutAt)) {
+			cur.LayoutAt, cur.LayoutMarker = st.LayoutAt, st.LayoutMarker
+		}
+		layout[key] = cur
 	}
-	return counts, nil
+	for key, st := range layout {
+		st.Total = counts[key]
+		layout[key] = st
+	}
+	return counts, layout, nil
 }
 
 func (h *Handler) currentBridgeStored() bridgeconfig.Stored {
@@ -216,6 +236,27 @@ func parseIntDefault(raw string, fallback int) int {
 		return fallback
 	}
 	return n
+}
+
+// bridgeLayout is the card's layout-error line; nil when the bridge reads
+// every feed.
+func bridgeLayout(m map[string]storage.FeedTypeStat, key string) *storage.FeedTypeStat {
+	if st, ok := m[key]; ok {
+		return &st
+	}
+	return nil
+}
+
+var bridgeTitles = map[string]string{
+	"telegram": "Telegram", "max": "Max", "maxstat": "Max (статистика)", "vk_search": "VK Search", "rutube": "Rutube",
+	"dzen_news": "Dzen News", "dzen_channel": "Dzen (каналы)", "ok_group": "OK (группы)", "smotrim": "Smotrim", "rss": "RSS",
+}
+
+func bridgeTitle(key string) string {
+	if t, ok := bridgeTitles[key]; ok {
+		return t
+	}
+	return key
 }
 
 func bridgeFeedCount(counts map[string]int, key string) int {

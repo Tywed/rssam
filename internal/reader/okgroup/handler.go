@@ -141,7 +141,9 @@ func (h *Handler) loadGroup(ctx context.Context, g Group) (*groupPage, error) {
 		return nil, fmt.Errorf("%w: %s", ErrNotGroup, g)
 	}
 	if page.GroupID == "" {
-		return nil, fmt.Errorf("%w: %s", ErrGroupNotFound, g)
+		// 200 without the group's og:url: a captcha, a login wall or a
+		// redesign — ok.ru answers a missing group with 404.
+		return nil, &bridge.LayoutError{Bridge: "ok_group", Marker: "og:url group"}
 	}
 	return page, nil
 }

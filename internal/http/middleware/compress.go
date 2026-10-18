@@ -11,7 +11,12 @@ import (
 	"sync"
 )
 
-// Compress optionally gzip-encodes JSON and large HTML responses when the client accepts gzip.
+// Compress gzip-encodes text responses (HTML, JSON, CSS, JavaScript, SVG)
+// when the client accepts gzip. The decision is made on Content-Type at the
+// first Write, never on the size of that write: html/template emits a page
+// as dozens of small writes, and a "first chunk >= 512 B" rule left every
+// UI page uncompressed (62 KB /ui/unread, 146 KB admin feeds for 200 feeds;
+// gzip makes them 4.8 KB and 6.5 KB).
 func Compress(enabled bool) func(http.Handler) http.Handler {
 	if !enabled {
 		return func(next http.Handler) http.Handler { return next }
@@ -27,10 +32,11 @@ func Compress(enabled bool) func(http.Handler) http.Handler {
 				next.ServeHTTP(w, r)
 				return
 			}
-			if isWebSocketUpgrade(r) {
+			if isWebSocketUpgrade(r) || r.Header.Get("Range") != "" {
 				next.ServeHTTP(w, r)
 				return
 			}
+			w.Header().Add("Vary", "Accept-Encoding")
 			gzw := &gzipResponseWriter{
 				ResponseWriter: w,
 				gz:             pool.Get().(*gzip.Writer),
@@ -69,7 +75,7 @@ func (w *gzipResponseWriter) Write(b []byte) (int, error) {
 		if w.status == 0 {
 			w.status = http.StatusOK
 		}
-		if !shouldGzip(ct, w.status, len(b)) {
+		if !shouldGzip(ct, w.status) {
 			if w.gz != nil {
 				w.pool.Put(w.gz)
 				w.gz = nil
@@ -111,17 +117,16 @@ func (w *gzipResponseWriter) flushHeaders() {
 	w.ResponseWriter.WriteHeader(status)
 }
 
-const gzipHTMLMinBytes = 512
+var gzipTypes = [...]string{"text/html", "application/json", "text/css", "text/javascript", "application/javascript", "image/svg+xml"}
 
-func shouldGzip(contentType string, status, firstLen int) bool {
-	if status >= 300 {
+func shouldGzip(contentType string, status int) bool {
+	if status >= 300 || status == http.StatusNoContent {
 		return false
 	}
-	if strings.Contains(contentType, "application/json") {
-		return true
-	}
-	if strings.Contains(contentType, "text/html") && firstLen >= gzipHTMLMinBytes {
-		return true
+	for _, t := range gzipTypes {
+		if strings.HasPrefix(contentType, t) {
+			return true
+		}
 	}
 	return false
 }
