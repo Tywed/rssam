@@ -14,15 +14,14 @@ const (
 )
 
 // NextWebhookRetryAt is the earliest next_retry_at of a pending or failed
-// delivery.
-func (s *PostgresStore) NextWebhookRetryAt(ctx context.Context) (time.Time, bool, error) {
-	return s.nextAt(ctx, `SELECT min(next_retry_at) FROM webhook_logs WHERE status IN ('pending','failed')`, "next webhook")
-}
-
-func (s *PostgresStore) nextAt(ctx context.Context, q, what string) (time.Time, bool, error) {
+// delivery not in exclude (the rows this process is delivering right now).
+func (s *PostgresStore) NextWebhookRetryAt(ctx context.Context, exclude []int64) (time.Time, bool, error) {
+	if exclude == nil {
+		exclude = []int64{}
+	}
 	var at *time.Time
-	if err := s.db.QueryRow(ctx, q).Scan(&at); err != nil {
-		return time.Time{}, false, fmt.Errorf("%s: %w", what, err)
+	if err := s.db.QueryRow(ctx, `SELECT min(next_retry_at) FROM webhook_logs WHERE status IN ('pending','failed') AND NOT (id = ANY($1::bigint[]))`, exclude).Scan(&at); err != nil {
+		return time.Time{}, false, fmt.Errorf("next webhook: %w", err)
 	}
 	if at == nil {
 		return time.Time{}, false, nil

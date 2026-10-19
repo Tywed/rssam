@@ -143,18 +143,48 @@ func derefInt64(p *int64) int64 {
 	return *p
 }
 
-func (s *PostgresStore) CountIncompleteWebhookLogs(ctx context.Context, entryID, excludeLogID int64) (int, error) {
+// EntryWebhookOutcome reports, in one query, how many other deliveries of
+// the entry are still pending or failed and the merged on_success action of
+// every webhook that received it.
+func (s *PostgresStore) EntryWebhookOutcome(ctx context.Context, entryID, excludeLogID int64) (incomplete int, action string, err error) {
 	const q = `
-SELECT COUNT(*)::int
-FROM webhook_logs
-WHERE entry_id = $1
-  AND id <> $2
-  AND status IN ('pending', 'failed')`
+SELECT count(*) FILTER (WHERE wl.id <> $2 AND wl.status IN ('pending', 'failed'))::int,
+       COALESCE(array_agg(w.on_success_entry), '{}')
+FROM webhook_logs wl
+JOIN webhooks w ON w.id = wl.webhook_id
+WHERE wl.entry_id = $1`
+	var actions []string
+	if err := s.db.QueryRow(ctx, q, entryID, excludeLogID).Scan(&incomplete, &actions); err != nil {
+		return 0, WebhookOnSuccessNone, fmt.Errorf("entry webhook outcome: %w", err)
+	}
+	return incomplete, MergeOnSuccessActions(actions), nil
+}
+
+// DeleteRelayEntryAfterWebhook ends the life of a relay entry: once no other
+// delivery of it is pending the row is deleted and its hash kept in
+// feed_entry_dedup. The log rows keep their entry_id as a bare number.
+// Returns false when another delivery still holds the entry.
+func (s *PostgresStore) DeleteRelayEntryAfterWebhook(ctx context.Context, entryID, excludeLogID int64) (bool, error) {
+	const q = `
+WITH e AS (
+  DELETE FROM entries
+  WHERE id = $1
+    AND NOT EXISTS (
+      SELECT 1 FROM webhook_logs
+      WHERE entry_id = $1 AND id <> $2 AND status IN ('pending', 'failed')
+    )
+  RETURNING feed_id, hash
+), d AS (
+  INSERT INTO feed_entry_dedup(feed_id, hash)
+  SELECT feed_id, rssam_dedup_key(hash) FROM e WHERE hash <> ''
+  ON CONFLICT (feed_id, hash) DO NOTHING
+)
+SELECT count(*) FROM e`
 	var n int
 	if err := s.db.QueryRow(ctx, q, entryID, excludeLogID).Scan(&n); err != nil {
-		return 0, fmt.Errorf("count incomplete webhook logs: %w", err)
+		return false, fmt.Errorf("delete relay entry after webhook: %w", err)
 	}
-	return n, nil
+	return n > 0, nil
 }
 
 // MarkEntryRemovedKeepPayload removes the entry for the webhook owner only;
@@ -182,29 +212,4 @@ func (s *PostgresStore) MarkEntryReadIfActive(ctx context.Context, userID, entry
 		return fmt.Errorf("mark entry read after webhook: %w", err)
 	}
 	return nil
-}
-
-func (s *PostgresStore) EntryOnSuccessAction(ctx context.Context, entryID int64) (string, error) {
-	const q = `
-SELECT w.on_success_entry
-FROM webhook_logs wl
-JOIN webhooks w ON w.id = wl.webhook_id
-WHERE wl.entry_id = $1`
-	rows, err := s.db.Query(ctx, q, entryID)
-	if err != nil {
-		return WebhookOnSuccessNone, fmt.Errorf("entry on_success actions: %w", err)
-	}
-	defer rows.Close()
-	var actions []string
-	for rows.Next() {
-		var a string
-		if err := rows.Scan(&a); err != nil {
-			return WebhookOnSuccessNone, fmt.Errorf("scan on_success: %w", err)
-		}
-		actions = append(actions, a)
-	}
-	if err := rows.Err(); err != nil {
-		return WebhookOnSuccessNone, err
-	}
-	return MergeOnSuccessActions(actions), nil
 }

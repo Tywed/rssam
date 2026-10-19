@@ -296,9 +296,9 @@ func (s *PostgresStore) ListWebhookLogRows(ctx context.Context, webhookID int64,
 SELECT
   wl.id, wl.webhook_id, wl.entry_id, wl.status, wl.attempt, wl.next_retry_at,
   wl.last_status_code, wl.last_error, wl.response_snippet, wl.created_at, wl.updated_at,
-  e.title,
-  f.id,
-  f.title,
+  COALESCE(e.title, ''),
+  COALESCE(f.id, 0),
+  COALESCE(f.title, ''),
   CASE
     WHEN EXISTS (
       SELECT 1
@@ -320,8 +320,8 @@ SELECT
   ), ''),
   count(*) OVER()
 FROM webhook_logs wl
-JOIN entries e ON e.id = wl.entry_id
-JOIN feeds f ON f.id = e.feed_id
+LEFT JOIN entries e ON e.id = wl.entry_id
+LEFT JOIN feeds f ON f.id = COALESCE(wl.feed_id, e.feed_id)
 WHERE wl.webhook_id = $1
   AND ($2 = '' OR wl.status = $2)
   AND ($3::timestamptz IS NULL OR wl.created_at >= $3)

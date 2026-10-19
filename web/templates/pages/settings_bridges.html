@@ -3,7 +3,6 @@
   {{template "settings_nav" .}}
   <div class="settings-content">
     <h1>Мосты</h1>
-    {{template "bridges_nav" .}}
     <p class="meta">Настройки хранятся в БД и применяются сразу после сохранения. Значения из <code>.env</code> используются как значения по умолчанию.</p>
     {{if .BridgeLayout}}
     <div class="flash flash-err">
@@ -53,6 +52,17 @@
         <p class="meta">Лент: {{bridgeFeedCount .BridgeFeedCounts "rutube"}}</p>
         {{with bridgeLayout .BridgeLayout "rutube"}}<p class="meta bridge-layout">Лент с ошибкой: {{.Layout}} из {{.Total}} · маркер <code>{{.LayoutMarker}}</code>{{if .LayoutAt}} · последняя проверка {{formatTime .LayoutAt}}{{end}}</p>{{end}}
       </a>
+      <div class="card bridge-card{{if bridgeLayout .BridgeLayout "maxstat"}} bridge-card-alert{{end}} bridge-card-static">
+        <div class="bridge-card-head">
+          <strong>MaxStat</strong>
+          {{if bridgeLayout .BridgeLayout "maxstat"}}<span class="badge badge-err">вёрстка не распознана</span>{{end}}
+          <span class="badge badge-ok">активен</span>
+        </div>
+        <p class="meta">Поиск постов через maxstat.ru (токен в <code>MAXSTAT_ACCESS_TOKEN</code> или в настройках ленты)</p>
+        <p class="meta">Лент: {{bridgeFeedCount .BridgeFeedCounts "maxstat"}}</p>
+        {{with bridgeLayout .BridgeLayout "maxstat"}}<p class="meta bridge-layout">Лент с ошибкой: {{.Layout}} из {{.Total}} · маркер <code>{{.LayoutMarker}}</code>{{if .LayoutAt}} · последняя проверка {{formatTime .LayoutAt}}{{end}}</p>{{end}}
+        <p class="meta">URL: <code>maxstat-search://запрос</code> или <code>https://maxstat.ru/posts?search=…</code></p>
+      </div>
       <div class="card bridge-card{{if bridgeLayout .BridgeLayout "dzen_news"}} bridge-card-alert{{end}} bridge-card-static">
         <div class="bridge-card-head">
           <strong>Dzen News</strong>
@@ -97,10 +107,21 @@
         {{with bridgeLayout .BridgeLayout "smotrim"}}<p class="meta bridge-layout">Лент с ошибкой: {{.Layout}} из {{.Total}} · маркер <code>{{.LayoutMarker}}</code>{{if .LayoutAt}} · последняя проверка {{formatTime .LayoutAt}}{{end}}</p>{{end}}
         <p class="meta">URL: <code>smotrim://brandId</code> или <code>https://smotrim.ru/brand/…</code></p>
       </div>
+      <div class="card bridge-card{{if bridgeLayout .BridgeLayout "page"}} bridge-card-alert{{end}} bridge-card-static">
+        <div class="bridge-card-head">
+          <strong>Страница</strong>
+          {{if bridgeLayout .BridgeLayout "page"}}<span class="badge badge-err">вёрстка не распознана</span>{{end}}
+          <span class="badge badge-ok">активен</span>
+        </div>
+        <p class="meta">Слежение за фрагментом HTML-страницы: запись при каждом изменении текста внутри селектора</p>
+        <p class="meta">Лент: {{bridgeFeedCount .BridgeFeedCounts "page"}}</p>
+        {{with bridgeLayout .BridgeLayout "page"}}<p class="meta bridge-layout">Лент с ошибкой: {{.Layout}} из {{.Total}} · маркер <code>{{.LayoutMarker}}</code>{{if .LayoutAt}} · последняя проверка {{formatTime .LayoutAt}}{{end}}</p>{{end}}
+        <p class="meta">URL: <code>page+https://адрес#css-селектор</code></p>
+      </div>
     </div>
     <div class="card mt-1">
       <h2>RSS / Atom</h2>
-      <p class="meta">Обычные RSS/Atom/JSON Feed — не мост, встроенный fetcher. Лент: {{bridgeFeedCount .BridgeFeedCounts "rss"}}.</p>
+      <p class="meta">Обычные RSS/Atom/JSON Feed — не мост, встроенный fetcher. Лент: {{bridgeFeedCount .BridgeFeedCounts "rss"}}.{{if .InboundEnabled}} Входящих вебхуков: {{bridgeFeedCount .BridgeFeedCounts "inbound"}}.{{end}}</p>
     </div>
   </div>
 </div>

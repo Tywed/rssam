@@ -88,7 +88,7 @@ type statusPublisher struct {
 
 func (p *statusPublisher) PublishNewEntries(context.Context, storage.Feed, []storage.Subscription, []storage.Entry) {
 }
-func (p *statusPublisher) PublishFeedStatusChanged(feed storage.Feed, err error) {
+func (p *statusPublisher) PublishFeedStatusChanged(feed storage.Feed, _ []storage.Subscription, err error) {
 	p.feeds = append(p.feeds, feed)
 	p.errs = append(p.errs, err)
 }
@@ -436,4 +436,47 @@ func TestPollHost(t *testing.T) {
 		t.Fatal("released slot is reusable")
 	}
 	r2()
+}
+
+func TestRefreshLoadedFeed_HealthyFeedAsksPollLogOnce(t *testing.T) {
+	feed := storage.Feed{ID: 9, OwnerID: 1, FeedURL: "https://example.com/f.xml", IntervalMinutes: 15}
+	h := &stubHandler{res: reader.FetchResponse{}}
+	r, fs, pl, _ := newStatusRefresher(h, feed)
+	r.Entries = &memEntryCreate{empty: true}
+
+	// First poll of the process: the log is asked (it may hold nothing yet).
+	if _, err := r.RefreshLoadedFeed(context.Background(), feed); err != nil {
+		t.Fatal(err)
+	}
+	if len(pl.rows) != 1 || !pl.rows[0].OK {
+		t.Fatalf("poll log rows = %+v", pl.rows)
+	}
+	// Healthy before, healthy after: the row would not change, no call.
+	for i := 0; i < 3; i++ {
+		if _, err := r.RefreshLoadedFeed(context.Background(), fs.feed); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(pl.rows) != 1 {
+		t.Fatalf("poll log rows after quiet polls = %d, want 1", len(pl.rows))
+	}
+	// A failure is logged, and the recovery after it too.
+	h.err = errors.New("boom 503")
+	if _, err := r.RefreshLoadedFeed(context.Background(), fs.feed); err == nil {
+		t.Fatal("expected failure")
+	}
+	h.err = nil
+	if _, err := r.RefreshLoadedFeed(context.Background(), fs.feed); err != nil {
+		t.Fatal(err)
+	}
+	if len(pl.rows) != 3 || pl.rows[1].OK || !pl.rows[2].OK {
+		t.Fatalf("poll log rows = %+v", pl.rows)
+	}
+	// Healthy again: quiet once more.
+	if _, err := r.RefreshLoadedFeed(context.Background(), fs.feed); err != nil {
+		t.Fatal(err)
+	}
+	if len(pl.rows) != 3 {
+		t.Fatalf("poll log rows = %d, want 3", len(pl.rows))
+	}
 }

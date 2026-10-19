@@ -46,14 +46,20 @@ func (r *Runner) webhookDispatchLoop(ctx context.Context, out chan<- storage.Web
 			idleWait(ctx, r.wake.webhooks, time.Time{}, false, r.Cfg.SchedulerTick)
 			continue
 		}
-		logs, err := r.Store.ClaimDueWebhookLogs(ctx, r.Cfg.WebhookPoolSize)
+		exclude := r.inflightHooks.exclude(time.Now())
+		logs, err := r.Store.ClaimDueWebhookLogs(ctx, r.Cfg.WebhookPoolSize, exclude)
 		if err != nil {
 			r.Log.Error("webhook dispatcher: claim due logs failed", "err", err)
 			idleWait(ctx, r.wake.webhooks, time.Time{}, false, r.Cfg.SchedulerTick)
 			continue
 		}
 		if len(logs) > 0 {
-			for _, l := range r.groupDigestLogs(ctx, logs) {
+			claimedAt := time.Now()
+			for _, l := range r.groupDigestLogs(ctx, logs, exclude) {
+				r.inflightHooks.start(l.ID, claimedAt)
+				for _, id := range l.Peers {
+					r.inflightHooks.start(id, claimedAt)
+				}
 				select {
 				case out <- l:
 				case <-ctx.Done():
@@ -62,7 +68,7 @@ func (r *Runner) webhookDispatchLoop(ctx context.Context, out chan<- storage.Web
 			}
 			continue
 		}
-		next, known, err := r.Store.NextWebhookRetryAt(ctx)
+		next, known, err := r.Store.NextWebhookRetryAt(ctx, exclude)
 		if err != nil {
 			r.Log.Error("webhook dispatcher: next retry failed", "err", err)
 		}
@@ -76,11 +82,24 @@ func (r *Runner) webhookWorkerLoop(ctx context.Context, in <-chan storage.Webhoo
 		case <-ctx.Done():
 			return
 		case l := <-in:
+			var stored bool
 			if l.DigestMinutes > 0 {
-				r.processWebhookDigest(ctx, l)
-				continue
+				stored = r.processWebhookDigest(ctx, l)
+			} else {
+				stored = r.processWebhookLog(ctx, l)
 			}
-			r.processWebhookLog(ctx, l)
+			// A row whose status is written is free at once (its retry time
+			// is in the row); one whose write failed stays excluded for the
+			// grace period so the endpoint is not hammered meanwhile.
+			ids := append([]int64{l.ID}, l.Peers...)
+			now := time.Now()
+			for _, id := range ids {
+				if stored {
+					r.inflightHooks.forget(id)
+				} else {
+					r.inflightHooks.done(id, now)
+				}
+			}
 		}
 	}
 }
@@ -90,8 +109,8 @@ type webhookDeliveryStore interface {
 	MarkWebhookLogSent(ctx context.Context, logID int64, attempt int, statusCode int, responseSnippet string) error
 	MarkWebhookLogFailed(ctx context.Context, logID int64, statusCode *int, errMsg string, responseSnippet string, attempt int, nextRetryAt *time.Time, dead bool) error
 	StripEntryPayloadAfterWebhook(ctx context.Context, entryID int64) error
-	CountIncompleteWebhookLogs(ctx context.Context, entryID, excludeLogID int64) (int, error)
-	EntryOnSuccessAction(ctx context.Context, entryID int64) (string, error)
+	EntryWebhookOutcome(ctx context.Context, entryID, excludeLogID int64) (incomplete int, action string, err error)
+	DeleteRelayEntryAfterWebhook(ctx context.Context, entryID, excludeLogID int64) (bool, error)
 	MarkEntryRemovedKeepPayload(ctx context.Context, userID, entryID int64) error
 	MarkEntryReadIfActive(ctx context.Context, userID, entryID int64) error
 }
@@ -103,10 +122,35 @@ func (r *Runner) webhookDelivery() webhookDeliveryStore {
 	return r.Store
 }
 
-func (r *Runner) processWebhookLog(ctx context.Context, l storage.WebhookLog) {
+// processWebhookLog delivers one row and reports whether its final status
+// reached the database.
+func (r *Runner) processWebhookLog(ctx context.Context, l storage.WebhookLog) bool {
+	store := &markedDelivery{webhookDeliveryStore: r.webhookDelivery()}
+	r.deliverWebhookLog(ctx, store, l)
+	return store.stored
+}
+
+// markedDelivery remembers whether the last status write succeeded.
+type markedDelivery struct {
+	webhookDeliveryStore
+	stored bool
+}
+
+func (m *markedDelivery) MarkWebhookLogSent(ctx context.Context, logID int64, attempt int, statusCode int, responseSnippet string) error {
+	err := m.webhookDeliveryStore.MarkWebhookLogSent(ctx, logID, attempt, statusCode, responseSnippet)
+	m.stored = err == nil
+	return err
+}
+
+func (m *markedDelivery) MarkWebhookLogFailed(ctx context.Context, logID int64, statusCode *int, errMsg string, responseSnippet string, attempt int, nextRetryAt *time.Time, dead bool) error {
+	err := m.webhookDeliveryStore.MarkWebhookLogFailed(ctx, logID, statusCode, errMsg, responseSnippet, attempt, nextRetryAt, dead)
+	m.stored = err == nil
+	return err
+}
+
+func (r *Runner) deliverWebhookLog(ctx context.Context, store webhookDeliveryStore, l storage.WebhookLog) {
 	start := time.Now()
 	attempt := l.Attempt + 1
-	store := r.webhookDelivery()
 
 	delCtx, err := store.LoadWebhookDeliveryContext(ctx, l.ID)
 	if err != nil {
@@ -246,6 +290,15 @@ func webhookHTTPRetryable(statusCode int) bool {
 }
 
 func (r *Runner) applyOnSuccessEntry(ctx context.Context, store webhookDeliveryStore, l storage.WebhookLog, delCtx storage.WebhookDeliveryContext) {
+	if r.Cfg.DedupOnlyStorage || delCtx.Feed.StoreMode == storage.StoreModeRelay {
+		// A relay entry exists only to be delivered: nobody reads it, so
+		// per-user actions do not apply and the row goes as soon as the
+		// last delivery is done.
+		if _, err := store.DeleteRelayEntryAfterWebhook(ctx, l.EntryID, l.ID); err != nil && r.Log != nil {
+			r.Log.Error("webhook on_success: delete relay entry", "entry_id", l.EntryID, "err", err)
+		}
+		return
+	}
 	thisAction, err := storage.NormalizeWebhookOnSuccess(delCtx.Webhook.OnSuccessEntry)
 	if err != nil {
 		thisAction = storage.WebhookOnSuccessNone
@@ -256,27 +309,18 @@ func (r *Runner) applyOnSuccessEntry(ctx context.Context, store webhookDeliveryS
 		}
 	}
 
-	n, cerr := store.CountIncompleteWebhookLogs(ctx, l.EntryID, l.ID)
-	if cerr != nil {
+	incomplete, resolved, err := store.EntryWebhookOutcome(ctx, l.EntryID, l.ID)
+	if err != nil {
 		if r.Log != nil {
-			r.Log.Error("webhook on_success: count incomplete logs", "entry_id", l.EntryID, "err", cerr)
+			r.Log.Error("webhook on_success: entry outcome", "entry_id", l.EntryID, "err", err)
 		}
 		return
 	}
-	if n > 0 {
+	if incomplete > 0 {
 		return
 	}
 
-	action := thisAction
-	if resolved, rerr := store.EntryOnSuccessAction(ctx, l.EntryID); rerr != nil {
-		if r.Log != nil {
-			r.Log.Error("webhook on_success: resolve actions", "entry_id", l.EntryID, "err", rerr)
-		}
-	} else {
-		action = storage.MergeOnSuccessActions([]string{thisAction, resolved})
-	}
-
-	switch action {
+	switch storage.MergeOnSuccessActions([]string{thisAction, resolved}) {
 	case storage.WebhookOnSuccessHash:
 		if err := store.StripEntryPayloadAfterWebhook(ctx, l.EntryID); err != nil && r.Log != nil {
 			r.Log.Error("webhook on_success: hash entry", "entry_id", l.EntryID, "err", err)
@@ -284,11 +328,6 @@ func (r *Runner) applyOnSuccessEntry(ctx context.Context, store webhookDeliveryS
 	case storage.WebhookOnSuccessDelete:
 		if err := store.MarkEntryRemovedKeepPayload(ctx, delCtx.Webhook.UserID, l.EntryID); err != nil && r.Log != nil {
 			r.Log.Error("webhook on_success: delete entry", "entry_id", l.EntryID, "err", err)
-		}
-	}
-	if r.Cfg.DedupOnlyStorage || delCtx.Feed.StoreMode == storage.StoreModeRelay {
-		if err := store.StripEntryPayloadAfterWebhook(ctx, l.EntryID); err != nil && r.Log != nil {
-			r.Log.Error("webhook on_success: dedup strip", "entry_id", l.EntryID, "err", err)
 		}
 	}
 }

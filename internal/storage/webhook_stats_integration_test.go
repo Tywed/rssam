@@ -12,7 +12,7 @@ import (
 // claimOwnWebhookLogs claims due logs and returns only those of webhookID.
 func claimOwnWebhookLogs(t *testing.T, store *PostgresStore, webhookID int64, want int) []WebhookLog {
 	t.Helper()
-	claimed, err := store.ClaimDueWebhookLogs(context.Background(), 1000)
+	claimed, err := store.ClaimDueWebhookLogs(context.Background(), 1000, nil)
 	if err != nil {
 		t.Fatalf("claim: %v", err)
 	}

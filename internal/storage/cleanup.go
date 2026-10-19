@@ -76,12 +76,15 @@ WHERE id IN (
 		result.FilterMatches = n
 	}
 
+	// A feed's newest row is kept whatever its age: it is the feed's current
+	// status and the poller relies on it staying there (recordPoll).
 	if !opts.FeedPollLogBefore.IsZero() {
 		n, err = s.deleteInBatches(ctx, `
 DELETE FROM feed_poll_log
 WHERE id IN (
-  SELECT id FROM feed_poll_log
-  WHERE at < $1
+  SELECT l.id FROM feed_poll_log l
+  WHERE l.at < $1
+    AND l.id <> (SELECT max(m.id) FROM feed_poll_log m WHERE m.feed_id = l.feed_id)
   LIMIT $2
 )`, opts.FeedPollLogBefore.UTC(), deleteBatchSize)
 		if err != nil {

@@ -101,7 +101,7 @@ func TestIntegration_WebhookLogsOwnershipAndRetry(t *testing.T) {
 	}
 
 	// Claim → mark one sent, one failed with a far-future retry.
-	claimed, err := store.ClaimDueWebhookLogs(ctx, 10)
+	claimed, err := store.ClaimDueWebhookLogs(ctx, 10, nil)
 	if err != nil {
 		t.Fatalf("claim: %v", err)
 	}
@@ -125,7 +125,7 @@ func TestIntegration_WebhookLogsOwnershipAndRetry(t *testing.T) {
 	}
 
 	// A failed row scheduled for later is not claimable now...
-	claimed, err = store.ClaimDueWebhookLogs(ctx, 100)
+	claimed, err = store.ClaimDueWebhookLogs(ctx, 100, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -147,7 +147,7 @@ func TestIntegration_WebhookLogsOwnershipAndRetry(t *testing.T) {
 	if err := store.RetryWebhookLogNow(ctx, owner.ID, failedID); err != nil {
 		t.Fatalf("owner retry: %v", err)
 	}
-	claimed, err = store.ClaimDueWebhookLogs(ctx, 100)
+	claimed, err = store.ClaimDueWebhookLogs(ctx, 100, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

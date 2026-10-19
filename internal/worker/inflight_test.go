@@ -8,7 +8,7 @@ import (
 
 func TestInflightPolls(t *testing.T) {
 	var p inflightPolls
-	p.init(2 * time.Minute)
+	p.init(2*time.Minute, time.Second)
 	t0 := time.Now()
 
 	p.start(1, t0)
@@ -34,6 +34,12 @@ func TestInflightPolls(t *testing.T) {
 	}
 	if ex := p.exclude(t0.Add(3 * time.Second)); len(ex) != 0 {
 		t.Fatalf("exclude after grace=%v, want none", ex)
+	}
+	// forget releases at once, no grace.
+	p.start(3, t0)
+	p.forget(3)
+	if ex := p.exclude(t0); slices.Contains(ex, 3) {
+		t.Fatalf("forgotten item still excluded: %v", ex)
 	}
 	if running, _ := p.counts(t0.Add(3 * time.Second)); running != 1 {
 		t.Fatalf("running=%d, want the stale one", running)

@@ -124,7 +124,7 @@ func TestPublisher_FeedStatusIsTenantScoped(t *testing.T) {
 	owner := newAttachedClient(t, hub, 5)
 	other := newAttachedClient(t, hub, 6)
 	pub := NewPublisher(nil, hub, nil, stubSubs{{UserID: 5, FeedID: 1}})
-	pub.PublishFeedStatusChanged(storage.Feed{ID: 1, OwnerID: 5}, nil)
+	pub.PublishFeedStatusChanged(storage.Feed{ID: 1, OwnerID: 5}, nil, nil)
 	if n := len(drain(other)); n != 0 {
 		t.Fatalf("other user got %d frames", n)
 	}
@@ -140,7 +140,7 @@ func TestPublisher_FeedStatusCarriesPersistedState(t *testing.T) {
 	next := time.Date(2026, 9, 8, 12, 0, 0, 0, time.UTC)
 	pub.PublishFeedStatusChanged(storage.Feed{
 		ID: 1, OwnerID: 5, ParsingErrorCount: 4, PollPaused: true, LastError: "old", NextCheckAt: &next,
-	}, errors.New("fetch feed: 503"))
+	}, nil, errors.New("fetch feed: 503"))
 	got := drain(owner)
 	if len(got) != 1 {
 		t.Fatalf("got %d frames, want 1", len(got))
@@ -155,7 +155,7 @@ func TestPublisher_FeedStatusCarriesPersistedState(t *testing.T) {
 		}
 	}
 
-	pub.PublishFeedStatusChanged(storage.Feed{ID: 1, OwnerID: 5}, nil)
+	pub.PublishFeedStatusChanged(storage.Feed{ID: 1, OwnerID: 5}, nil, nil)
 	got = drain(owner)
 	if len(got) != 1 || !strings.Contains(got[0], `"success":true`) || !strings.Contains(got[0], `"parsing_error_count":0`) || !strings.Contains(got[0], `"parsing_error_message":""`) {
 		t.Fatalf("success frame = %v", got)
@@ -169,5 +169,43 @@ func TestHub_PublishWithoutUserReachesNobody(t *testing.T) {
 	hub.PublishToUser(0, []string{ChannelAll}, Envelope{Event: "system"})
 	if len(drain(a)) != 0 || len(drain(b)) != 0 {
 		t.Fatal("an event without an owner must not be broadcast")
+	}
+}
+
+type countingSubs struct {
+	calls int
+	subs  []storage.Subscription
+}
+
+func (c *countingSubs) ListFeedSubscribers(context.Context, int64) ([]storage.Subscription, error) {
+	c.calls++
+	return c.subs, nil
+}
+
+func TestPublisher_FeedStatusSkipsLookupWithoutClientsOrWithSubs(t *testing.T) {
+	hub := NewHub(16, time.Second)
+	subs := &countingSubs{subs: []storage.Subscription{{UserID: 5, FeedID: 1}}}
+	pub := NewPublisher(nil, hub, nil, subs)
+
+	pub.PublishFeedStatusChanged(storage.Feed{ID: 1}, nil, nil)
+	if subs.calls != 0 {
+		t.Fatalf("subscribers read with nobody connected: %d calls", subs.calls)
+	}
+
+	owner := newAttachedClient(t, hub, 5)
+	pub.PublishFeedStatusChanged(storage.Feed{ID: 1}, []storage.Subscription{{UserID: 5, FeedID: 1}}, nil)
+	if subs.calls != 0 {
+		t.Fatalf("subscribers re-read although passed in: %d calls", subs.calls)
+	}
+	if n := len(drain(owner)); n != 1 {
+		t.Fatalf("owner got %d frames, want 1", n)
+	}
+
+	pub.PublishFeedStatusChanged(storage.Feed{ID: 1}, nil, nil)
+	if subs.calls != 1 {
+		t.Fatalf("subscribers lookup calls = %d, want 1", subs.calls)
+	}
+	if n := len(drain(owner)); n != 1 {
+		t.Fatalf("owner got %d frames, want 1", n)
 	}
 }

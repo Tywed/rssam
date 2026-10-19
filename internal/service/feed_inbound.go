@@ -46,7 +46,7 @@ func (r *FeedRefresher) Ingest(ctx context.Context, feed storage.Feed, entries [
 	}
 	inserted, insertedEntries, metaStored, err := r.storeFetched(ctx, feed, subs, entries, &meta)
 	if err != nil {
-		r.recordPoll(ctx, feed.ID, now, started, 0, err)
+		r.recordPoll(ctx, feed, now, started, 0, err)
 		return 0, err
 	}
 	r.afterStore(ctx, feed, subs, insertedEntries)
@@ -55,6 +55,6 @@ func (r *FeedRefresher) Ingest(ctx context.Context, feed storage.Feed, entries [
 			r.logger().Error("update feed refresh meta failed", "feed_id", feed.ID, "err", err)
 		}
 	}
-	r.recordPoll(ctx, feed.ID, now, started, inserted, nil)
+	r.recordPoll(ctx, feed, now, started, inserted, nil)
 	return inserted, nil
 }

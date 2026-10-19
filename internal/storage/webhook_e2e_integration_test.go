@@ -49,7 +49,7 @@ func TestIntegration_WebhookOnSuccessEntry_ResolvesAcrossWebhooks(t *testing.T) 
 	if err := store.EnqueueWebhookLogs(ctx, []int64{whRead.ID}, entries[2].ID); err != nil {
 		t.Fatal(err)
 	}
-	claimed, err := store.ClaimDueWebhookLogs(ctx, 100)
+	claimed, err := store.ClaimDueWebhookLogs(ctx, 100, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,7 +72,7 @@ func TestIntegration_WebhookOnSuccessEntry_ResolvesAcrossWebhooks(t *testing.T) 
 	if err := store.MarkWebhookLogSent(ctx, l0read.ID, 1, 200, ""); err != nil {
 		t.Fatal(err)
 	}
-	n, err := store.CountIncompleteWebhookLogs(ctx, entries[0].ID, l0read.ID)
+	n, action, err := store.EntryWebhookOutcome(ctx, entries[0].ID, l0read.ID)
 	if err != nil || n != 1 {
 		t.Fatalf("incomplete after first sent: n=%d err=%v", n, err)
 	}
@@ -80,13 +80,9 @@ func TestIntegration_WebhookOnSuccessEntry_ResolvesAcrossWebhooks(t *testing.T) 
 	if err := store.MarkWebhookLogSent(ctx, l0hash.ID, 1, 200, ""); err != nil {
 		t.Fatal(err)
 	}
-	n, err = store.CountIncompleteWebhookLogs(ctx, entries[0].ID, l0hash.ID)
+	n, action, err = store.EntryWebhookOutcome(ctx, entries[0].ID, l0hash.ID)
 	if err != nil || n != 0 {
 		t.Fatalf("incomplete after both sent: n=%d err=%v", n, err)
-	}
-	action, err := store.EntryOnSuccessAction(ctx, entries[0].ID)
-	if err != nil {
-		t.Fatal(err)
 	}
 	if merged := MergeOnSuccessActions([]string{WebhookOnSuccessHash, action}); merged != WebhookOnSuccessHash {
 		t.Fatalf("merged action for read+hash = %q, want hash", merged)
@@ -233,5 +229,75 @@ func TestIntegration_MarkEntriesRemoved_TenantScopedSoftDelete(t *testing.T) {
 	}
 	if n, err := store.MarkEntriesRemoved(ctx, owner.ID, nil); err != nil || n != 0 {
 		t.Fatalf("empty remove: n=%d err=%v", n, err)
+	}
+}
+
+// TestIntegration_RelayEntryDeletedAfterWebhook: a relay entry is deleted
+// once its last delivery is done; the hash stays in feed_entry_dedup, the
+// log rows survive with their feed, and the claim path ignores the row.
+func TestIntegration_RelayEntryDeletedAfterWebhook(t *testing.T) {
+	store := isolatedStore(t)
+	ctx := context.Background()
+	owner := newIntegrationUser(t, store, "relaydel")
+	feed, entries := newIntegrationFeedWithEntries(t, store, owner.ID, 2)
+	mk := func(name string) Webhook {
+		t.Helper()
+		wh, err := store.CreateWebhook(ctx, CreateWebhookParams{
+			UserID: owner.ID, Name: name, URL: "https://example.com/" + name, Method: "POST",
+			Headers: []byte(`{}`), Enabled: true, Kind: WebhookKindHTTP,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return wh
+	}
+	whA, whB := mk("a"), mk("b")
+	if err := store.EnqueueWebhookLogs(ctx, []int64{whA.ID, whB.ID}, entries[0].ID); err != nil {
+		t.Fatal(err)
+	}
+	claimed, err := store.ClaimDueWebhookLogs(ctx, 10, nil)
+	if err != nil || len(claimed) != 2 {
+		t.Fatalf("claim: %v %d", err, len(claimed))
+	}
+	// The claim writes nothing; exclude hides what this process holds.
+	if again, err := store.ClaimDueWebhookLogs(ctx, 10, []int64{claimed[0].ID, claimed[1].ID}); err != nil || len(again) != 0 {
+		t.Fatalf("excluded rows claimed again: %v %d", err, len(again))
+	}
+	if _, ok, err := store.NextWebhookRetryAt(ctx, []int64{claimed[0].ID, claimed[1].ID}); err != nil || ok {
+		t.Fatalf("next retry must ignore in-flight rows: ok=%v err=%v", ok, err)
+	}
+
+	if err := store.MarkWebhookLogSent(ctx, claimed[0].ID, 1, 200, ""); err != nil {
+		t.Fatal(err)
+	}
+	if done, err := store.DeleteRelayEntryAfterWebhook(ctx, entries[0].ID, claimed[0].ID); err != nil || done {
+		t.Fatalf("entry deleted while a delivery is pending: done=%v err=%v", done, err)
+	}
+	if err := store.MarkWebhookLogSent(ctx, claimed[1].ID, 1, 200, ""); err != nil {
+		t.Fatal(err)
+	}
+	if done, err := store.DeleteRelayEntryAfterWebhook(ctx, entries[0].ID, claimed[1].ID); err != nil || !done {
+		t.Fatalf("entry not deleted after the last delivery: done=%v err=%v", done, err)
+	}
+	var n int
+	if err := store.db.QueryRow(ctx, `SELECT count(*) FROM entries WHERE id = $1`, entries[0].ID).Scan(&n); err != nil || n != 0 {
+		t.Fatalf("entry row still there: n=%d err=%v", n, err)
+	}
+	known, err := store.FilterKnownEntryHashes(ctx, feed.ID, []string{entries[0].Hash})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := known[entries[0].Hash]; !ok {
+		t.Fatal("deleted relay entry must stay known to dedup")
+	}
+	if err := store.db.QueryRow(ctx, `SELECT count(*) FROM feed_entry_dedup WHERE feed_id = $1`, feed.ID).Scan(&n); err != nil || n != 1 {
+		t.Fatalf("dedup rows for the feed: n=%d err=%v (only the deleted entry)", n, err)
+	}
+	rows, total, err := store.ListWebhookLogRows(ctx, whA.ID, "", nil, 10, 0)
+	if err != nil || total != 1 || rows[0].EntryID != entries[0].ID || rows[0].FeedID != feed.ID || rows[0].EntryTitle != "" {
+		t.Fatalf("log row after entry delete: total=%d err=%v rows=%+v", total, err, rows)
+	}
+	if logs, total, err := store.ListWebhookLogs(ctx, whB.ID, 10, 0); err != nil || total != 1 || logs[0].Status != "sent" {
+		t.Fatalf("plain log list: total=%d err=%v", total, err)
 	}
 }

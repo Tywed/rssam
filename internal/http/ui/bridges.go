@@ -176,6 +176,9 @@ func (h *Handler) bridgeFeedCounts(r *http.Request) (map[string]int, map[string]
 		"dzen_channel": 0,
 		"ok_group":     0,
 		"smotrim":      0,
+		"rutube":       0,
+		"page":         0,
+		"inbound":      0,
 		"rss":          0,
 	}
 	layout := map[string]storage.FeedTypeStat{}
@@ -248,8 +251,8 @@ func bridgeLayout(m map[string]storage.FeedTypeStat, key string) *storage.FeedTy
 }
 
 var bridgeTitles = map[string]string{
-	"telegram": "Telegram", "max": "Max", "maxstat": "Max (статистика)", "vk_search": "VK Search", "rutube": "Rutube",
-	"dzen_news": "Dzen News", "dzen_channel": "Dzen (каналы)", "ok_group": "OK (группы)", "smotrim": "Smotrim", "rss": "RSS",
+	"telegram": "Telegram", "max": "Max", "maxstat": "MaxStat", "vk_search": "VK Search", "rutube": "Rutube",
+	"dzen_news": "Dzen News", "dzen_channel": "Dzen (каналы)", "ok_group": "OK (группы)", "smotrim": "Smotrim", "page": "Страница", "rss": "RSS",
 }
 
 func bridgeTitle(key string) string {

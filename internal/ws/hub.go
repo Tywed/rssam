@@ -38,6 +38,14 @@ func NewHub(clientBuffer int, pingInterval time.Duration) *Hub {
 	}
 }
 
+// HasClients reports whether anyone is connected; publishers that would
+// have to load data for an event (feed status → subscriber list) ask first.
+func (h *Hub) HasClients() bool {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return len(h.clients) > 0
+}
+
 func (h *Hub) ClientBuffer() int {
 	return h.clientBuffer
 }

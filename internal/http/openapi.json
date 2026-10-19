@@ -4648,7 +4648,8 @@
           },
           "entry_id": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "Id of the delivered entry. Kept after the entry is gone (relay feeds delete it once delivered), so it may no longer resolve."
           },
           "status": {
             "type": "string",

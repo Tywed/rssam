@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"rssam/internal/filter"
@@ -73,6 +74,12 @@ type FeedRefresher struct {
 
 	// PollHours supplies per-category polling windows (nil = no windows).
 	PollHours storage.CategoryPollHoursStore
+
+	// okLogged holds the feeds whose latest poll-log row this process has
+	// confirmed to be "ok": the row of a healthy feed does not change on the
+	// next successful poll, so the poll log is not asked again until the
+	// feed fails (or the process restarts).
+	okLogged sync.Map
 	// Hosts caps concurrent polls per source host (nil = no cap).
 	Hosts *HostLimiter
 
@@ -105,8 +112,9 @@ type RealtimePublisher interface {
 	PublishNewEntries(ctx context.Context, feed storage.Feed, subs []storage.Subscription, newEntries []storage.Entry)
 	// PublishFeedStatusChanged receives the feed as it looks *after* the poll
 	// was persisted (ParsingErrorCount, PollPaused, NextCheckAt, LastError,
-	// LastCheckedAt are already updated on the copy).
-	PublishFeedStatusChanged(feed storage.Feed, err error)
+	// LastCheckedAt are already updated on the copy). subs are the feed's
+	// subscriptions as loaded for the poll (nil when unknown).
+	PublishFeedStatusChanged(feed storage.Feed, subs []storage.Subscription, err error)
 }
 
 var (
@@ -161,9 +169,18 @@ func (r *FeedRefresher) recordFailure(ctx context.Context, feed storage.Feed, no
 }
 
 // recordPoll appends one row to the per-feed poll history (best effort).
-func (r *FeedRefresher) recordPoll(ctx context.Context, feedID int64, at time.Time, started time.Time, inserted int, cause error) {
+// feed is the row as loaded before the poll: a feed that was healthy and
+// stayed healthy leaves the history untouched (RecordFeedPoll would find
+// its ok row and do nothing), so the call is skipped once that row is known.
+func (r *FeedRefresher) recordPoll(ctx context.Context, feed storage.Feed, at time.Time, started time.Time, inserted int, cause error) {
 	if r.PollLog == nil {
 		return
+	}
+	feedID := feed.ID
+	if cause == nil && feed.LastError == "" {
+		if _, ok := r.okLogged.Load(feedID); ok {
+			return
+		}
 	}
 	p := storage.RecordFeedPollParams{
 		FeedID:   feedID,
@@ -177,6 +194,12 @@ func (r *FeedRefresher) recordPoll(ctx context.Context, feedID int64, at time.Ti
 	}
 	if err := r.PollLog.RecordFeedPoll(ctx, p); err != nil {
 		r.logger().Warn("record feed poll log failed", "feed_id", feedID, "err", err)
+		return
+	}
+	if cause == nil {
+		r.okLogged.Store(feedID, struct{}{})
+	} else {
+		r.okLogged.Delete(feedID)
 	}
 }
 
@@ -303,7 +326,7 @@ func (r *FeedRefresher) refreshLoaded(ctx context.Context, feed storage.Feed, ma
 			// 3 M poll-log INSERT+DELETE a month for nothing.
 			return 0, fetchErr
 		}
-		return 0, r.failPoll(ctx, feed, now, started, res.BridgeState, fetchErr, ErrFetchFeed, errors.Is(fetchErr, reader.ErrFeedGone))
+		return 0, r.failPoll(ctx, feed, subs, now, started, res.BridgeState, fetchErr, ErrFetchFeed, errors.Is(fetchErr, reader.ErrFeedGone))
 	}
 
 	etag := strings.TrimSpace(res.ETag)
@@ -341,7 +364,7 @@ func (r *FeedRefresher) refreshLoaded(ctx context.Context, feed storage.Feed, ma
 		var insertedEntries []storage.Entry
 		inserted, insertedEntries, metaStored, err = r.storeFetched(ctx, feed, subs, res.Entries, &meta)
 		if err != nil {
-			return 0, r.failPoll(ctx, feed, now, started, res.BridgeState, err, ErrCreateEntries, false)
+			return 0, r.failPoll(ctx, feed, subs, now, started, res.BridgeState, err, ErrCreateEntries, false)
 		}
 		r.afterStore(ctx, feed, subs, insertedEntries)
 	}
@@ -350,7 +373,7 @@ func (r *FeedRefresher) refreshLoaded(ctx context.Context, feed storage.Feed, ma
 			r.logger().Error("update feed refresh meta failed", "feed_id", feedID, "err", err)
 		}
 	}
-	r.recordPoll(ctx, feedID, now, started, inserted, nil)
+	r.recordPoll(ctx, feed, now, started, inserted, nil)
 	if r.Realtime != nil {
 		after := feed
 		after.ParsingErrorCount = 0
@@ -358,7 +381,7 @@ func (r *FeedRefresher) refreshLoaded(ctx context.Context, feed storage.Feed, ma
 		after.LastError = ""
 		after.LastCheckedAt = &now
 		after.NextCheckAt = &next
-		r.Realtime.PublishFeedStatusChanged(after, nil)
+		r.Realtime.PublishFeedStatusChanged(after, subs, nil)
 	}
 
 	return inserted, nil
@@ -389,7 +412,7 @@ func fullRefetchState(feed *storage.Feed, st reader.BridgeState) reader.BridgeSt
 // way an admin would: a 410 is final, neither the backoff nor the daily
 // reset should poll it again; the error text stays visible on the feed
 // until someone deletes it or changes the URL.
-func (r *FeedRefresher) failPoll(ctx context.Context, feed storage.Feed, now, started time.Time, state reader.BridgeState, cause, kind error, gone bool) error {
+func (r *FeedRefresher) failPoll(ctx context.Context, feed storage.Feed, subs []storage.Subscription, now, started time.Time, state reader.BridgeState, cause, kind error, gone bool) error {
 	after := r.recordFailure(ctx, feed, now, cause, bridgeStateJSON(state))
 	if gone {
 		if err := r.Feeds.SetFeedManualPaused(ctx, feed.ID, true); err != nil {
@@ -399,9 +422,9 @@ func (r *FeedRefresher) failPoll(ctx context.Context, feed storage.Feed, now, st
 		}
 	}
 	err := fmt.Errorf("%w: %w", kind, cause)
-	r.recordPoll(ctx, feed.ID, now, started, 0, err)
+	r.recordPoll(ctx, feed, now, started, 0, err)
 	if r.Realtime != nil {
-		r.Realtime.PublishFeedStatusChanged(after, err)
+		r.Realtime.PublishFeedStatusChanged(after, subs, err)
 	}
 	return err
 }

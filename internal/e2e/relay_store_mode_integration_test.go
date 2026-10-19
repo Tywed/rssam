@@ -64,9 +64,9 @@ SELECT (SELECT count(*) FROM entries WHERE feed_id = $1),
 	if err := row.Scan(&entries, &withTitle, &unread, &matches, &labels, &dedup); err != nil {
 		t.Fatal(err)
 	}
-	// The matched item is a stripped shell awaiting purge; the unmatched one
+	// The matched item was deleted right after delivery; the unmatched one
 	// was never an entry. Both are dedup hashes now.
-	if entries != 1 || withTitle != 0 || unread != 0 || matches != 0 || labels != 0 || dedup != 2 {
+	if entries != 0 || withTitle != 0 || unread != 0 || matches != 0 || labels != 0 || dedup != 2 {
 		t.Fatalf("after delivery: entries=%d withTitle=%d unread=%d matches=%d labels=%d dedup=%d", entries, withTitle, unread, matches, labels, dedup)
 	}
 	if list := env.feedEntries(t, feed.ID); len(list) != 0 {
@@ -76,18 +76,9 @@ SELECT (SELECT count(*) FROM entries WHERE feed_id = $1),
 		t.Fatalf("unread count for relay feed = %d err=%v", perFeed[feed.ID], err)
 	}
 
-	// The shell leaves with the removed-entries retention pass.
-	if _, err := env.pool.Exec(ctx, `UPDATE entries SET removed_at = now() - interval '60 days' WHERE feed_id = $1`, feed.ID); err != nil {
-		t.Fatal(err)
-	}
-	res, err := env.runner.RetentionCleanupNow(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := env.pool.QueryRow(ctx, `SELECT count(*) FROM entries WHERE feed_id = $1`, feed.ID).Scan(&entries); err != nil {
-		t.Fatal(err)
-	}
-	if entries != 0 {
-		t.Fatalf("shell not purged: entries=%d cleanup=%+v", entries, res)
+	// The log keeps the delivery with its feed although the entry is gone.
+	rows, total, err := env.store.ListWebhookLogRows(ctx, wh.ID, "", nil, 10, 0)
+	if err != nil || total != 1 || rows[0].FeedID != feed.ID || rows[0].Status != "sent" {
+		t.Fatalf("log rows after relay delete: total=%d err=%v rows=%+v", total, err, rows)
 	}
 }

@@ -134,7 +134,7 @@ type feedStatusEvent struct {
 
 func (s *feedStatusSink) PublishNewEntries(context.Context, storage.Feed, []storage.Subscription, []storage.Entry) {
 }
-func (s *feedStatusSink) PublishFeedStatusChanged(feed storage.Feed, err error) {
+func (s *feedStatusSink) PublishFeedStatusChanged(feed storage.Feed, _ []storage.Subscription, err error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.events = append(s.events, feedStatusEvent{Feed: feed, Err: err})

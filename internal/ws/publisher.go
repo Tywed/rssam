@@ -81,17 +81,23 @@ func newEntryPayload(feed storage.Feed, categoryID *int64, e storage.Entry) map[
 	}
 }
 
-// PublishFeedStatusChanged tells every subscriber; the subscriber list is
-// read here because the status path (worker, admin actions) has no
-// subscriptions at hand.
-func (p *Publisher) PublishFeedStatusChanged(feed storage.Feed, err error) {
-	if p == nil || p.hub == nil || p.subs == nil {
+// PublishFeedStatusChanged tells every subscriber. The poller passes the
+// subscriptions it already loaded; a caller without them passes nil and the
+// list is read here. Nothing is read or built while nobody is connected.
+func (p *Publisher) PublishFeedStatusChanged(feed storage.Feed, subs []storage.Subscription, err error) {
+	if p == nil || p.hub == nil || !p.hub.HasClients() {
 		return
 	}
-	subs, lerr := p.subs.ListFeedSubscribers(context.Background(), feed.ID)
-	if lerr != nil {
-		p.log.Warn("list feed subscribers failed", "feed_id", feed.ID, "err", lerr)
-		return
+	if subs == nil {
+		if p.subs == nil {
+			return
+		}
+		var lerr error
+		subs, lerr = p.subs.ListFeedSubscribers(context.Background(), feed.ID)
+		if lerr != nil {
+			p.log.Warn("list feed subscribers failed", "feed_id", feed.ID, "err", lerr)
+			return
+		}
 	}
 	msg := feed.LastError
 	if err != nil {

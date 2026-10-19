@@ -163,7 +163,7 @@ func newMemWebhookLogStore() *memWebhookLogStore {
 }
 
 func (m *memWebhookLogStore) EnqueueWebhookLogs(context.Context, []int64, int64) error { return nil }
-func (m *memWebhookLogStore) ClaimDueWebhookLogs(context.Context, int) ([]storage.WebhookLog, error) {
+func (m *memWebhookLogStore) ClaimDueWebhookLogs(context.Context, int, []int64) ([]storage.WebhookLog, error) {
 	return nil, nil
 }
 func (m *memWebhookLogStore) MarkWebhookLogSent(context.Context, int64, int, int, string) error {

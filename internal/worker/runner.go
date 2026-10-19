@@ -73,6 +73,7 @@ type Runner struct {
 	paused            atomic.Bool
 	wake              dueWakers
 	inflight          inflightPolls
+	inflightHooks     inflightPolls
 }
 
 func (r *Runner) Pause() {
@@ -153,7 +154,10 @@ func (r *Runner) Run(ctx context.Context) error {
 	webhookLogsCh := make(chan storage.WebhookLog, r.Cfg.WebhookPoolSize*2)
 
 	r.wake = newDueWakers()
-	r.inflight.init(max(r.Cfg.FetchTimeout*2, 2*time.Minute))
+	r.inflight.init(max(r.Cfg.FetchTimeout*2, 2*time.Minute), time.Second)
+	// A delivery whose status update failed is retried after the same
+	// 30 s the old lease column gave it.
+	r.inflightHooks.init(0, 30*time.Second)
 	go r.listenDueLoop(ctx)
 
 	// Retention cleanup: periodically purge old removed entries and logs.

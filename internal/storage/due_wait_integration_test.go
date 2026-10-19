@@ -65,7 +65,7 @@ func TestIntegration_DueNotifications(t *testing.T) {
 	if at, ok, err := store.NextFeedDueAt(ctx, nil); err != nil || !ok || at.After(time.Now().Add(time.Minute)) {
 		t.Fatalf("NextFeedDueAt: %v ok=%v err=%v", at, ok, err)
 	}
-	if _, ok, err := store.NextWebhookRetryAt(ctx); err != nil || ok {
+	if _, ok, err := store.NextWebhookRetryAt(ctx, nil); err != nil || ok {
 		t.Fatalf("NextWebhookRetryAt on empty table: ok=%v err=%v", ok, err)
 	}
 }

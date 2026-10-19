@@ -22,23 +22,14 @@ func (s *PostgresStore) ClaimWebhookDigestPeers(ctx context.Context, webhookID i
 		return nil, nil
 	}
 	const q = `
-WITH due AS (
-  SELECT id
-  FROM webhook_logs
-  WHERE webhook_id = $1
-    AND status IN ('pending','failed')
-    AND next_retry_at <= now()
-    AND NOT (id = ANY($2::bigint[]))
-  ORDER BY id ASC
-  LIMIT $3
-  FOR UPDATE SKIP LOCKED
-)
-UPDATE webhook_logs
-SET next_retry_at = now() + interval '30 seconds',
-    updated_at = now()
-FROM due
-WHERE webhook_logs.id = due.id
-RETURNING ` + claimedWebhookLogCols
+SELECT ` + claimedWebhookLogCols + `
+FROM webhook_logs
+WHERE webhook_logs.webhook_id = $1
+  AND webhook_logs.status IN ('pending','failed')
+  AND webhook_logs.next_retry_at <= now()
+  AND NOT (webhook_logs.id = ANY($2::bigint[]))
+ORDER BY webhook_logs.id ASC
+LIMIT $3`
 	rows, err := s.db.Query(ctx, q, webhookID, excludeIDs, limit)
 	if err != nil {
 		return nil, fmt.Errorf("claim webhook digest peers: %w", err)

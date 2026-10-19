@@ -302,13 +302,13 @@ func (s *PostgresStore) EnqueueWebhookLogs(ctx context.Context, webhookIDs []int
 	// (windows are aligned to local midnight, like poll hours); everything
 	// else is due immediately.
 	const q = `
-INSERT INTO webhook_logs(webhook_id, entry_id, status, attempt, next_retry_at)
-SELECT w.id, $2, 'pending', 0,
+INSERT INTO webhook_logs(webhook_id, entry_id, feed_id, status, attempt, next_retry_at)
+SELECT w.id, e.id, e.feed_id, 'pending', 0,
   CASE WHEN w.digest_minutes > 0
        THEN date_bin(make_interval(mins => w.digest_minutes), now(), $3::timestamptz) + make_interval(mins => w.digest_minutes)
        ELSE now() END
-FROM webhooks w
-WHERE w.id = ANY($1::bigint[])
+FROM webhooks w, entries e
+WHERE w.id = ANY($1::bigint[]) AND e.id = $2
 ON CONFLICT (webhook_id, entry_id) DO NOTHING`
 	_, err := s.db.Exec(ctx, q, webhookIDs, entryID, DigestWindowOrigin(time.Now()))
 	if err != nil {
@@ -319,29 +319,27 @@ ON CONFLICT (webhook_id, entry_id) DO NOTHING`
 
 // Every pending/failed row carries next_retry_at (enqueue, retry schedule,
 // digest window, manual retry; migration 0043 backfills), so the claim is a
-// plain range on webhook_logs_status_next_retry_at_idx: rows parked for a
-// digest window are never read until they are due.
-func (s *PostgresStore) ClaimDueWebhookLogs(ctx context.Context, limit int) ([]WebhookLog, error) {
+// plain range on webhook_logs_due_idx: rows parked for a digest window are
+// never read until they are due. Nothing is written: this process is the
+// only deliverer (TryWorkerLock) and remembers what it holds (exclude); a
+// restart finds interrupted rows still due.
+func (s *PostgresStore) ClaimDueWebhookLogs(ctx context.Context, limit int, exclude []int64) ([]WebhookLog, error) {
 	if limit <= 0 {
 		return nil, nil
 	}
+	if exclude == nil {
+		exclude = []int64{}
+	}
 	const q = `
-WITH due AS (
-  SELECT id
-  FROM webhook_logs
-  WHERE status IN ('pending','failed')
-    AND next_retry_at <= now()
-  ORDER BY next_retry_at ASC, id ASC
-  LIMIT $1
-  FOR UPDATE SKIP LOCKED
-)
-UPDATE webhook_logs
-SET next_retry_at = now() + interval '30 seconds',
-    updated_at = now()
-FROM due, webhooks w
-WHERE webhook_logs.id = due.id AND w.id = webhook_logs.webhook_id
-RETURNING ` + claimedWebhookLogCols + `, w.digest_minutes`
-	rows, err := s.db.Query(ctx, q, limit)
+SELECT ` + claimedWebhookLogCols + `, w.digest_minutes
+FROM webhook_logs
+JOIN webhooks w ON w.id = webhook_logs.webhook_id
+WHERE webhook_logs.status IN ('pending','failed')
+  AND webhook_logs.next_retry_at <= now()
+  AND NOT (webhook_logs.id = ANY($2::bigint[]))
+ORDER BY webhook_logs.next_retry_at ASC, webhook_logs.id ASC
+LIMIT $1`
+	rows, err := s.db.Query(ctx, q, limit, exclude)
 	if err != nil {
 		return nil, fmt.Errorf("claim due webhook logs: %w", err)
 	}

@@ -41,8 +41,8 @@
           {{range .WebhookLogRows}}
           <tr>
             <td class="meta">{{formatTime .UpdatedAt}}</td>
-            <td><a href="/ui/entries/{{.EntryID}}">{{if .EntryTitle}}{{truncateStr .EntryTitle 40}}{{else}}#{{.EntryID}}{{end}}</a></td>
-            <td class="meta"><a href="/ui/admin/feeds/{{.FeedID}}">{{truncateStr .FeedTitle 30}}</a></td>
+            <td>{{if .EntryTitle}}<a href="/ui/entries/{{.EntryID}}">{{truncateStr .EntryTitle 40}}</a>{{else}}#{{.EntryID}}{{end}}</td>
+            <td class="meta">{{if .FeedID}}<a href="/ui/admin/feeds/{{.FeedID}}">{{truncateStr .FeedTitle 30}}</a>{{else}}—{{end}}</td>
             <td class="meta">{{webhookTriggerLabel .TriggerSource .FilterName}}</td>
             <td><span class="feed-status-badge {{webhookLogStatusClass .Status}}">{{webhookLogStatusLabel .Status}}</span></td>
             <td class="meta">{{if .LastStatusCode}}{{.LastStatusCode}}{{else}}—{{end}}</td>

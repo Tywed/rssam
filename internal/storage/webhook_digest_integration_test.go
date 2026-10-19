@@ -49,7 +49,7 @@ func TestIntegration_WebhookDigestQueue(t *testing.T) {
 	if d := due.Sub(wantDue); d < -time.Second || d > time.Second {
 		t.Fatalf("due=%s want end of hour %s", due, wantDue)
 	}
-	if claimed, err := store.ClaimDueWebhookLogs(ctx, 100); err != nil || len(claimed) != 0 {
+	if claimed, err := store.ClaimDueWebhookLogs(ctx, 100, nil); err != nil || len(claimed) != 0 {
 		t.Fatalf("parked digest rows must not be claimed: %v %d", err, len(claimed))
 	}
 
@@ -57,7 +57,7 @@ func TestIntegration_WebhookDigestQueue(t *testing.T) {
 	if _, err := store.db.Exec(ctx, `UPDATE webhook_logs SET next_retry_at = now() - interval '1 second' WHERE webhook_id = $1`, wh.ID); err != nil {
 		t.Fatal(err)
 	}
-	claimed, err := store.ClaimDueWebhookLogs(ctx, 1)
+	claimed, err := store.ClaimDueWebhookLogs(ctx, 1, nil)
 	if err != nil || len(claimed) != 1 || claimed[0].DigestMinutes != 60 {
 		t.Fatalf("claim: %v %+v", err, claimed)
 	}

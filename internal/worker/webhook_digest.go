@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -32,7 +33,7 @@ func (r *Runner) webhookDigest() webhookDigestStore {
 // groupDigestLogs collapses the claimed rows of each digest webhook into one
 // carrier row (peer ids in Peers) and pulls in the webhook's other due rows so
 // the whole window leaves in a single message.
-func (r *Runner) groupDigestLogs(ctx context.Context, logs []storage.WebhookLog) []storage.WebhookLog {
+func (r *Runner) groupDigestLogs(ctx context.Context, logs []storage.WebhookLog, inflight []int64) []storage.WebhookLog {
 	out := make([]storage.WebhookLog, 0, len(logs))
 	carriers := map[int64]int{}
 	for _, l := range logs {
@@ -54,7 +55,7 @@ func (r *Runner) groupDigestLogs(ctx context.Context, logs []storage.WebhookLog)
 	store := r.webhookDigest()
 	for _, i := range carriers {
 		c := &out[i]
-		more, err := store.ClaimWebhookDigestPeers(ctx, c.WebhookID, c.Peers, webhookDigestMaxItems-len(c.Peers))
+		more, err := store.ClaimWebhookDigestPeers(ctx, c.WebhookID, append(slices.Clone(inflight), c.Peers...), webhookDigestMaxItems-len(c.Peers))
 		if err != nil {
 			r.Log.Warn("webhook digest: claim peers failed", "webhook_id", c.WebhookID, "err", err)
 			continue
@@ -66,9 +67,33 @@ func (r *Runner) groupDigestLogs(ctx context.Context, logs []storage.WebhookLog)
 	return out
 }
 
-func (r *Runner) processWebhookDigest(ctx context.Context, l storage.WebhookLog) {
+// processWebhookDigest delivers one digest and reports whether the final
+// status of its rows reached the database.
+func (r *Runner) processWebhookDigest(ctx context.Context, l storage.WebhookLog) bool {
+	store := &markedDigest{webhookDigestStore: r.webhookDigest()}
+	r.deliverWebhookDigest(ctx, store, l)
+	return store.stored
+}
+
+type markedDigest struct {
+	webhookDigestStore
+	stored bool
+}
+
+func (m *markedDigest) MarkWebhookLogsSent(ctx context.Context, logIDs []int64, statusCode int, responseSnippet string) error {
+	err := m.webhookDigestStore.MarkWebhookLogsSent(ctx, logIDs, statusCode, responseSnippet)
+	m.stored = err == nil
+	return err
+}
+
+func (m *markedDigest) MarkWebhookLogsFailed(ctx context.Context, logIDs []int64, statusCode *int, errMsg string, responseSnippet string, nextRetryAt *time.Time, dead bool, countAttempt bool) error {
+	err := m.webhookDigestStore.MarkWebhookLogsFailed(ctx, logIDs, statusCode, errMsg, responseSnippet, nextRetryAt, dead, countAttempt)
+	m.stored = err == nil
+	return err
+}
+
+func (r *Runner) deliverWebhookDigest(ctx context.Context, store webhookDigestStore, l storage.WebhookLog) {
 	start := time.Now()
-	store := r.webhookDigest()
 	ids := l.Peers
 	if len(ids) == 0 {
 		ids = []int64{l.ID}

@@ -106,6 +106,8 @@ func TestSettingsBridgesLayoutErrors(t *testing.T) {
 		{FeedType: "atom", Total: 3},
 		{FeedType: "rss", Total: 4},
 		{FeedType: "ok_group", Total: 5},
+		{FeedType: "maxstat", Total: 9},
+		{FeedType: "page", Total: 2},
 	}}
 	mux := http.NewServeMux()
 	h.Register(mux)
@@ -126,10 +128,17 @@ func TestSettingsBridgesLayoutErrors(t *testing.T) {
 		`href="/ui/admin/feeds?status=layout"`,
 		"Лент: 7.", // rss + atom
 		"Лент: 5<",
+		"<strong>MaxStat</strong>",
+		"Лент: 9<",
+		"<strong>Страница</strong>",
+		"Лент: 2<",
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("missing %q in %s", want, body)
 		}
+	}
+	if strings.Contains(body, `class="bridges-nav"`) {
+		t.Fatal("the overview must not repeat the cards as buttons")
 	}
 	if strings.Count(body, "bridge-card-alert") != 1 {
 		t.Fatalf("only the telegram card must be red: %d", strings.Count(body, "bridge-card-alert"))

@@ -48,8 +48,16 @@ type FilteredPollParams struct {
 }
 
 // StoreFilteredPoll writes all of FilteredPollParams in one transaction:
-// one WAL flush per poll instead of one per matched entry plus two.
+// one WAL flush per poll instead of one per matched entry plus two. A poll
+// with nothing new (the common case) is the single feeds UPDATE, no
+// transaction around it.
 func (s *PostgresStore) StoreFilteredPoll(ctx context.Context, params FilteredPollParams) (inserted int, insertedEntries []Entry, err error) {
+	if len(params.Entries) == 0 && len(params.Dedup) == 0 {
+		if params.Meta == nil {
+			return 0, nil, nil
+		}
+		return 0, nil, updateFeedRefreshMeta(ctx, s.db, *params.Meta)
+	}
 	err = withTx(ctx, s.db, func(tx pgx.Tx) error {
 		var err error
 		inserted, insertedEntries, err = s.createEntries(ctx, tx, params.FeedID, params.Entries, params.Relay)

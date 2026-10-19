@@ -18,6 +18,7 @@ type memWebhookDelivery struct {
 	mu sync.Mutex
 
 	loadErr           error
+	markErr           error
 	delCtx            storage.WebhookDeliveryContext
 	incomplete        int
 	resolvedOnSuccess string
@@ -25,6 +26,7 @@ type memWebhookDelivery struct {
 	logs     map[int64]storage.WebhookLog
 	stripped []int64
 	removed  []int64
+	deleted  []int64
 	read     []int64
 }
 
@@ -45,6 +47,9 @@ func (m *memWebhookDelivery) LoadWebhookDeliveryContext(context.Context, int64) 
 func (m *memWebhookDelivery) MarkWebhookLogSent(_ context.Context, logID int64, attempt int, statusCode int, snippet string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.markErr != nil {
+		return m.markErr
+	}
 	l := m.logs[logID]
 	l.Status = "sent"
 	if snippet != "" {
@@ -61,6 +66,9 @@ func (m *memWebhookDelivery) MarkWebhookLogSent(_ context.Context, logID int64, 
 func (m *memWebhookDelivery) MarkWebhookLogFailed(_ context.Context, logID int64, statusCode *int, errMsg string, snippet string, attempt int, nextRetryAt *time.Time, dead bool) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.markErr != nil {
+		return m.markErr
+	}
 	l := m.logs[logID]
 	if snippet != "" {
 		l.ResponseSnippet = &snippet
@@ -86,15 +94,21 @@ func (m *memWebhookDelivery) StripEntryPayloadAfterWebhook(_ context.Context, en
 	return nil
 }
 
-func (m *memWebhookDelivery) CountIncompleteWebhookLogs(context.Context, int64, int64) (int, error) {
-	return m.incomplete, nil
+func (m *memWebhookDelivery) EntryWebhookOutcome(context.Context, int64, int64) (int, string, error) {
+	if m.resolvedOnSuccess != "" {
+		return m.incomplete, m.resolvedOnSuccess, nil
+	}
+	return m.incomplete, m.delCtx.Webhook.OnSuccessEntry, nil
 }
 
-func (m *memWebhookDelivery) EntryOnSuccessAction(context.Context, int64) (string, error) {
-	if m.resolvedOnSuccess != "" {
-		return m.resolvedOnSuccess, nil
+func (m *memWebhookDelivery) DeleteRelayEntryAfterWebhook(_ context.Context, entryID, _ int64) (bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.incomplete > 0 {
+		return false, nil
 	}
-	return m.delCtx.Webhook.OnSuccessEntry, nil
+	m.deleted = append(m.deleted, entryID)
+	return true, nil
 }
 
 func (m *memWebhookDelivery) MarkEntryRemovedKeepPayload(_ context.Context, _ int64, entryID int64) error {
@@ -427,5 +441,52 @@ func TestProcessWebhookLog_MaxSuccess(t *testing.T) {
 	processTestRunner(store, 0).processWebhookLog(context.Background(), log)
 	if store.log(10).Status != "sent" {
 		t.Fatalf("status=%s err=%v", store.log(10).Status, store.log(10).LastError)
+	}
+}
+
+func TestProcessWebhookLog_RelayEntryDeletedAfterLastDelivery(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+	log := storage.WebhookLog{ID: 9, EntryID: 99, Attempt: 0}
+	store := newMemWebhookDelivery(log, storage.WebhookDeliveryContext{
+		Webhook: storage.Webhook{
+			Enabled:        true,
+			URL:            srv.URL,
+			Method:         http.MethodPost,
+			OnSuccessEntry: storage.WebhookOnSuccessMarkRead,
+		},
+		Entry: storage.Entry{ID: 99},
+		Feed:  storage.WebhookFeed{ID: 1, StoreMode: storage.StoreModeRelay},
+	})
+	store.incomplete = 1
+	processTestRunner(store, 0).processWebhookLog(context.Background(), log)
+	if store.log(9).Status != "sent" || len(store.deleted) != 0 || len(store.read) != 0 || len(store.stripped) != 0 {
+		t.Fatalf("relay with a peer pending: status=%s deleted=%v read=%v stripped=%v", store.log(9).Status, store.deleted, store.read, store.stripped)
+	}
+	store.incomplete = 0
+	processTestRunner(store, 0).processWebhookLog(context.Background(), log)
+	if len(store.deleted) != 1 || store.deleted[0] != 99 || len(store.stripped) != 0 || len(store.read) != 0 {
+		t.Fatalf("relay alone: deleted=%v stripped=%v read=%v", store.deleted, store.stripped, store.read)
+	}
+}
+
+func TestProcessWebhookLog_ReportsWhetherStatusWasStored(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+	log := storage.WebhookLog{ID: 10, EntryID: 99}
+	store := newMemWebhookDelivery(log, storage.WebhookDeliveryContext{
+		Webhook: storage.Webhook{Enabled: true, URL: srv.URL, Method: http.MethodPost},
+		Entry:   storage.Entry{ID: 99},
+	})
+	if !processTestRunner(store, 0).processWebhookLog(context.Background(), log) {
+		t.Fatal("stored=false after a successful mark")
+	}
+	store.markErr = errors.New("db down")
+	if processTestRunner(store, 0).processWebhookLog(context.Background(), log) {
+		t.Fatal("stored=true although the mark failed")
 	}
 }

@@ -175,6 +175,15 @@ const MaxFeedBodyBytes = 16 << 20
 // ErrFeedTooLarge is returned when the feed body exceeds MaxFeedBodyBytes.
 var ErrFeedTooLarge = errors.New("feed body exceeds size limit")
 
+// newFeedParser returns gofeed without the per-item HTML scan for a cover
+// image: rssam never reads Item.Image, and the scan ran html.Parse over the
+// content and the description of every item on every poll.
+func newFeedParser() *gofeed.Parser {
+	p := gofeed.NewParser()
+	p.RSSTranslator = &gofeed.DefaultRSSTranslator{DisableContentImageScan: true}
+	return p
+}
+
 func parseLimitedFeed(parser *gofeed.Parser, r io.Reader) (*gofeed.Feed, error) {
 	lr := &io.LimitedReader{R: r, N: MaxFeedBodyBytes + 1}
 	parsed, err := parser.Parse(lr)
@@ -202,7 +211,7 @@ func NewRSSFetcher(client *http.Client, userAgent string, guard *ssrf.Guard, fet
 	return &RSSFetcher{
 		client:    client,
 		proxy:     newProxyClientCache(fetchViaProxyURL),
-		parser:    gofeed.NewParser(),
+		parser:    newFeedParser(),
 		userAgent: strings.TrimSpace(userAgent),
 		guard:     guard,
 	}

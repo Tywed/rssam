@@ -100,6 +100,18 @@ func TestIntegration_FeedPollLogRecordListRetention(t *testing.T) {
 	if err != nil || len(after) != 2 {
 		t.Fatalf("after cleanup len=%d err=%v", len(after), err)
 	}
+	// The newest row survives any cutoff: it is the feed's current status.
+	if _, err = store.RunRetentionCleanup(ctx, RetentionCleanupOpts{
+		RemovedEntriesBefore: RetentionCutoff(now, 3650),
+		WebhookLogsBefore:    RetentionCutoff(now, 3650),
+		FeedPollLogBefore:    now.Add(time.Hour),
+	}); err != nil {
+		t.Fatalf("cleanup (everything old): %v", err)
+	}
+	after, err = store.ListFeedPollLog(ctx, feed.ID, 10)
+	if err != nil || len(after) != 1 || after[0].ID != got[0].ID {
+		t.Fatalf("newest row must survive: len=%d err=%v", len(after), err)
+	}
 
 	// Deleting the feed cascades.
 	if err := store.DeleteFeed(ctx, u.ID, feed.ID); err != nil {

@@ -5,14 +5,14 @@ import (
 	"time"
 )
 
-// inflightPolls is the set of feeds being polled by this process. It
-// replaces the jobs table: with one poller per database (TryWorkerLock)
-// nothing else needs to see it, and a process restart simply finds the
-// interrupted feeds still due. A finished feed stays excluded for
-// finishedGrace so that a poll which failed to move next_check_at (storage
-// error) cannot be re-claimed in a tight loop; a poll older than staleAfter
+// inflightPolls is the set of feeds being polled (or webhook rows being
+// delivered) by this process. It replaces a lease column: with one worker
+// per database (TryWorkerLock) nothing else needs to see it, and a process
+// restart simply finds the interrupted rows still due. A finished item stays
+// excluded for finishedGrace so that one whose status update failed (storage
+// error) cannot be re-claimed in a tight loop; an item older than staleAfter
 // (a fetch that ignored its timeout) is reported as stale and no longer
-// blocks the feed.
+// blocks the feed (0 = never).
 type inflightPolls struct {
 	mu            sync.Mutex
 	polls         map[int64]inflightPoll
@@ -25,12 +25,12 @@ type inflightPoll struct {
 	doneAt    time.Time
 }
 
-func (p *inflightPolls) init(staleAfter time.Duration) {
+func (p *inflightPolls) init(staleAfter, finishedGrace time.Duration) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.polls = make(map[int64]inflightPoll)
 	p.staleAfter = staleAfter
-	p.finishedGrace = time.Second
+	p.finishedGrace = finishedGrace
 }
 
 func (p *inflightPolls) start(feedID int64, at time.Time) {
@@ -49,6 +49,14 @@ func (p *inflightPolls) done(feedID int64, at time.Time) {
 		e.doneAt = at
 		p.polls[feedID] = e
 	}
+}
+
+// forget drops an item whose final status is known to be stored: nothing
+// protects it from being claimed again, and nothing needs to.
+func (p *inflightPolls) forget(id int64) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	delete(p.polls, id)
 }
 
 // exclude returns the feed ids the dispatcher must not claim at now and
