@@ -74,6 +74,7 @@ type Runner struct {
 	wake              dueWakers
 	inflight          inflightPolls
 	inflightHooks     inflightPolls
+	pausedHooks       webhookPauses
 }
 
 func (r *Runner) Pause() {

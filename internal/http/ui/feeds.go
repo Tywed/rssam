@@ -12,6 +12,7 @@ import (
 	"unicode/utf8"
 
 	"rssam/internal/auth"
+	"rssam/internal/proxy"
 	"rssam/internal/reader"
 	"rssam/internal/storage"
 )
@@ -187,7 +188,12 @@ func (h *Handler) handleFeedCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if params.FeedType == reader.FeedTypeTelegram {
-		params.BridgeState = bridgeStateFromTelegramForm(r, nil)
+		state, msg := h.bridgeStateFromTelegramForm(r, nil)
+		if msg != "" {
+			h.renderFeedFormError(w, r, params, msg)
+			return
+		}
+		params.BridgeState = state
 	}
 	if params.Title == "" {
 		params.Title = params.FeedURL
@@ -320,7 +326,12 @@ func (h *Handler) handleFeedUpdate(w http.ResponseWriter, r *http.Request) {
 	existing, _ := h.cfg.Feeds.GetFeedByID(r.Context(), id)
 	bridgeState := existing.BridgeState
 	if existing.FeedType == reader.FeedTypeTelegram || reader.DetectFeedTypeFromURL(params.FeedURL) == reader.FeedTypeTelegram {
-		bridgeState = bridgeStateFromTelegramForm(r, existing.BridgeState)
+		var msg string
+		bridgeState, msg = h.bridgeStateFromTelegramForm(r, existing.BridgeState)
+		if msg != "" {
+			http.Error(w, msg, http.StatusUnprocessableEntity)
+			return
+		}
 	}
 	_, err = h.cfg.Feeds.UpdateFeed(r.Context(), p.UserID, storage.UpdateFeedParams{
 		ID:                 id,
@@ -579,7 +590,10 @@ func applyTelegramFormData(data *pageData, feed storage.Feed) {
 	data.TgStaticProxy = o.StaticProxy
 }
 
-func bridgeStateFromTelegramForm(r *http.Request, existing []byte) []byte {
+// bridgeStateFromTelegramForm stores the per-feed proxy override. A static
+// proxy typed here is checked like any fetched address: the poller would
+// otherwise open a SOCKS connection to whatever host an editor names.
+func (h *Handler) bridgeStateFromTelegramForm(r *http.Request, existing []byte) (state []byte, problem string) {
 	st := reader.ParseBridgeState(existing)
 	var o telegram.BridgeOverride
 	_ = bridge.DecodeState(st.Raw(reader.FeedTypeTelegram), &o)
@@ -587,7 +601,16 @@ func bridgeStateFromTelegramForm(r *http.Request, existing []byte) []byte {
 	o.UseProxy = &useProxy
 	o.ProxyServiceURL = strings.TrimSpace(r.FormValue("telegram_proxy_service_url"))
 	o.StaticProxy = strings.TrimSpace(r.FormValue("telegram_static_proxy"))
-	return st.With(reader.FeedTypeTelegram, bridge.EncodeState(o)).Marshal()
+	if o.StaticProxy != "" {
+		p, err := proxy.ParseStaticProxy(o.StaticProxy)
+		if err != nil {
+			return nil, "Статический прокси: укажите host:port или socks5://user:pass@host:port"
+		}
+		if err := h.cfg.SSRFGuard.ValidateHost(p.Host); err != nil {
+			return nil, "Статический прокси: адрес запрещён политикой доступа (" + p.Host + ")"
+		}
+	}
+	return st.With(reader.FeedTypeTelegram, bridge.EncodeState(o)).Marshal(), ""
 }
 
 func (h *Handler) handleFeedsCategoryTree(w http.ResponseWriter, r *http.Request) {

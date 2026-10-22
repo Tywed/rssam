@@ -3,6 +3,7 @@ package telegram
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -104,5 +105,119 @@ func TestMessageID(t *testing.T) {
 		if got := MessageID(in); got != want {
 			t.Fatalf("MessageID(%q)=%d want %d", in, got, want)
 		}
+	}
+}
+
+func TestParsePage_MessagesAndLinksInOnePass(t *testing.T) {
+	body := []byte(tgPage([]int{10, 11}, "/s/chan?before=10"))
+	page, err := ParsePage(body, "chan")
+	if err != nil || len(page.Messages) != 2 || page.Older != "https://t.me/s/chan?before=10" || page.Newer != "" {
+		t.Fatalf("page=%+v err=%v", page, err)
+	}
+	if older, ok := NextPageURL(body); !ok || older != page.Older {
+		t.Fatalf("NextPageURL=%q", older)
+	}
+	body = []byte(tgPage([]int{12}, "https://t.me/s/chan?after=12"))
+	page, err = ParsePage(body, "chan")
+	if err != nil || len(page.Messages) != 1 || page.Newer != "https://t.me/s/chan?after=12" || page.Older != "" {
+		t.Fatalf("after page=%+v err=%v", page, err)
+	}
+	if newer, ok := NewerPageURL(body); !ok || newer != page.Newer {
+		t.Fatalf("NewerPageURL=%q", newer)
+	}
+	if _, err := ParsePage([]byte(`<html><body><div class="tgme_page">open in telegram</div></body></html>`), "chan"); !errors.Is(err, ErrChannelUnavailable) {
+		t.Fatalf("private channel page err=%v", err)
+	}
+}
+
+func TestIsEmptyChannelPage(t *testing.T) {
+	if !IsEmptyChannelPage([]byte(tgPage(nil, ""))) {
+		t.Fatal("channel header without messages is an empty page")
+	}
+	// What t.me really answers to ?after=<newest id>: the placeholder sits
+	// inside a message wrap.
+	quiet := `<html><body><div class="tgme_channel_info"></div><section class="tgme_channel_history js-message_history">` +
+		`<div class="tgme_widget_message_wrap js-widget_message_wrap"><div class="tgme_widget_message_centered"><div class="tme_no_messages_found">No posts found</div></div></div>` +
+		`</section></body></html>`
+	if !IsEmptyChannelPage([]byte(quiet)) {
+		t.Fatal("the 'No posts found' page is an empty page")
+	}
+	if page, err := ParsePage([]byte(quiet), "chan"); err != nil || len(page.Messages) != 0 {
+		t.Fatalf("parser on the quiet page: %+v %v", page, err)
+	}
+	if IsEmptyChannelPage([]byte(tgPage([]int{1}, ""))) {
+		t.Fatal("a page with a message is not empty")
+	}
+	// A page without the channel header must still go through the parser,
+	// which tells a private channel from a layout change.
+	if IsEmptyChannelPage([]byte(`<html><body><div class="tgme_page">open in telegram</div></body></html>`)) {
+		t.Fatal("unknown page must not be skipped")
+	}
+}
+
+// An incremental poll of a channel that posted nothing must not reach
+// the HTML parser, while a private channel is still reported.
+func TestFetch_QuietIncrementalPollSkipsParse(t *testing.T) {
+	tr := &cannedTransport{pages: map[string]string{
+		"https://t.me/s/chan?after=552": tgPage(nil, ""),
+		"https://t.me/s/gone?after=5":   `<html><body><div class="tgme_page">open in telegram</div></body></html>`,
+	}}
+	h := NewHandler(nil, &http.Client{Transport: tr}, Config{UseProxy: false})
+	res, err := h.Fetch(context.Background(), bridge.Request{FeedURL: "https://t.me/chan", State: json.RawMessage(`{"last_message_id":552,"last_channel":"chan"}`)})
+	if err != nil || len(res.Entries) != 0 {
+		t.Fatalf("quiet poll: n=%d err=%v", len(res.Entries), err)
+	}
+	var o BridgeOverride
+	if err := json.Unmarshal(res.State, &o); err != nil || o.LastMessageID != 552 {
+		t.Fatalf("cursor must survive a quiet poll: %s", res.State)
+	}
+	_, err = h.Fetch(context.Background(), bridge.Request{FeedURL: "https://t.me/gone", State: json.RawMessage(`{"last_message_id":5,"last_channel":"gone"}`)})
+	if !errors.Is(err, ErrChannelUnavailable) {
+		t.Fatalf("private channel on an incremental poll: err=%v", err)
+	}
+}
+
+func BenchmarkQuietPoll_ParsePage(b *testing.B) {
+	body := []byte(tgPage(nil, ""))
+	for b.Loop() {
+		if _, err := ParsePage(body, "chan"); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkQuietPoll_IsEmptyChannelPage(b *testing.B) {
+	body := []byte(tgPage(nil, ""))
+	for b.Loop() {
+		if !IsEmptyChannelPage(body) {
+			b.Fatal("not empty")
+		}
+	}
+}
+
+func BenchmarkFullPage_ParseOnce(b *testing.B) {
+	ids := make([]int, 20)
+	for i := range ids {
+		ids[i] = 500 + i
+	}
+	body := []byte(tgPage(ids, "/s/chan?before=500"))
+	for b.Loop() {
+		if _, err := ParsePage(body, "chan"); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkFullPage_ParseTwice(b *testing.B) {
+	ids := make([]int, 20)
+	for i := range ids {
+		ids[i] = 500 + i
+	}
+	body := []byte(tgPage(ids, "/s/chan?before=500"))
+	for b.Loop() {
+		if _, err := ParseHTML(body, "chan"); err != nil {
+			b.Fatal(err)
+		}
+		NextPageURL(body)
 	}
 }

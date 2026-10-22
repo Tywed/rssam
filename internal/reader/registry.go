@@ -118,6 +118,7 @@ func NewRegistry(cfg RegistryConfig) (*RegistryBundle, error) {
 		UserAgent:             cfg.UserAgent,
 		TLSInsecureSkipVerify: cfg.FetchTLSInsecure,
 	})
+	tgHandler.SetSSRFGuard(cfg.SSRFGuard)
 	reg.Register(Adapt(tgHandler))
 
 	var maxHandler *max.Handler
@@ -183,6 +184,7 @@ func NewRegistry(cfg RegistryConfig) (*RegistryBundle, error) {
 			RateLimitCooldown: time.Duration(cfg.VKRateLimitSeconds) * time.Second,
 		})
 		reg.Register(Adapt(vkHandler))
+		reg.Register(Adapt(vk.NewGroupHandler(vkClient)))
 	}
 
 	rutubeClient, err := rutube.NewClient(cfg.HTTPClient, cfg.SSRFGuard, rutube.Config{

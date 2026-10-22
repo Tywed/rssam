@@ -177,3 +177,26 @@ func TestGuard_CustomLookupHost(t *testing.T) {
 		t.Fatalf("expected private block, got %v", err)
 	}
 }
+
+func TestGuard_ValidateHost(t *testing.T) {
+	g, err := New(Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, h := range []string{"127.0.0.1", "10.1.2.3", "192.168.0.5", "localhost", "169.254.169.254", "::1"} {
+		if err := g.ValidateHost(h); err == nil {
+			t.Errorf("%s must be refused", h)
+		}
+	}
+	if err := g.ValidateHost("8.8.8.8"); err != nil {
+		t.Fatalf("public ip: %v", err)
+	}
+	open, _ := New(Config{AllowPrivateNetwork: true})
+	if err := open.ValidateHost("10.1.2.3"); err != nil {
+		t.Fatalf("private allowed: %v", err)
+	}
+	var nilGuard *Guard
+	if err := nilGuard.ValidateHost("127.0.0.1"); err != nil {
+		t.Fatalf("nil guard is no policy: %v", err)
+	}
+}

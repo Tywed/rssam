@@ -101,10 +101,7 @@ func TestIntegration_WebhookLogsOwnershipAndRetry(t *testing.T) {
 	}
 
 	// Claim → mark one sent, one failed with a far-future retry.
-	claimed, err := store.ClaimDueWebhookLogs(ctx, 10, nil)
-	if err != nil {
-		t.Fatalf("claim: %v", err)
-	}
+	claimed := claimAllDueWebhookLogs(t, store)
 	var mine []WebhookLog
 	for _, l := range claimed {
 		if l.WebhookID == wh.ID {
@@ -125,10 +122,7 @@ func TestIntegration_WebhookLogsOwnershipAndRetry(t *testing.T) {
 	}
 
 	// A failed row scheduled for later is not claimable now...
-	claimed, err = store.ClaimDueWebhookLogs(ctx, 100, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	claimed = claimAllDueWebhookLogs(t, store)
 	for _, l := range claimed {
 		if l.ID == failedID || l.ID == sentID {
 			t.Fatalf("log %d should not be due", l.ID)
@@ -147,10 +141,7 @@ func TestIntegration_WebhookLogsOwnershipAndRetry(t *testing.T) {
 	if err := store.RetryWebhookLogNow(ctx, owner.ID, failedID); err != nil {
 		t.Fatalf("owner retry: %v", err)
 	}
-	claimed, err = store.ClaimDueWebhookLogs(ctx, 100, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	claimed = claimAllDueWebhookLogs(t, store)
 	found := false
 	for _, l := range claimed {
 		if l.ID == failedID {

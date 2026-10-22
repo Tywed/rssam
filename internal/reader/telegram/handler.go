@@ -11,6 +11,7 @@ import (
 	"rssam/internal/bridge/v1"
 	"rssam/internal/model"
 	"rssam/internal/proxy"
+	"rssam/internal/ssrf"
 )
 
 const feedTypeTelegram = "telegram"
@@ -21,7 +22,14 @@ type Handler struct {
 	httpClient  *http.Client
 	cfg         Config
 	slots       *fetchSlots
+	static      proxy.StaticClients
+	guard       *ssrf.Guard
 }
+
+// SetSSRFGuard installs the policy applied to per-feed static proxy hosts:
+// the operator's own proxy (configuration) is trusted, an address typed into
+// a feed form is not.
+func (h *Handler) SetSSRFGuard(g *ssrf.Guard) { h.guard = g }
 
 func NewHandler(proxyClient *proxy.Client, httpClient *http.Client, cfg Config) *Handler {
 	if cfg.ProxyRetry < 0 {
@@ -160,20 +168,22 @@ func (h *Handler) fetch(ctx context.Context, feedURL string, override *BridgeOve
 		if err != nil {
 			return FetchResult{}, err
 		}
-		msgs, err := ParseHTML(body, username)
+		// Most incremental polls find nothing new: a channel page without
+		// messages is not worth building a DOM for.
+		if cursor > 0 && IsEmptyChannelPage(body) {
+			break
+		}
+		parsed, err := ParsePage(body, username)
 		if err != nil {
 			return FetchResult{}, err
 		}
-		all = append(all, msgs...)
+		all = append(all, parsed.Messages...)
 
-		var next string
-		var ok bool
+		next := parsed.Older
 		if cursor > 0 {
-			next, ok = NewerPageURL(body)
-		} else {
-			next, ok = NextPageURL(body)
+			next = parsed.Newer
 		}
-		if !ok || page+1 >= maxPages {
+		if next == "" || page+1 >= maxPages {
 			break
 		}
 		pageURL = next
@@ -264,7 +274,12 @@ func (h *Handler) fetchViaStatic(ctx context.Context, cfg Config, pageURL string
 	if err != nil {
 		return nil, err
 	}
-	body, status, err := proxy.FetchGET(ctx, p, pageURL, cfg.UserAgent, cfg.ProxyConnectTimeout, cfg.ProxyRequestTimeout, cfg.TLSInsecureSkipVerify)
+	if cfg.StaticProxy != h.cfg.StaticProxy {
+		if err := h.guard.ValidateHost(p.Host); err != nil {
+			return nil, fmt.Errorf("telegram: static proxy: %w", err)
+		}
+	}
+	body, status, err := h.static.FetchGET(ctx, p, pageURL, cfg.UserAgent, cfg.ProxyConnectTimeout, cfg.ProxyRequestTimeout, cfg.TLSInsecureSkipVerify)
 	if err != nil {
 		return nil, &proxy.Unavailable{Op: "static proxy", Err: err}
 	}

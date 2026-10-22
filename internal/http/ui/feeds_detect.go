@@ -72,6 +72,11 @@ func (h *Handler) handleFeedDetectType(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+	if ft == reader.FeedTypeVKGroup {
+		if w, ok := vkbridge.ParseWallFromFeedURL(feedURL); ok {
+			resp.ChannelID = w.String()
+		}
+	}
 	if ft == reader.FeedTypeMaxstat {
 		if q, ok := maxstatbridge.ParseQueryFromFeedURL(feedURL); ok {
 			resp.SearchQuery = q
@@ -108,7 +113,7 @@ func (h *Handler) handleFeedDetectType(w http.ResponseWriter, r *http.Request) {
 	}
 	if h.cfg.DiscoverFeed != nil {
 		switch ft {
-		case reader.FeedTypeTelegram, reader.FeedTypeRSS, reader.FeedTypePage, reader.FeedTypeDzenChannel, reader.FeedTypeOKGroup:
+		case reader.FeedTypeTelegram, reader.FeedTypeRSS, reader.FeedTypePage, reader.FeedTypeDzenChannel, reader.FeedTypeOKGroup, reader.FeedTypeVKGroup:
 			d, err := h.cfg.DiscoverFeed(r.Context(), feedURL, ft, tlsInsecure)
 			if err != nil {
 				if ft != reader.FeedTypeTelegram {
@@ -155,6 +160,18 @@ func formatRSSDetectError(err error) string {
 	}
 	if errors.Is(err, okgroup.ErrNotGroup) {
 		return "Это не группа Одноклассников (профиль пользователя или другая страница)"
+	}
+	if errors.Is(err, reader.ErrBridgeNotConfigured) {
+		return "Мост не настроен: задайте токен доступа в настройках моста"
+	}
+	if errors.Is(err, vkbridge.ErrWallNotFound) {
+		return "Сообщество или страница VK не найдены: проверьте адрес (https://vk.com/имя, https://vk.com/public123)"
+	}
+	if errors.Is(err, vkbridge.ErrWallClosed) {
+		return "Стена VK недоступна: закрытое сообщество, приватный профиль или заблокирована"
+	}
+	if errors.Is(err, vkbridge.ErrTokenRejected) {
+		return "VK отклонил токен доступа: проверьте VK_ACCESS_TOKEN в настройках моста VK"
 	}
 	if errors.Is(err, page.ErrSelectorNoMatch) {
 		return "Селектор не нашёл ни одного элемента на странице: " + strings.TrimPrefix(msg, page.ErrSelectorNoMatch.Error()+": ")
@@ -223,7 +240,7 @@ func resolveFeedBeforeCreate(ctx context.Context, h *Handler, params *storage.Cr
 		if params.Title == "" {
 			params.Title = strings.TrimSpace(d.Title)
 		}
-	case reader.FeedTypeTelegram, reader.FeedTypeDzenChannel, reader.FeedTypeOKGroup:
+	case reader.FeedTypeTelegram, reader.FeedTypeDzenChannel, reader.FeedTypeOKGroup, reader.FeedTypeVKGroup:
 		if params.Title == "" {
 			if d, err := h.cfg.DiscoverFeed(ctx, params.FeedURL, params.FeedType, params.TLSInsecure); err == nil {
 				params.Title = strings.TrimSpace(d.Title)

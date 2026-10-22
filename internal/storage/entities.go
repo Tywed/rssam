@@ -445,8 +445,9 @@ type WebhookLogStore interface {
 	// EnqueueWebhookLogs inserts delivery rows idempotently.
 	EnqueueWebhookLogs(ctx context.Context, webhookIDs []int64, entryID int64) error
 
-	// ClaimDueWebhookLogs returns due rows for delivery, skipping exclude.
-	ClaimDueWebhookLogs(ctx context.Context, limit int, exclude []int64) ([]WebhookLog, error)
+	// ClaimDueWebhookLogs returns the oldest due row of every webhook not
+	// in excludeWebhooks.
+	ClaimDueWebhookLogs(ctx context.Context, limit int, excludeWebhooks []int64) ([]WebhookLog, error)
 
 	MarkWebhookLogSent(ctx context.Context, logID int64, attempt int, statusCode int, responseSnippet string) error
 	MarkWebhookLogFailed(ctx context.Context, logID int64, statusCode *int, errMsg string, responseSnippet string, attempt int, nextRetryAt *time.Time, dead bool) error

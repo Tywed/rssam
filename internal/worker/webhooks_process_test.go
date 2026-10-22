@@ -217,9 +217,9 @@ func TestProcessWebhookLog_400DeadNoRetry(t *testing.T) {
 	}
 }
 
-func TestProcessWebhookLog_429And500Retry(t *testing.T) {
+func TestProcessWebhookLog_500And408Retry(t *testing.T) {
 	t.Parallel()
-	for _, code := range []int{http.StatusTooManyRequests, http.StatusInternalServerError} {
+	for _, code := range []int{http.StatusRequestTimeout, http.StatusInternalServerError} {
 		t.Run(http.StatusText(code), func(t *testing.T) {
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				w.WriteHeader(code)

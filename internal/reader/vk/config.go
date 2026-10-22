@@ -20,6 +20,14 @@ const (
 	defaultRateLimit   = 5 * time.Second
 	vkAPIBaseURL       = "https://api.vk.com/method"
 	newsfeedSearchPath = "/newsfeed.search"
+	wallGetPath        = "/wall.get"
+	// wallGetCount is how many newest posts one poll reads; dedup drops the
+	// ones already stored, so the number only has to cover the posting rate
+	// between two polls.
+	wallGetCount = 20
+	// minRequestGap keeps all VK calls of this token under the API's
+	// 3 requests/second regardless of how many feeds share it.
+	minRequestGap = 350 * time.Millisecond
 )
 
 func (c Config) withDefaults() Config {

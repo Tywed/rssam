@@ -72,6 +72,7 @@ var bridgeHosts = map[string]string{
 	reader.FeedTypeMax:         "max.ru",
 	reader.FeedTypeMaxstat:     "maxstat.ru",
 	reader.FeedTypeVKSearch:    "vk.com",
+	reader.FeedTypeVKGroup:     "vk.com",
 	reader.FeedTypeRutube:      "rutube.ru",
 	reader.FeedTypeDzenNews:    "dzen.ru",
 	reader.FeedTypeDzenChannel: "dzen.ru",

@@ -72,7 +72,7 @@ func TestGroupDigestLogs_CollapsesPerWebhookAndPullsPeers(t *testing.T) {
 		{ID: 2, WebhookID: 9},
 		{ID: 12, WebhookID: 5, DigestMinutes: 60},
 	}
-	out := r.groupDigestLogs(context.Background(), in, nil)
+	out := r.groupDigestLogs(context.Background(), in)
 	if len(out) != 3 {
 		t.Fatalf("got %d rows, want 3: %+v", len(out), out)
 	}

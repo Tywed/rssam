@@ -46,7 +46,7 @@ func TestHandler_Fetch_ParseFixture(t *testing.T) {
 		http:   srv.Client(),
 		guard:  guard,
 		cfg:    Config{AccessToken: "test-token", APIVersion: "5.199", DefaultCount: 100},
-		apiURL: apiURL + newsfeedSearchPath,
+		apiURL: apiURL,
 	}
 	h := NewHandler(client, Config{AccessToken: "test-token", DefaultLookback: 24 * time.Hour, Overlap: 2 * time.Minute})
 
@@ -108,7 +108,7 @@ func TestHandler_Fetch_SkipsOldPosts(t *testing.T) {
 		http:   srv.Client(),
 		guard:  guard,
 		cfg:    Config{AccessToken: "tok"},
-		apiURL: srv.URL + newsfeedSearchPath,
+		apiURL: srv.URL,
 	}
 	h := NewHandler(client, Config{AccessToken: "tok"})
 
@@ -133,7 +133,7 @@ func TestHandler_Fetch_RateLimit(t *testing.T) {
 		http:   srv.Client(),
 		guard:  guard,
 		cfg:    Config{AccessToken: "tok", RateLimitCooldown: 5 * time.Second},
-		apiURL: srv.URL + newsfeedSearchPath,
+		apiURL: srv.URL,
 	}
 	h := NewHandler(client, Config{AccessToken: "tok", RateLimitCooldown: 5 * time.Second})
 

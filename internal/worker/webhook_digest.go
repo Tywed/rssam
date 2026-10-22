@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"net/http"
-	"slices"
 	"strings"
 	"time"
 
@@ -33,7 +32,7 @@ func (r *Runner) webhookDigest() webhookDigestStore {
 // groupDigestLogs collapses the claimed rows of each digest webhook into one
 // carrier row (peer ids in Peers) and pulls in the webhook's other due rows so
 // the whole window leaves in a single message.
-func (r *Runner) groupDigestLogs(ctx context.Context, logs []storage.WebhookLog, inflight []int64) []storage.WebhookLog {
+func (r *Runner) groupDigestLogs(ctx context.Context, logs []storage.WebhookLog) []storage.WebhookLog {
 	out := make([]storage.WebhookLog, 0, len(logs))
 	carriers := map[int64]int{}
 	for _, l := range logs {
@@ -55,7 +54,7 @@ func (r *Runner) groupDigestLogs(ctx context.Context, logs []storage.WebhookLog,
 	store := r.webhookDigest()
 	for _, i := range carriers {
 		c := &out[i]
-		more, err := store.ClaimWebhookDigestPeers(ctx, c.WebhookID, append(slices.Clone(inflight), c.Peers...), webhookDigestMaxItems-len(c.Peers))
+		more, err := store.ClaimWebhookDigestPeers(ctx, c.WebhookID, c.Peers, webhookDigestMaxItems-len(c.Peers))
 		if err != nil {
 			r.Log.Warn("webhook digest: claim peers failed", "webhook_id", c.WebhookID, "err", err)
 			continue
@@ -168,6 +167,11 @@ func (r *Runner) deliverWebhookDigest(ctx context.Context, store webhookDigestSt
 		return
 	}
 	code := resp.StatusCode
+	if code == http.StatusTooManyRequests {
+		next := r.floodPause(l.WebhookID, resp, snippet)
+		_ = store.MarkWebhookLogsFailed(ctx, ids, &code, failMsg, snippet, &next, false, false)
+		return
+	}
 	retryable := webhookHTTPRetryable(code) && (code < 200 || code > 299)
 	r.digestFailure(ctx, store, ids, attempt, &code, failMsg, snippet, retryable)
 }

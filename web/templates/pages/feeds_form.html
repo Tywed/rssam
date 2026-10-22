@@ -107,6 +107,18 @@
         <p class="meta" id="vk-search-query"></p>
       </div>
 
+      <div class="card feed-type-settings" id="feed-settings-vk_group" data-feed-type="vk_group" {{if .Feed.ID}}{{if ne .Feed.FeedType "vk_group"}}hidden{{end}}{{else}}hidden{{end}}>
+        <h2>Стена VK</h2>
+        <p class="meta">Посты одного сообщества или страницы VK: свои, репосты и записи подписчиков (20 последних за опрос). Название подставляется из VK.</p>
+        <ul class="meta">
+          <li><code>https://vk.com/tass</code>, <code>https://vk.com/public36441046</code>, <code>https://vk.com/club123</code>, <code>https://vk.com/id1</code></li>
+          <li><code>vk-group://tass</code></li>
+          <li>Нужна открытая стена; закрытые сообщества и приватные профили недоступны</li>
+        </ul>
+        <p class="meta">Access token задаётся в <a href="/ui/settings/bridges/vk">настройках VK</a>.</p>
+        <p class="meta" id="vk-group-id"></p>
+      </div>
+
       <div class="card feed-type-settings" id="feed-settings-dzen_news" data-feed-type="dzen_news" {{if .Feed.ID}}{{if ne .Feed.FeedType "dzen_news"}}hidden{{end}}{{else}}hidden{{end}}>
         <h2>Dzen News</h2>
         <p class="meta">Подписка на <strong>поиск новостей</strong> Dzen, а не на канал или статью.</p>

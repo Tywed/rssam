@@ -586,6 +586,7 @@
     var dzenSearchQueryEl = document.getElementById('dzen-search-query');
     var dzenChannelEl = document.getElementById('dzen-channel-id');
     var okGroupEl = document.getElementById('ok-group-id');
+    var vkGroupEl = document.getElementById('vk-group-id');
     var smotrimBrandEl = document.getElementById('smotrim-brand-id');
     var tlsCheckbox = document.getElementById('feed-tls-insecure');
     var settingsPanels = Array.from(document.querySelectorAll('.feed-type-settings'));
@@ -646,6 +647,11 @@
       if (okGroupEl) {
         okGroupEl.textContent = (feedType === 'ok_group' && data && data.channel_id)
           ? 'Группа: ' + data.channel_id
+          : '';
+      }
+      if (vkGroupEl) {
+        vkGroupEl.textContent = (feedType === 'vk_group' && data && data.channel_id)
+          ? 'Стена: ' + data.channel_id
           : '';
       }
       if (smotrimBrandEl) {

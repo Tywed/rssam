@@ -49,12 +49,8 @@ func TestIntegration_WebhookOnSuccessEntry_ResolvesAcrossWebhooks(t *testing.T) 
 	if err := store.EnqueueWebhookLogs(ctx, []int64{whRead.ID}, entries[2].ID); err != nil {
 		t.Fatal(err)
 	}
-	claimed, err := store.ClaimDueWebhookLogs(ctx, 100, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
 	byKey := map[[2]int64]WebhookLog{}
-	for _, l := range claimed {
+	for _, l := range claimAllDueWebhookLogs(t, store) {
 		byKey[[2]int64{l.WebhookID, l.EntryID}] = l
 	}
 	get := func(wh Webhook, e Entry) WebhookLog {
@@ -259,11 +255,12 @@ func TestIntegration_RelayEntryDeletedAfterWebhook(t *testing.T) {
 	if err != nil || len(claimed) != 2 {
 		t.Fatalf("claim: %v %d", err, len(claimed))
 	}
-	// The claim writes nothing; exclude hides what this process holds.
-	if again, err := store.ClaimDueWebhookLogs(ctx, 10, []int64{claimed[0].ID, claimed[1].ID}); err != nil || len(again) != 0 {
-		t.Fatalf("excluded rows claimed again: %v %d", err, len(again))
+	// The claim writes nothing; exclude hides the webhooks this process holds.
+	held := []int64{claimed[0].WebhookID, claimed[1].WebhookID}
+	if again, err := store.ClaimDueWebhookLogs(ctx, 10, held); err != nil || len(again) != 0 {
+		t.Fatalf("excluded webhooks claimed again: %v %d", err, len(again))
 	}
-	if _, ok, err := store.NextWebhookRetryAt(ctx, []int64{claimed[0].ID, claimed[1].ID}); err != nil || ok {
+	if _, ok, err := store.NextWebhookRetryAt(ctx, held); err != nil || ok {
 		t.Fatalf("next retry must ignore in-flight rows: ok=%v err=%v", ok, err)
 	}
 
@@ -299,5 +296,62 @@ func TestIntegration_RelayEntryDeletedAfterWebhook(t *testing.T) {
 	}
 	if logs, total, err := store.ListWebhookLogs(ctx, whB.ID, 10, 0); err != nil || total != 1 || logs[0].Status != "sent" {
 		t.Fatalf("plain log list: total=%d err=%v", total, err)
+	}
+}
+
+// TestIntegration_ClaimOneRowPerWebhookInOrder: the dispatcher gets the
+// oldest due row of every webhook it is not busy with, so one webhook
+// delivers one message at a time and in enqueue order.
+func TestIntegration_ClaimOneRowPerWebhookInOrder(t *testing.T) {
+	store := isolatedStore(t)
+	ctx := context.Background()
+	owner := newIntegrationUser(t, store, "serial")
+	_, entries := newIntegrationFeedWithEntries(t, store, owner.ID, 3)
+	mk := func(name string) Webhook {
+		t.Helper()
+		wh, err := store.CreateWebhook(ctx, CreateWebhookParams{
+			UserID: owner.ID, Name: name, URL: "https://example.com/" + name, Method: "POST",
+			Headers: []byte(`{}`), Enabled: true, Kind: WebhookKindHTTP,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return wh
+	}
+	whA, whB := mk("a"), mk("b")
+	for _, e := range entries {
+		if err := store.EnqueueWebhookLogs(ctx, []int64{whA.ID, whB.ID}, e.ID); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	claimed, err := store.ClaimDueWebhookLogs(ctx, 100, nil)
+	if err != nil || len(claimed) != 2 {
+		t.Fatalf("claim: %v %d (want one row per webhook)", err, len(claimed))
+	}
+	for _, l := range claimed {
+		if l.EntryID != entries[0].ID {
+			t.Fatalf("webhook %d: got entry %d, want the oldest %d", l.WebhookID, l.EntryID, entries[0].ID)
+		}
+	}
+	// Webhook A is busy (or paused): only B's row is claimable, and the
+	// earliest retry known to the dispatcher is B's as well.
+	only, err := store.ClaimDueWebhookLogs(ctx, 100, []int64{whA.ID})
+	if err != nil || len(only) != 1 || only[0].WebhookID != whB.ID {
+		t.Fatalf("claim with A excluded: %v %+v", err, only)
+	}
+	if _, ok, err := store.NextWebhookRetryAt(ctx, []int64{whA.ID, whB.ID}); err != nil || ok {
+		t.Fatalf("both busy: ok=%v err=%v", ok, err)
+	}
+	if _, ok, err := store.NextWebhookRetryAt(ctx, []int64{whA.ID}); err != nil || !ok {
+		t.Fatalf("B due: ok=%v err=%v", ok, err)
+	}
+	// After A's first row is sent, the next claim hands out A's second entry.
+	if err := store.MarkWebhookLogSent(ctx, claimed[0].ID, 1, 200, ""); err != nil {
+		t.Fatal(err)
+	}
+	next, err := store.ClaimDueWebhookLogs(ctx, 100, []int64{whB.ID})
+	if err != nil || len(next) != 1 || next[0].WebhookID != claimed[0].WebhookID || next[0].EntryID != entries[1].ID {
+		t.Fatalf("second row of the sent webhook: %v %+v", err, next)
 	}
 }

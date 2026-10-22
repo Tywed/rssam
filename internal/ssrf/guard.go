@@ -154,6 +154,17 @@ func (g *Guard) ValidateURL(rawURL string) error {
 	return err
 }
 
+// ValidateHost applies the same policy to a bare host (a SOCKS proxy
+// address): blocked hosts and private, loopback and link-local addresses are
+// refused unless allowed by configuration.
+func (g *Guard) ValidateHost(hostname string) error {
+	if g == nil {
+		return nil
+	}
+	_, err := g.resolveHost(context.Background(), strings.TrimSpace(hostname))
+	return err
+}
+
 // Validate is an alias for ValidateURL.
 func (g *Guard) Validate(rawURL string) error {
 	return g.ValidateURL(rawURL)

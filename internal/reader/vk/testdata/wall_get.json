@@ -1,0 +1,6 @@
+{"response":{"count":1534,"items":[
+ {"inner_type":"wall_wallpost","id":90012,"owner_id":-36441046,"from_id":-36441046,"date":1760860000,"is_pinned":1,"text":"Закреплённое: правила сообщества","attachments":[]},
+ {"inner_type":"wall_wallpost","id":90120,"owner_id":-36441046,"from_id":-36441046,"date":1760870000,"text":"Свежая новость\nВторая строка https://example.com/x.","attachments":[{"type":"photo","photo":{"id":1,"sizes":[{"type":"m","url":"https://img.example/m.jpg","width":130},{"type":"x","url":"https://img.example/x.jpg","width":604}]}}]},
+ {"inner_type":"wall_wallpost","id":90118,"owner_id":-36441046,"from_id":12345,"date":1760869000,"text":"Пост подписчика на стене","attachments":[]},
+ {"inner_type":"wall_wallpost","id":90115,"owner_id":-36441046,"from_id":-36441046,"date":1760868000,"text":"","copy_history":[{"id":5,"owner_id":-777,"from_id":-777,"date":1760860000,"text":"Репост из другого сообщества","attachments":[]}]}
+],"profiles":[{"id":12345,"first_name":"Иван","last_name":"Петров"}],"groups":[{"id":36441046,"name":"ТАСС","screen_name":"tass"},{"id":777,"name":"Источник","screen_name":"src"}]}}

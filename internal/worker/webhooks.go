@@ -46,7 +46,10 @@ func (r *Runner) webhookDispatchLoop(ctx context.Context, out chan<- storage.Web
 			idleWait(ctx, r.wake.webhooks, time.Time{}, false, r.Cfg.SchedulerTick)
 			continue
 		}
-		exclude := r.inflightHooks.exclude(time.Now())
+		now := time.Now()
+		exclude := r.inflightHooks.exclude(now)
+		paused, resume, anyPaused := r.pausedHooks.active(now)
+		exclude = append(exclude, paused...)
 		logs, err := r.Store.ClaimDueWebhookLogs(ctx, r.Cfg.WebhookPoolSize, exclude)
 		if err != nil {
 			r.Log.Error("webhook dispatcher: claim due logs failed", "err", err)
@@ -55,11 +58,8 @@ func (r *Runner) webhookDispatchLoop(ctx context.Context, out chan<- storage.Web
 		}
 		if len(logs) > 0 {
 			claimedAt := time.Now()
-			for _, l := range r.groupDigestLogs(ctx, logs, exclude) {
-				r.inflightHooks.start(l.ID, claimedAt)
-				for _, id := range l.Peers {
-					r.inflightHooks.start(id, claimedAt)
-				}
+			for _, l := range r.groupDigestLogs(ctx, logs) {
+				r.inflightHooks.start(l.WebhookID, claimedAt)
 				select {
 				case out <- l:
 				case <-ctx.Done():
@@ -71,6 +71,9 @@ func (r *Runner) webhookDispatchLoop(ctx context.Context, out chan<- storage.Web
 		next, known, err := r.Store.NextWebhookRetryAt(ctx, exclude)
 		if err != nil {
 			r.Log.Error("webhook dispatcher: next retry failed", "err", err)
+		}
+		if anyPaused && (!known || resume.Before(next)) {
+			next, known = resume, true
 		}
 		idleWait(ctx, r.wake.webhooks, next, known, r.Cfg.SchedulerTick)
 	}
@@ -88,18 +91,17 @@ func (r *Runner) webhookWorkerLoop(ctx context.Context, in <-chan storage.Webhoo
 			} else {
 				stored = r.processWebhookLog(ctx, l)
 			}
-			// A row whose status is written is free at once (its retry time
-			// is in the row); one whose write failed stays excluded for the
-			// grace period so the endpoint is not hammered meanwhile.
-			ids := append([]int64{l.ID}, l.Peers...)
-			now := time.Now()
-			for _, id := range ids {
-				if stored {
-					r.inflightHooks.forget(id)
-				} else {
-					r.inflightHooks.done(id, now)
-				}
+			// A webhook whose row status is written is free at once (the
+			// retry time is in the row); one whose write failed stays
+			// excluded for the grace period so the endpoint is not hammered
+			// meanwhile. The dispatcher is woken: the webhook's next row is
+			// due.
+			if stored {
+				r.inflightHooks.forget(l.WebhookID)
+			} else {
+				r.inflightHooks.done(l.WebhookID, time.Now())
 			}
+			r.wake.wake(storage.NotifyWebhooksDue)
 		}
 	}
 }
@@ -262,11 +264,26 @@ func (r *Runner) deliverWebhookLog(ctx context.Context, store webhookDeliverySto
 	}
 
 	code := resp.StatusCode
+	if code == http.StatusTooManyRequests {
+		next := r.floodPause(l.WebhookID, resp, snippet)
+		_ = store.MarkWebhookLogFailed(ctx, l.ID, &code, failMsg, snippet, l.Attempt, &next, false)
+		return
+	}
 	retryable := webhookHTTPRetryable(resp.StatusCode)
 	if resp.StatusCode >= 200 && resp.StatusCode <= 299 {
 		retryable = false
 	}
 	r.recordWebhookFailure(ctx, store, l.ID, attempt, &code, failMsg, snippet, retryable)
+}
+
+// floodPause parks the webhook for the time a 429 asked for and returns
+// the moment the row is due again.
+func (r *Runner) floodPause(webhookID int64, resp *http.Response, body string) time.Time {
+	now := time.Now().UTC()
+	next := now.Add(retryAfterOf(resp, body, now))
+	r.pausedHooks.pause(webhookID, next)
+	metrics.WebhookFloodWaitsTotal.Inc()
+	return next
 }
 
 func (r *Runner) recordWebhookFailure(ctx context.Context, store webhookDeliveryStore, logID int64, attempt int, statusCode *int, errMsg, snippet string, retryable bool) {

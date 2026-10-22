@@ -7,11 +7,13 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
 	"rssam/internal/bridge/v1"
 	"rssam/internal/proxy"
+	"rssam/internal/ssrf"
 )
 
 // A proxy-service outage and a dead SOCKS endpoint both surface as
@@ -94,5 +96,31 @@ func TestFetch_StaticProxyFailureIsUnavailable(t *testing.T) {
 	_, err = h.Fetch(context.Background(), bridge.Request{FeedURL: "https://t.me/chan"})
 	if !proxy.IsUnavailable(err) {
 		t.Fatalf("static proxy: want Unavailable, got %v", err)
+	}
+}
+
+// A static proxy set on the feed, unlike the operator's, is subject to the
+// fetch policy: the poller must not be pointed at an address on the LAN.
+func TestFetch_PerFeedStaticProxyIsGuarded(t *testing.T) {
+	guard, err := ssrf.New(ssrf.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := NewHandler(proxy.NewClient(nil), nil, Config{
+		UseProxy:            true,
+		StaticProxy:         "socks5://127.0.0.1:9", // operator's own proxy: trusted as is
+		ProxyConnectTimeout: time.Second,
+		ProxyRequestTimeout: 2 * time.Second,
+	})
+	h.SetSSRFGuard(guard)
+	_, err = h.Fetch(context.Background(), bridge.Request{FeedURL: "https://t.me/chan"})
+	if !proxy.IsUnavailable(err) {
+		t.Fatalf("operator proxy: want Unavailable (connection refused), got %v", err)
+	}
+
+	state := bridge.EncodeState(BridgeOverride{StaticProxy: "socks5://192.168.1.10:1080"})
+	_, err = h.Fetch(context.Background(), bridge.Request{FeedURL: "https://t.me/chan", State: state})
+	if err == nil || proxy.IsUnavailable(err) || !strings.Contains(err.Error(), "ssrf") {
+		t.Fatalf("per-feed private proxy: want ssrf refusal, got %v", err)
 	}
 }

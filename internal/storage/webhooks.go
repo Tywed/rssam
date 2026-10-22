@@ -321,25 +321,31 @@ ON CONFLICT (webhook_id, entry_id) DO NOTHING`
 // digest window, manual retry; migration 0043 backfills), so the claim is a
 // plain range on webhook_logs_due_idx: rows parked for a digest window are
 // never read until they are due. Nothing is written: this process is the
-// only deliverer (TryWorkerLock) and remembers what it holds (exclude); a
-// restart finds interrupted rows still due.
-func (s *PostgresStore) ClaimDueWebhookLogs(ctx context.Context, limit int, exclude []int64) ([]WebhookLog, error) {
+// only deliverer (TryWorkerLock) and remembers which webhooks it is busy with
+// or has paused (excludeWebhooks); a restart finds interrupted rows still
+// due. One row per webhook is returned, the oldest: deliveries of a webhook
+// go out one at a time, in order.
+func (s *PostgresStore) ClaimDueWebhookLogs(ctx context.Context, limit int, excludeWebhooks []int64) ([]WebhookLog, error) {
 	if limit <= 0 {
 		return nil, nil
 	}
-	if exclude == nil {
-		exclude = []int64{}
+	if excludeWebhooks == nil {
+		excludeWebhooks = []int64{}
 	}
 	const q = `
 SELECT ` + claimedWebhookLogCols + `, w.digest_minutes
-FROM webhook_logs
+FROM (
+  SELECT DISTINCT ON (webhook_id) *
+  FROM webhook_logs
+  WHERE status IN ('pending','failed')
+    AND next_retry_at <= now()
+    AND NOT (webhook_id = ANY($2::bigint[]))
+  ORDER BY webhook_id, next_retry_at ASC, id ASC
+) webhook_logs
 JOIN webhooks w ON w.id = webhook_logs.webhook_id
-WHERE webhook_logs.status IN ('pending','failed')
-  AND webhook_logs.next_retry_at <= now()
-  AND NOT (webhook_logs.id = ANY($2::bigint[]))
 ORDER BY webhook_logs.next_retry_at ASC, webhook_logs.id ASC
 LIMIT $1`
-	rows, err := s.db.Query(ctx, q, limit, exclude)
+	rows, err := s.db.Query(ctx, q, limit, excludeWebhooks)
 	if err != nil {
 		return nil, fmt.Errorf("claim due webhook logs: %w", err)
 	}

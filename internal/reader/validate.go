@@ -100,6 +100,8 @@ func FeedTypeLabel(feedType string) string {
 		return "MaxStat"
 	case FeedTypeVKSearch:
 		return "VK"
+	case FeedTypeVKGroup:
+		return "VK (стена)"
 	case FeedTypeRutube:
 		return "Rutube"
 	case FeedTypeDzenNews:
@@ -158,6 +160,10 @@ func ValidateBridgeFeedURL(feedURL, feedType string) error {
 	case FeedTypeDzenChannel:
 		if !dzenchannel.Detect(feedURL) {
 			return fmt.Errorf("ожидается адрес канала Дзен: https://dzen.ru/имя или https://dzen.ru/id/…")
+		}
+	case FeedTypeVKGroup:
+		if !vkbridge.DetectGroupFeedURL(feedURL) {
+			return fmt.Errorf("ожидается адрес сообщества или страницы VK: https://vk.com/имя, https://vk.com/public123, https://vk.com/club123")
 		}
 	case FeedTypeOKGroup:
 		if !okgroup.Detect(feedURL) {

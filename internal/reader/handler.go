@@ -107,6 +107,8 @@ const (
 	FeedTypeTelegram = "telegram"
 	FeedTypeVK       = "vk"
 	FeedTypeVKSearch = "vk_search"
+	// FeedTypeVKGroup is served by a contract bridge (vk.GroupHandler).
+	FeedTypeVKGroup  = "vk_group"
 	FeedTypeMax      = "max"
 	FeedTypeMaxstat  = "maxstat"
 	FeedTypeRutube   = "rutube"
@@ -122,10 +124,14 @@ const (
 	FeedTypeInbound = "inbound"
 )
 
+// ErrBridgeNotConfigured is a bridge that needs a token the operator has not
+// set (vk_group without VK_ACCESS_TOKEN).
+var ErrBridgeNotConfigured = errors.New("bridge is not configured: access token missing")
+
 // NormalizeFeedType returns a canonical feed type or empty string.
 func NormalizeFeedType(t string) string {
 	switch t {
-	case FeedTypeRSS, FeedTypeAtom, FeedTypeJSON, FeedTypeTelegram, FeedTypeVK, FeedTypeVKSearch, FeedTypeMax, FeedTypeMaxstat, FeedTypeRutube, FeedTypeDzenNews, FeedTypeDzenChannel, FeedTypeOKGroup, FeedTypeSmotrim, FeedTypePage, FeedTypeCustom, FeedTypeInbound:
+	case FeedTypeRSS, FeedTypeAtom, FeedTypeJSON, FeedTypeTelegram, FeedTypeVK, FeedTypeVKSearch, FeedTypeVKGroup, FeedTypeMax, FeedTypeMaxstat, FeedTypeRutube, FeedTypeDzenNews, FeedTypeDzenChannel, FeedTypeOKGroup, FeedTypeSmotrim, FeedTypePage, FeedTypeCustom, FeedTypeInbound:
 		return t
 	default:
 		return ""
@@ -145,6 +151,9 @@ func DetectFeedTypeFromURL(feedURL string) string {
 	}
 	if vkbridge.DetectFeedURL(feedURL) {
 		return FeedTypeVKSearch
+	}
+	if vkbridge.DetectGroupFeedURL(feedURL) {
+		return FeedTypeVKGroup
 	}
 	if rutube.DetectFeedURL(feedURL) {
 		return FeedTypeRutube

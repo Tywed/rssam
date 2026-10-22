@@ -9,15 +9,33 @@ import (
 	"time"
 )
 
-// claimOwnWebhookLogs claims due logs and returns only those of webhookID.
-func claimOwnWebhookLogs(t *testing.T, store *PostgresStore, webhookID int64, want int) []WebhookLog {
+// claimAllDueWebhookLogs returns every due row: the dispatcher's claim
+// hands out one row per webhook, the rest of each webhook's queue is read
+// the way a digest collects its peers.
+func claimAllDueWebhookLogs(t *testing.T, store *PostgresStore) []WebhookLog {
 	t.Helper()
-	claimed, err := store.ClaimDueWebhookLogs(context.Background(), 1000, nil)
+	ctx := context.Background()
+	heads, err := store.ClaimDueWebhookLogs(ctx, 1000, nil)
 	if err != nil {
 		t.Fatalf("claim: %v", err)
 	}
+	var out []WebhookLog
+	for _, h := range heads {
+		out = append(out, h)
+		peers, err := store.ClaimWebhookDigestPeers(ctx, h.WebhookID, []int64{h.ID}, 1000)
+		if err != nil {
+			t.Fatalf("peers: %v", err)
+		}
+		out = append(out, peers...)
+	}
+	return out
+}
+
+// claimOwnWebhookLogs claims due logs and returns only those of webhookID.
+func claimOwnWebhookLogs(t *testing.T, store *PostgresStore, webhookID int64, want int) []WebhookLog {
+	t.Helper()
 	var mine []WebhookLog
-	for _, l := range claimed {
+	for _, l := range claimAllDueWebhookLogs(t, store) {
 		if l.WebhookID == webhookID {
 			mine = append(mine, l)
 		}

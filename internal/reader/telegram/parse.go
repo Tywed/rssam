@@ -36,12 +36,70 @@ type ParsedMessage struct {
 // preview — the channel is private, restricted or does not exist.
 var ErrChannelUnavailable = errors.New("telegram: channel is private or does not exist")
 
+// Page is one t.me/s page: its messages and the pagination links, read
+// from a single parse of the document.
+type Page struct {
+	Messages []ParsedMessage
+	// Older is the "load more" link towards the past (?before=), Newer the
+	// link towards the present on a ?after= page.
+	Older, Newer string
+}
+
+// Byte markers that tell, without parsing, whether a page carries messages
+// (every message div names its post; the "No posts found" placeholder of a
+// quiet ?after= page sits in a message wrap but has none) and whether it is
+// a channel page at all.
+var (
+	messageMarker     = []byte(`data-post="`)
+	channelInfoMarker = []byte("tgme_channel_info")
+)
+
+// IsEmptyChannelPage reports a channel page without a single message —
+// the usual answer to ?after=<last id> when nothing was posted — so the
+// poller can skip parsing it.
+func IsEmptyChannelPage(body []byte) bool {
+	return !bytes.Contains(body, messageMarker) && bytes.Contains(body, channelInfoMarker)
+}
+
+// ParsePage parses a t.me/s page once for messages and pagination.
+func ParsePage(body []byte, channelUsername string) (Page, error) {
+	doc, err := goquery.NewDocumentFromReader(bytes.NewReader(body))
+	if err != nil {
+		return Page{}, fmt.Errorf("telegram: parse html: %w", err)
+	}
+	msgs, err := parseMessages(doc, channelUsername)
+	if err != nil {
+		return Page{}, err
+	}
+	page := Page{Messages: msgs}
+	doc.Find("div.tgme_widget_message_centered.js-messages_more_wrap a").Each(func(_ int, a *goquery.Selection) {
+		link, ok := a.Attr("href")
+		if !ok || link == "" {
+			return
+		}
+		if !strings.HasPrefix(link, "http") {
+			link = "https://t.me/" + strings.TrimPrefix(link, "/")
+		}
+		switch {
+		case strings.Contains(link, "before") && page.Older == "":
+			page.Older = link
+		case strings.Contains(link, "after=") && page.Newer == "":
+			page.Newer = link
+		}
+	})
+	return page, nil
+}
+
 // ParseHTML extracts messages from a t.me/s channel page.
 func ParseHTML(body []byte, channelUsername string) ([]ParsedMessage, error) {
 	doc, err := goquery.NewDocumentFromReader(bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("telegram: parse html: %w", err)
 	}
+	return parseMessages(doc, channelUsername)
+}
+
+func parseMessages(doc *goquery.Document, channelUsername string) ([]ParsedMessage, error) {
 	channelUsername = NormalizeUsername(channelUsername)
 
 	var out []ParsedMessage
@@ -178,41 +236,21 @@ func ChannelTitleFromHTML(body []byte) string {
 
 // NextPageURL returns pagination link when present.
 func NextPageURL(body []byte) (string, bool) {
-	doc, err := goquery.NewDocumentFromReader(bytes.NewReader(body))
+	page, err := ParsePage(body, "")
 	if err != nil {
 		return "", false
 	}
-	link, ok := doc.Find("div.tgme_widget_message_centered.js-messages_more_wrap a").First().Attr("href")
-	if !ok || link == "" || !strings.Contains(link, "before") {
-		return "", false
-	}
-	if strings.HasPrefix(link, "http") {
-		return link, true
-	}
-	return "https://t.me/" + strings.TrimPrefix(link, "/"), true
+	return page.Older, page.Older != ""
 }
 
 // NewerPageURL is the "more newer messages" link of a ?after= page, present
 // when more messages arrived since the cursor than the page holds.
 func NewerPageURL(body []byte) (string, bool) {
-	doc, err := goquery.NewDocumentFromReader(bytes.NewReader(body))
+	page, err := ParsePage(body, "")
 	if err != nil {
 		return "", false
 	}
-	var out string
-	doc.Find("div.tgme_widget_message_centered.js-messages_more_wrap a").EachWithBreak(func(_ int, a *goquery.Selection) bool {
-		link, ok := a.Attr("href")
-		if !ok || !strings.Contains(link, "after=") {
-			return true
-		}
-		if strings.HasPrefix(link, "http") {
-			out = link
-		} else {
-			out = "https://t.me/" + strings.TrimPrefix(link, "/")
-		}
-		return false
-	})
-	return out, out != ""
+	return page.Newer, page.Newer != ""
 }
 
 // MessageID is the numeric id in a message URI (https://t.me/<channel>/<id>,

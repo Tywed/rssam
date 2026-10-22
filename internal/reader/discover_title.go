@@ -96,6 +96,9 @@ func (r *TitleResolver) DiscoverFeed(ctx context.Context, feedURL, feedType stri
 			title, err := d.DiscoverTitle(ctx, feedURL)
 			return Discovery{FeedURL: feedURL, Title: title}, err
 		}
+		if ft == FeedTypeVKGroup {
+			return Discovery{}, ErrBridgeNotConfigured
+		}
 		if r.rss == nil {
 			return Discovery{}, fmt.Errorf("rss fetcher not configured")
 		}

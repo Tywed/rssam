@@ -120,8 +120,7 @@ func bestPhotoURL(sizes []photoSize) string {
 func buildOwnerNames(profiles []profile, groups []group) map[int]string {
 	names := make(map[int]string, len(profiles)+len(groups))
 	for _, p := range profiles {
-		name := strings.TrimSpace(p.FirstName + " " + p.LastName)
-		if name != "" {
+		if name := profileName(p); name != "" {
 			names[p.ID] = name
 		}
 	}
@@ -131,6 +130,10 @@ func buildOwnerNames(profiles []profile, groups []group) map[int]string {
 		}
 	}
 	return names
+}
+
+func profileName(p profile) string {
+	return strings.TrimSpace(p.FirstName + " " + p.LastName)
 }
 
 func postAuthor(post wallPost, ownerNames map[int]string) string {

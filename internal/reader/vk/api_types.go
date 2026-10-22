@@ -1,6 +1,6 @@
 package vk
 
-// API response types for newsfeed.search (extended=1).
+// API response types shared by newsfeed.search and wall.get (extended=1).
 
 type searchResponse struct {
 	Response *searchResponseBody `json:"response"`
