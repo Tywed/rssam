@@ -13,7 +13,7 @@ require (
 	github.com/mmcdole/gofeed v1.5.0
 	github.com/prometheus/client_golang v1.25.0
 	golang.org/x/crypto v0.58.0
-	golang.org/x/net v0.61.0
+	golang.org/x/net v0.62.0
 )
 
 require (
