@@ -25,21 +25,21 @@ func TestIntegration_FeedLastEntryAtAndSilent(t *testing.T) {
 	// entry 10 days ago; fresh is a brand-new subscription.
 	old := time.Now().Add(-30 * 24 * time.Hour)
 	tenDays := time.Now().Add(-10 * 24 * time.Hour)
-	if _, err := store.db.Exec(ctx, `UPDATE feeds SET created_at = $1, last_entry_at = NULL WHERE id = ANY($2)`, old, []int64{quiet.ID, lively.ID, paused.ID}); err != nil {
+	if _, err := store.db.Exec(ctx, `WITH u AS (UPDATE feeds SET created_at = $1 WHERE id = ANY($2) RETURNING id) UPDATE feed_poll_state ps SET last_entry_at = NULL FROM u WHERE ps.feed_id = u.id`, old, []int64{quiet.ID, lively.ID, paused.ID}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.db.Exec(ctx, `UPDATE feeds SET last_entry_at = $1 WHERE id = $2`, tenDays, lively.ID); err != nil {
+	if _, err := store.db.Exec(ctx, `UPDATE feed_poll_state SET last_entry_at = $1 WHERE feed_id = $2`, tenDays, lively.ID); err != nil {
 		t.Fatal(err)
 	}
 
 	// Migration backfill semantics: a NULL last_entry_at is derived from the
 	// newest entry / dedup row. Re-run the statement of 0039 on this schema.
-	if _, err := store.db.Exec(ctx, `UPDATE feeds SET last_entry_at = NULL WHERE id = $1`, lively.ID); err != nil {
+	if _, err := store.db.Exec(ctx, `UPDATE feed_poll_state SET last_entry_at = NULL WHERE feed_id = $1`, lively.ID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.db.Exec(ctx, `UPDATE feeds f SET last_entry_at = GREATEST(
-  (SELECT max(e.created_at) FROM entries e WHERE e.feed_id = f.id),
-  (SELECT max(d.first_seen_at) FROM feed_entry_dedup d WHERE d.feed_id = f.id))
+	if _, err := store.db.Exec(ctx, `UPDATE feed_poll_state f SET last_entry_at = GREATEST(
+  (SELECT max(e.created_at) FROM entries e WHERE e.feed_id = f.feed_id),
+  (SELECT max(d.first_seen_at) FROM feed_entry_dedup d WHERE d.feed_id = f.feed_id))
 WHERE f.last_entry_at IS NULL`); err != nil {
 		t.Fatal(err)
 	}
@@ -50,7 +50,7 @@ WHERE f.last_entry_at IS NULL`); err != nil {
 	if got, _ := store.GetFeedByID(ctx, quiet.ID); got.LastEntryAt != nil {
 		t.Fatalf("feed without entries must stay NULL: %v", *got.LastEntryAt)
 	}
-	if _, err := store.db.Exec(ctx, `UPDATE feeds SET last_entry_at = $1 WHERE id = $2`, tenDays, lively.ID); err != nil {
+	if _, err := store.db.Exec(ctx, `UPDATE feed_poll_state SET last_entry_at = $1 WHERE feed_id = $2`, tenDays, lively.ID); err != nil {
 		t.Fatal(err)
 	}
 
@@ -117,7 +117,7 @@ func TestIntegration_InboundFeedSilentByInterval(t *testing.T) {
 	}
 	// Both received their last delivery 3 hours ago: hourly is late, daily
 	// is within its expected pause.
-	if _, err := store.db.Exec(ctx, `UPDATE feeds SET created_at = now() - interval '2 days', last_entry_at = now() - interval '3 hours' WHERE id = ANY($1)`, []int64{hourly.ID, daily.ID}); err != nil {
+	if _, err := store.db.Exec(ctx, `WITH u AS (UPDATE feeds SET created_at = now() - interval '2 days' WHERE id = ANY($1) RETURNING id) UPDATE feed_poll_state ps SET last_entry_at = now() - interval '3 hours' FROM u WHERE ps.feed_id = u.id`, []int64{hourly.ID, daily.ID}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -155,7 +155,7 @@ func TestIntegration_InboundFeedSilentByInterval(t *testing.T) {
 	// The global window of 7 days does not apply to inbound feeds: 3 hours
 	// of silence on the daily feed is fine, and the hourly feed, silent for
 	// 2 hours, is late again.
-	if _, err := store.db.Exec(ctx, `UPDATE feeds SET last_entry_at = now() - interval '2 hours' WHERE id = $1`, hourly.ID); err != nil {
+	if _, err := store.db.Exec(ctx, `UPDATE feed_poll_state SET last_entry_at = now() - interval '2 hours' WHERE feed_id = $1`, hourly.ID); err != nil {
 		t.Fatal(err)
 	}
 	if sum, _ := store.AdminFeedSummary(ctx, 7*24*time.Hour); sum.SilentCount != 1 {

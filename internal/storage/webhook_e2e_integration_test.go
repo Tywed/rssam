@@ -355,3 +355,40 @@ func TestIntegration_ClaimOneRowPerWebhookInOrder(t *testing.T) {
 		t.Fatalf("second row of the sent webhook: %v %+v", err, next)
 	}
 }
+
+// A relay entry nobody enqueued is dropped into dedup at once; one with a
+// delivery row stays.
+func TestIntegration_DropUndeliveredRelayEntries(t *testing.T) {
+	store := isolatedStore(t)
+	ctx := context.Background()
+	owner := newIntegrationUser(t, store, "relayorphan")
+	feed, entries := newIntegrationFeedWithEntries(t, store, owner.ID, 2)
+	wh, err := store.CreateWebhook(ctx, CreateWebhookParams{
+		UserID: owner.ID, Name: "w", URL: "https://example.com/w", Method: "POST",
+		Headers: []byte(`{}`), Enabled: true, Kind: WebhookKindHTTP,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.EnqueueWebhookLogs(ctx, []int64{wh.ID}, entries[0].ID); err != nil {
+		t.Fatal(err)
+	}
+	n, err := store.DropUndeliveredRelayEntries(ctx, []int64{entries[0].ID, entries[1].ID})
+	if err != nil || n != 1 {
+		t.Fatalf("dropped=%d err=%v, want 1", n, err)
+	}
+	var left int
+	if err := store.db.QueryRow(ctx, `SELECT count(*) FROM entries WHERE feed_id = $1`, feed.ID).Scan(&left); err != nil || left != 1 {
+		t.Fatalf("entries left: %d err=%v", left, err)
+	}
+	known, err := store.FilterKnownEntryHashes(ctx, feed.ID, []string{entries[1].Hash})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := known[entries[1].Hash]; !ok {
+		t.Fatal("dropped relay entry must stay known to dedup")
+	}
+	if n, err := store.DropUndeliveredRelayEntries(ctx, nil); err != nil || n != 0 {
+		t.Fatalf("empty call: %d %v", n, err)
+	}
+}

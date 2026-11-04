@@ -128,7 +128,7 @@ func TestIntegration_SystemAlertLists(t *testing.T) {
 		t.Fatalf("paused: %v %+v", err, got)
 	}
 
-	if _, err := store.db.Exec(ctx, `UPDATE feeds SET last_entry_at = now() - interval '10 days', created_at = now() - interval '30 days' WHERE id = $1`, feed2.ID); err != nil {
+	if _, err := store.db.Exec(ctx, `WITH u AS (UPDATE feeds SET created_at = now() - interval '30 days' WHERE id = $1 RETURNING id) UPDATE feed_poll_state ps SET last_entry_at = now() - interval '10 days' FROM u WHERE ps.feed_id = u.id`, feed2.ID); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := store.db.Exec(ctx, `UPDATE feeds SET manual_paused = FALSE WHERE id = $1`, feed2.ID); err != nil {

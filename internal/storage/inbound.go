@@ -71,7 +71,8 @@ func (s *PostgresStore) CreateInboundFeed(ctx context.Context, userID int64, par
 	if err != nil {
 		return Feed{}, "", err
 	}
-	if _, err := s.db.Exec(ctx, `UPDATE feeds SET inbound_secret = $2, next_check_at = `+inboundNeverDue+` WHERE id = $1`, f.ID, secret); err != nil {
+	if _, err := s.db.Exec(ctx, `WITH u AS (UPDATE feeds SET inbound_secret = $2 WHERE id = $1 RETURNING id)
+UPDATE feed_poll_state ps SET next_check_at = `+inboundNeverDue+` FROM u WHERE ps.feed_id = u.id`, f.ID, secret); err != nil {
 		return Feed{}, "", fmt.Errorf("set inbound secret: %w", err)
 	}
 	return f, secret, nil

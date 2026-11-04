@@ -100,7 +100,7 @@ SELECT feed_type,
        count(*) FILTER (WHERE last_error LIKE $1)::int,
        COALESCE(max(last_error) FILTER (WHERE last_error LIKE $1), ''),
        max(last_checked_at) FILTER (WHERE last_error LIKE $1)
-FROM feeds
+FROM ` + feedsFrom + `
 GROUP BY feed_type`
 	rows, err := s.db.Query(ctx, q, LayoutErrorPrefix+"%")
 	if err != nil {
@@ -152,7 +152,7 @@ const adminFeedSelectCols = `
 // with feed_id; a per-row subquery scanned the table once per feed on the
 // page: 1.1 s against 29 ms for 200 feeds and 60 000 unread rows).
 const adminFeedFromJoins = `
-FROM feeds f ` + catalogJoin + `
+FROM ` + feedsFrom + ` ` + catalogJoin + `
 LEFT JOIN (SELECT feed_id, COUNT(*)::int AS n FROM user_unread GROUP BY feed_id) un ON un.feed_id = f.id`
 
 // adminFeedsSilentWhere: a feed that polls fine but has not produced a new
@@ -166,12 +166,12 @@ func adminFeedsSilentWhere(silentAfter time.Duration) string {
 	return fmt.Sprintf(`(`+adminFeedsHealthy+`
   AND CASE WHEN f.feed_type = '`+FeedTypeInbound+`'
        THEN `+adminFeedsInboundLate+`
-       ELSE %d > 0 AND COALESCE(f.last_entry_at, f.created_at) < now() - interval '%d seconds' END)`, secs, secs)
+       ELSE %d > 0 AND COALESCE(ps.last_entry_at, f.created_at) < now() - interval '%d seconds' END)`, secs, secs)
 }
 
 const (
-	adminFeedsHealthy     = `f.poll_paused = FALSE AND f.manual_paused = FALSE AND COALESCE(NULLIF(f.last_error, ''), '') = '' AND f.parsing_error_count = 0`
-	adminFeedsInboundLate = `COALESCE(f.last_entry_at, f.created_at) < now() - make_interval(mins => f.interval_minutes)`
+	adminFeedsHealthy     = `ps.poll_paused = FALSE AND f.manual_paused = FALSE AND COALESCE(NULLIF(ps.last_error, ''), '') = '' AND ps.parsing_error_count = 0`
+	adminFeedsInboundLate = `COALESCE(ps.last_entry_at, f.created_at) < now() - make_interval(mins => f.interval_minutes)`
 	// adminFeedsSilentInbound is the inbound half of adminFeedsSilentWhere,
 	// for marking rows on the admin page.
 	adminFeedsSilentInbound = `(f.feed_type = '` + FeedTypeInbound + `' AND ` + adminFeedsHealthy + ` AND ` + adminFeedsInboundLate + `)`
@@ -182,19 +182,19 @@ func adminFeedsStatusWhere(status string, silentAfter time.Duration) string {
 	case "silent":
 		return adminFeedsSilentWhere(silentAfter)
 	case "paused":
-		return `(f.poll_paused = TRUE OR f.manual_paused = TRUE)`
+		return `(ps.poll_paused = TRUE OR f.manual_paused = TRUE)`
 	case "errors":
-		return `(COALESCE(NULLIF(f.last_error, ''), '') <> '' OR f.parsing_error_count > 0)`
+		return `(COALESCE(NULLIF(ps.last_error, ''), '') <> '' OR ps.parsing_error_count > 0)`
 	case "layout":
-		return `f.last_error LIKE 'layout: %'`
+		return `ps.last_error LIKE 'layout: %'`
 	case "waiting":
-		return `(f.poll_paused = FALSE AND f.manual_paused = FALSE
-  AND COALESCE(NULLIF(f.last_error, ''), '') = '' AND f.parsing_error_count = 0
-  AND (f.next_check_at IS NULL OR f.next_check_at <= now()))`
+		return `(ps.poll_paused = FALSE AND f.manual_paused = FALSE
+  AND COALESCE(NULLIF(ps.last_error, ''), '') = '' AND ps.parsing_error_count = 0
+  AND (ps.next_check_at IS NULL OR ps.next_check_at <= now()))`
 	case "ok":
-		return `(f.poll_paused = FALSE AND f.manual_paused = FALSE
-  AND COALESCE(NULLIF(f.last_error, ''), '') = '' AND f.parsing_error_count = 0
-  AND f.next_check_at IS NOT NULL AND f.next_check_at > now())`
+		return `(ps.poll_paused = FALSE AND f.manual_paused = FALSE
+  AND COALESCE(NULLIF(ps.last_error, ''), '') = '' AND ps.parsing_error_count = 0
+  AND ps.next_check_at IS NOT NULL AND ps.next_check_at > now())`
 	default:
 		return ""
 	}
@@ -213,20 +213,20 @@ func adminFeedsOrderClause(sortKey, order string) string {
 	case "status":
 		const expr = `(
   CASE
-    WHEN f.poll_paused OR f.manual_paused THEN 1
-    WHEN COALESCE(NULLIF(f.last_error, ''), '') <> '' OR f.parsing_error_count > 0 THEN 2
-    WHEN f.next_check_at IS NULL OR f.next_check_at <= now() THEN 3
+    WHEN ps.poll_paused OR f.manual_paused THEN 1
+    WHEN COALESCE(NULLIF(ps.last_error, ''), '') <> '' OR ps.parsing_error_count > 0 THEN 2
+    WHEN ps.next_check_at IS NULL OR ps.next_check_at <= now() THEN 3
     ELSE 4
   END)`
 		return fmt.Sprintf("%s %s, f.id ASC", expr, dir)
 	case "last_checked":
-		return fmt.Sprintf("f.last_checked_at %s %s, f.id ASC", dir, nulls)
+		return fmt.Sprintf("ps.last_checked_at %s %s, f.id ASC", dir, nulls)
 	case "next_check":
-		return fmt.Sprintf("f.next_check_at %s %s, f.id ASC", dir, nulls)
+		return fmt.Sprintf("ps.next_check_at %s %s, f.id ASC", dir, nulls)
 	case "last_entry":
-		return fmt.Sprintf("f.last_entry_at %s %s, f.id ASC", dir, nulls)
+		return fmt.Sprintf("ps.last_entry_at %s %s, f.id ASC", dir, nulls)
 	case "errors":
-		return fmt.Sprintf("f.parsing_error_count %s, f.id ASC", dir)
+		return fmt.Sprintf("ps.parsing_error_count %s, f.id ASC", dir)
 	case "entries":
 		return fmt.Sprintf("COALESCE((SELECT COUNT(*) FROM entries e WHERE e.feed_id = f.id), 0) %s, f.id ASC", dir)
 	case "unread":
@@ -336,7 +336,7 @@ SELECT
   COALESCE((SELECT COUNT(*)::int FROM subscriptions), 0),
   COALESCE((SELECT GREATEST(reltuples, 0)::bigint FROM pg_class WHERE oid = 'public.user_entries'::regclass), 0)::int,
   COALESCE((SELECT COUNT(*)::int FROM category_followers), 0)
-FROM feeds`
+FROM ` + feedsFrom + ``
 	var sum AdminFeedSummary
 	err := s.db.QueryRow(ctx, q, silentSeconds).Scan(
 		&sum.TotalFeeds,
@@ -360,10 +360,10 @@ FROM feeds`
 func (s *PostgresStore) PollFeedJobCounts(ctx context.Context) (PollFeedJobCounts, error) {
 	const q = `
 SELECT COUNT(*)::int,
-       COALESCE(EXTRACT(EPOCH FROM MAX(now() - COALESCE(f.next_check_at, f.created_at))), 0)
-FROM feeds f
+       COALESCE(EXTRACT(EPOCH FROM MAX(now() - COALESCE(ps.next_check_at, f.created_at))), 0)
+FROM ` + feedsFrom + `
 WHERE ` + pollableWhere + `
-  AND (f.next_check_at IS NULL OR f.next_check_at <= now())`
+  AND (ps.next_check_at IS NULL OR ps.next_check_at <= now())`
 	var counts PollFeedJobCounts
 	if err := s.db.QueryRow(ctx, q).Scan(&counts.Pending, &counts.MaxLagSeconds); err != nil {
 		return PollFeedJobCounts{}, fmt.Errorf("poll backlog counts: %w", err)
@@ -375,7 +375,7 @@ WHERE ` + pollableWhere + `
 func (s *PostgresStore) OfferedPollsPerMin(ctx context.Context) (float64, error) {
 	const q = `
 SELECT COALESCE(SUM(1.0 / GREATEST(interval_minutes, 1)), 0)
-FROM feeds
+FROM ` + feedsFrom + `
 WHERE poll_paused = FALSE AND manual_paused = FALSE`
 	var offered float64
 	if err := s.db.QueryRow(ctx, q).Scan(&offered); err != nil {

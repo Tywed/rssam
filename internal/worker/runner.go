@@ -74,7 +74,9 @@ type Runner struct {
 	wake              dueWakers
 	inflight          inflightPolls
 	inflightHooks     inflightPolls
-	pausedHooks       webhookPauses
+	pausedHooks       duePauses[int64]
+	deferredFeeds     duePauses[int64]
+	deferredBridges   duePauses[string]
 }
 
 func (r *Runner) Pause() {
@@ -188,8 +190,9 @@ func (r *Runner) Run(ctx context.Context) error {
 
 // dispatchLoop hands due feeds to the worker pool, then sleeps until the
 // earliest next_check_at, a feeds-due notification, or SchedulerTick at
-// most. A feed stays due in the table while its poll runs, so the in-flight
-// set is excluded from both queries.
+// most. A feed stays due in the table while its poll runs or waits out a
+// rate limit, so the in-flight and deferred sets (single feeds and whole
+// bridges) are excluded from both queries.
 func (r *Runner) dispatchLoop(ctx context.Context, out chan<- storage.DueFeed) {
 	for ctx.Err() == nil {
 		if r.Paused() {
@@ -205,7 +208,13 @@ func (r *Runner) dispatchLoop(ctx context.Context, out chan<- storage.DueFeed) {
 			continue
 		}
 		exclude := r.inflight.exclude(now)
-		due, err := r.Store.ListFeedsDue(ctx, min(r.Cfg.PoolSize, room), exclude)
+		deferred, resume, anyDeferred := r.deferredFeeds.active(now)
+		exclude = append(exclude, deferred...)
+		bridges, bridgeResume, anyBridge := r.deferredBridges.active(now)
+		if anyBridge && (!anyDeferred || bridgeResume.Before(resume)) {
+			resume, anyDeferred = bridgeResume, true
+		}
+		due, err := r.Store.ListFeedsDue(ctx, min(r.Cfg.PoolSize, room), exclude, bridges)
 		if err != nil {
 			r.Log.Error("dispatcher: list due feeds failed", "err", err)
 			idleWait(ctx, r.wake.feeds, time.Time{}, false, r.Cfg.SchedulerTick)
@@ -225,9 +234,12 @@ func (r *Runner) dispatchLoop(ctx context.Context, out chan<- storage.DueFeed) {
 			}
 			continue
 		}
-		next, known, err := r.Store.NextFeedDueAt(ctx, exclude)
+		next, known, err := r.Store.NextFeedDueAt(ctx, exclude, bridges)
 		if err != nil {
 			r.Log.Error("dispatcher: next feed due failed", "err", err)
+		}
+		if anyDeferred && (!known || resume.Before(next)) {
+			next, known = resume, true
 		}
 		idleWait(ctx, r.wake.feeds, next, known, r.Cfg.SchedulerTick)
 	}
@@ -239,7 +251,12 @@ func (r *Runner) workerLoop(ctx context.Context, in <-chan storage.DueFeed) {
 		case <-ctx.Done():
 			return
 		case d := <-in:
-			processPollFeed(ctx, d.ID, r.Store, r.Refresher, r.Cfg, r.Log)
+			switch until, scope := processPollFeed(ctx, d.ID, r.Store, r.Refresher, r.Cfg, r.Log); scope {
+			case deferFeed:
+				r.deferredFeeds.pause(d.ID, until)
+			case deferBridge:
+				r.deferredBridges.pause(d.FeedType, until)
+			}
 			r.inflight.done(d.ID, time.Now())
 		}
 	}
@@ -254,6 +271,14 @@ func (r *Runner) Inflight() (running, stale int) {
 	return r.inflight.counts(time.Now())
 }
 
+// WebhookFloodPausedUntil is when a webhook waiting out a 429 resumes.
+func (r *Runner) WebhookFloodPausedUntil(webhookID int64) (time.Time, bool) {
+	if r == nil {
+		return time.Time{}, false
+	}
+	return r.pausedHooks.pausedUntil(webhookID, time.Now())
+}
+
 // PollingSince is when the poll of feedID started, if one is running.
 func (r *Runner) PollingSince(feedID int64) (time.Time, bool) {
 	if r == nil {
@@ -262,26 +287,46 @@ func (r *Runner) PollingSince(feedID int64) (time.Time, bool) {
 	return r.inflight.since(feedID)
 }
 
+// memoryDeferMax bounds how long a single feed is held in the dispatcher's
+// memory: a feed that stays due in the table while it waits counts as
+// backlog on the «Система» page and in the pool advice, so a wait of hours
+// (category poll hours, a source's Retry-After, a proxy outage) is still
+// written to next_check_at as before.
+const memoryDeferMax = time.Minute
+
+// deferScope says what a deferred poll holds back: nothing, the one feed
+// (category poll hours, a source's Retry-After, a busy host) or every feed
+// of the bridge (its fetch slots or its API are busy).
+type deferScope int
+
+const (
+	deferNone deferScope = iota
+	deferFeed
+	deferBridge
+)
+
 // processPollFeed polls one feed. Every exit leaves the feed not due any
 // more: the refresher persists next_check_at on success and on error, a
-// retry-after hint is written here, and a paused or deleted feed is not
-// listed by ListFeedsDue.
-func processPollFeed(ctx context.Context, feedID int64, store pollStore, refresher FeedRefreshService, cfg Config, log *slog.Logger) {
+// paused or deleted feed is not listed by ListFeedsDue, and a poll turned
+// away by a rate limit (nothing was fetched, nothing changed) is returned as
+// a deferral for the dispatcher to hold in memory instead of a row write —
+// on the production fleet that is a third of all poll UPDATEs.
+func processPollFeed(ctx context.Context, feedID int64, store pollStore, refresher FeedRefreshService, cfg Config, log *slog.Logger) (deferUntil time.Time, scope deferScope) {
 	if log == nil {
 		log = slog.Default()
 	}
 	if store == nil || refresher == nil {
-		return
+		return time.Time{}, deferNone
 	}
 
 	feed, feedErr := store.GetFeedByID(ctx, feedID)
 	if feedErr != nil {
 		log.Warn("poll_feed feed lookup failed", "feed_id", feedID, "err", feedErr)
-		return
+		return time.Time{}, deferNone
 	}
 	if storage.FeedPollingBlocked(feed) {
 		log.Info("poll_feed skipped: paused", "feed_id", feedID, "manual", feed.ManualPaused, "circuit", feed.PollPaused, "errors", feed.ParsingErrorCount)
-		return
+		return time.Time{}, deferNone
 	}
 
 	timeout := cfg.FetchTimeout
@@ -303,12 +348,18 @@ func processPollFeed(ctx context.Context, feedID int64, store pollStore, refresh
 		}
 		var persisted interface{ NextCheckPersisted() bool }
 		if errors.As(err, &persisted) && persisted.NextCheckPersisted() {
-			return
+			return time.Time{}, deferNone
+		}
+		if bridge.DeferBridgeWide(err) {
+			return at, deferBridge
+		}
+		if at.Sub(now) <= memoryDeferMax {
+			return at, deferFeed
 		}
 		if err := store.SetFeedNextCheckAt(ctx, feedID, at); err != nil {
 			log.Warn("poll_feed: set next_check_at after retry-after failed", "feed_id", feedID, "err", err)
 		}
-		return
+		return time.Time{}, deferNone
 	}
 
 	metrics.PollDuration.Observe(dur.Seconds())
@@ -321,7 +372,7 @@ func processPollFeed(ctx context.Context, feedID int64, store pollStore, refresh
 		feedAfter, feedErr := store.GetFeedByID(ctx, feedID)
 		if feedErr != nil {
 			log.Warn("poll_feed failed", "feed_id", feedID, "err", err, "lookup_err", feedErr)
-			return
+			return time.Time{}, deferNone
 		}
 		var next time.Time
 		if feedAfter.NextCheckAt != nil && feedAfter.NextCheckAt.After(now) {
@@ -337,8 +388,9 @@ func processPollFeed(ctx context.Context, feedID int64, store pollStore, refresh
 			}
 		}
 		log.Warn("poll_feed failed", "feed_id", feedID, "error_count", feedAfter.ParsingErrorCount, "next_check_at", next, "err", err)
-		return
+		return time.Time{}, deferNone
 	}
 
 	metrics.PollAttempts.WithLabelValues("success").Inc()
+	return time.Time{}, deferNone
 }

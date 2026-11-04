@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -254,4 +255,35 @@ func isBackoff(err error) (time.Time, bool) {
 		return e.Until, true
 	}
 	return time.Time{}, false
+}
+
+func TestHandler_Fetch_ErrorCarriesBodyHint(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte("{\n  \"error\": \"channel not found\",\n  \"detail\": \"" + strings.Repeat("x", 100) + "\"\n}"))
+	}))
+	t.Cleanup(srv.Close)
+
+	guard, err := ssrf.New(ssrf.Config{AllowPrivateNetwork: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	h, err := NewHandler(srv.Client(), guard, Config{APIBaseURL: srv.URL, AllowPrivateAPI: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = h.fetch(context.Background(), "https://max.ru/gone_channel", FetchState{})
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	msg := err.Error()
+	if !strings.HasPrefix(msg, `max: unexpected status 400: { "error": "channel not found", "detail": "xxx`) || !strings.HasSuffix(msg, "…") {
+		t.Fatalf("error text: %q", msg)
+	}
+	if len([]rune(msg)) > len("max: unexpected status 400: ")+81 {
+		t.Fatalf("hint not bounded: %d runes", len([]rune(msg)))
+	}
+	if bodyHint(nil) != "" || bodyHint([]byte("  \n ")) != "" {
+		t.Fatal("empty body must add nothing")
+	}
 }

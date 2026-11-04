@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"rssam/internal/storage"
 )
@@ -49,8 +50,9 @@ func (h *Handler) loadAdminWebhooksDashboard(r *http.Request, userID int64) (pag
 	views := make([]adminWebhookRowView, 0, len(rows))
 	for _, row := range rows {
 		views = append(views, adminWebhookRowView{
-			AdminWebhookRow: row,
-			Status:          classifyAdminWebhookStatus(row),
+			AdminWebhookRow:  row,
+			Status:           classifyAdminWebhookStatus(row),
+			FloodPausedUntil: h.webhookFloodPausedUntil(row.ID),
 		})
 	}
 	data.AdminWebhookStatusCounts = countAdminWebhookStatuses(views)
@@ -65,6 +67,14 @@ func (h *Handler) loadAdminWebhooksDashboard(r *http.Request, userID int64) (pag
 	data.AdminWebhookRows = filterAdminWebhookRows(views, status)
 	data.WebhookMaxAttempts = h.cfg.WebhookMaxAttempts
 	return data, nil
+}
+
+func (h *Handler) webhookFloodPausedUntil(id int64) time.Time {
+	if h.cfg.WebhookFloodPausedUntil == nil {
+		return time.Time{}
+	}
+	until, _ := h.cfg.WebhookFloodPausedUntil(id)
+	return until
 }
 
 func (h *Handler) handleWebhooksList(w http.ResponseWriter, r *http.Request) {
@@ -101,8 +111,9 @@ func (h *Handler) loadWebhookDetail(r *http.Request, userID, id int64) (pageData
 		data.Webhook = row.Webhook
 		fillWebhookProviderFields(&data, row.Webhook)
 		data.AdminWebhookDetail = adminWebhookRowView{
-			AdminWebhookRow: row,
-			Status:          classifyAdminWebhookStatus(row),
+			AdminWebhookRow:  row,
+			Status:           classifyAdminWebhookStatus(row),
+			FloodPausedUntil: h.webhookFloodPausedUntil(row.ID),
 		}
 		feeds, err := h.cfg.AdminWebhooks.ListWebhookBindingFeeds(r.Context(), userID, id)
 		if err != nil {

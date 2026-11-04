@@ -37,6 +37,9 @@ type webhookDTO struct {
 	Max            *storage.MaxProviderConfig      `json:"max,omitempty"`
 	CreatedAt      time.Time                       `json:"created_at"`
 	UpdatedAt      time.Time                       `json:"updated_at"`
+	// FloodPausedUntil is set while the worker holds the webhook after a
+	// provider 429; deliveries resume by themselves.
+	FloodPausedUntil *time.Time `json:"flood_paused_until,omitempty"`
 }
 
 type webhookWriteRequest struct {
@@ -236,7 +239,13 @@ func (s *Server) handleGetWebhook(w http.ResponseWriter, r *http.Request) {
 		s.storeError(w, r, err, "webhook not found", "get webhook failed")
 		return
 	}
-	writeJSON(w, http.StatusOK, listResponse[webhookDTO]{Data: toWebhookDTO(wh), Total: 1})
+	dto := toWebhookDTO(wh)
+	if s.workerControl != nil {
+		if until, ok := s.workerControl.WebhookFloodPausedUntil(wh.ID); ok {
+			dto.FloodPausedUntil = &until
+		}
+	}
+	writeJSON(w, http.StatusOK, listResponse[webhookDTO]{Data: dto, Total: 1})
 }
 
 func (s *Server) handleUpdateWebhook(w http.ResponseWriter, r *http.Request) {
@@ -393,7 +402,7 @@ func (s *Server) runWebhookTest(ctx context.Context, userID, webhookID int64) (w
 	defer cancel()
 	req2, err := http.NewRequestWithContext(timeoutCtx, method, reqURL, bytes.NewReader(body))
 	if err != nil {
-		return webhookTestResult{}, err
+		return webhookTestResult{Error: storage.RedactWebhookError(err)}, nil
 	}
 	if kind == storage.WebhookKindHTTP {
 		setHeadersFromJSON(req2, wh.Headers)
@@ -407,11 +416,11 @@ func (s *Server) runWebhookTest(ctx context.Context, userID, webhookID int64) (w
 
 	resp, err := client.Do(req2)
 	if err != nil {
-		return webhookTestResult{Error: err.Error()}, nil
+		return webhookTestResult{Error: storage.RedactWebhookError(err)}, nil
 	}
 	defer resp.Body.Close()
 	snippetB, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
-	snippet := string(snippetB)
+	snippet := storage.RedactWebhookText(string(snippetB))
 	ok, failMsg := storage.ProviderDeliveryOK(kind, resp.StatusCode, snippet)
 	res := webhookTestResult{
 		OK:              ok,

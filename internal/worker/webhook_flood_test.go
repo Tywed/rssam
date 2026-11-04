@@ -44,7 +44,7 @@ func TestRetryAfterOf(t *testing.T) {
 }
 
 func TestWebhookPauses(t *testing.T) {
-	var p webhookPauses
+	var p duePauses[int64]
 	now := time.Now()
 	if ids, _, ok := p.active(now); ids != nil || ok {
 		t.Fatal("empty set must be inactive")

@@ -127,6 +127,17 @@ func AsLayout(err error) (*LayoutError, bool) {
 	return errors.AsType[*LayoutError](err)
 }
 
+// DeferBridgeWide reports whether a RetryAtError stands for the whole bridge
+// (its fetch slots or its API are busy until RetryAt), so the worker holds
+// every feed of that type rather than trying them one after another.
+func DeferBridgeWide(err error) bool {
+	var e interface {
+		error
+		DeferBridgeWide() bool
+	}
+	return errors.As(err, &e) && e.DeferBridgeWide()
+}
+
 // DeferReason labels a RetryAtError for metrics: "poll_hours", "slots", "host",
 // "proxy", "layout"; errors without the method count as "rate_limit".
 func DeferReason(err error) string {

@@ -58,17 +58,17 @@ func (s *PostgresStore) ListPausedFeeds(ctx context.Context) ([]SystemAlertFeed,
 	// A 410 feed is manual_paused with last_error kept; a user pause clears
 	// the error, so the error text separates the two.
 	return s.queryAlertFeeds(ctx, `
-SELECT id, title, last_error
-FROM feeds
-WHERE poll_paused OR (manual_paused AND COALESCE(last_error, '') <> '')
-ORDER BY id`)
+SELECT f.id, f.title, ps.last_error
+FROM `+feedsFrom+`
+WHERE ps.poll_paused OR (f.manual_paused AND COALESCE(ps.last_error, '') <> '')
+ORDER BY f.id`)
 }
 
 func (s *PostgresStore) ListSilentFeeds(ctx context.Context, silentAfter time.Duration) ([]SystemAlertFeed, error) {
 	return s.queryAlertFeeds(ctx, `
 SELECT f.id, f.title,
   CASE WHEN f.feed_type = '`+FeedTypeInbound+`' THEN 'нет доставок дольше ' || f.interval_minutes || ' мин.' ELSE '' END
-FROM feeds f
+FROM `+feedsFrom+`
 WHERE `+adminFeedsSilentWhere(silentAfter)+`
 ORDER BY f.id`)
 }

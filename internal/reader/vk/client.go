@@ -18,7 +18,6 @@ import (
 
 type Client struct {
 	http   *http.Client
-	guard  *ssrf.Guard
 	cfg    Config
 	apiURL string
 
@@ -41,7 +40,6 @@ func NewClient(client *http.Client, guard *ssrf.Guard, cfg Config) (*Client, err
 	}
 	return &Client{
 		http:   client,
-		guard:  guard,
 		cfg:    cfg,
 		apiURL: vkAPIBaseURL,
 	}, nil
@@ -126,11 +124,9 @@ func (c *Client) call(ctx context.Context, method string, q url.Values) (*search
 	q.Set("v", c.cfg.APIVersion)
 	u.RawQuery = q.Encode()
 
-	if c.guard != nil {
-		if err := c.guard.ValidateURL(u.String()); err != nil {
-			return nil, nil, err
-		}
-	}
+	// The host is fixed (validated in NewClient) and the guarded transport
+	// checks the resolved address when it dials; a ValidateURL here would
+	// be one more DNS query per request.
 	if err := c.pace(ctx); err != nil {
 		return nil, nil, err
 	}

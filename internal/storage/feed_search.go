@@ -84,7 +84,7 @@ func (s *PostgresStore) SearchFeeds(ctx context.Context, userID int64, filter Se
 	}
 	sql := `
 SELECT ` + feedColumns + `
-FROM feeds f ` + join + `
+FROM ` + feedsFrom + ` ` + join + `
 WHERE ` + strings.Join(where, " AND ") + `
 ORDER BY f.title ASC, f.id ASC
 LIMIT $` + fmt.Sprint(argN)
@@ -110,7 +110,7 @@ func (s *PostgresStore) ListFeedsByIDs(ctx context.Context, userID int64, ids []
 	}
 	q := `
 SELECT ` + feedColumns + `
-FROM feeds f ` + subscribedJoin + `
+FROM ` + feedsFrom + ` ` + subscribedJoin + `
 WHERE f.id = ANY($2)`
 	rows, err := s.db.Query(ctx, q, userID, ids)
 	if err != nil {

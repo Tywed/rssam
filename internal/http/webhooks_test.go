@@ -415,3 +415,60 @@ func TestWebhooksAPI_TestMaxAndTelegramReject(t *testing.T) {
 		t.Fatalf("tg reject: %d %s", rec4.Code, rec4.Body.String())
 	}
 }
+
+type stubWorkerControl struct{ pausedID int64 }
+
+func (stubWorkerControl) Pause()                               {}
+func (stubWorkerControl) Resume()                              {}
+func (stubWorkerControl) Paused() bool                         { return false }
+func (stubWorkerControl) Inflight() (int, int)                 { return 0, 0 }
+func (stubWorkerControl) PollingSince(int64) (time.Time, bool) { return time.Time{}, false }
+func (s stubWorkerControl) WebhookFloodPausedUntil(id int64) (time.Time, bool) {
+	if id == s.pausedID {
+		return time.Now().Add(20 * time.Second), true
+	}
+	return time.Time{}, false
+}
+
+// GET /v1/webhooks/{id} shows the worker's 429 hold; a webhook not held has
+// no such field.
+func TestWebhooksAPI_GetShowsFloodPause(t *testing.T) {
+	ws := newMemWebhookStore()
+	ctx := context.Background()
+	held, err := ws.CreateWebhook(ctx, storage.CreateWebhookParams{UserID: 1, Name: "held", URL: "https://example.com/a", Method: "POST", Headers: []byte(`{}`), Enabled: true, Kind: storage.WebhookKindHTTP})
+	if err != nil {
+		t.Fatal(err)
+	}
+	free, err := ws.CreateWebhook(ctx, storage.CreateWebhookParams{UserID: 1, Name: "free", URL: "https://example.com/b", Method: "POST", Headers: []byte(`{}`), Enabled: true, Kind: storage.WebhookKindHTTP})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := New(Dependencies{UserStore: secretTokenUsers(), WebhookStore: ws, WorkerControl: stubWorkerControl{pausedID: held.ID}})
+	api := http.NewServeMux()
+	api.HandleFunc("GET /v1/webhooks/{id}", s.handleGetWebhook)
+	mux := http.NewServeMux()
+	mux.Handle("/v1/", s.wrapAPI(api))
+
+	get := func(id int64) map[string]any {
+		req := httptest.NewRequest(http.MethodGet, "/v1/webhooks/"+itoa(id), nil)
+		req.Header.Set("X-Auth-Token", "secret")
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("get %d: %d %s", id, rec.Code, rec.Body.String())
+		}
+		var resp struct {
+			Data map[string]any `json:"data"`
+		}
+		if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+			t.Fatal(err)
+		}
+		return resp.Data
+	}
+	if v, ok := get(held.ID)["flood_paused_until"].(string); !ok || v == "" {
+		t.Fatalf("held webhook lacks flood_paused_until: %v", get(held.ID))
+	}
+	if _, ok := get(free.ID)["flood_paused_until"]; ok {
+		t.Fatal("free webhook must not carry flood_paused_until")
+	}
+}

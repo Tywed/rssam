@@ -94,7 +94,7 @@ func TestE2E_InboundWebhook_NodeToNode(t *testing.T) {
 	if _, _, err := env.store.RefreshAllFeeds(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if due, _ := env.store.ListFeedsDue(ctx, 1000, nil); slices.ContainsFunc(due, func(d storage.DueFeed) bool { return d.ID == inbound.ID }) {
+	if due, _ := env.store.ListFeedsDue(ctx, 1000, nil, nil); slices.ContainsFunc(due, func(d storage.DueFeed) bool { return d.ID == inbound.ID }) {
 		t.Fatal("inbound feed listed as due")
 	}
 

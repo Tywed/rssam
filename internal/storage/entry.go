@@ -375,7 +375,7 @@ func updateFeedRefreshMeta(ctx context.Context, db dbExecutor, params UpdateFeed
 		bridgeState = []byte("{}")
 	}
 	const q = `
-UPDATE feeds
+UPDATE feed_poll_state
 SET etag = $2,
     last_modified = $3,
     last_checked_at = $4,
@@ -385,27 +385,32 @@ SET etag = $2,
     poll_paused = CASE WHEN $5 = '' THEN FALSE ELSE poll_paused END,
     next_check_at = COALESCE($7, next_check_at),
     last_entry_at = CASE WHEN $8 THEN $4 ELSE last_entry_at END,
-    feed_url = CASE WHEN $9 <> '' AND NOT EXISTS (SELECT 1 FROM feeds o WHERE o.feed_url = $9)
-               THEN $9 ELSE feed_url END,
-    items_hash = COALESCE($10, items_hash),
-    updated_at = now()
-WHERE id = $1`
-	cmd, err := db.Exec(ctx, q, params.ID, params.ETag, params.LastModified, params.LastCheckedAt, params.LastError, bridgeState, params.NextCheckAt, params.NewEntries > 0, params.NewFeedURL, params.ItemsHash)
+    items_hash = COALESCE($9, items_hash)
+WHERE feed_id = $1`
+	cmd, err := db.Exec(ctx, q, params.ID, params.ETag, params.LastModified, params.LastCheckedAt, params.LastError, bridgeState, params.NextCheckAt, params.NewEntries > 0, params.ItemsHash)
 	if err != nil {
 		return fmt.Errorf("update feed refresh meta: %w", err)
 	}
 	if cmd.RowsAffected() == 0 {
 		return ErrNotFound
 	}
+	if params.NewFeedURL != "" {
+		// A permanent redirect: the catalog row changes, once, unless the
+		// target is already another feed.
+		if _, err := db.Exec(ctx, `
+UPDATE feeds SET feed_url = $2, updated_at = now()
+WHERE id = $1 AND feed_url <> $2 AND NOT EXISTS (SELECT 1 FROM feeds o WHERE o.feed_url = $2)`, params.ID, params.NewFeedURL); err != nil {
+			return fmt.Errorf("update feed url: %w", err)
+		}
+	}
 	return nil
 }
 
 func (s *PostgresStore) SetFeedNextCheckAt(ctx context.Context, feedID int64, nextCheckAt time.Time) error {
 	const q = `
-UPDATE feeds
-SET next_check_at = $2,
-    updated_at = now()
-WHERE id = $1`
+UPDATE feed_poll_state
+SET next_check_at = $2
+WHERE feed_id = $1`
 	cmd, err := s.db.Exec(ctx, q, feedID, nextCheckAt)
 	if err != nil {
 		return fmt.Errorf("set feed next_check_at: %w", err)

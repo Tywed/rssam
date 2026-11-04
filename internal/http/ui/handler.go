@@ -97,7 +97,10 @@ type Config struct {
 	// (a process that serves HTTP only) reports none.
 	PollInflight func() (running, stale int)
 	PollingSince func(feedID int64) (time.Time, bool)
-	Dedup        storage.EntryDedupStore
+	// WebhookFloodPausedUntil reads the worker's in-memory 429 pauses; nil
+	// = not shown.
+	WebhookFloodPausedUntil func(webhookID int64) (time.Time, bool)
+	Dedup                   storage.EntryDedupStore
 	// Retention holds the retention windows the running process was started
 	// with; shown (and editable via .env) on the admin system page.
 	Retention RetentionSettings

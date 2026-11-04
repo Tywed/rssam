@@ -115,6 +115,12 @@ func newWebhookStatsTestHandler(t *testing.T) (http.Handler, *uiMemAdminWebhooks
 		Webhooks:      whs,
 		AdminWebhooks: admin,
 		CSRFSecret:    "csrf-test",
+		WebhookFloodPausedUntil: func(id int64) (time.Time, bool) {
+			if id == 1 {
+				return now.Add(30 * time.Second), true
+			}
+			return time.Time{}, false
+		},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -166,6 +172,16 @@ func TestWebhooksDashboardStatusesAndErrorFilter(t *testing.T) {
 	}
 	if got := strings.Count(body, ">Ошибки</span>"); got != 1 {
 		t.Fatalf("error badges = %d, want 1", got)
+	}
+	// Only the webhook the worker holds after a 429 carries the flood badge.
+	if got := strings.Count(body, "429 до "); got != 1 {
+		t.Fatalf("flood badges = %d, want 1", got)
+	}
+	if body := getPage(t, mux, sid, "/ui/webhooks/1").Body.String(); !strings.Contains(body, "Flood control: пауза до ") {
+		t.Fatal("detail page lacks the flood pause")
+	}
+	if body := getPage(t, mux, sid, "/ui/webhooks/2").Body.String(); strings.Contains(body, "Flood control") {
+		t.Fatal("detail page of a webhook not held must not show a flood pause")
 	}
 
 	rec = getPage(t, mux, sid, "/ui/webhooks?status=error")

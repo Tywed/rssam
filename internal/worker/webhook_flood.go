@@ -19,27 +19,29 @@ const (
 	webhookFloodMaxWait     = time.Hour
 )
 
-// webhookPauses is the set of webhooks waiting out a 429, in memory: this
-// process is the only deliverer, and after a restart the rows are simply due.
-type webhookPauses struct {
+// duePauses is a set of ids (webhooks waiting out a 429, feeds deferred by a
+// bridge rate limit) kept out of the due queries until a moment, in memory:
+// this process is the only poller and deliverer, and after a restart the
+// rows are simply due again.
+type duePauses[K comparable] struct {
 	mu    sync.Mutex
-	until map[int64]time.Time
+	until map[K]time.Time
 }
 
-func (p *webhookPauses) pause(webhookID int64, until time.Time) {
+func (p *duePauses[K]) pause(id K, until time.Time) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if p.until == nil {
-		p.until = make(map[int64]time.Time)
+		p.until = make(map[K]time.Time)
 	}
-	if until.After(p.until[webhookID]) {
-		p.until[webhookID] = until
+	if until.After(p.until[id]) {
+		p.until[id] = until
 	}
 }
 
-// active returns the webhooks still paused at now and the earliest moment
-// one of them resumes; expired pauses are forgotten.
-func (p *webhookPauses) active(now time.Time) (ids []int64, resume time.Time, ok bool) {
+// active returns the ids still paused at now and the earliest moment one of
+// them resumes; expired pauses are forgotten.
+func (p *duePauses[K]) active(now time.Time) (ids []K, resume time.Time, ok bool) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	for id, until := range p.until {
@@ -53,6 +55,17 @@ func (p *webhookPauses) active(now time.Time) (ids []int64, resume time.Time, ok
 		}
 	}
 	return ids, resume, ok
+}
+
+// until reports whether id is still paused at now and until when.
+func (p *duePauses[K]) pausedUntil(id K, now time.Time) (time.Time, bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	u, ok := p.until[id]
+	if !ok || !u.After(now) {
+		return time.Time{}, false
+	}
+	return u, true
 }
 
 // retryAfterOf is how long a 429 asks to wait: Telegram's

@@ -457,11 +457,11 @@ func (a *systemAlerter) send(ctx context.Context, w storage.Webhook, m alertMess
 	}
 	resp, err := a.r.httpClient().Do(req)
 	if err != nil {
-		a.r.Log.Warn("system alert: send failed", "webhook_id", w.ID, "alert", m.Kind, "err", err)
+		a.r.Log.Warn("system alert: send failed", "webhook_id", w.ID, "alert", m.Kind, "err", storage.RedactWebhookError(err))
 		return
 	}
 	defer resp.Body.Close()
-	snippet := readSnippet(resp.Body, webhookResponseSnippetMaxBytes)
+	snippet := storage.RedactWebhookText(readSnippet(resp.Body, webhookResponseSnippetMaxBytes))
 	if ok, msg := storage.ProviderDeliveryOK(out.Kind, resp.StatusCode, snippet); !ok {
 		a.r.Log.Warn("system alert: rejected", "webhook_id", w.ID, "alert", m.Kind, "status", resp.StatusCode, "err", msg)
 	}

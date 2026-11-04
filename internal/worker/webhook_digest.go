@@ -137,7 +137,7 @@ func (r *Runner) deliverWebhookDigest(ctx context.Context, store webhookDigestSt
 	defer cancel()
 	req, err := http.NewRequestWithContext(reqCtx, out.Method, out.URL, bytes.NewReader(out.Body))
 	if err != nil {
-		r.digestFailure(ctx, store, ids, attempt, nil, err.Error(), "", true)
+		r.digestFailure(ctx, store, ids, attempt, nil, storage.RedactWebhookError(err), "", true)
 		return
 	}
 	if out.Kind == storage.WebhookKindHTTP {
@@ -153,12 +153,12 @@ func (r *Runner) deliverWebhookDigest(ctx context.Context, store webhookDigestSt
 	resp, err := r.httpClient().Do(req)
 	metrics.WebhookDeliveryDuration.Observe(time.Since(start).Seconds())
 	if err != nil {
-		r.digestFailure(ctx, store, ids, attempt, nil, err.Error(), "", true)
+		r.digestFailure(ctx, store, ids, attempt, nil, storage.RedactWebhookError(err), "", true)
 		return
 	}
 	defer resp.Body.Close()
 
-	snippet := readSnippet(resp.Body, webhookResponseSnippetMaxBytes)
+	snippet := storage.RedactWebhookText(readSnippet(resp.Body, webhookResponseSnippetMaxBytes))
 	ok, failMsg := storage.ProviderDeliveryOK(out.Kind, resp.StatusCode, snippet)
 	if ok {
 		_ = store.MarkWebhookLogsSent(ctx, ids, resp.StatusCode, snippet)

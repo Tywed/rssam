@@ -12,6 +12,8 @@ import (
 type adminWebhookRowView struct {
 	storage.AdminWebhookRow
 	Status string
+	// FloodPausedUntil is set while the worker holds the webhook after a 429.
+	FloodPausedUntil time.Time
 }
 
 type adminWebhookStatusCounts struct {

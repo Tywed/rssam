@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -488,5 +489,34 @@ func TestProcessWebhookLog_ReportsWhetherStatusWasStored(t *testing.T) {
 	store.markErr = errors.New("db down")
 	if processTestRunner(store, 0).processWebhookLog(context.Background(), log) {
 		t.Fatal("stored=true although the mark failed")
+	}
+}
+
+// A transport error quotes the request URL, which for Telegram carries the
+// bot token: the log row must not.
+func TestProcessWebhookLog_TransportErrorHidesBotToken(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	closed := "http://" + ln.Addr().String()
+	_ = ln.Close()
+	const token = "123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11"
+	cfg, _ := json.Marshal(storage.TelegramProviderConfig{APIBase: closed, BotToken: token, ChatID: "7"})
+	log := storage.WebhookLog{ID: 1, WebhookID: 3, EntryID: 42, Status: "pending"}
+	store := newMemWebhookDelivery(log, storage.WebhookDeliveryContext{
+		Webhook: storage.Webhook{ID: 3, Enabled: true, Kind: storage.WebhookKindTelegram, ProviderConfig: cfg},
+		Entry:   storage.Entry{ID: 42, Title: "Hello"}, Feed: storage.WebhookFeed{ID: 7},
+	})
+	processTestRunner(store, time.Second).processWebhookLog(context.Background(), log)
+	got := store.log(1)
+	if got.Status != "failed" || got.LastError == nil {
+		t.Fatalf("row=%+v", got)
+	}
+	if strings.Contains(*got.LastError, token) {
+		t.Fatalf("bot token in last_error: %s", *got.LastError)
+	}
+	if !strings.Contains(*got.LastError, "/bot***/sendMessage") || !strings.Contains(*got.LastError, "connection refused") {
+		t.Fatalf("last_error=%s", *got.LastError)
 	}
 }

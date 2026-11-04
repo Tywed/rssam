@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"rssam/internal/bridge/v1"
 	"rssam/internal/ssrf"
@@ -151,10 +152,15 @@ type FetchResult struct {
 	State   FetchState
 }
 
-// ErrBackoff means this feed should be retried later; it is not a poll failure.
+// ErrBackoff means this feed should be retried later; it is not a poll
+// failure. BridgeWide is set when the request slot or the API cooldown holds
+// every MAX feed, not only this channel.
 type ErrBackoff struct {
-	Until time.Time
+	Until      time.Time
+	BridgeWide bool
 }
+
+func (e *ErrBackoff) DeferBridgeWide() bool { return e != nil && e.BridgeWide }
 
 // Error carries no timestamp so repeated occurrences coalesce in the poll log.
 func (e *ErrBackoff) Error() string {
@@ -202,7 +208,7 @@ func (h *Handler) fetch(ctx context.Context, feedURL string, st FetchState) (Fet
 	}
 
 	if until, ok := h.tryReserveSlot(); !ok {
-		return FetchResult{State: st}, &ErrBackoff{Until: until.UTC()}
+		return FetchResult{State: st}, &ErrBackoff{Until: until.UTC(), BridgeWide: true}
 	}
 	rateLimited := false
 	defer h.releaseSlot(&rateLimited)
@@ -215,10 +221,10 @@ func (h *Handler) fetch(ctx context.Context, feedURL string, st FetchState) (Fet
 		rateLimited = true
 		until := time.Now().UTC().Add(cfg.RateLimitCooldown)
 		st.RateLimitedUntil = &until
-		return FetchResult{State: st}, &ErrBackoff{Until: until}
+		return FetchResult{State: st}, &ErrBackoff{Until: until, BridgeWide: true}
 	}
 	if status != http.StatusOK {
-		return FetchResult{}, fmt.Errorf("max: unexpected status %d", status)
+		return FetchResult{}, fmt.Errorf("max: unexpected status %d%s", status, bodyHint(body))
 	}
 
 	var parsed APIResponse
@@ -282,6 +288,26 @@ func (h *Handler) doGET(ctx context.Context, cfg Config, rawURL string) ([]byte,
 	return body, resp.StatusCode, nil
 }
 
+// bodyHint is the start of an error body for the feed's last_error — the
+// apimax 400 of a deleted channel and of a throttled client read the same
+// without it. Short and whitespace-folded so that identical answers still
+// coalesce in the poll log.
+func bodyHint(body []byte) string {
+	const maxHint = 80
+	t := strings.Join(strings.Fields(string(body)), " ")
+	if t == "" {
+		return ""
+	}
+	if len(t) > maxHint {
+		cut := maxHint
+		for cut > 0 && !utf8.RuneStart(t[cut]) {
+			cut--
+		}
+		t = t[:cut] + "…"
+	}
+	return ": " + t
+}
+
 func looksLikeRateLimit(status int, body []byte) bool {
 	if status == http.StatusTooManyRequests || status == http.StatusServiceUnavailable {
 		return true
@@ -317,6 +343,11 @@ func (h *Handler) tryReserveSlot() (until time.Time, ok bool) {
 		until = h.globalUntil
 	}
 	if h.inFlight >= slots {
+		// The request in flight moves nextSlot to its release plus the
+		// interval; promising anything earlier only buys one more refusal.
+		if until.Before(now.Add(cfg.RequestInterval)) {
+			until = now.Add(cfg.RequestInterval)
+		}
 		if until.Before(now.Add(50 * time.Millisecond)) {
 			until = now.Add(50 * time.Millisecond)
 		}

@@ -55,14 +55,14 @@ func TestIntegration_DueNotifications(t *testing.T) {
 	if err := store.UpdateFeedRefreshMeta(ctx, UpdateFeedRefreshMetaParams{ID: f.ID, LastCheckedAt: time.Now(), NextCheckAt: &future}); err != nil {
 		t.Fatal(err)
 	}
-	if _, ok, err := store.NextFeedDueAt(ctx, nil); err != nil || !ok {
+	if _, ok, err := store.NextFeedDueAt(ctx, nil, nil); err != nil || !ok {
 		t.Fatalf("NextFeedDueAt: ok=%v err=%v", ok, err)
 	}
 	if err := store.SetFeedNextCheckAt(ctx, f.ID, time.Now()); err != nil {
 		t.Fatal(err)
 	}
 	expect("next_check_at moved to now", NotifyFeedsDue)
-	if at, ok, err := store.NextFeedDueAt(ctx, nil); err != nil || !ok || at.After(time.Now().Add(time.Minute)) {
+	if at, ok, err := store.NextFeedDueAt(ctx, nil, nil); err != nil || !ok || at.After(time.Now().Add(time.Minute)) {
 		t.Fatalf("NextFeedDueAt: %v ok=%v err=%v", at, ok, err)
 	}
 	if _, ok, err := store.NextWebhookRetryAt(ctx, nil); err != nil || ok {

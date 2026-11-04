@@ -57,10 +57,12 @@ func TestIntegration_FeedListsMatchGetFeed(t *testing.T) {
 		t.Fatalf("create feed: %v", err)
 	}
 	if _, err := store.db.Exec(ctx, `
-UPDATE feeds SET last_error = 'boom', parsing_error_count = 2, poll_paused = TRUE, manual_paused = TRUE,
-       etag = 'W/"1"', last_modified = 'Mon, 01 Jan 2024 00:00:00 GMT', last_checked_at = now(), icon_url = 'https://example.com/i.png',
-       icon_data = '\x89504e47'::bytea
-WHERE id = $1`, created.ID); err != nil {
+WITH u AS (
+  UPDATE feeds SET manual_paused = TRUE, icon_url = 'https://example.com/i.png', icon_data = '\x89504e47'::bytea
+  WHERE id = $1 RETURNING id)
+UPDATE feed_poll_state ps SET last_error = 'boom', parsing_error_count = 2, poll_paused = TRUE,
+       etag = 'W/"1"', last_modified = 'Mon, 01 Jan 2024 00:00:00 GMT', last_checked_at = now()
+FROM u WHERE ps.feed_id = u.id`, created.ID); err != nil {
 		t.Fatal(err)
 	}
 	want, err := store.GetFeed(ctx, u.ID, created.ID)

@@ -35,19 +35,19 @@ func TestIntegration_PollDueDiscovery(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	due1, err := store.ListFeedsDue(ctx, 100, nil)
+	due1, err := store.ListFeedsDue(ctx, 100, nil, nil)
 	if err != nil || len(due1) != 1 || due1[0].ID != due.ID || due1[0].DueAt.IsZero() {
 		t.Fatalf("due feeds = %v err=%v, want [%d]", due1, err, due.ID)
 	}
-	if got, _ := store.ListFeedsDue(ctx, 0, nil); got != nil {
+	if got, _ := store.ListFeedsDue(ctx, 0, nil, nil); got != nil {
 		t.Fatalf("limit 0 must return nothing, got %v", got)
 	}
 	// An in-flight poll keeps the feed due in the table; the dispatcher
 	// excludes it by id and the idle wait must not be woken by it either.
-	if got, _ := store.ListFeedsDue(ctx, 100, []int64{due.ID}); len(got) != 0 {
+	if got, _ := store.ListFeedsDue(ctx, 100, []int64{due.ID}, nil); len(got) != 0 {
 		t.Fatalf("excluded feed listed as due: %v", dueIDs(got))
 	}
-	next, known, err := store.NextFeedDueAt(ctx, []int64{due.ID})
+	next, known, err := store.NextFeedDueAt(ctx, []int64{due.ID}, nil)
 	if err != nil || !known || time.Until(next) < 55*time.Minute {
 		t.Fatalf("next due with in-flight excluded = %s known=%v err=%v", next, known, err)
 	}
@@ -60,10 +60,10 @@ func TestIntegration_PollDueDiscovery(t *testing.T) {
 	if err := store.SetFeedNextCheckAt(ctx, due.ID, time.Now().Add(10*time.Minute)); err != nil {
 		t.Fatal(err)
 	}
-	if got, _ := store.ListFeedsDue(ctx, 100, nil); len(got) != 0 {
+	if got, _ := store.ListFeedsDue(ctx, 100, nil, nil); len(got) != 0 {
 		t.Fatalf("polled feed still due: %v", dueIDs(got))
 	}
-	next, known, err = store.NextFeedDueAt(ctx, nil)
+	next, known, err = store.NextFeedDueAt(ctx, nil, nil)
 	if err != nil || !known || time.Until(next) > 10*time.Minute || time.Until(next) < 9*time.Minute {
 		t.Fatalf("next due = %s known=%v err=%v", next, known, err)
 	}
@@ -78,7 +78,7 @@ func TestIntegration_PollDueDiscovery(t *testing.T) {
 	if err := store.SetFeedNextCheckAt(ctx, later.ID, time.Now().Add(-time.Hour)); err != nil {
 		t.Fatal(err)
 	}
-	got, _ := store.ListFeedsDue(ctx, 100, nil)
+	got, _ := store.ListFeedsDue(ctx, 100, nil, nil)
 	if ids := dueIDs(got); len(ids) != 2 || ids[0] != later.ID || ids[1] != due.ID {
 		t.Fatalf("due order = %v, want [%d %d]", ids, later.ID, due.ID)
 	}
@@ -131,7 +131,7 @@ func TestIntegration_RefreshAllResetsCircuitsAndQueuesEverythingButManual(t *tes
 	if !m.ManualPaused {
 		t.Fatal("manual pause lost")
 	}
-	if got, _ := store.ListFeedsDue(ctx, 100, nil); len(got) != 0 && got[0].ID == manual.ID {
+	if got, _ := store.ListFeedsDue(ctx, 100, nil, nil); len(got) != 0 && got[0].ID == manual.ID {
 		t.Fatalf("manually paused feed due: %v", dueIDs(got))
 	}
 }

@@ -36,7 +36,7 @@ VALUES ($1, $2, 'rss', 'circuit', 60, TRUE) RETURNING id`, u.ID, "https://exampl
 
 	rowVersion := func() string {
 		var x string
-		if err := store.db.QueryRow(ctx, `SELECT xmin::text FROM feeds WHERE id = $1`, feedID).Scan(&x); err != nil {
+		if err := store.db.QueryRow(ctx, `SELECT xmin::text FROM feed_poll_state WHERE feed_id = $1`, feedID).Scan(&x); err != nil {
 			t.Fatal(err)
 		}
 		return x

@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"rssam/internal/bridge/v1"
-	"rssam/internal/ssrf"
 )
 
 func TestParseWallFromFeedURL(t *testing.T) {
@@ -59,10 +58,8 @@ func newWallServer(t *testing.T, status int, body []byte, seen *[]string) (*Grou
 		_, _ = w.Write(body)
 	}))
 	t.Cleanup(srv.Close)
-	guard, _ := ssrf.New(ssrf.Config{AllowPrivateNetwork: true})
 	client := &Client{
 		http:   srv.Client(),
-		guard:  guard,
 		cfg:    Config{AccessToken: "tok", RateLimitCooldown: 7 * time.Second}.withDefaults(),
 		apiURL: srv.URL,
 	}
@@ -205,8 +202,7 @@ func TestClient_PacesRequests(t *testing.T) {
 		_, _ = w.Write([]byte(`{"response":{"count":0,"items":[]}}`))
 	}))
 	t.Cleanup(srv.Close)
-	guard, _ := ssrf.New(ssrf.Config{AllowPrivateNetwork: true})
-	c := &Client{http: srv.Client(), guard: guard, cfg: Config{AccessToken: "tok"}.withDefaults(), apiURL: srv.URL}
+	c := &Client{http: srv.Client(), cfg: Config{AccessToken: "tok"}.withDefaults(), apiURL: srv.URL}
 	start := time.Now()
 	for range 3 {
 		if _, _, err := c.WallGet(context.Background(), Wall{Domain: "a"}); err != nil {

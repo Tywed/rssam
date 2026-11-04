@@ -26,7 +26,7 @@
     {{if .Webhook.ID}}<p class="meta">Тест шлёт фиктивную запись (test feed / test entry) в цель. Очередь и журнал доставки не используются.</p>{{end}}
 
     {{if .Webhook.ID}}
-    <p><span class="feed-status-badge {{adminWebhookStatusClass .AdminWebhookDetail.Status}}">{{adminWebhookStatusLabel .AdminWebhookDetail.Status}}</span></p>
+    <p><span class="feed-status-badge {{adminWebhookStatusClass .AdminWebhookDetail.Status}}">{{adminWebhookStatusLabel .AdminWebhookDetail.Status}}</span>{{if not .AdminWebhookDetail.FloodPausedUntil.IsZero}} <span class="feed-status-badge feed-status-waiting">Flood control: пауза до {{formatTimeSec .AdminWebhookDetail.FloodPausedUntil}}</span>{{end}}</p>
 
     <div class="card">
       <h2>Доставка</h2>

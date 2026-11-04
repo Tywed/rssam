@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"rssam/internal/model"
-	"rssam/internal/ssrf"
 )
 
 //go:embed testdata/newsfeed_search.json
@@ -36,15 +35,9 @@ func TestHandler_Fetch_ParseFixture(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	guard, err := ssrf.New(ssrf.Config{AllowPrivateNetwork: true})
-	if err != nil {
-		t.Fatal(err)
-	}
-
 	apiURL := srv.URL + "/method"
 	client := &Client{
 		http:   srv.Client(),
-		guard:  guard,
 		cfg:    Config{AccessToken: "test-token", APIVersion: "5.199", DefaultCount: 100},
 		apiURL: apiURL,
 	}
@@ -103,10 +96,8 @@ func TestHandler_Fetch_SkipsOldPosts(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	guard, _ := ssrf.New(ssrf.Config{AllowPrivateNetwork: true})
 	client := &Client{
 		http:   srv.Client(),
-		guard:  guard,
 		cfg:    Config{AccessToken: "tok"},
 		apiURL: srv.URL,
 	}
@@ -128,10 +119,8 @@ func TestHandler_Fetch_RateLimit(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	guard, _ := ssrf.New(ssrf.Config{AllowPrivateNetwork: true})
 	client := &Client{
 		http:   srv.Client(),
-		guard:  guard,
 		cfg:    Config{AccessToken: "tok", RateLimitCooldown: 5 * time.Second},
 		apiURL: srv.URL,
 	}
@@ -151,10 +140,8 @@ func TestClient_Search_BuildsURL(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	guard, _ := ssrf.New(ssrf.Config{AllowPrivateNetwork: true})
 	c := &Client{
 		http:   srv.Client(),
-		guard:  guard,
 		cfg:    Config{AccessToken: "tok", APIVersion: "5.199"}.withDefaults(),
 		apiURL: srv.URL,
 	}

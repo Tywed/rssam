@@ -227,7 +227,7 @@ func (r *Runner) deliverWebhookLog(ctx context.Context, store webhookDeliverySto
 	}
 	req, err := http.NewRequestWithContext(reqCtx, method, reqURL, bytes.NewReader(bodyBytes))
 	if err != nil {
-		r.recordWebhookFailure(ctx, store, l.ID, attempt, nil, err.Error(), "", true)
+		r.recordWebhookFailure(ctx, store, l.ID, attempt, nil, storage.RedactWebhookError(err), "", true)
 		return
 	}
 
@@ -247,12 +247,12 @@ func (r *Runner) deliverWebhookLog(ctx context.Context, store webhookDeliverySto
 	metrics.WebhookDeliveryDuration.Observe(dur.Seconds())
 
 	if err != nil {
-		r.recordWebhookFailure(ctx, store, l.ID, attempt, nil, err.Error(), "", true)
+		r.recordWebhookFailure(ctx, store, l.ID, attempt, nil, storage.RedactWebhookError(err), "", true)
 		return
 	}
 	defer resp.Body.Close()
 
-	snippet := readSnippet(resp.Body, webhookResponseSnippetMaxBytes)
+	snippet := storage.RedactWebhookText(readSnippet(resp.Body, webhookResponseSnippetMaxBytes))
 	ok, failMsg := storage.ProviderDeliveryOK(kind, resp.StatusCode, snippet)
 	if ok {
 		// The body of a successful delivery (Telegram echoes the whole

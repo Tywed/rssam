@@ -580,6 +580,33 @@ func (r *FeedRefresher) afterStore(ctx context.Context, feed storage.Feed, subs 
 	if r.Realtime != nil && !relay {
 		r.Realtime.PublishNewEntries(ctx, feed, subs, entries)
 	}
+	if relay {
+		r.dropUndeliveredRelayEntries(ctx, entries)
+	}
+}
+
+// relayOrphanDropper removes relay entries that got no delivery row.
+type relayOrphanDropper interface {
+	DropUndeliveredRelayEntries(ctx context.Context, entryIDs []int64) (int, error)
+}
+
+// dropUndeliveredRelayEntries turns a relay entry nobody enqueued (the
+// subscription has no webhook, the matched filter has no webhook action, the
+// webhook was deleted) into a dedup hash at once: a relay entry can only ever
+// leave the table through a delivery, so without one it would sit there until
+// REMOVED_RETENTION_DAYS and then be forgotten and fetched again.
+func (r *FeedRefresher) dropUndeliveredRelayEntries(ctx context.Context, entries []storage.Entry) {
+	d, ok := r.Entries.(relayOrphanDropper)
+	if !ok {
+		return
+	}
+	ids := make([]int64, 0, len(entries))
+	for _, e := range entries {
+		ids = append(ids, e.ID)
+	}
+	if _, err := d.DropUndeliveredRelayEntries(ctx, ids); err != nil {
+		r.logger().Warn("relay: drop undelivered entries failed", "err", err)
+	}
 }
 
 func (r *FeedRefresher) applySubscriberFilters(ctx context.Context, feed storage.Feed, sub storage.Subscription, entries []storage.Entry, relay bool) {

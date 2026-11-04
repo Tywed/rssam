@@ -4533,6 +4533,11 @@
           "updated_at": {
             "type": "string",
             "format": "date-time"
+          },
+          "flood_paused_until": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Present on GET /webhooks/{id} while the worker holds the webhook after a provider 429 (flood control); deliveries resume by themselves."
           }
         },
         "required": [

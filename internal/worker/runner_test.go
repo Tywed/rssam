@@ -165,13 +165,16 @@ func TestProcessPollFeed_BackoffSkipsWithoutError(t *testing.T) {
 	cfg := Config{InstanceID: "test"}
 	ref := &stubFeedRefresher{err: testBackoffErr{at: until}, store: store, cfg: cfg}
 
-	processPollFeed(context.Background(), feedID, store, ref, cfg, slog.Default())
+	got, scope := processPollFeed(context.Background(), feedID, store, ref, cfg, slog.Default())
 
 	if store.feed.ParsingErrorCount != 0 {
 		t.Fatalf("error count=%d, want 0", store.feed.ParsingErrorCount)
 	}
-	if store.nextCheckAt.Before(until.Add(-time.Second)) {
-		t.Fatalf("next_check=%s, want ~%s", store.nextCheckAt, until)
+	if scope != deferFeed || got.Before(until.Add(-time.Second)) {
+		t.Fatalf("scope=%v until=%s, want ~%s", scope, got, until)
+	}
+	if store.setCalls != 0 {
+		t.Fatalf("a rate-limited poll must not write the row, got next_check=%s", store.nextCheckAt)
 	}
 }
 
@@ -191,5 +194,55 @@ func TestProcessPollFeed_ErrorReusesPersistedNextCheck(t *testing.T) {
 
 	if store.setCalls != 0 {
 		t.Fatalf("SetFeedNextCheckAt must not be called again, got %s", store.nextCheckAt)
+	}
+}
+
+type testBridgeBusyErr struct{ at time.Time }
+
+func (e testBridgeBusyErr) Error() string         { return "slots busy" }
+func (e testBridgeBusyErr) RetryAt() time.Time    { return e.at }
+func (e testBridgeBusyErr) DeferBridgeWide() bool { return true }
+
+func TestProcessPollFeed_BridgeWideDeferralHoldsTheBridge(t *testing.T) {
+	feedID := int64(12)
+	store := &stubPollStore{feed: storage.Feed{ID: feedID, FeedType: "max", IntervalMinutes: 15}}
+	until := time.Now().UTC().Add(2 * time.Second)
+	cfg := Config{InstanceID: "test"}
+	ref := &stubFeedRefresher{err: testBridgeBusyErr{at: until}, store: store, cfg: cfg}
+
+	got, scope := processPollFeed(context.Background(), feedID, store, ref, cfg, slog.Default())
+
+	if scope != deferBridge || !got.Equal(until) {
+		t.Fatalf("scope=%v until=%s, want bridge %s", scope, got, until)
+	}
+	if store.setCalls != 0 || store.feed.ParsingErrorCount != 0 {
+		t.Fatalf("a busy bridge must not touch the row: setCalls=%d errors=%d", store.setCalls, store.feed.ParsingErrorCount)
+	}
+}
+
+func TestDuePausesEarliestResume(t *testing.T) {
+	var p duePauses[string]
+	now := time.Now()
+	p.pause("max", now.Add(3*time.Second))
+	p.pause("telegram", now.Add(time.Second))
+	p.pause("vk_search", now.Add(-time.Second))
+	ids, resume, ok := p.active(now)
+	if !ok || len(ids) != 2 || !resume.Equal(now.Add(time.Second)) {
+		t.Fatalf("ids=%v resume=%v ok=%v", ids, resume, ok)
+	}
+}
+
+func TestProcessPollFeed_LongDeferralIsWritten(t *testing.T) {
+	feedID := int64(13)
+	store := &stubPollStore{feed: storage.Feed{ID: feedID, IntervalMinutes: 15}}
+	until := time.Now().UTC().Add(3 * time.Hour)
+	cfg := Config{InstanceID: "test"}
+	ref := &stubFeedRefresher{err: testBackoffErr{at: until}, store: store, cfg: cfg}
+
+	if _, scope := processPollFeed(context.Background(), feedID, store, ref, cfg, slog.Default()); scope != deferNone {
+		t.Fatalf("scope=%v, want none", scope)
+	}
+	if store.setCalls != 1 || !store.nextCheckAt.Equal(until) {
+		t.Fatalf("next_check_at must be written for a long wait: calls=%d at=%s", store.setCalls, store.nextCheckAt)
 	}
 }

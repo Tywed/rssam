@@ -187,6 +187,32 @@ SELECT count(*) FROM e`
 	return n > 0, nil
 }
 
+// DropUndeliveredRelayEntries deletes those of entryIDs that have no
+// webhook_logs row and keeps their hashes in feed_entry_dedup, like a
+// delivered relay entry. Returns how many were dropped.
+func (s *PostgresStore) DropUndeliveredRelayEntries(ctx context.Context, entryIDs []int64) (int, error) {
+	if len(entryIDs) == 0 {
+		return 0, nil
+	}
+	const q = `
+WITH e AS (
+  DELETE FROM entries en
+  WHERE en.id = ANY($1::bigint[])
+    AND NOT EXISTS (SELECT 1 FROM webhook_logs w WHERE w.entry_id = en.id)
+  RETURNING feed_id, hash
+), d AS (
+  INSERT INTO feed_entry_dedup(feed_id, hash)
+  SELECT feed_id, rssam_dedup_key(hash) FROM e WHERE hash <> ''
+  ON CONFLICT (feed_id, hash) DO NOTHING
+)
+SELECT count(*) FROM e`
+	var n int
+	if err := s.db.QueryRow(ctx, q, entryIDs).Scan(&n); err != nil {
+		return 0, fmt.Errorf("drop undelivered relay entries: %w", err)
+	}
+	return n, nil
+}
+
 // MarkEntryRemovedKeepPayload removes the entry for the webhook owner only;
 // other subscribers keep it.
 func (s *PostgresStore) MarkEntryRemovedKeepPayload(ctx context.Context, userID, entryID int64) error {

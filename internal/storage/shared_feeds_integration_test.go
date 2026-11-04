@@ -270,6 +270,7 @@ func TestIntegration_Migration0050_SharedFeedsMerge(t *testing.T) {
 		`ALTER TABLE entries DROP COLUMN removed_at, ADD COLUMN user_id BIGINT NOT NULL DEFAULT 1, ADD COLUMN status TEXT NOT NULL DEFAULT 'unread', ADD COLUMN starred BOOLEAN NOT NULL DEFAULT FALSE`,
 		`ALTER TABLE enclosures ADD COLUMN user_id BIGINT NOT NULL DEFAULT 1`,
 		`ALTER TABLE feed_entry_dedup ADD COLUMN url TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE feeds ADD COLUMN last_entry_at TIMESTAMPTZ`,
 		`INSERT INTO users(id, username, password_hash, role) VALUES (11, 'm50_a', 'h', 'admin'), (12, 'm50_b', 'h', 'reader')`,
 		`INSERT INTO categories(id, user_id, title) VALUES (1, 12, 'B')`,
 		`INSERT INTO feeds(id, user_id, feed_url, feed_type, title, interval_minutes, category_id) VALUES

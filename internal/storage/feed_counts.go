@@ -51,7 +51,7 @@ func (s *PostgresStore) CountFeedStatuses(ctx context.Context, userID int64) (er
 SELECT
   count(*) FILTER (WHERE coalesce(last_error, '') != '' OR poll_paused OR manual_paused OR parsing_error_count > 0),
   count(*) FILTER (WHERE poll_paused OR manual_paused)
-FROM feeds f
+FROM ` + feedsFrom + `
 ` + subscribedJoin
 	if err := s.db.QueryRow(ctx, q, userID).Scan(&errors, &inactive); err != nil {
 		return 0, 0, fmt.Errorf("count feed statuses: %w", err)
@@ -73,7 +73,7 @@ func (s *PostgresStore) ListFeedsByStatus(ctx context.Context, userID int64, sta
 	if offset < 0 {
 		offset = 0
 	}
-	q := `SELECT ` + feedColumns + `, count(*) OVER() FROM feeds f ` + subscribedJoin + ` WHERE (` + cond + `) ORDER BY f.title ASC, f.id ASC LIMIT $2 OFFSET $3`
+	q := `SELECT ` + feedColumns + `, count(*) OVER() FROM ` + feedsFrom + ` ` + subscribedJoin + ` WHERE (` + cond + `) ORDER BY f.title ASC, f.id ASC LIMIT $2 OFFSET $3`
 	rows, err := s.db.Query(ctx, q, userID, limit, offset)
 	if err != nil {
 		return nil, 0, fmt.Errorf("list feeds by status: %w", err)

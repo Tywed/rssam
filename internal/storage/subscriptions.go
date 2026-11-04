@@ -73,7 +73,7 @@ func (s *PostgresStore) SubscribeByURL(ctx context.Context, userID int64, feedUR
 		if _, err := subscribeTx(ctx, tx, userID, feedID, params); err != nil {
 			return err
 		}
-		q := `SELECT ` + feedColumns + `, f.icon_data FROM feeds f ` + subscribedJoin + ` WHERE f.id = $2`
+		q := `SELECT ` + feedColumns + `, f.icon_data FROM ` + feedsFrom + ` ` + subscribedJoin + ` WHERE f.id = $2`
 		var err error
 		f, err = s.scanFeed(tx.QueryRow(ctx, q, userID, feedID))
 		return err

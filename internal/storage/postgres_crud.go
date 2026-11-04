@@ -40,9 +40,15 @@ func (s *PostgresStore) CreateFeed(ctx context.Context, userID int64, params Cre
 	var f Feed
 	err = withTx(ctx, s.db, func(tx pgx.Tx) error {
 		const q = `
-INSERT INTO feeds(owner_id, feed_url, feed_type, title, interval_minutes, scraper_rules, rewrite_rules, blocked_rules, keep_rules, fetch_via_proxy, tls_insecure, crawler, user_agent, store_mode, entry_retention_days, bridge_state, adaptive_interval, category_id)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, COALESCE($16::jsonb, '{}'::jsonb), $17, $18)
-RETURNING id, created_at, updated_at`
+WITH f AS (
+  INSERT INTO feeds(owner_id, feed_url, feed_type, title, interval_minutes, scraper_rules, rewrite_rules, blocked_rules, keep_rules, fetch_via_proxy, tls_insecure, crawler, user_agent, store_mode, entry_retention_days, adaptive_interval, category_id)
+  VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $17, $18)
+  RETURNING id, created_at, updated_at
+), p AS (
+  INSERT INTO feed_poll_state(feed_id, bridge_state) SELECT id, COALESCE($16::jsonb, '{}'::jsonb) FROM f
+  ON CONFLICT (feed_id) DO UPDATE SET bridge_state = EXCLUDED.bridge_state
+)
+SELECT id, created_at, updated_at FROM f`
 		if err := tx.QueryRow(ctx, q,
 			userID,
 			params.FeedURL, feedType, params.Title, params.IntervalMinutes,
@@ -104,12 +110,12 @@ RETURNING id, created_at, updated_at`
 }
 
 func (s *PostgresStore) GetFeed(ctx context.Context, userID int64, id int64) (Feed, error) {
-	q := `SELECT ` + feedColumns + `, f.icon_data FROM feeds f ` + subscribedJoin + ` WHERE f.id = $2`
+	q := `SELECT ` + feedColumns + `, f.icon_data FROM ` + feedsFrom + ` ` + subscribedJoin + ` WHERE f.id = $2`
 	return s.scanFeed(s.db.QueryRow(ctx, q, userID, id))
 }
 
 func (s *PostgresStore) GetFeedByID(ctx context.Context, id int64) (Feed, error) {
-	q := `SELECT ` + feedColumns + `, f.icon_data FROM feeds f ` + catalogJoin + ` WHERE f.id = $1`
+	q := `SELECT ` + feedColumns + `, f.icon_data FROM ` + feedsFrom + ` ` + catalogJoin + ` WHERE f.id = $1`
 	return s.scanFeed(s.db.QueryRow(ctx, q, id))
 }
 
@@ -118,10 +124,14 @@ func (s *PostgresStore) GetFeedByID(ctx context.Context, id int64) (Feed, error)
 // selects this set so that a Feed from a list is as complete as one from
 // GetFeed (rules, flags, poll state, bridge state). webhook_id and
 // Subscribed come from the subscription alias s.
-const feedColumns = `f.id, COALESCE(f.owner_id, 0), f.feed_url, f.feed_type, f.title, f.category_id, f.interval_minutes, f.etag, f.last_modified, f.last_checked_at, f.last_error,
-       f.parsing_error_count, f.poll_paused, f.manual_paused, f.store_mode, f.entry_retention_days, f.adaptive_interval, f.next_check_at,
-       f.bridge_state, f.items_hash, f.scraper_rules, f.rewrite_rules, f.blocked_rules, f.keep_rules, f.fetch_via_proxy, f.tls_insecure, f.crawler, f.user_agent,
-       s.webhook_id, s.user_id IS NOT NULL, f.icon_url, f.last_entry_at, f.created_at, f.updated_at`
+const feedColumns = `f.id, COALESCE(f.owner_id, 0), f.feed_url, f.feed_type, f.title, f.category_id, f.interval_minutes, ps.etag, ps.last_modified, ps.last_checked_at, ps.last_error,
+       ps.parsing_error_count, ps.poll_paused, f.manual_paused, f.store_mode, f.entry_retention_days, f.adaptive_interval, ps.next_check_at,
+       ps.bridge_state, ps.items_hash, f.scraper_rules, f.rewrite_rules, f.blocked_rules, f.keep_rules, f.fetch_via_proxy, f.tls_insecure, f.crawler, f.user_agent,
+       s.webhook_id, s.user_id IS NOT NULL, f.icon_url, ps.last_entry_at, f.created_at, f.updated_at`
+
+// feedsFrom is the FROM clause behind feedColumns: the catalog row and its
+// poll state (always present, created with the feed).
+const feedsFrom = `feeds f JOIN feed_poll_state ps ON ps.feed_id = f.id`
 
 // subscribedJoin restricts to the feeds $1 reads; catalogUserJoin keeps
 // every feed and marks the ones $1 reads; catalogJoin knows no user.
@@ -168,7 +178,7 @@ func (s *PostgresStore) scanFeed(row pgx.Row) (Feed, error) {
 }
 
 func (s *PostgresStore) ListFeeds(ctx context.Context, userID int64, limit, offset int) ([]Feed, int, error) {
-	base := `SELECT ` + feedColumns + `, count(*) OVER() FROM feeds f ` + subscribedJoin + ` ORDER BY f.id DESC`
+	base := `SELECT ` + feedColumns + `, count(*) OVER() FROM ` + feedsFrom + ` ` + subscribedJoin + ` ORDER BY f.id DESC`
 	var (
 		rows pgx.Rows
 		err  error
@@ -219,11 +229,11 @@ func (s *PostgresStore) ListFeedsByCategoryPaginated(ctx context.Context, userID
 	}
 
 	var total int
-	if err := s.db.QueryRow(ctx, `SELECT COUNT(*)::int FROM feeds f `+subscribedJoin+` WHERE `+where, args...).Scan(&total); err != nil {
+	if err := s.db.QueryRow(ctx, `SELECT COUNT(*)::int FROM `+feedsFrom+` `+subscribedJoin+` WHERE `+where, args...).Scan(&total); err != nil {
 		return nil, 0, fmt.Errorf("count feeds by category: %w", err)
 	}
 
-	cols := `SELECT ` + feedColumns + ` FROM feeds f ` + subscribedJoin + ` WHERE ` + where + ` ORDER BY f.title ASC, f.id ASC`
+	cols := `SELECT ` + feedColumns + ` FROM ` + feedsFrom + ` ` + subscribedJoin + ` WHERE ` + where + ` ORDER BY f.title ASC, f.id ASC`
 
 	var (
 		rows pgx.Rows
@@ -254,7 +264,7 @@ func (s *PostgresStore) ListAllFeeds(ctx context.Context, limit int) ([]Feed, er
 	if limit > 10000 {
 		limit = 10000
 	}
-	rows, err := s.db.Query(ctx, `SELECT `+feedColumns+` FROM feeds f `+catalogJoin+` ORDER BY f.id ASC LIMIT $1`, limit)
+	rows, err := s.db.Query(ctx, `SELECT `+feedColumns+` FROM `+feedsFrom+` `+catalogJoin+` ORDER BY f.id ASC LIMIT $1`, limit)
 	if err != nil {
 		return nil, fmt.Errorf("list all feeds: %w", err)
 	}
@@ -276,7 +286,7 @@ func (s *PostgresStore) CatalogFeeds(ctx context.Context, userID int64, category
 			args = append(args, *categoryID)
 		}
 	}
-	q := `SELECT ` + feedColumns + `, count(*) OVER() FROM feeds f ` + catalogUserJoin + ` WHERE ` + where + ` ORDER BY lower(f.title), f.id`
+	q := `SELECT ` + feedColumns + `, count(*) OVER() FROM ` + feedsFrom + ` ` + catalogUserJoin + ` WHERE ` + where + ` ORDER BY lower(f.title), f.id`
 	if limit > 0 {
 		q += fmt.Sprintf(" LIMIT $%d OFFSET $%d", len(args)+1, len(args)+2)
 		args = append(args, limit, max(offset, 0))
@@ -312,7 +322,8 @@ func (s *PostgresStore) UpdateFeed(ctx context.Context, userID int64, params Upd
 			return err
 		}
 		var oldCat *int64
-		if err := tx.QueryRow(ctx, `SELECT category_id FROM feeds WHERE id = $1 FOR UPDATE`, params.ID).Scan(&oldCat); err != nil {
+		var oldURL string
+		if err := tx.QueryRow(ctx, `SELECT category_id, feed_url FROM feeds WHERE id = $1 FOR UPDATE`, params.ID).Scan(&oldCat, &oldURL); err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
 				return ErrNotFound
 			}
@@ -323,30 +334,35 @@ func (s *PostgresStore) UpdateFeed(ctx context.Context, userID int64, params Upd
 			return err
 		}
 		const q = `
+WITH u AS (
 UPDATE feeds f
 SET feed_url = $2, title = $3, interval_minutes = $4,
     scraper_rules = $5, rewrite_rules = $6, blocked_rules = $7, keep_rules = $8,
     fetch_via_proxy = $9, tls_insecure = $10, crawler = $11, user_agent = $12,
     store_mode = $13,
     entry_retention_days = $14,
-    bridge_state = COALESCE($15::jsonb, bridge_state),
     adaptive_interval = $16,
     category_id = $17,
-    items_hash = CASE WHEN f.feed_url = $2 THEN f.items_hash ELSE '' END,
     updated_at = now()
-WHERE f.id = $1`
+WHERE f.id = $1
+RETURNING f.id
+)
+UPDATE feed_poll_state ps
+SET bridge_state = COALESCE($15::jsonb, ps.bridge_state),
+    items_hash = CASE WHEN $18::boolean THEN ps.items_hash ELSE '' END
+FROM u WHERE ps.feed_id = u.id`
 		if _, err := tx.Exec(ctx, q,
 			params.ID, params.FeedURL, params.Title, params.IntervalMinutes,
 			params.ScraperRules, params.RewriteRules, params.BlockedRules, params.KeepRules,
 			params.FetchViaProxy, params.TLSInsecure, params.Crawler, params.UserAgent, params.StoreMode, params.EntryRetentionDays, nullableJSON(params.BridgeState), params.AdaptiveInterval,
-			params.CategoryID); err != nil {
+			params.CategoryID, oldURL == params.FeedURL); err != nil {
 			return err
 		}
 		if err := syncCategoryFollowersTx(ctx, tx, params.ID, oldCat, params.CategoryID); err != nil {
 			return err
 		}
 		var err error
-		f, err = s.scanFeed(tx.QueryRow(ctx, `SELECT `+feedColumns+`, f.icon_data FROM feeds f `+catalogUserJoin+` WHERE f.id = $2`, userID, params.ID))
+		f, err = s.scanFeed(tx.QueryRow(ctx, `SELECT `+feedColumns+`, f.icon_data FROM `+feedsFrom+` `+catalogUserJoin+` WHERE f.id = $2`, userID, params.ID))
 		return err
 	})
 	if err != nil {

@@ -73,7 +73,7 @@
             <td class="meta">{{.ID}}</td>
             <td><a href="/ui/webhooks/{{.ID}}">{{webhookLabel .Name .URL .ID}}</a></td>
             <td class="meta">{{webhookKindLabel .Kind}}{{if gt .DigestMinutes 0}} · дайджест {{.DigestMinutes}} мин{{end}}{{if .SystemAlerts}} · системные{{end}}</td>
-            <td><span class="feed-status-badge {{adminWebhookStatusClass .Status}}">{{adminWebhookStatusLabel .Status}}</span></td>
+            <td><span class="feed-status-badge {{adminWebhookStatusClass .Status}}">{{adminWebhookStatusLabel .Status}}</span>{{if not .FloodPausedUntil.IsZero}} <span class="feed-status-badge feed-status-waiting" title="Провайдер ответил 429 (flood control); доставка продолжится автоматически">429 до {{formatTimeSec .FloodPausedUntil}}</span>{{end}}</td>
             <td>{{.SentCount}}</td>
             <td>{{.Sent24h}}</td>
             <td>{{if gt .QueueDueCount 0}}{{.QueueDueCount}}{{else}}—{{end}}</td>

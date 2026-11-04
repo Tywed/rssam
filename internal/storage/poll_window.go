@@ -115,8 +115,9 @@ func (s *PostgresStore) SetCategoryPollHours(ctx context.Context, categoryID int
 		// Feeds parked at the old window's opening come back to their own
 		// interval; the new window is applied by the next poll attempt.
 		if _, err := s.db.Exec(ctx, `
-UPDATE feeds f SET next_check_at = now() + interval_minutes * interval '1 minute', updated_at = now()
-WHERE f.category_id = $1 AND f.next_check_at > now() + f.interval_minutes * interval '1 minute'`, categoryID); err != nil {
+UPDATE feed_poll_state ps SET next_check_at = now() + f.interval_minutes * interval '1 minute'
+FROM feeds f
+WHERE f.id = ps.feed_id AND f.category_id = $1 AND ps.next_check_at > now() + f.interval_minutes * interval '1 minute'`, categoryID); err != nil {
 			return fmt.Errorf("reset feeds after poll_hours change: %w", err)
 		}
 	}
