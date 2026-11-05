@@ -106,6 +106,9 @@ type Config struct {
 	Retention RetentionSettings
 	// FeedSilentDays mirrors FEED_SILENT_DAYS (0 = the "silent" card is hidden).
 	FeedSilentDays int
+	// FeedSilentInterval mirrors FEED_SILENT_INTERVAL (0 = silent feeds
+	// keep their own interval).
+	FeedSilentInterval time.Duration
 	// RunRetentionCleanup triggers one cleanup pass immediately (nil = not
 	// available, e.g. workers run in another process).
 	RunRetentionCleanup func(ctx context.Context) (storage.RetentionCleanupResult, error)

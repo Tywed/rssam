@@ -15,6 +15,7 @@ import (
 	"rssam/internal/capacity"
 	"rssam/internal/metrics"
 	"rssam/internal/reader"
+	"rssam/internal/service"
 	"rssam/internal/ssrf"
 	"rssam/internal/storage"
 )
@@ -369,10 +370,16 @@ func processPollFeed(ctx context.Context, feedID int64, store pollStore, refresh
 		metrics.PollErrors.Inc()
 		metrics.PollAttempts.WithLabelValues("error").Inc()
 
-		feedAfter, feedErr := store.GetFeedByID(ctx, feedID)
-		if feedErr != nil {
-			log.Warn("poll_feed failed", "feed_id", feedID, "err", err, "lookup_err", feedErr)
-			return time.Time{}, deferNone
+		var failed *service.PollFailed
+		var feedAfter storage.Feed
+		if errors.As(err, &failed) {
+			feedAfter = failed.Feed
+		} else {
+			var feedErr error
+			if feedAfter, feedErr = store.GetFeedByID(ctx, feedID); feedErr != nil {
+				log.Warn("poll_feed failed", "feed_id", feedID, "err", err, "lookup_err", feedErr)
+				return time.Time{}, deferNone
+			}
 		}
 		var next time.Time
 		if feedAfter.NextCheckAt != nil && feedAfter.NextCheckAt.After(now) {
@@ -387,10 +394,20 @@ func processPollFeed(ctx context.Context, feedID int64, store pollStore, refresh
 				log.Error("poll_feed: set next_check_at failed", "feed_id", feedID, "err", serr)
 			}
 		}
-		log.Warn("poll_feed failed", "feed_id", feedID, "error_count", feedAfter.ParsingErrorCount, "next_check_at", next, "err", err)
+		// One line per failure streak, not per poll: the first failure
+		// and the breaker opening are the transitions; repeats are counted
+		// in feed_poll_log.repeat_count and in the metrics.
+		level := slog.LevelDebug
+		if feedAfter.ParsingErrorCount <= 1 || (feedAfter.PollPaused && !feed.PollPaused) {
+			level = slog.LevelWarn
+		}
+		log.Log(ctx, level, "poll_feed failed", "feed_id", feedID, "error_count", feedAfter.ParsingErrorCount, "circuit_open", feedAfter.PollPaused, "next_check_at", next, "err", err)
 		return time.Time{}, deferNone
 	}
 
+	if feed.ParsingErrorCount > 0 {
+		log.Info("poll_feed recovered", "feed_id", feedID, "after_errors", feed.ParsingErrorCount)
+	}
 	metrics.PollAttempts.WithLabelValues("success").Inc()
 	return time.Time{}, deferNone
 }

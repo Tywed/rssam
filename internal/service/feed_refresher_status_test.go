@@ -480,3 +480,9 @@ func TestRefreshLoadedFeed_HealthyFeedAsksPollLogOnce(t *testing.T) {
 		t.Fatalf("poll log rows = %d, want 3", len(pl.rows))
 	}
 }
+
+// fixedSubs is a feedSubs already holding subs, for tests that call the
+// poll steps directly.
+func fixedSubs(r *FeedRefresher, feedID int64, subs ...storage.Subscription) *feedSubs {
+	return &feedSubs{r: r, feedID: feedID, done: true, subs: subs}
+}

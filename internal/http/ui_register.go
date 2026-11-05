@@ -120,6 +120,7 @@ func (s *Server) registerUI(mux *http.ServeMux) {
 	cfg.EnvFilePath = s.envFilePath
 	cfg.Retention = s.retention
 	cfg.FeedSilentDays = s.feedSilentDays
+	cfg.FeedSilentInterval = s.feedSilentInterval
 	cfg.RunRetentionCleanup = s.runRetentionCleanup
 	cfg.DatabaseURL = s.databaseURL
 	cfg.DatabaseLocale = s.databaseLocale

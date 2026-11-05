@@ -36,7 +36,7 @@ type filteredPollWriter interface {
 func (r *FeedRefresher) processEntriesFiltered(
 	ctx context.Context,
 	feed storage.Feed,
-	subs []storage.Subscription,
+	subs *feedSubs,
 	entries []storage.CreateEntryParams,
 	relay bool,
 	meta *storage.UpdateFeedRefreshMetaParams,
@@ -61,27 +61,6 @@ func (r *FeedRefresher) processEntriesFiltered(
 		return 0, nil, 0, false, err
 	}
 
-	type subscriberFilters struct {
-		filters  []storage.Filter
-		matchCtx filter.MatchContext
-	}
-	var perSub []subscriberFilters
-	if r.Filters != nil && r.Engine != nil {
-		for _, sub := range subs {
-			filters, err := r.listEnabledFiltersCached(ctx, sub.UserID)
-			if err != nil {
-				return 0, nil, 0, false, fmt.Errorf("list filters: %w", err)
-			}
-			if len(filters) == 0 {
-				continue
-			}
-			perSub = append(perSub, subscriberFilters{
-				filters:  filters,
-				matchCtx: filter.MatchContext{FeedID: feedID, CategoryID: feed.CategoryID},
-			})
-		}
-	}
-
 	var toDedup []storage.FeedEntryDedupParams
 	freshParams := make([]storage.CreateEntryParams, 0, len(entries))
 	freshEntries := make([]storage.Entry, 0, len(entries))
@@ -100,6 +79,27 @@ func (r *FeedRefresher) processEntriesFiltered(
 		freshEntries = append(freshEntries, entryFromCreateParams(feedID, p))
 	}
 	fresh = len(freshEntries)
+	type subscriberFilters struct {
+		filters  []storage.Filter
+		matchCtx filter.MatchContext
+	}
+	var perSub []subscriberFilters
+	if fresh > 0 && r.Filters != nil && r.Engine != nil {
+		for _, sub := range subs.get(ctx) {
+			filters, err := r.listEnabledFiltersCached(ctx, sub.UserID)
+			if err != nil {
+				return 0, nil, 0, false, fmt.Errorf("list filters: %w", err)
+			}
+			if len(filters) == 0 {
+				continue
+			}
+			perSub = append(perSub, subscriberFilters{
+				filters:  filters,
+				matchCtx: filter.MatchContext{FeedID: feedID, CategoryID: feed.CategoryID},
+			})
+		}
+	}
+
 	queryHits := make([][]map[string]bool, len(perSub))
 	for i, sf := range perSub {
 		queryHits[i] = r.queryHitsBestEffort(ctx, feedID, sf.filters, freshEntries)

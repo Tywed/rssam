@@ -48,7 +48,7 @@ func TestProcessEntriesDedupOnly_QueryRuleBatched(t *testing.T) {
 	}
 	feed := storage.Feed{ID: 1, OwnerID: 1, StoreMode: storage.StoreModeFiltered}
 
-	inserted, created, fresh, _, err := r.processEntriesFiltered(context.Background(), feed, []storage.Subscription{{UserID: 1, FeedID: feed.ID}}, []storage.CreateEntryParams{
+	inserted, created, fresh, _, err := r.processEntriesFiltered(context.Background(), feed, fixedSubs(r, feed.ID, storage.Subscription{UserID: 1, FeedID: feed.ID}), []storage.CreateEntryParams{
 		{Title: "already seen", Hash: "old", Content: "цены на нефти"},
 		{Title: "sport", Hash: "h1", Content: "футбол"},
 		{Title: "oil", Hash: "h2", Content: "цены на нефти выросли"},
@@ -86,7 +86,7 @@ func TestProcessEntriesDedupOnly_QueryRuleWithoutMatcherKeepsRegexRules(t *testi
 	r := &FeedRefresher{Dedup: dedup, Entries: entries, Filters: filters, Engine: filter.New(filter.Config{})}
 	feed := storage.Feed{ID: 1, OwnerID: 1, StoreMode: storage.StoreModeFiltered}
 
-	inserted, _, _, _, err := r.processEntriesFiltered(context.Background(), feed, []storage.Subscription{{UserID: 1, FeedID: feed.ID}}, []storage.CreateEntryParams{
+	inserted, _, _, _, err := r.processEntriesFiltered(context.Background(), feed, fixedSubs(r, feed.ID, storage.Subscription{UserID: 1, FeedID: feed.ID}), []storage.CreateEntryParams{
 		{Title: "oil", Hash: "h1", Content: "нефть"},
 		{Title: "gas", Hash: "h2", Content: "нефть"},
 	}, false, &storage.UpdateFeedRefreshMetaParams{}, true)
@@ -129,7 +129,7 @@ func TestApplyFiltersBestEffort_QueryRuleUsesStoredEntryIDs(t *testing.T) {
 		Queries: matcher,
 	}
 	feed := storage.Feed{ID: 1, OwnerID: 1}
-	r.afterStore(context.Background(), feed, []storage.Subscription{{UserID: 1, FeedID: feed.ID}}, []storage.Entry{{ID: 10, FeedID: 1}, {ID: 11, FeedID: 1}, {ID: 12, FeedID: 1}})
+	r.afterStore(context.Background(), feed, fixedSubs(r, feed.ID, storage.Subscription{UserID: 1, FeedID: feed.ID}), []storage.Entry{{ID: 10, FeedID: 1}, {ID: 11, FeedID: 1}, {ID: 12, FeedID: 1}})
 
 	if matcher.calls != 1 || len(matcher.items) != 3 || matcher.items[1].EntryID != 11 {
 		t.Fatalf("one batched call with stored ids expected: calls=%d items=%+v", matcher.calls, matcher.items)

@@ -70,7 +70,7 @@ func TestProcessEntriesFiltered_SanitizesFreshOnly(t *testing.T) {
 		{Title: "known", Hash: "old", URL: "https://e/old", Content: dirtyHTML},
 		{Title: "new", Hash: "new", URL: "https://e/new", Content: dirtyHTML},
 	}
-	inserted, created, fresh, _, err := r.processEntriesFiltered(context.Background(), feed, subs, in, false, &storage.UpdateFeedRefreshMetaParams{}, true)
+	inserted, created, fresh, _, err := r.processEntriesFiltered(context.Background(), feed, fixedSubs(r, feed.ID, subs...), in, false, &storage.UpdateFeedRefreshMetaParams{}, true)
 	if err != nil || inserted != 1 || fresh != 1 || len(created) != 1 {
 		t.Fatalf("inserted=%d fresh=%d created=%d err=%v", inserted, fresh, len(created), err)
 	}
@@ -86,7 +86,7 @@ func TestProcessEntriesFiltered_SanitizesFreshOnly(t *testing.T) {
 	entries.created = nil
 	filters.filters[0].Rules[0].Pattern = "alert"
 	r = &FeedRefresher{Dedup: dedup, Entries: entries, Filters: filters, Engine: filter.New(filter.Config{})}
-	inserted, _, _, _, err = r.processEntriesFiltered(context.Background(), feed, subs, in[1:], false, &storage.UpdateFeedRefreshMetaParams{}, true)
+	inserted, _, _, _, err = r.processEntriesFiltered(context.Background(), feed, fixedSubs(r, feed.ID, subs...), in[1:], false, &storage.UpdateFeedRefreshMetaParams{}, true)
 	if err != nil || inserted != 0 {
 		t.Fatalf("filter on stripped markup: inserted=%d err=%v", inserted, err)
 	}

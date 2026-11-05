@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"rssam/internal/reader"
+	"rssam/internal/service"
 	"rssam/internal/storage"
 )
 
@@ -244,5 +245,35 @@ func TestProcessPollFeed_LongDeferralIsWritten(t *testing.T) {
 	}
 	if store.setCalls != 1 || !store.nextCheckAt.Equal(until) {
 		t.Fatalf("next_check_at must be written for a long wait: calls=%d at=%s", store.setCalls, store.nextCheckAt)
+	}
+}
+
+type countingPollStore struct {
+	stubPollStore
+	gets int
+}
+
+func (s *countingPollStore) GetFeedByID(ctx context.Context, id int64) (storage.Feed, error) {
+	s.gets++
+	return s.stubPollStore.GetFeedByID(ctx, id)
+}
+
+// A failure the refresher already recorded comes back as service.PollFailed
+// with the persisted row: the worker reads nothing again and writes nothing.
+func TestProcessPollFeed_PollFailedNeedsNoSecondRead(t *testing.T) {
+	feedID := int64(31)
+	persisted := time.Now().UTC().Add(10 * time.Minute)
+	store := &countingPollStore{stubPollStore: stubPollStore{feed: storage.Feed{ID: feedID, IntervalMinutes: 5}}}
+	cfg := Config{InstanceID: "test", MinPollInterval: time.Minute, MaxPollInterval: 24 * time.Hour}
+	after := storage.Feed{ID: feedID, IntervalMinutes: 5, ParsingErrorCount: 1, NextCheckAt: &persisted}
+	ref := &stubFeedRefresher{err: &service.PollFailed{Feed: after, Err: errors.New("fetch failed")}, cfg: cfg}
+
+	processPollFeed(context.Background(), feedID, store, ref, cfg, slog.Default())
+
+	if store.gets != 1 {
+		t.Fatalf("GetFeedByID calls = %d, want 1 (the load before the poll)", store.gets)
+	}
+	if store.setCalls != 0 {
+		t.Fatalf("SetFeedNextCheckAt must not be called, got %s", store.nextCheckAt)
 	}
 }

@@ -285,6 +285,8 @@ func main() {
 		MaxPollInterval:         cfg.MaxPollInterval,
 		AdaptiveMaxInterval:     cfg.AdaptiveMaxInterval,
 		Activity:                pgStore,
+		SilentAfter:             time.Duration(cfg.FeedSilentDays) * 24 * time.Hour,
+		SilentInterval:          cfg.FeedSilentInterval,
 		Hosts:                   service.NewHostLimiter(cfg.PollHostConcurrency),
 	}
 
@@ -426,6 +428,7 @@ func main() {
 		AdaptiveMaxInterval:     cfg.AdaptiveMaxInterval,
 		FeedActivityStore:       pgStore,
 		FeedSilentDays:          cfg.FeedSilentDays,
+		FeedSilentInterval:      cfg.FeedSilentInterval,
 		DedupStore:              pgStore,
 		QueryMatcher:            pgStore,
 		CategoryPollHours:       pgStore,

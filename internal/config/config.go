@@ -95,6 +95,10 @@ type Config struct {
 	// FeedSilentDays: an active feed without a new item for this long is
 	// listed as "silent" in the admin dashboard (0 disables).
 	FeedSilentDays int
+	// FeedSilentInterval: a silent feed (FeedSilentDays) is polled this
+	// often instead of its own interval until it produces an item again
+	// (0 = own interval).
+	FeedSilentInterval time.Duration
 	// BackupDir is where rssam-backup.sh writes dumps; a system-alert
 	// webhook is told when the newest dump is older than BackupMaxAge
 	// ("" disables the check).
@@ -242,6 +246,7 @@ func Load() (Config, error) {
 		FeedPollLogRetentionDays: env.int("FEED_POLL_LOG_RETENTION_DAYS", 14),
 		DedupRetentionDays:       env.int("DEDUP_RETENTION_DAYS", 0),
 		FeedSilentDays:           env.int("FEED_SILENT_DAYS", 7),
+		FeedSilentInterval:       env.duration("FEED_SILENT_INTERVAL", 0),
 		BackupDir:                strings.TrimSpace(os.Getenv("BACKUP_DIR")),
 		BackupMaxAge:             env.duration("BACKUP_MAX_AGE", 36*time.Hour),
 		AuditLogRetentionDays:    env.int("AUDIT_LOG_RETENTION_DAYS", 180),
@@ -395,6 +400,7 @@ func (c Config) Validate() error {
 		{"MIN_POLL_INTERVAL", c.MinPollInterval, time.Millisecond, math.MaxInt64},
 		{"MAX_POLL_INTERVAL", c.MaxPollInterval, time.Millisecond, math.MaxInt64},
 		{"ADAPTIVE_MAX_INTERVAL", c.AdaptiveMaxInterval, time.Millisecond, math.MaxInt64},
+		{"FEED_SILENT_INTERVAL", c.FeedSilentInterval, 0, math.MaxInt64},
 		{"EDITOR_MIN_POLL_INTERVAL", c.EditorMinPollInterval, 0, c.MaxPollInterval},
 		{"WEBHOOK_TIMEOUT", c.WebhookTimeout, time.Millisecond, 300 * time.Second},
 		{"WEBHOOK_RETRY_BASE", c.WebhookRetryBase, time.Millisecond, math.MaxInt64},

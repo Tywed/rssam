@@ -115,6 +115,7 @@ type Dependencies struct {
 	AdaptiveMaxInterval time.Duration
 	FeedActivityStore   storage.FeedActivityStore
 	FeedSilentDays      int
+	FeedSilentInterval  time.Duration
 	StoreEntriesMode    string
 
 	DedupStore              storage.EntryDedupStore
@@ -192,6 +193,7 @@ type Server struct {
 	envFilePath           string
 	retention             ui.RetentionSettings
 	feedSilentDays        int
+	feedSilentInterval    time.Duration
 	runRetentionCleanup   func(ctx context.Context) (storage.RetentionCleanupResult, error)
 	databaseURL           string
 	databaseLocale        storage.DatabaseLocale
@@ -440,6 +442,7 @@ func New(dep Dependencies) *Server {
 		envFilePath:           dep.EnvFilePath,
 		retention:             dep.Retention,
 		feedSilentDays:        dep.FeedSilentDays,
+		feedSilentInterval:    dep.FeedSilentInterval,
 		runRetentionCleanup:   dep.RunRetentionCleanup,
 		databaseURL:           dep.DatabaseURL,
 		databaseLocale:        dep.DatabaseLocale,

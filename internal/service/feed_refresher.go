@@ -71,6 +71,12 @@ type FeedRefresher struct {
 	// weekly item count (nil = adaptive polling off).
 	AdaptiveMaxInterval time.Duration
 	Activity            storage.FeedActivityStore
+	// SilentAfter / SilentInterval mirror FEED_SILENT_DAYS /
+	// FEED_SILENT_INTERVAL: a healthy feed without an item for SilentAfter
+	// is polled every SilentInterval instead of its own interval (either 0
+	// = off).
+	SilentAfter    time.Duration
+	SilentInterval time.Duration
 
 	// PollHours supplies per-category polling windows (nil = no windows).
 	PollHours storage.CategoryPollHoursStore
@@ -280,7 +286,7 @@ func (r *FeedRefresher) refreshLoaded(ctx context.Context, feed storage.Feed, ma
 
 	started := time.Now()
 	now := started.UTC()
-	subs := r.feedSubscribers(ctx, feedID)
+	subs := &feedSubs{r: r, feedID: feedID}
 	window, hasWindow := r.pollWindow(ctx, feed)
 	if !manual && hasWindow && !window.Contains(now) {
 		return 0, ErrOutsidePollWindow{At: window.NextOpen(now)}
@@ -338,6 +344,10 @@ func (r *FeedRefresher) refreshLoaded(ctx context.Context, feed storage.Feed, ma
 		lastMod = feed.LastModified
 	}
 	next := r.nextCheckAfterPoll(ctx, feed, now, res.MinNextCheck)
+	silentNext, silent := r.silentNextCheck(feed, now, next)
+	if silent {
+		next = silentNext
+	}
 	if hasWindow {
 		next = window.NextOpen(next)
 	}
@@ -368,6 +378,19 @@ func (r *FeedRefresher) refreshLoaded(ctx context.Context, feed storage.Feed, ma
 		}
 		r.afterStore(ctx, feed, subs, insertedEntries)
 	}
+	if silent && meta.NewEntries > 0 {
+		// The feed woke up: back to its own interval from this poll on.
+		next = r.nextCheckAfterPoll(ctx, feed, now, res.MinNextCheck)
+		if hasWindow {
+			next = window.NextOpen(next)
+		}
+		meta.NextCheckAt = &next
+		if metaStored {
+			if err := r.Feeds.SetFeedNextCheckAt(ctx, feedID, next); err != nil {
+				r.logger().Error("set next_check_at after silence failed", "feed_id", feedID, "err", err)
+			}
+		}
+	}
 	if !metaStored {
 		if err := r.Feeds.UpdateFeedRefreshMeta(ctx, meta); err != nil {
 			r.logger().Error("update feed refresh meta failed", "feed_id", feedID, "err", err)
@@ -381,7 +404,7 @@ func (r *FeedRefresher) refreshLoaded(ctx context.Context, feed storage.Feed, ma
 		after.LastError = ""
 		after.LastCheckedAt = &now
 		after.NextCheckAt = &next
-		r.Realtime.PublishFeedStatusChanged(after, subs, nil)
+		r.Realtime.PublishFeedStatusChanged(after, subs.loaded(), nil)
 	}
 
 	return inserted, nil
@@ -412,7 +435,7 @@ func fullRefetchState(feed *storage.Feed, st reader.BridgeState) reader.BridgeSt
 // way an admin would: a 410 is final, neither the backoff nor the daily
 // reset should poll it again; the error text stays visible on the feed
 // until someone deletes it or changes the URL.
-func (r *FeedRefresher) failPoll(ctx context.Context, feed storage.Feed, subs []storage.Subscription, now, started time.Time, state reader.BridgeState, cause, kind error, gone bool) error {
+func (r *FeedRefresher) failPoll(ctx context.Context, feed storage.Feed, subs *feedSubs, now, started time.Time, state reader.BridgeState, cause, kind error, gone bool) error {
 	after := r.recordFailure(ctx, feed, now, cause, bridgeStateJSON(state))
 	if gone {
 		if err := r.Feeds.SetFeedManualPaused(ctx, feed.ID, true); err != nil {
@@ -424,10 +447,21 @@ func (r *FeedRefresher) failPoll(ctx context.Context, feed storage.Feed, subs []
 	err := fmt.Errorf("%w: %w", kind, cause)
 	r.recordPoll(ctx, feed, now, started, 0, err)
 	if r.Realtime != nil {
-		r.Realtime.PublishFeedStatusChanged(after, subs, err)
+		r.Realtime.PublishFeedStatusChanged(after, subs.loaded(), err)
 	}
-	return err
+	return &PollFailed{Feed: after, Err: err}
 }
+
+// PollFailed is the error of a poll whose failure the refresher has already
+// recorded: Feed carries the row as persisted (error count, breaker,
+// next_check_at), so the caller needs no second read.
+type PollFailed struct {
+	Feed storage.Feed
+	Err  error
+}
+
+func (e *PollFailed) Error() string { return e.Err.Error() }
+func (e *PollFailed) Unwrap() error { return e.Err }
 
 // LayoutErrorPrefix starts feeds.last_error while a bridge cannot read the
 // source's page; the bridges page and the system alerter count such feeds.
@@ -473,7 +507,7 @@ type entryMetaWriter interface {
 // with blocked/keep rules is sanitized before the rules so that they match
 // the text a reader would see; otherwise full feeds are sanitized after the
 // item-set check and filtered/relay feeds after dedup, for new items only.
-func (r *FeedRefresher) storeFetched(ctx context.Context, feed storage.Feed, subs []storage.Subscription, fetched []bridge.Entry, meta *storage.UpdateFeedRefreshMetaParams) (inserted int, insertedEntries []storage.Entry, metaStored bool, err error) {
+func (r *FeedRefresher) storeFetched(ctx context.Context, feed storage.Feed, subs *feedSubs, fetched []bridge.Entry, meta *storage.UpdateFeedRefreshMetaParams) (inserted int, insertedEntries []storage.Entry, metaStored bool, err error) {
 	sanitized := strings.TrimSpace(feed.BlockedRules) != "" || strings.TrimSpace(feed.KeepRules) != ""
 	if sanitized {
 		reader.SanitizeEntries(fetched)
@@ -505,6 +539,34 @@ func (r *FeedRefresher) storeFetched(ctx context.Context, feed storage.Feed, sub
 	return inserted, insertedEntries, metaStored, nil
 }
 
+// silentNextCheck applies FEED_SILENT_INTERVAL: a feed that has not
+// produced an item (entry or dedup hash; a new feed counts from creation)
+// for SilentAfter is next checked SilentInterval from now, unless its own
+// schedule is already later. The admin page's "silent" card uses the same
+// definition. On the production fleet 535 of 1272 Telegram channels were
+// silent for a month yet polled every 5 minutes — 29 % of all polls.
+func (r *FeedRefresher) silentNextCheck(feed storage.Feed, now, next time.Time) (time.Time, bool) {
+	if r.SilentAfter <= 0 || r.SilentInterval <= 0 {
+		return next, false
+	}
+	lastItem := feed.CreatedAt
+	if feed.LastEntryAt != nil {
+		lastItem = *feed.LastEntryAt
+	}
+	if lastItem.IsZero() || now.Sub(lastItem) < r.SilentAfter {
+		return next, false
+	}
+	_, hi := r.pollBounds()
+	d := r.SilentInterval
+	if hi > 0 && d > hi {
+		d = hi
+	}
+	if silentNext := now.Add(d); silentNext.After(next) {
+		return silentNext, true
+	}
+	return next, false
+}
+
 // nextCheckAfterPoll: the feed's interval, raised by the adaptive schedule
 // and by the source's own freshness hint (max-age/Expires/<ttl>). Hints
 // only ever postpone a poll, never bring it forward, and stay inside the
@@ -524,16 +586,40 @@ func (r *FeedRefresher) nextCheckAfterPoll(ctx context.Context, feed storage.Fee
 	return next
 }
 
-func (r *FeedRefresher) feedSubscribers(ctx context.Context, feedID int64) []storage.Subscription {
-	if r.Subscribers == nil {
+// feedSubs loads the feed's subscriptions on first use: only a poll that
+// brings new items or fails needs them, and on the production fleet that
+// is one poll in twenty.
+type feedSubs struct {
+	r      *FeedRefresher
+	feedID int64
+	done   bool
+	subs   []storage.Subscription
+}
+
+func (s *feedSubs) get(ctx context.Context) []storage.Subscription {
+	if s.done {
+		return s.subs
+	}
+	s.done = true
+	if s.r.Subscribers == nil {
 		return nil
 	}
-	subs, err := r.Subscribers.ListFeedSubscribers(ctx, feedID)
+	subs, err := s.r.Subscribers.ListFeedSubscribers(ctx, s.feedID)
 	if err != nil {
-		r.logger().Error("list feed subscribers failed", "feed_id", feedID, "err", err)
+		s.r.logger().Error("list feed subscribers failed", "feed_id", s.feedID, "err", err)
 		return nil
 	}
+	s.subs = subs
 	return subs
+}
+
+// loaded returns the subscriptions if a step of this poll already needed
+// them, nil otherwise (the realtime publisher loads its own then).
+func (s *feedSubs) loaded() []storage.Subscription {
+	if !s.done {
+		return nil
+	}
+	return s.subs
 }
 
 // movedFeedURL returns the permanent-redirect destination worth storing:
@@ -569,11 +655,12 @@ func bridgeStateJSON(st reader.BridgeState) []byte {
 // afterStore runs the subscribers' filters over the new entries and
 // announces them. Relay entries exist for webhooks only: no filter_matches,
 // no label or delete actions, no realtime push.
-func (r *FeedRefresher) afterStore(ctx context.Context, feed storage.Feed, subs []storage.Subscription, entries []storage.Entry) {
+func (r *FeedRefresher) afterStore(ctx context.Context, feed storage.Feed, fs *feedSubs, entries []storage.Entry) {
 	if len(entries) == 0 {
 		return
 	}
 	relay := r.storeMode(feed) == storage.StoreModeRelay
+	subs := fs.get(ctx)
 	for _, sub := range subs {
 		r.applySubscriberFilters(ctx, feed, sub, entries, relay)
 	}

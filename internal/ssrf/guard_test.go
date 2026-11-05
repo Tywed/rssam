@@ -43,6 +43,8 @@ func TestGuard_ValidateURL(t *testing.T) {
 		{name: "documentation ipv6", url: "http://[2001:db8::1]/", wantErr: "blocked ip range"},
 		{name: "ipv4-mapped loopback", url: "http://[::ffff:127.0.0.1]/", wantErr: "blocked ip range"},
 		{name: "nat64 loopback", url: "http://[64:ff9b::7f00:1]/", wantErr: "blocked ip range"},
+		{name: "ipv4-compatible loopback", url: "http://[::127.0.0.1]/", wantErr: "blocked ip range"},
+		{name: "ipv4-compatible private", url: "http://[::a00:1]/", wantErr: "blocked ip range"},
 		{name: "nat64 metadata", url: "http://[64:ff9b::a9fe:a9fe]/", wantErr: "blocked ip range"},
 		{name: "nat64 public ok", url: "http://[64:ff9b::808:808]/", wantErr: ""},
 		{name: "6to4 loopback", url: "http://[2002:7f00:1::1]/", wantErr: "blocked ip range"},

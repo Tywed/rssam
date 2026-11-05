@@ -287,3 +287,22 @@ func TestHandler_Fetch_ErrorCarriesBodyHint(t *testing.T) {
 		t.Fatal("empty body must add nothing")
 	}
 }
+
+func TestLooksLikeRateLimit_Body(t *testing.T) {
+	cases := []struct {
+		status int
+		body   string
+		want   bool
+	}{
+		{400, `{"error":"too-many-load-tam-link","detail":"User load tam link limit"}`, true},
+		{400, `{"error":"too_many_requests"}`, true},
+		{400, `{"error":"channel not found"}`, false},
+		{200, `too-many-load-tam-link`, false},
+		{429, ``, true},
+	}
+	for _, c := range cases {
+		if got := looksLikeRateLimit(c.status, []byte(c.body)); got != c.want {
+			t.Errorf("looksLikeRateLimit(%d, %q) = %v, want %v", c.status, c.body, got, c.want)
+		}
+	}
+}

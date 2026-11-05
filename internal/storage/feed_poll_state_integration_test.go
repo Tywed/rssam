@@ -101,3 +101,49 @@ VALUES ($1, 'https://example.com/ps.xml', 'rss', 'ps', 60) RETURNING id`, u.ID).
 		t.Fatalf("state row after delete: %d err=%v", n, err)
 	}
 }
+
+// feed_poll_state is UNLOGGED (0071); after a crash emptied it, every feed
+// gets its row back and is polled (and listed) again.
+func TestIntegration_FeedPollStateUnloggedAndRecreated(t *testing.T) {
+	store := isolatedStore(t)
+	ctx := context.Background()
+	u := testUser(t, store, ctx, "unlogged")
+
+	var persistence string
+	if err := store.db.QueryRow(ctx, `SELECT relpersistence FROM pg_class WHERE relname = 'feed_poll_state'`).Scan(&persistence); err != nil || persistence != "u" {
+		t.Fatalf("relpersistence=%q err=%v, want u (UNLOGGED)", persistence, err)
+	}
+	created, err := store.CreateFeed(ctx, u.ID, CreateFeedParams{FeedURL: "https://example.com/unl.xml", FeedType: "rss", Title: "unl", IntervalMinutes: 60})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n, err := store.EnsureFeedPollStateRows(ctx); err != nil || n != 0 {
+		t.Fatalf("nothing missing: n=%d err=%v", n, err)
+	}
+	// What a crash does to an UNLOGGED table.
+	if _, err := store.db.Exec(ctx, `TRUNCATE feed_poll_state`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.GetFeedByID(ctx, created.ID); err == nil {
+		t.Fatal("feed without a state row must not be found (inner join) — otherwise the test proves nothing")
+	}
+	n, err := store.EnsureFeedPollStateRows(ctx)
+	if err != nil || n < 1 {
+		t.Fatalf("re-created rows: n=%d err=%v", n, err)
+	}
+	got, err := store.GetFeedByID(ctx, created.ID)
+	if err != nil || got.NextCheckAt != nil || got.ETag != "" || got.ParsingErrorCount != 0 {
+		t.Fatalf("feed after re-creation: %+v err=%v", got, err)
+	}
+	due, err := store.ListFeedsDue(ctx, 100, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, d := range due {
+		found = found || d.ID == created.ID
+	}
+	if !found {
+		t.Fatalf("re-created feed must be due at once, got %+v", due)
+	}
+}

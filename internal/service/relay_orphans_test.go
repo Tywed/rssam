@@ -23,7 +23,7 @@ func (m *memRelayEntries) DropUndeliveredRelayEntries(_ context.Context, ids []i
 func TestAfterStore_RelayDropsUndeliveredEntries(t *testing.T) {
 	entries := &memRelayEntries{}
 	r := &FeedRefresher{Entries: entries}
-	subs := []storage.Subscription{{UserID: 1, FeedID: 1}}
+	subs := fixedSubs(r, 1, storage.Subscription{UserID: 1, FeedID: 1})
 	stored := []storage.Entry{{ID: 10, FeedID: 1}, {ID: 11, FeedID: 1}}
 
 	r.afterStore(context.Background(), storage.Feed{ID: 1, OwnerID: 1, StoreMode: storage.StoreModeRelay}, subs, stored)

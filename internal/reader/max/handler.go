@@ -315,7 +315,8 @@ func looksLikeRateLimit(status int, body []byte) bool {
 	if status == http.StatusOK || status == 0 {
 		return false
 	}
-	s := strings.ToLower(string(body))
+	// apimax spells its limit "too-many-load-tam-link".
+	s := strings.NewReplacer("-", " ", "_", " ").Replace(strings.ToLower(string(body)))
 	return strings.Contains(s, "rate limit") ||
 		strings.Contains(s, "too many") ||
 		strings.Contains(s, "flood") ||

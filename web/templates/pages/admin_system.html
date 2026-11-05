@@ -17,6 +17,7 @@
         <tr><th>.env</th><td class="meta">{{.Info.EnvFile}}</td></tr>
         {{if .Info.DatabaseHost}}<tr><th>БД</th><td class="meta">{{.Info.DatabaseHost}}</td></tr>{{end}}
         <tr><th>Пользователей</th><td>{{.Info.UsersCount}}</td></tr>
+        <tr><th>Тихие ленты</th><td>{{if gt .Info.FeedSilentDays 0}}без записей дольше {{.Info.FeedSilentDays}} дн. (FEED_SILENT_DAYS){{if gt .Info.FeedSilentInterval 0}} — опрос раз в {{formatDuration .Info.FeedSilentInterval}} (FEED_SILENT_INTERVAL){{else}} — опрос по своему интервалу (FEED_SILENT_INTERVAL не задан){{end}}{{else}}не отслеживаются (FEED_SILENT_DAYS=0){{end}}</td></tr>
         <tr><th>Входящие вебхуки</th><td>{{if .Info.InboundEnabled}}включены (POST /hooks/{id}){{else}}выключены (INBOUND_WEBHOOKS=false){{end}}</td></tr>
         {{if gt .Info.MemAllocBytes 0}}<tr><th>Память процесса</th><td>{{formatBytes .Info.MemAllocBytes}}</td></tr>{{end}}
         {{if gt .Info.DBSizeBytes 0}}<tr><th>Размер БД</th><td>{{formatBytes .Info.DBSizeBytes}}</td></tr>{{end}}

@@ -69,12 +69,13 @@ var defaultBlockedCIDRs = []string{
 	"ff00::/8", // multicast
 }
 
-// Transition-mechanism prefixes that embed an IPv4 address: the embedded
-// address must pass the same checks, otherwise 64:ff9b::7f00:1 (NAT64) or
-// 2002:7f00:1::1 (6to4) reach 127.0.0.1 through a translator/relay.
+// Prefixes that embed an IPv4 address: the embedded address must pass the
+// same checks, otherwise 64:ff9b::7f00:1 (NAT64), 2002:7f00:1::1 (6to4) or
+// ::7f00:1 (IPv4-compatible) reach 127.0.0.1 through a translator/relay.
 var (
 	nat64Prefix = mustCIDR("64:ff9b::/96")
 	sixToFour   = mustCIDR("2002::/16")
+	v4Compat    = mustCIDR("::/96") // deprecated IPv4-compatible ::a.b.c.d
 )
 
 func mustCIDR(s string) *net.IPNet {
@@ -91,7 +92,7 @@ func embeddedIPv4(ip net.IP) net.IP {
 		return nil
 	}
 	switch {
-	case nat64Prefix.Contains(ip):
+	case nat64Prefix.Contains(ip), v4Compat.Contains(ip):
 		return net.IPv4(ip[12], ip[13], ip[14], ip[15])
 	case sixToFour.Contains(ip):
 		return net.IPv4(ip[2], ip[3], ip[4], ip[5])

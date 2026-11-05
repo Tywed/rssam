@@ -60,11 +60,25 @@ func idleWait(ctx context.Context, wake <-chan struct{}, next time.Time, known b
 // listenDueLoop keeps one LISTEN connection and reconnects after a failure.
 func (r *Runner) listenDueLoop(ctx context.Context) {
 	for ctx.Err() == nil {
+		r.ensureFeedPollStateRows(ctx)
 		err := r.Store.ListenDue(ctx, r.wake.wake)
 		if ctx.Err() != nil {
 			return
 		}
 		r.Log.Warn("due listener disconnected; retrying", "err", err)
 		idleWait(ctx, nil, time.Time{}, false, 5*time.Second)
+	}
+}
+
+// ensureFeedPollStateRows runs on start and whenever the listener connection
+// was lost: a PostgreSQL crash empties the UNLOGGED feed_poll_state.
+func (r *Runner) ensureFeedPollStateRows(ctx context.Context) {
+	n, err := r.Store.EnsureFeedPollStateRows(ctx)
+	if err != nil {
+		r.Log.Error("ensure feed poll state rows failed", "err", err)
+		return
+	}
+	if n > 0 {
+		r.Log.Warn("feed poll state rows re-created; those feeds are fetched in full once", "feeds", n)
 	}
 }
