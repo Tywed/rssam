@@ -21,6 +21,7 @@ type inflightPolls struct {
 }
 
 type inflightPoll struct {
+	feedType  string
 	startedAt time.Time
 	doneAt    time.Time
 }
@@ -33,13 +34,26 @@ func (p *inflightPolls) init(staleAfter, finishedGrace time.Duration) {
 	p.finishedGrace = finishedGrace
 }
 
-func (p *inflightPolls) start(feedID int64, at time.Time) {
+func (p *inflightPolls) start(feedID int64, feedType string, at time.Time) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if p.polls == nil {
 		p.polls = make(map[int64]inflightPoll)
 	}
-	p.polls[feedID] = inflightPoll{startedAt: at}
+	p.polls[feedID] = inflightPoll{feedType: feedType, startedAt: at}
+}
+
+// running counts the unfinished polls of one bridge.
+func (p *inflightPolls) running(feedType string) int {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	n := 0
+	for _, e := range p.polls {
+		if e.feedType == feedType && e.doneAt.IsZero() {
+			n++
+		}
+	}
+	return n
 }
 
 func (p *inflightPolls) done(feedID int64, at time.Time) {

@@ -49,6 +49,12 @@ func (s *fetchSlots) acquire(ctx context.Context) error {
 	return nil
 }
 
+func (s *fetchSlots) free(inflight int) int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return max(s.limit-max(s.inFlight, inflight), 0)
+}
+
 func (s *fetchSlots) release() {
 	s.mu.Lock()
 	s.inFlight--

@@ -39,15 +39,26 @@ func (w dueWakers) wake(channel string) {
 
 // idleWait blocks until wake fires, until next (when known), or for maxWait
 // at most. The cap bounds the damage of a missed notification: the loop
-// still runs on its own at least every maxWait. The floor keeps a row the
-// claim cannot take (due in the past, yet not claimable) from turning the
-// loop into a busy one: never more than one round per second, as before.
+// still runs on its own at least every maxWait. The floor of one second
+// keeps a row the claim cannot take (due in the past, yet not claimable)
+// from turning the loop into a busy one and batches feeds due within the
+// same second into one claim.
 func idleWait(ctx context.Context, wake <-chan struct{}, next time.Time, known bool, maxWait time.Duration) {
+	waitUntil(ctx, wake, next, known, maxWait, time.Second)
+}
+
+// slotWaitFloor is the floor for a wait on a bridge slot: the slot frees up
+// at a known instant (sampled before the claim query ran, so it may already
+// be past) and rounding it up to a second would cost the bridge a part of
+// its request rate.
+const slotWaitFloor = 20 * time.Millisecond
+
+func waitUntil(ctx context.Context, wake <-chan struct{}, next time.Time, known bool, maxWait, floor time.Duration) {
 	d := maxWait
 	if known {
 		d = min(d, time.Until(next))
 	}
-	d = max(d, min(maxWait, time.Second))
+	d = max(d, min(maxWait, floor))
 	t := time.NewTimer(d)
 	defer t.Stop()
 	select {

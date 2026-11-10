@@ -134,6 +134,7 @@ func (s *Server) registerUI(mux *http.ServeMux) {
 		cfg.WorkersPaused = s.workerControl.Paused
 		cfg.PollInflight = s.workerControl.Inflight
 		cfg.PollingSince = s.workerControl.PollingSince
+		cfg.PollDeferrals = s.workerControl.Deferrals
 		cfg.WebhookFloodPausedUntil = s.workerControl.WebhookFloodPausedUntil
 	}
 	h, err := ui.NewHandler(cfg)

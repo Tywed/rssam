@@ -97,6 +97,10 @@ type Config struct {
 	// (a process that serves HTTP only) reports none.
 	PollInflight func() (running, stale int)
 	PollingSince func(feedID int64) (time.Time, bool)
+	// PollDeferrals reads the worker's count of polls put back because a
+	// bridge had no free slot or a transient error was being retried; nil =
+	// not shown.
+	PollDeferrals func() []PollDeferral
 	// WebhookFloodPausedUntil reads the worker's in-memory 429 pauses; nil
 	// = not shown.
 	WebhookFloodPausedUntil func(webhookID int64) (time.Time, bool)

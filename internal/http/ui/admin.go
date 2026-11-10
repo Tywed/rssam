@@ -203,6 +203,13 @@ func (h *Handler) handleAdminRefreshAll(w http.ResponseWriter, r *http.Request) 
 	http.Redirect(w, r, "/ui/admin/users", http.StatusFound)
 }
 
+// PollDeferral is one row of the worker's deferral count since start.
+type PollDeferral struct {
+	Bridge string
+	Reason string
+	Count  uint64
+}
+
 type adminSystemInfo struct {
 	Version       string
 	Commit        string
@@ -241,6 +248,8 @@ type adminSystemInfo struct {
 	// FeedSilentDays / FeedSilentInterval: the silent-feed schedule.
 	FeedSilentDays     int
 	FeedSilentInterval time.Duration
+	// PollDeferrals: polls put back since start, per bridge and reason.
+	PollDeferrals []PollDeferral
 }
 
 func (h *Handler) handleAdminSystem(w http.ResponseWriter, r *http.Request) {
@@ -307,6 +316,9 @@ func (h *Handler) handleAdminSystem(w http.ResponseWriter, r *http.Request) {
 	}
 	if h.cfg.Audit != nil && h.cfg.Audit.Store != nil {
 		info.AuditRows, _ = h.cfg.Audit.Store.CountAuditLog(r.Context())
+	}
+	if h.cfg.PollDeferrals != nil {
+		info.PollDeferrals = h.cfg.PollDeferrals()
 	}
 	data.Info = info
 	data.Title = "Система"

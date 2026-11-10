@@ -88,6 +88,43 @@ func (r *HandlerRegistry) FindHandler(feedURL, feedType string) (Handler, error)
 	return nil, ErrNoHandlerFound
 }
 
+// SlotBridges names the registered bridges that bound their fetches by
+// slots (bridge.SlotLimiter).
+func (r *HandlerRegistry) SlotBridges() []string {
+	var out []string
+	for _, h := range r.handlers {
+		var impl any = h
+		if a, ok := h.(adapted); ok {
+			impl = a.h
+		}
+		if _, ok := impl.(bridge.SlotLimiter); ok {
+			out = append(out, h.Name())
+		}
+	}
+	return out
+}
+
+// FreeSlots reports the free fetch slots of the bridge behind feedType;
+// limited is false for a bridge without slots (any number may be claimed).
+func (r *HandlerRegistry) FreeSlots(feedType string, now time.Time, inflight int) (free int, until time.Time, limited bool) {
+	ft := NormalizeFeedType(feedType)
+	for _, h := range r.handlers {
+		if h.Name() != ft {
+			continue
+		}
+		var impl any = h
+		if a, ok := h.(adapted); ok {
+			impl = a.h
+		}
+		if l, ok := impl.(bridge.SlotLimiter); ok {
+			free, until = l.FreeSlots(now, inflight)
+			return free, until, true
+		}
+		return 0, time.Time{}, false
+	}
+	return 0, time.Time{}, false
+}
+
 // Fetch resolves a handler and fetches entries. Content comes back as the
 // source sent it; the refresher sanitizes what it is about to store or
 // deliver (SanitizeEntries), after the item-set and dedup checks have

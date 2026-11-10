@@ -86,3 +86,28 @@ func TestFetchSlots_RaisingLimitWakesWaiters(t *testing.T) {
 		t.Fatal("waiter not woken after setLimit")
 	}
 }
+
+// FreeSlots reports the slots a claim may fill without making a worker wait.
+func TestFreeSlots_CountsIdleSlots(t *testing.T) {
+	h := NewHandler(nil, &http.Client{Transport: &countingTransport{}}, Config{ConcurrentSlots: 2})
+	now := time.Now()
+	if free, _ := h.FreeSlots(now, 0); free != 2 {
+		t.Fatalf("free=%d, want 2", free)
+	}
+	if err := h.slots.acquire(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.slots.acquire(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if free, until := h.FreeSlots(now, 0); free != 0 || !until.After(now) {
+		t.Fatalf("all taken: free=%d until=%s", free, until)
+	}
+	h.slots.release()
+	if free, _ := h.FreeSlots(now, 0); free != 1 {
+		t.Fatalf("one released: free=%d, want 1", free)
+	}
+	if free, _ := h.FreeSlots(now, 2); free != 0 {
+		t.Fatalf("two claimed by the dispatcher: free=%d, want 0", free)
+	}
+}

@@ -127,6 +127,19 @@ func AsLayout(err error) (*LayoutError, bool) {
 	return errors.AsType[*LayoutError](err)
 }
 
+// SlotLimiter is a bridge whose fetches are bounded by slots (a request
+// interval, a concurrency limit, an API cool-down). The dispatcher asks it
+// how many feeds it can take right now and claims no more than that, so a
+// due feed waits in the table instead of occupying a worker that the
+// bridge would only turn away or make wait. inflight is how many polls of
+// this bridge the dispatcher has handed out and not seen finish: a poll
+// just claimed has not reserved its slot yet, so the bridge must count the
+// larger of its own in-flight requests and inflight as taken. until is when
+// a slot is next expected when free is 0.
+type SlotLimiter interface {
+	FreeSlots(now time.Time, inflight int) (free int, until time.Time)
+}
+
 // DeferBridgeWide reports whether a RetryAtError stands for the whole bridge
 // (its fetch slots or its API are busy until RetryAt), so the worker holds
 // every feed of that type rather than trying them one after another.

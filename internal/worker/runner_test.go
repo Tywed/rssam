@@ -56,9 +56,6 @@ type stubPollStore struct {
 	lastSuccessNext time.Time
 }
 
-func (s *stubPollStore) GetFeedByID(context.Context, int64) (storage.Feed, error) {
-	return s.feed, nil
-}
 func (s *stubPollStore) SetFeedNextCheckAt(_ context.Context, _ int64, next time.Time) error {
 	s.setCalls++
 	s.nextCheckAt = next
@@ -77,7 +74,7 @@ func TestProcessPollFeed_SuccessSetsNextCheck(t *testing.T) {
 	}
 	ref := &stubFeedRefresher{inserted: 3, store: store, cfg: cfg}
 
-	processPollFeed(context.Background(), feedID, store, ref, cfg, slog.Default())
+	processPollFeed(context.Background(), store.feed, store, ref, cfg, slog.Default(), nil)
 
 	if ref.calls != 1 {
 		t.Fatalf("refresh calls=%d", ref.calls)
@@ -97,7 +94,7 @@ func TestProcessPollFeed_ErrorDoublesInterval(t *testing.T) {
 	}
 	ref := &stubFeedRefresher{err: errors.New("fetch failed"), store: store, cfg: cfg}
 
-	processPollFeed(context.Background(), feedID, store, ref, cfg, slog.Default())
+	processPollFeed(context.Background(), store.feed, store, ref, cfg, slog.Default(), nil)
 
 	if store.feed.ParsingErrorCount != 1 {
 		t.Fatalf("error count=%d, want 1", store.feed.ParsingErrorCount)
@@ -124,7 +121,7 @@ func TestProcessPollFeed_SuccessResetsIntervalAfterErrors(t *testing.T) {
 	}
 	ref := &stubFeedRefresher{inserted: 1, store: store, cfg: cfg}
 
-	processPollFeed(context.Background(), feedID, store, ref, cfg, slog.Default())
+	processPollFeed(context.Background(), store.feed, store, ref, cfg, slog.Default(), nil)
 
 	if store.feed.ParsingErrorCount != 0 {
 		t.Fatalf("error count=%d, want 0 after success", store.feed.ParsingErrorCount)
@@ -166,7 +163,7 @@ func TestProcessPollFeed_BackoffSkipsWithoutError(t *testing.T) {
 	cfg := Config{InstanceID: "test"}
 	ref := &stubFeedRefresher{err: testBackoffErr{at: until}, store: store, cfg: cfg}
 
-	got, scope := processPollFeed(context.Background(), feedID, store, ref, cfg, slog.Default())
+	got, scope := processPollFeed(context.Background(), store.feed, store, ref, cfg, slog.Default(), nil)
 
 	if store.feed.ParsingErrorCount != 0 {
 		t.Fatalf("error count=%d, want 0", store.feed.ParsingErrorCount)
@@ -191,7 +188,7 @@ func TestProcessPollFeed_ErrorReusesPersistedNextCheck(t *testing.T) {
 	// Simulate service.FeedRefresher.recordFailure having set next_check_at.
 	ref.store.feed.NextCheckAt = &persisted
 
-	processPollFeed(context.Background(), feedID, store, ref, cfg, slog.Default())
+	processPollFeed(context.Background(), store.feed, store, ref, cfg, slog.Default(), nil)
 
 	if store.setCalls != 0 {
 		t.Fatalf("SetFeedNextCheckAt must not be called again, got %s", store.nextCheckAt)
@@ -211,7 +208,7 @@ func TestProcessPollFeed_BridgeWideDeferralHoldsTheBridge(t *testing.T) {
 	cfg := Config{InstanceID: "test"}
 	ref := &stubFeedRefresher{err: testBridgeBusyErr{at: until}, store: store, cfg: cfg}
 
-	got, scope := processPollFeed(context.Background(), feedID, store, ref, cfg, slog.Default())
+	got, scope := processPollFeed(context.Background(), store.feed, store, ref, cfg, slog.Default(), nil)
 
 	if scope != deferBridge || !got.Equal(until) {
 		t.Fatalf("scope=%v until=%s, want bridge %s", scope, got, until)
@@ -240,7 +237,7 @@ func TestProcessPollFeed_LongDeferralIsWritten(t *testing.T) {
 	cfg := Config{InstanceID: "test"}
 	ref := &stubFeedRefresher{err: testBackoffErr{at: until}, store: store, cfg: cfg}
 
-	if _, scope := processPollFeed(context.Background(), feedID, store, ref, cfg, slog.Default()); scope != deferNone {
+	if _, scope := processPollFeed(context.Background(), store.feed, store, ref, cfg, slog.Default(), nil); scope != deferNone {
 		t.Fatalf("scope=%v, want none", scope)
 	}
 	if store.setCalls != 1 || !store.nextCheckAt.Equal(until) {
@@ -248,31 +245,18 @@ func TestProcessPollFeed_LongDeferralIsWritten(t *testing.T) {
 	}
 }
 
-type countingPollStore struct {
-	stubPollStore
-	gets int
-}
-
-func (s *countingPollStore) GetFeedByID(ctx context.Context, id int64) (storage.Feed, error) {
-	s.gets++
-	return s.stubPollStore.GetFeedByID(ctx, id)
-}
-
 // A failure the refresher already recorded comes back as service.PollFailed
-// with the persisted row: the worker reads nothing again and writes nothing.
-func TestProcessPollFeed_PollFailedNeedsNoSecondRead(t *testing.T) {
+// with the persisted row: the worker writes nothing.
+func TestProcessPollFeed_PollFailedWritesNothing(t *testing.T) {
 	feedID := int64(31)
 	persisted := time.Now().UTC().Add(10 * time.Minute)
-	store := &countingPollStore{stubPollStore: stubPollStore{feed: storage.Feed{ID: feedID, IntervalMinutes: 5}}}
+	store := &stubPollStore{feed: storage.Feed{ID: feedID, IntervalMinutes: 5}}
 	cfg := Config{InstanceID: "test", MinPollInterval: time.Minute, MaxPollInterval: 24 * time.Hour}
 	after := storage.Feed{ID: feedID, IntervalMinutes: 5, ParsingErrorCount: 1, NextCheckAt: &persisted}
 	ref := &stubFeedRefresher{err: &service.PollFailed{Feed: after, Err: errors.New("fetch failed")}, cfg: cfg}
 
-	processPollFeed(context.Background(), feedID, store, ref, cfg, slog.Default())
+	processPollFeed(context.Background(), store.feed, store, ref, cfg, slog.Default(), nil)
 
-	if store.gets != 1 {
-		t.Fatalf("GetFeedByID calls = %d, want 1 (the load before the poll)", store.gets)
-	}
 	if store.setCalls != 0 {
 		t.Fatalf("SetFeedNextCheckAt must not be called, got %s", store.nextCheckAt)
 	}

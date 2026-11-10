@@ -86,6 +86,8 @@ type FeedRefresher struct {
 	// next successful poll, so the poll log is not asked again until the
 	// feed fails (or the process restarts).
 	okLogged sync.Map
+	// soft counts the soft failures in a row of each feed (softFailureLimit).
+	soft softStreaks
 	// Hosts caps concurrent polls per source host (nil = no cap).
 	Hosts *HostLimiter
 
@@ -332,8 +334,19 @@ func (r *FeedRefresher) refreshLoaded(ctx context.Context, feed storage.Feed, ma
 			// 3 M poll-log INSERT+DELETE a month for nothing.
 			return 0, fetchErr
 		}
+		if !manual && feed.ParsingErrorCount == 0 && !errors.Is(fetchErr, reader.ErrFeedGone) && IsSoftFailure(fetchErr) && r.soft.next(feedID) {
+			next := r.nextCheckAfterPoll(ctx, feed, now, time.Time{})
+			if silentNext, silent := r.silentNextCheck(feed, now, next); silent {
+				next = silentNext
+			}
+			if hasWindow {
+				next = window.NextOpen(next)
+			}
+			return 0, r.deferSoft(ctx, feed, now, next, fetchErr)
+		}
 		return 0, r.failPoll(ctx, feed, subs, now, started, res.BridgeState, fetchErr, ErrFetchFeed, errors.Is(fetchErr, reader.ErrFeedGone))
 	}
+	r.soft.reset(feedID)
 
 	etag := strings.TrimSpace(res.ETag)
 	lastMod := strings.TrimSpace(res.LastModified)

@@ -373,3 +373,79 @@ func TestIntegration_FeedTypeStatsAndLayoutFilter(t *testing.T) {
 		t.Fatalf("after recovery: %+v err=%v", stats[0], err)
 	}
 }
+
+// One claim returns the due feeds as full rows, bounded per bridge by its
+// free slots, and the next due time in the same pass.
+func TestIntegration_ClaimFeedsDueCapsAndNext(t *testing.T) {
+	store := isolatedStore(t)
+	ctx := context.Background()
+	owner := newIntegrationUser(t, store, "claim")
+
+	var rss, tg []Feed
+	for i := 0; i < 3; i++ {
+		rss = append(rss, newFeedForUser(t, store, owner.ID, "rss", 10))
+		f := newFeedForUser(t, store, owner.ID, "tg", 5)
+		if _, err := store.db.Exec(ctx, `UPDATE feeds SET feed_type = 'telegram' WHERE id = $1`, f.ID); err != nil {
+			t.Fatal(err)
+		}
+		tg = append(tg, f)
+	}
+	later := newFeedForUser(t, store, owner.ID, "later", 10)
+	if err := store.SetFeedNextCheckAt(ctx, later.ID, time.Now().Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+
+	claim, err := store.ClaimFeedsDue(ctx, 100, nil, nil, []BridgeCap{{FeedType: "telegram", Cap: 1}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var gotRSS, gotTG int
+	for _, d := range claim.Due {
+		switch d.FeedType {
+		case "rss":
+			gotRSS++
+		case "telegram":
+			gotTG++
+		}
+		if d.Feed.ID != d.ID || d.Feed.FeedURL == "" || d.Feed.IntervalMinutes == 0 || d.Feed.CreatedAt.IsZero() {
+			t.Fatalf("claimed row is not the full feed: %+v", d.Feed)
+		}
+	}
+	if gotRSS != 3 || gotTG != 1 {
+		t.Fatalf("claimed rss=%d telegram=%d, want 3 and 1 (cap)", gotRSS, gotTG)
+	}
+	// The capped bridge's other feeds are not «next»: the next due time is
+	// the hour-away feed (telegram's due rows are filtered out).
+	if !claim.NextKnown || time.Until(claim.NextAt) < 55*time.Minute {
+		t.Fatalf("next=%s known=%v, want ~1h", claim.NextAt, claim.NextKnown)
+	}
+
+	// A cap of 0 leaves the bridge out entirely; an uncapped bridge is not
+	// bounded; a limit smaller than the due count reports the first unclaimed
+	// due feed as next (it is due now).
+	claim, err = store.ClaimFeedsDue(ctx, 2, nil, nil, []BridgeCap{{FeedType: "telegram", Cap: 0}})
+	if err != nil || len(claim.Due) != 2 || claim.Due[0].FeedType != "rss" || claim.Due[1].FeedType != "rss" {
+		t.Fatalf("claim=%+v err=%v", dueIDs(claim.Due), err)
+	}
+	if !claim.NextKnown || time.Until(claim.NextAt) > time.Second {
+		t.Fatalf("with due feeds left over next must be now, got %s known=%v", claim.NextAt, claim.NextKnown)
+	}
+	claim, err = store.ClaimFeedsDue(ctx, 100, nil, nil, nil)
+	if err != nil || len(claim.Due) != 6 {
+		t.Fatalf("uncapped claim = %d feeds err=%v, want 6", len(claim.Due), err)
+	}
+
+	// Nothing pollable at all: no next.
+	for _, f := range append(rss, tg...) {
+		if err := store.SetFeedManualPaused(ctx, f.ID, true); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := store.SetFeedManualPaused(ctx, later.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	claim, err = store.ClaimFeedsDue(ctx, 100, nil, nil, nil)
+	if err != nil || len(claim.Due) != 0 || claim.NextKnown {
+		t.Fatalf("all paused: claim=%+v err=%v", claim, err)
+	}
+}

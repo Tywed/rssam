@@ -311,6 +311,7 @@ func main() {
 		Log:       log,
 		Store:     pgStore,
 		Refresher: refresher,
+		Slots:     registryBundle.Registry,
 		Cfg: worker.Config{
 			PoolSize:        cfg.WorkerPoolSize,
 			WebhookPoolSize: cfg.WebhookWorkerPoolSize,
@@ -450,7 +451,7 @@ func main() {
 		RunRetentionCleanup: w.RetentionCleanupNow,
 		DatabaseURL:         cfg.DatabaseURL,
 		Releases:            releases,
-		WorkerControl:       w,
+		WorkerControl:       workerControl{w},
 	})
 
 	if err := srv.Run(ctx, cfg.ListenAddr, cfg.ShutdownTimeout); err != nil {
@@ -464,4 +465,16 @@ func main() {
 		log.Warn("pprof shutdown", "err", err)
 	}
 	log.Info("shutdown complete")
+}
+
+// workerControl adapts the runner to the HTTP layer's WorkerControl.
+type workerControl struct{ *worker.Runner }
+
+func (c workerControl) Deferrals() []ui.PollDeferral {
+	rows := c.Runner.Deferrals()
+	out := make([]ui.PollDeferral, 0, len(rows))
+	for _, d := range rows {
+		out = append(out, ui.PollDeferral{Bridge: d.Bridge, Reason: d.Reason, Count: d.Count})
+	}
+	return out
 }

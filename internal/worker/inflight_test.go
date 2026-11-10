@@ -11,8 +11,8 @@ func TestInflightPolls(t *testing.T) {
 	p.init(2*time.Minute, time.Second)
 	t0 := time.Now()
 
-	p.start(1, t0)
-	p.start(2, t0.Add(-3*time.Minute))
+	p.start(1, "rss", t0)
+	p.start(2, "rss", t0.Add(-3*time.Minute))
 	if ex := p.exclude(t0); !slices.Equal(ex, []int64{1}) {
 		// Feed 2 ran past staleAfter: reported, no longer excluded.
 		t.Fatalf("exclude=%v, want [1]", ex)
@@ -36,7 +36,7 @@ func TestInflightPolls(t *testing.T) {
 		t.Fatalf("exclude after grace=%v, want none", ex)
 	}
 	// forget releases at once, no grace.
-	p.start(3, t0)
+	p.start(3, "rss", t0)
 	p.forget(3)
 	if ex := p.exclude(t0); slices.Contains(ex, 3) {
 		t.Fatalf("forgotten item still excluded: %v", ex)
@@ -46,5 +46,24 @@ func TestInflightPolls(t *testing.T) {
 	}
 	if _, ok := p.since(3); ok {
 		t.Fatal("unknown feed reported running")
+	}
+}
+
+func TestInflightPolls_RunningPerBridge(t *testing.T) {
+	var p inflightPolls
+	p.init(0, time.Second)
+	t0 := time.Now()
+	p.start(1, "max", t0)
+	p.start(2, "max", t0)
+	p.start(3, "telegram", t0)
+	if got := p.running("max"); got != 2 {
+		t.Fatalf("running(max)=%d, want 2", got)
+	}
+	p.done(1, t0)
+	if got := p.running("max"); got != 1 {
+		t.Fatalf("after done running(max)=%d, want 1", got)
+	}
+	if got := p.running("rss"); got != 0 {
+		t.Fatalf("running(rss)=%d, want 0", got)
 	}
 }

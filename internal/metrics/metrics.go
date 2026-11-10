@@ -28,8 +28,8 @@ var (
 
 	PollDeferred = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "rssam_poll_deferred_total",
-		Help: "Polls postponed without fetching, by reason: rate_limit, slots, host, poll_hours, proxy, layout.",
-	}, []string{"reason"})
+		Help: "Polls postponed without fetching, by bridge and reason: rate_limit, slots, host, poll_hours, proxy, layout, soft_error.",
+	}, []string{"bridge", "reason"})
 
 	ClaimedJobs = prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "rssam_jobs_claimed_total",

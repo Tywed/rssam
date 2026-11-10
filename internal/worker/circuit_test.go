@@ -14,11 +14,6 @@ type circuitFeedStore struct {
 	feed storage.Feed
 }
 
-func (c *circuitFeedStore) GetFeedByID(_ context.Context, id int64) (storage.Feed, error) {
-	f := c.feed
-	f.ID = id
-	return f, nil
-}
 func (c *circuitFeedStore) SetFeedNextCheckAt(_ context.Context, _ int64, _ time.Time) error {
 	return nil
 }
@@ -37,5 +32,7 @@ func TestProcessPollFeed_SkipsCircuitOpen(t *testing.T) {
 	store := &circuitFeedStore{
 		feed: storage.Feed{PollPaused: true, ParsingErrorCount: 10},
 	}
-	processPollFeed(context.Background(), 7, store, noopRefresher{}, Config{InstanceID: "test"}, slog.Default())
+	feed := store.feed
+	feed.ID = 7
+	processPollFeed(context.Background(), feed, store, noopRefresher{}, Config{InstanceID: "test"}, slog.Default(), nil)
 }

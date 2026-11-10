@@ -59,7 +59,7 @@ func (r *Runner) webhookDispatchLoop(ctx context.Context, out chan<- storage.Web
 		if len(logs) > 0 {
 			claimedAt := time.Now()
 			for _, l := range r.groupDigestLogs(ctx, logs) {
-				r.inflightHooks.start(l.WebhookID, claimedAt)
+				r.inflightHooks.start(l.WebhookID, "", claimedAt)
 				select {
 				case out <- l:
 				case <-ctx.Done():

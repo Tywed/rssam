@@ -81,6 +81,15 @@ func (h *Handler) UpdateConfig(cfg Config) {
 
 func (h *Handler) Name() string { return feedTypeTelegram }
 
+// FreeSlots implements bridge.SlotLimiter: with every slot taken a claimed
+// feed would block its worker on acquire for up to half the fetch timeout.
+func (h *Handler) FreeSlots(now time.Time, inflight int) (int, time.Time) {
+	if n := h.slots.free(inflight); n > 0 {
+		return n, time.Time{}
+	}
+	return 0, now.Add(time.Second)
+}
+
 func (h *Handler) DetectFeedType(feedURL string) string {
 	if DetectFeedURL(feedURL) {
 		return feedTypeTelegram

@@ -364,6 +364,26 @@ func (h *Handler) tryReserveSlot() (until time.Time, ok bool) {
 	return time.Time{}, true
 }
 
+// FreeSlots implements bridge.SlotLimiter from the same state tryReserveSlot
+// decides by.
+func (h *Handler) FreeSlots(now time.Time, inflight int) (int, time.Time) {
+	h.slotMu.Lock()
+	defer h.slotMu.Unlock()
+	cfg := h.snapshotConfig()
+	slots := ClampConcurrentSlots(cfg.ConcurrentSlots)
+	taken := max(h.inFlight, inflight)
+	if now.Before(h.globalUntil) {
+		return 0, h.globalUntil
+	}
+	if taken == 0 && now.Before(h.nextSlot) {
+		return 0, h.nextSlot
+	}
+	if taken >= slots {
+		return 0, now.Add(max(cfg.RequestInterval, 50*time.Millisecond))
+	}
+	return slots - taken, time.Time{}
+}
+
 func (h *Handler) releaseSlot(rateLimited *bool) {
 	h.slotMu.Lock()
 	defer h.slotMu.Unlock()

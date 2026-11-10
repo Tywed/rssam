@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"rssam/internal/http/ui"
 	"rssam/internal/ssrf"
 	"rssam/internal/storage"
 )
@@ -423,6 +424,7 @@ func (stubWorkerControl) Resume()                              {}
 func (stubWorkerControl) Paused() bool                         { return false }
 func (stubWorkerControl) Inflight() (int, int)                 { return 0, 0 }
 func (stubWorkerControl) PollingSince(int64) (time.Time, bool) { return time.Time{}, false }
+func (stubWorkerControl) Deferrals() []ui.PollDeferral         { return nil }
 func (s stubWorkerControl) WebhookFloodPausedUntil(id int64) (time.Time, bool) {
 	if id == s.pausedID {
 		return time.Now().Add(20 * time.Second), true

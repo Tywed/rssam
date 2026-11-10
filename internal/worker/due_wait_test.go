@@ -39,6 +39,17 @@ func TestIdleWait(t *testing.T) {
 	if d := time.Since(start); d < 25*time.Millisecond {
 		t.Fatalf("floor: waited %v", d)
 	}
+	// A slot wait is not rounded up to the second.
+	start = time.Now()
+	waitUntil(ctx, w.feeds, time.Now().Add(30*time.Millisecond), true, time.Minute, slotWaitFloor)
+	if d := time.Since(start); d < 25*time.Millisecond || d > 300*time.Millisecond {
+		t.Fatalf("slot wait: waited %v", d)
+	}
+	start = time.Now()
+	waitUntil(ctx, w.feeds, time.Now().Add(-time.Millisecond), true, time.Minute, slotWaitFloor)
+	if d := time.Since(start); d > 300*time.Millisecond {
+		t.Fatalf("slot wait already past: waited %v", d)
+	}
 
 	cctx, cancel := context.WithCancel(ctx)
 	cancel()

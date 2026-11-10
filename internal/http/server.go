@@ -141,6 +141,7 @@ type WorkerControl interface {
 	Paused() bool
 	Inflight() (running, stale int)
 	PollingSince(feedID int64) (time.Time, bool)
+	Deferrals() []ui.PollDeferral
 	WebhookFloodPausedUntil(webhookID int64) (time.Time, bool)
 }
 
