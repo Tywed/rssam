@@ -99,6 +99,13 @@ type Config struct {
 	// often instead of its own interval until it produces an item again
 	// (0 = own interval).
 	FeedSilentInterval time.Duration
+	// FeedDormantDays / FeedDormantInterval: the second tier of the silent
+	// schedule — a feed without an item for FeedDormantDays is polled every
+	// FeedDormantInterval (0 = no second tier). On the production fleet 454
+	// feeds (15 %) had produced nothing for 90 days yet made 5.5 % of all
+	// polls at the 30 min silent interval.
+	FeedDormantDays     int
+	FeedDormantInterval time.Duration
 	// BackupDir is where rssam-backup.sh writes dumps; a system-alert
 	// webhook is told when the newest dump is older than BackupMaxAge
 	// ("" disables the check).
@@ -247,6 +254,8 @@ func Load() (Config, error) {
 		DedupRetentionDays:       env.int("DEDUP_RETENTION_DAYS", 0),
 		FeedSilentDays:           env.int("FEED_SILENT_DAYS", 7),
 		FeedSilentInterval:       env.duration("FEED_SILENT_INTERVAL", 0),
+		FeedDormantDays:          env.int("FEED_DORMANT_DAYS", 90),
+		FeedDormantInterval:      env.duration("FEED_DORMANT_INTERVAL", 0),
 		BackupDir:                strings.TrimSpace(os.Getenv("BACKUP_DIR")),
 		BackupMaxAge:             env.duration("BACKUP_MAX_AGE", 36*time.Hour),
 		AuditLogRetentionDays:    env.int("AUDIT_LOG_RETENTION_DAYS", 180),
@@ -358,6 +367,7 @@ func (c Config) Validate() error {
 		{"WEBHOOK_LOG_RETENTION_DAYS", int64(c.WebhookLogRetentionDays), 1, 3650, ""},
 		{"FILTER_MATCH_RETENTION_DAYS", int64(c.FilterMatchRetentionDays), 0, 3650, " (0 disables)"},
 		{"FEED_SILENT_DAYS", int64(c.FeedSilentDays), 0, 3650, " (0 disables)"},
+		{"FEED_DORMANT_DAYS", int64(c.FeedDormantDays), 0, 3650, " (0 disables)"},
 		{"FEED_POLL_LOG_RETENTION_DAYS", int64(c.FeedPollLogRetentionDays), 0, 3650, " (0 disables)"},
 		{"AUDIT_LOG_RETENTION_DAYS", int64(c.AuditLogRetentionDays), 0, 3650, " (0 disables)"},
 		{"DEDUP_RETENTION_DAYS", int64(c.DedupRetentionDays), 0, 3650, " (0 disables)"},
@@ -401,6 +411,7 @@ func (c Config) Validate() error {
 		{"MAX_POLL_INTERVAL", c.MaxPollInterval, time.Millisecond, math.MaxInt64},
 		{"ADAPTIVE_MAX_INTERVAL", c.AdaptiveMaxInterval, time.Millisecond, math.MaxInt64},
 		{"FEED_SILENT_INTERVAL", c.FeedSilentInterval, 0, math.MaxInt64},
+		{"FEED_DORMANT_INTERVAL", c.FeedDormantInterval, 0, math.MaxInt64},
 		{"EDITOR_MIN_POLL_INTERVAL", c.EditorMinPollInterval, 0, c.MaxPollInterval},
 		{"WEBHOOK_TIMEOUT", c.WebhookTimeout, time.Millisecond, 300 * time.Second},
 		{"WEBHOOK_RETRY_BASE", c.WebhookRetryBase, time.Millisecond, math.MaxInt64},
@@ -419,6 +430,12 @@ func (c Config) Validate() error {
 	}
 	if c.MinPollInterval > 0 && c.MaxPollInterval > 0 && c.MinPollInterval > c.MaxPollInterval {
 		fail("MIN_POLL_INTERVAL must be <= MAX_POLL_INTERVAL (got %s > %s)", c.MinPollInterval, c.MaxPollInterval)
+	}
+	if c.FeedDormantDays > 0 && c.FeedSilentDays > 0 && c.FeedDormantDays <= c.FeedSilentDays {
+		fail("FEED_DORMANT_DAYS must be > FEED_SILENT_DAYS (got %d <= %d)", c.FeedDormantDays, c.FeedSilentDays)
+	}
+	if c.FeedDormantInterval > 0 && c.FeedSilentInterval > 0 && c.FeedDormantInterval < c.FeedSilentInterval {
+		fail("FEED_DORMANT_INTERVAL must be >= FEED_SILENT_INTERVAL (got %s < %s)", c.FeedDormantInterval, c.FeedSilentInterval)
 	}
 	if c.WebhookRetryBase > 0 && c.WebhookRetryMax > 0 && c.WebhookRetryBase > c.WebhookRetryMax {
 		fail("WEBHOOK_RETRY_BASE must be <= WEBHOOK_RETRY_MAX (got %s > %s)", c.WebhookRetryBase, c.WebhookRetryMax)

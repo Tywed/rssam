@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"rssam/internal/reader"
 	"rssam/internal/storage"
 )
 
@@ -41,6 +42,13 @@ func (h *Handler) silentAfter() time.Duration {
 		return 0
 	}
 	return time.Duration(h.cfg.FeedSilentDays) * 24 * time.Hour
+}
+
+func (h *Handler) dormantAfter() time.Duration {
+	if h.cfg.FeedDormantDays <= 0 {
+		return 0
+	}
+	return time.Duration(h.cfg.FeedDormantDays) * 24 * time.Hour
 }
 
 func classifyAdminFeedStatus(row storage.AdminFeedRow, now time.Time) string {
@@ -136,7 +144,7 @@ func parseAdminFeedsSort(r *http.Request) (sortKey, order string) {
 
 func parseAdminFeedsStatus(v string) string {
 	switch strings.TrimSpace(v) {
-	case "errors", "paused", "waiting", "ok", "silent", "layout", "all":
+	case "errors", "paused", "waiting", "ok", "silent", "dormant", "layout", "all":
 		return strings.TrimSpace(v)
 	default:
 		return "all"
@@ -185,12 +193,13 @@ func (h *Handler) loadAdminFeedsDashboard(r *http.Request) (pageData, error) {
 	}
 
 	ctx := r.Context()
-	summary, err := h.cfg.AdminFeeds.AdminFeedSummary(ctx, h.silentAfter())
+	summary, err := h.cfg.AdminFeeds.AdminFeedSummary(ctx, h.silentAfter(), h.dormantAfter())
 	if err != nil {
 		return data, err
 	}
 	data.AdminFeedSummary = summary
 	data.FeedSilentDays = h.cfg.FeedSilentDays
+	data.FeedDormantDays = h.cfg.FeedDormantDays
 
 	jobs, err := h.pollBacklog(ctx)
 	if err != nil {
@@ -213,12 +222,13 @@ func (h *Handler) loadAdminFeedsDashboard(r *http.Request) (pageData, error) {
 	sortKey, order := parseAdminFeedsSort(r)
 	limit, offset, page := parseAdminFeedsPage(r)
 	rows, total, err := h.cfg.AdminFeeds.ListAdminFeedsPage(ctx, storage.AdminFeedsListParams{
-		Status:      status,
-		SortKey:     sortKey,
-		Order:       order,
-		Limit:       limit,
-		Offset:      offset,
-		SilentAfter: h.silentAfter(),
+		Status:       status,
+		SortKey:      sortKey,
+		Order:        order,
+		Limit:        limit,
+		Offset:       offset,
+		SilentAfter:  h.silentAfter(),
+		DormantAfter: h.dormantAfter(),
 	})
 	if err != nil {
 		return data, err
@@ -369,8 +379,14 @@ func (h *Handler) handleAdminFeedPause(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	if _, err := h.cfg.Feeds.GetFeedByID(r.Context(), id); err != nil {
+	feed, err := h.cfg.Feeds.GetFeedByID(r.Context(), id)
+	if err != nil {
 		http.NotFound(w, r)
+		return
+	}
+	if feed.FeedType == reader.FeedTypeInbound {
+		// Inbound feeds are never polled; a pause would silently do nothing.
+		http.Error(w, "inbound feeds are not polled and cannot be paused", http.StatusConflict)
 		return
 	}
 	if err := h.cfg.Feeds.SetFeedManualPaused(r.Context(), id, true); err != nil {

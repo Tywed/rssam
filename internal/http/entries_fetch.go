@@ -6,13 +6,24 @@ import (
 	"net/http"
 	"time"
 
+	"rssam/internal/auth"
 	"rssam/internal/service"
 	"rssam/internal/storage"
 )
 
 func (s *Server) handleFetchEntryContent(w http.ResponseWriter, r *http.Request) {
-	p, ok := requireStore(w, r, "", s.contentFetcher != nil, "content fetcher is not configured")
+	p, ok := requireRole(w, r, "")
 	if !ok {
+		return
+	}
+	// The fetch rewrites entry content, so a read-scope key may not trigger
+	// it even through the deprecated GET form.
+	if p.Scope == auth.ScopeRead {
+		writeError(w, http.StatusForbidden, "api key scope read does not allow this request")
+		return
+	}
+	if s.contentFetcher == nil {
+		writeError(w, http.StatusServiceUnavailable, "content fetcher is not configured")
 		return
 	}
 	if s.entries == nil {

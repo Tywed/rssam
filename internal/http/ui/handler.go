@@ -113,6 +113,10 @@ type Config struct {
 	// FeedSilentInterval mirrors FEED_SILENT_INTERVAL (0 = silent feeds
 	// keep their own interval).
 	FeedSilentInterval time.Duration
+	// FeedDormantDays / FeedDormantInterval mirror FEED_DORMANT_DAYS /
+	// FEED_DORMANT_INTERVAL (0 days = the "dormant" card is hidden).
+	FeedDormantDays     int
+	FeedDormantInterval time.Duration
 	// RunRetentionCleanup triggers one cleanup pass immediately (nil = not
 	// available, e.g. workers run in another process).
 	RunRetentionCleanup func(ctx context.Context) (storage.RetentionCleanupResult, error)

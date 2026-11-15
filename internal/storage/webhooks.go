@@ -96,6 +96,9 @@ func (s *PostgresStore) CreateWebhook(ctx context.Context, params CreateWebhookP
 	if !json.Valid(headers) {
 		return Webhook{}, errors.New("headers must be valid JSON object")
 	}
+	if err := ValidateWebhookBodyTemplate(params.BodyTemplate); err != nil {
+		return Webhook{}, err
+	}
 	onSuccess, err := NormalizeWebhookOnSuccess(params.OnSuccessEntry)
 	if err != nil {
 		return Webhook{}, err
@@ -165,6 +168,9 @@ func (s *PostgresStore) UpdateWebhook(ctx context.Context, params UpdateWebhookP
 	}
 	if !json.Valid(headers) {
 		return Webhook{}, errors.New("headers must be valid JSON object")
+	}
+	if err := ValidateWebhookBodyTemplate(params.BodyTemplate); err != nil {
+		return Webhook{}, err
 	}
 	onSuccess, err := NormalizeWebhookOnSuccess(params.OnSuccessEntry)
 	if err != nil {

@@ -2,6 +2,7 @@ package httpserver
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strings"
 	"time"
@@ -29,13 +30,20 @@ func (s *Server) authenticateRequestSource(ctx context.Context, r *http.Request)
 
 	if s.users != nil {
 		hash := auth.HashToken(token)
+		if s.knownBadToken(hash) || s.badTokenLimiter.Exhausted(middleware.ClientIP(r)) {
+			return auth.Principal{}, false, false
+		}
 		key, err := s.users.LookupAPIKey(ctx, hash)
 		if err == nil && !key.Expired(time.Now()) {
-			_ = s.users.TouchAPIKeyUsed(ctx, key.ID)
+			s.touchAPIKey(ctx, key.ID)
 			u, uerr := s.users.GetUser(ctx, key.UserID)
 			if uerr == nil {
 				return auth.Principal{UserID: u.ID, Role: u.Role, Username: u.Username, Scope: key.Scope}, true, false
 			}
+		}
+		if errors.Is(err, storage.ErrNotFound) {
+			s.rememberBadToken(hash)
+			s.badTokenLimiter.Allow(middleware.ClientIP(r))
 		}
 	}
 
@@ -45,6 +53,50 @@ func (s *Server) authenticateRequestSource(ctx context.Context, r *http.Request)
 		return p, true, true
 	}
 	return auth.Principal{}, false, false
+}
+
+const (
+	badTokenTTL = time.Minute
+	badTokenMax = 4096
+)
+
+func (s *Server) knownBadToken(hash string) bool {
+	v, ok := s.badTokens.Load(hash)
+	if !ok {
+		return false
+	}
+	if time.Since(v.(time.Time)) > badTokenTTL {
+		s.badTokens.Delete(hash)
+		return false
+	}
+	return true
+}
+
+func (s *Server) rememberBadToken(hash string) {
+	n := 0
+	s.badTokens.Range(func(k, v any) bool {
+		n++
+		if time.Since(v.(time.Time)) > badTokenTTL {
+			s.badTokens.Delete(k)
+			n--
+		}
+		return true
+	})
+	if n >= badTokenMax {
+		s.badTokens.Clear()
+	}
+	s.badTokens.Store(hash, time.Now())
+}
+
+// touchAPIKey updates last_used_at at most once a minute per key: the
+// column is informational, one UPDATE per request is not.
+func (s *Server) touchAPIKey(ctx context.Context, keyID int64) {
+	now := time.Now()
+	if v, ok := s.apiKeyTouched.Load(keyID); ok && now.Sub(v.(time.Time)) < time.Minute {
+		return
+	}
+	s.apiKeyTouched.Store(keyID, now)
+	_ = s.users.TouchAPIKeyUsed(ctx, keyID)
 }
 
 func tokenFromHeader(r *http.Request) string {

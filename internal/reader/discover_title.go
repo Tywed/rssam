@@ -32,7 +32,7 @@ func NewTitleResolver(cfg RegistryConfig, tg *telegram.Handler, contract []bridg
 	proxyHTTP := proxyServiceHTTPClient(cfg)
 	proxyClient := proxy.NewClient(proxyHTTP)
 	if tok := strings.TrimSpace(cfg.TelegramProxyServiceToken); tok != "" {
-		proxyClient.ServiceToken = tok
+		proxyClient.SetServiceToken(tok)
 	}
 	created := telegram.NewHandler(proxyClient, cfg.HTTPClient, telegram.Config{
 		ProxyServiceURL:     cfg.TelegramProxyServiceURL,
@@ -95,9 +95,6 @@ func (r *TitleResolver) DiscoverFeed(ctx context.Context, feedURL, feedType stri
 		if d, ok := r.contractDiscoverer(ft); ok {
 			title, err := d.DiscoverTitle(ctx, feedURL)
 			return Discovery{FeedURL: feedURL, Title: title}, err
-		}
-		if ft == FeedTypeVKGroup {
-			return Discovery{}, ErrBridgeNotConfigured
 		}
 		if r.rss == nil {
 			return Discovery{}, fmt.Errorf("rss fetcher not configured")

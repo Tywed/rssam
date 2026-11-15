@@ -370,6 +370,7 @@ func (s *PostgresStore) UpdateFeedRefreshMeta(ctx context.Context, params Update
 }
 
 func updateFeedRefreshMeta(ctx context.Context, db dbExecutor, params UpdateFeedRefreshMetaParams) error {
+	// A successful poll replaces the bridge document, an empty one included.
 	bridgeState := params.BridgeState
 	if bridgeState == nil {
 		bridgeState = []byte("{}")
@@ -380,19 +381,21 @@ SET etag = $2,
     last_modified = $3,
     last_checked_at = $4,
     last_error = $5,
-    bridge_state = COALESCE($6::jsonb, bridge_state),
     parsing_error_count = CASE WHEN $5 = '' THEN 0 ELSE parsing_error_count END,
     poll_paused = CASE WHEN $5 = '' THEN FALSE ELSE poll_paused END,
-    next_check_at = COALESCE($7, next_check_at),
-    last_entry_at = CASE WHEN $8 THEN $4 ELSE last_entry_at END,
-    items_hash = COALESCE($9, items_hash)
+    next_check_at = COALESCE($6, next_check_at),
+    last_entry_at = CASE WHEN $7 THEN $4 ELSE last_entry_at END,
+    items_hash = COALESCE($8, items_hash)
 WHERE feed_id = $1`
-	cmd, err := db.Exec(ctx, q, params.ID, params.ETag, params.LastModified, params.LastCheckedAt, params.LastError, bridgeState, params.NextCheckAt, params.NewEntries > 0, params.ItemsHash)
+	cmd, err := db.Exec(ctx, q, params.ID, params.ETag, params.LastModified, params.LastCheckedAt, params.LastError, params.NextCheckAt, params.NewEntries > 0, params.ItemsHash)
 	if err != nil {
 		return fmt.Errorf("update feed refresh meta: %w", err)
 	}
 	if cmd.RowsAffected() == 0 {
 		return ErrNotFound
+	}
+	if err := upsertBridgeState(ctx, db, params.ID, bridgeState); err != nil {
+		return err
 	}
 	if params.NewFeedURL != "" {
 		// A permanent redirect: the catalog row changes, once, unless the

@@ -196,7 +196,7 @@ func TestIntegration_CircuitResetsAndDailyReset(t *testing.T) {
 	}
 	for _, id := range []int64{errored.ID, tripped.ID} {
 		f, _ := store.GetFeedByID(ctx, id)
-		if f.PollPaused || f.ParsingErrorCount != 0 || f.LastError != "" || f.NextCheckAt == nil || f.NextCheckAt.Before(before.Add(-time.Second)) || f.NextCheckAt.After(time.Now().Add(time.Second)) {
+		if f.PollPaused || f.ParsingErrorCount != 0 || f.LastError != "" || f.NextCheckAt == nil || f.NextCheckAt.Before(before.Add(-time.Second)) || f.NextCheckAt.After(time.Now().Add(RefreshAllSpread(2)+time.Second)) {
 			t.Fatalf("after daily reset: %+v", f)
 		}
 	}
@@ -232,7 +232,7 @@ func TestIntegration_AdminFeedDashboard(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	sum, err := store.AdminFeedSummary(ctx, 0)
+	sum, err := store.AdminFeedSummary(ctx, 0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}

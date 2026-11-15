@@ -34,6 +34,9 @@ func ScopeAllows(scope, method, path string) bool {
 		if isSafeMethod(method) {
 			return true
 		}
+		if method == http.MethodPost {
+			return strings.HasPrefix(path, "/v1/entries/") && strings.HasSuffix(path, "/fetch-content")
+		}
 		if method != http.MethodPut {
 			return false
 		}

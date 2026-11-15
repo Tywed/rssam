@@ -4,6 +4,7 @@ import (
 	"context"
 	_ "embed"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -155,5 +156,35 @@ func TestClient_Search_BuildsURL(t *testing.T) {
 	u, _ := url.Parse(raw)
 	if u.Query().Get("extended") != "1" || u.Query().Get("v") != "5.199" {
 		t.Fatalf("query=%v", u.Query())
+	}
+}
+
+// A search shares the token and throttling mapping of the wall mode; an
+// empty token at call time (bridge page not filled in yet) is ErrMissingToken.
+func TestHandler_Search_APIErrors(t *testing.T) {
+	var code int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		body, _ := json.Marshal(searchResponse{Error: &apiError{ErrorCode: code, ErrorMsg: "x"}})
+		_, _ = w.Write(body)
+	}))
+	t.Cleanup(srv.Close)
+	client := &Client{http: srv.Client(), cfg: Config{AccessToken: "tok", RateLimitCooldown: 5 * time.Second}.withDefaults(), apiURL: srv.URL}
+	h := NewHandler(client, client.cfg)
+
+	code = 5
+	if _, err := h.fetch(context.Background(), "vk-search://q", FetchState{}); !errors.Is(err, ErrTokenRejected) {
+		t.Fatalf("code 5: %v", err)
+	}
+	code = 29
+	var cd CooldownError
+	if _, err := h.fetch(context.Background(), "vk-search://q2", FetchState{}); !errors.As(err, &cd) || cd.Code != 29 {
+		t.Fatalf("code 29: %v", err)
+	}
+	h.UpdateConfig(Config{AccessToken: " "})
+	if _, err := h.fetch(context.Background(), "vk-search://q3", FetchState{}); !errors.Is(err, ErrMissingToken) {
+		t.Fatalf("empty token: %v", err)
+	}
+	if _, err := h.DiscoverTitle(context.Background(), "https://vk.com/tass"); !errors.Is(err, ErrMissingToken) {
+		t.Fatalf("empty token wall title: %v", err)
 	}
 }

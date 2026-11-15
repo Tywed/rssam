@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 
 	"rssam/internal/ssrf"
 )
@@ -16,6 +17,7 @@ import (
 type Client struct {
 	http   *http.Client
 	guard  *ssrf.Guard
+	cfgMu  sync.RWMutex
 	cfg    Config
 	apiURL string
 }
@@ -41,10 +43,12 @@ func NewClient(client *http.Client, guard *ssrf.Guard, cfg Config) (*Client, err
 
 func (c *Client) UpdateConfig(cfg Config) {
 	cfg = cfg.withDefaults()
+	c.cfgMu.Lock()
 	c.cfg = cfg
 	if base := strings.TrimSpace(cfg.APIBaseURL); base != "" {
 		c.apiURL = strings.TrimRight(base, "/") + "/posts"
 	}
+	c.cfgMu.Unlock()
 }
 
 type SearchParams struct {
@@ -57,7 +61,7 @@ type SearchParams struct {
 func (c *Client) Search(ctx context.Context, p SearchParams) (*postsResponse, int, error) {
 	limit := p.Limit
 	if limit < 1 {
-		limit = c.cfg.DefaultLimit
+		limit = c.config().DefaultLimit
 	}
 	if limit > 100 {
 		limit = 100
@@ -67,7 +71,7 @@ func (c *Client) Search(ctx context.Context, p SearchParams) (*postsResponse, in
 		orderBy = "date"
 	}
 
-	u, err := url.Parse(c.apiURL)
+	u, err := url.Parse(c.endpoint())
 	if err != nil {
 		return nil, 0, fmt.Errorf("maxstat: parse api url: %w", err)
 	}
@@ -89,7 +93,7 @@ func (c *Client) Search(ctx context.Context, p SearchParams) (*postsResponse, in
 	if err != nil {
 		return nil, 0, fmt.Errorf("maxstat: create request: %w", err)
 	}
-	token, err := resolveAccessToken(p.AccessToken, c.cfg.AccessToken)
+	token, err := resolveAccessToken(p.AccessToken, c.config().AccessToken)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -134,4 +138,16 @@ func (c *Client) Search(ctx context.Context, p SearchParams) (*postsResponse, in
 		return nil, resp.StatusCode, fmt.Errorf("maxstat: decode response: %w", err)
 	}
 	return &parsed, resp.StatusCode, nil
+}
+
+func (c *Client) config() Config {
+	c.cfgMu.RLock()
+	defer c.cfgMu.RUnlock()
+	return c.cfg
+}
+
+func (c *Client) endpoint() string {
+	c.cfgMu.RLock()
+	defer c.cfgMu.RUnlock()
+	return c.apiURL
 }

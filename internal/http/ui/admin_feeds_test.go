@@ -73,7 +73,7 @@ func (m *uiMemAdminFeeds) ListAdminFeedsPage(_ context.Context, params storage.A
 	}
 	return out, total, nil
 }
-func (m *uiMemAdminFeeds) AdminFeedSummary(context.Context, time.Duration) (storage.AdminFeedSummary, error) {
+func (m *uiMemAdminFeeds) AdminFeedSummary(context.Context, time.Duration, time.Duration) (storage.AdminFeedSummary, error) {
 	return m.summary, nil
 }
 func (m *uiMemAdminFeeds) PollFeedJobCounts(context.Context) (storage.PollFeedJobCounts, error) {

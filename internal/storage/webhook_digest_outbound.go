@@ -79,11 +79,10 @@ func BuildWebhookDigestOutbound(w Webhook, items []WebhookDigestItem, sentAt tim
 		if err != nil {
 			return WebhookOutbound{}, err
 		}
-		var buf strings.Builder
-		if err := tmpl.Execute(&buf, map[string]any{"items": list, "count": len(list), "payload": string(payload)}); err != nil {
-			return WebhookOutbound{}, fmt.Errorf("render body_template: %w", err)
+		body, err = executeBodyTemplate(tmpl, map[string]any{"items": list, "count": len(list), "payload": string(payload)})
+		if err != nil {
+			return WebhookOutbound{}, err
 		}
-		body = []byte(buf.String())
 	}
 	method := strings.ToUpper(strings.TrimSpace(w.Method))
 	if method == "" {

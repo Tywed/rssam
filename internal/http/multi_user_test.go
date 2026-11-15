@@ -22,6 +22,8 @@ type memUserStore struct {
 	keys    map[string]storage.APIKey
 	nextUID int64
 	nextKID int64
+	lookups int
+	touches int
 }
 
 func newMemUserStore() *memUserStore {
@@ -172,6 +174,7 @@ func (m *memUserStore) DeleteUser(_ context.Context, id int64) error {
 func (m *memUserStore) LookupAPIKey(_ context.Context, hash string) (storage.APIKey, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	m.lookups++
 	k, ok := m.keys[hash]
 	if !ok {
 		return storage.APIKey{}, storage.ErrNotFound
@@ -179,7 +182,12 @@ func (m *memUserStore) LookupAPIKey(_ context.Context, hash string) (storage.API
 	return k, nil
 }
 
-func (m *memUserStore) TouchAPIKeyUsed(_ context.Context, _ int64) error { return nil }
+func (m *memUserStore) TouchAPIKeyUsed(_ context.Context, _ int64) error {
+	m.mu.Lock()
+	m.touches++
+	m.mu.Unlock()
+	return nil
+}
 
 func (m *memUserStore) ListAPIKeys(_ context.Context, userID int64) ([]storage.APIKey, error) {
 	m.mu.Lock()

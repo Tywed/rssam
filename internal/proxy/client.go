@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -29,10 +30,11 @@ const badProxyCooldown = 2 * time.Second
 type Client struct {
 	Health       Health
 	HTTP         *http.Client
-	ServiceToken string
+	serviceToken atomic.Pointer[string]
 
 	mu            sync.Mutex
 	cached        *Proxy
+	cachedService string
 	socks         *http.Client
 	socksInsecure bool
 	socksTimeout  time.Duration
@@ -64,7 +66,7 @@ func (c *Client) WorkingProxy(ctx context.Context, serviceURL, targetURL string)
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if c.cached != nil {
+	if c.cached != nil && c.cachedService == serviceURL {
 		return *c.cached, nil
 	}
 	p, err := c.fetchProxy(ctx, serviceURL, targetURL)
@@ -73,6 +75,7 @@ func (c *Client) WorkingProxy(ctx context.Context, serviceURL, targetURL string)
 	}
 	cp := p
 	c.cached = &cp
+	c.cachedService = serviceURL
 	return p, nil
 }
 
@@ -164,7 +167,7 @@ func (c *Client) fetchProxy(ctx context.Context, serviceURL, targetURL string) (
 		return Proxy{}, fmt.Errorf("proxy: create request: %w", err)
 	}
 	req.Header.Set("Accept", "application/json")
-	if tok := strings.TrimSpace(c.ServiceToken); tok != "" {
+	if tok := c.token(); tok != "" {
 		req.Header.Set("Authorization", "Bearer "+tok)
 	}
 
@@ -229,7 +232,7 @@ func (c *Client) ReportBadProxy(ctx context.Context, serviceURL, proxyID, reason
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
-	if tok := strings.TrimSpace(c.ServiceToken); tok != "" {
+	if tok := c.token(); tok != "" {
 		req.Header.Set("Authorization", "Bearer "+tok)
 	}
 
@@ -280,4 +283,18 @@ func ServiceHost(serviceURL string) (string, error) {
 		return "", fmt.Errorf("proxy: invalid service URL host")
 	}
 	return strings.ToLower(u.Hostname()), nil
+}
+
+// SetServiceToken replaces the bearer token for the proxy service; safe
+// while requests are in flight.
+func (c *Client) SetServiceToken(tok string) {
+	tok = strings.TrimSpace(tok)
+	c.serviceToken.Store(&tok)
+}
+
+func (c *Client) token() string {
+	if p := c.serviceToken.Load(); p != nil {
+		return *p
+	}
+	return ""
 }

@@ -99,7 +99,7 @@ func TestIntegration_AdminWebhookBindingsLogsAndRetryAll(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.UpdateFeed(ctx, owner.ID, UpdateFeedParams{ID: feed.ID, FeedURL: feed.FeedURL, Title: feed.Title, IntervalMinutes: 60, WebhookID: &wh.ID}); err != nil {
+	if _, err := store.UpdateFeed(ctx, owner.ID, UpdateFeedParams{ID: feed.ID, FeedURL: feed.FeedURL, Title: feed.Title, IntervalMinutes: 60, WebhookID: &wh.ID, SetWebhook: true}); err != nil {
 		t.Fatal(err)
 	}
 	flt, err := store.CreateFilter(ctx, CreateFilterParams{
@@ -245,5 +245,36 @@ func TestIntegration_WebhookDeliveryContext(t *testing.T) {
 	}
 	if _, err := store.LoadWebhookDeliveryContext(ctx, 999999999); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("missing log: err=%v", err)
+	}
+}
+
+// A feed update that does not own the webhook field (REST PUT /v1/feeds)
+// leaves the caller's subscription webhook as it is; the UI form, which
+// has the select, sets it explicitly — to a value or to none.
+func TestIntegration_UpdateFeedKeepsSubscriptionWebhookUnlessSet(t *testing.T) {
+	store := isolatedStore(t)
+	ctx := context.Background()
+	owner := newIntegrationUser(t, store, "whkeep")
+	feed := newFeedForUser(t, store, owner.ID, "whkeep", 60)
+	wh, err := store.CreateWebhook(ctx, CreateWebhookParams{UserID: owner.ID, Name: "keep", URL: "https://example.com/keep", Headers: []byte(`{}`), Enabled: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.UpdateSubscription(ctx, owner.ID, feed.ID, SubscriptionParams{WebhookID: &wh.ID}); err != nil {
+		t.Fatal(err)
+	}
+	base := UpdateFeedParams{ID: feed.ID, FeedURL: feed.FeedURL, Title: "renamed", IntervalMinutes: 60}
+	if _, err := store.UpdateFeed(ctx, owner.ID, base); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := store.GetFeed(ctx, owner.ID, feed.ID); got.WebhookID == nil || *got.WebhookID != wh.ID {
+		t.Fatalf("update without SetWebhook dropped the webhook: %+v", got.WebhookID)
+	}
+	base.SetWebhook = true
+	if _, err := store.UpdateFeed(ctx, owner.ID, base); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := store.GetFeed(ctx, owner.ID, feed.ID); got.WebhookID != nil {
+		t.Fatalf("SetWebhook with nil must unbind: %+v", *got.WebhookID)
 	}
 }

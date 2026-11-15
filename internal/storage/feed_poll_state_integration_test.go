@@ -132,8 +132,15 @@ func TestIntegration_FeedPollStateUnloggedAndRecreated(t *testing.T) {
 		t.Fatalf("re-created rows: n=%d err=%v", n, err)
 	}
 	got, err := store.GetFeedByID(ctx, created.ID)
-	if err != nil || got.NextCheckAt != nil || got.ETag != "" || got.ParsingErrorCount != 0 {
+	if err != nil || got.NextCheckAt == nil || got.ETag != "" || got.ParsingErrorCount != 0 {
 		t.Fatalf("feed after re-creation: %+v err=%v", got, err)
+	}
+	// Re-created rows are spread over the next 30 minutes, not all due now.
+	if d := time.Until(*got.NextCheckAt); d < -time.Second || d > 30*time.Minute {
+		t.Fatalf("re-created next_check_at %v from now, want within 30 minutes", d)
+	}
+	if _, err := store.db.Exec(ctx, `UPDATE feed_poll_state SET next_check_at = now() WHERE feed_id = $1`, created.ID); err != nil {
+		t.Fatal(err)
 	}
 	due, err := store.ListFeedsDue(ctx, 100, nil, nil)
 	if err != nil {
@@ -144,6 +151,69 @@ func TestIntegration_FeedPollStateUnloggedAndRecreated(t *testing.T) {
 		found = found || d.ID == created.ID
 	}
 	if !found {
-		t.Fatalf("re-created feed must be due at once, got %+v", due)
+		t.Fatalf("re-created feed must be back on the schedule, got %+v", due)
+	}
+}
+
+// The bridge document lives in a logged table; an unchanged document costs
+// no row version, a changed one replaces it, and a successful poll without
+// a document resets it to {}.
+func TestIntegration_BridgeStateUpsert(t *testing.T) {
+	store := isolatedStore(t)
+	ctx := context.Background()
+	u := testUser(t, store, ctx, "bstate")
+	f, err := store.CreateFeed(ctx, u.ID, CreateFeedParams{FeedURL: "https://example.com/bs.xml", FeedType: "rss", Title: "bs", IntervalMinutes: 60})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var n int
+	if err := store.db.QueryRow(ctx, `SELECT count(*) FROM feed_bridge_state WHERE feed_id = $1`, f.ID).Scan(&n); err != nil || n != 0 {
+		t.Fatalf("rows after create without state: %d err=%v", n, err)
+	}
+	now := time.Now()
+	meta := func(state []byte) {
+		t.Helper()
+		if err := store.UpdateFeedRefreshMeta(ctx, UpdateFeedRefreshMetaParams{ID: f.ID, LastCheckedAt: now, BridgeState: state}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	meta([]byte(`{"rss":{"body":"a"}}`))
+	meta([]byte(`{"rss":{"body":"a"}}`))
+	got, err := store.GetFeedByID(ctx, f.ID)
+	if err != nil || string(got.BridgeState) != `{"rss": {"body": "a"}}` {
+		t.Fatalf("state after two identical polls: %s err=%v", got.BridgeState, err)
+	}
+	// xmin/xmax of the row: a new version would change xmin, a row lock
+	// (the ON CONFLICT ... DO UPDATE WHERE form) would set xmax.
+	version := func() (string, string) {
+		t.Helper()
+		var xmin, xmax string
+		if err := store.db.QueryRow(ctx, `SELECT xmin::text, xmax::text FROM feed_bridge_state WHERE feed_id = $1`, f.ID).Scan(&xmin, &xmax); err != nil {
+			t.Fatal(err)
+		}
+		return xmin, xmax
+	}
+	xminBefore, _ := version()
+	if err := upsertBridgeState(ctx, store.db, f.ID, []byte(`{"rss":{"body":"a"}}`)); err != nil {
+		t.Fatal(err)
+	}
+	if xmin, xmax := version(); xmin != xminBefore || xmax != "0" {
+		t.Fatalf("unchanged document touched the row: xmin %s -> %s, xmax %s", xminBefore, xmin, xmax)
+	}
+	meta(nil)
+	if got, err := store.GetFeedByID(ctx, f.ID); err != nil || string(got.BridgeState) != `{}` {
+		t.Fatalf("state after a poll without a document: %s err=%v", got.BridgeState, err)
+	}
+	if err := store.RecordFeedPollFailure(ctx, RecordFeedPollFailureParams{ID: f.ID, Error: "x", CheckedAt: now, NextCheckAt: now, BridgeState: []byte(`{"telegram":{"c":1}}`)}); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := store.GetFeedByID(ctx, f.ID); err != nil || string(got.BridgeState) != `{"telegram": {"c": 1}}` {
+		t.Fatalf("state after a failure with a document: %s err=%v", got.BridgeState, err)
+	}
+	if err := store.DeleteFeed(ctx, u.ID, f.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.db.QueryRow(ctx, `SELECT count(*) FROM feed_bridge_state WHERE feed_id = $1`, f.ID).Scan(&n); err != nil || n != 0 {
+		t.Fatalf("rows after delete: %d err=%v", n, err)
 	}
 }

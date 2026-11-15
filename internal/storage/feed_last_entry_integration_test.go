@@ -4,6 +4,7 @@ package storage
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 )
@@ -54,15 +55,34 @@ WHERE f.last_entry_at IS NULL`); err != nil {
 		t.Fatal(err)
 	}
 
-	sum, err := store.AdminFeedSummary(ctx, week)
+	sum, err := store.AdminFeedSummary(ctx, week, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if sum.SilentCount != 2 {
 		t.Fatalf("silent = quiet + lively (paused excluded, fresh too young): %+v", sum)
 	}
-	if sum, _ := store.AdminFeedSummary(ctx, 0); sum.SilentCount != 0 {
+	if sum, _ := store.AdminFeedSummary(ctx, 0, 0); sum.SilentCount != 0 {
 		t.Fatalf("window 0 disables: %+v", sum)
+	}
+	// Second tier: quiet (never produced, created 30 days ago) is dormant at
+	// 20 days, lively (item 10 days ago) is not; the alert list says why.
+	sum, err = store.AdminFeedSummary(ctx, week, 20*24*time.Hour)
+	if err != nil || sum.SilentCount != 2 || sum.DormantCount != 1 {
+		t.Fatalf("dormant summary: %+v err=%v", sum, err)
+	}
+	if rows, total, err := store.ListAdminFeedsPage(ctx, AdminFeedsListParams{Status: "dormant", DormantAfter: 20 * 24 * time.Hour}); err != nil || total != 1 || len(rows) != 1 || rows[0].ID != quiet.ID {
+		t.Fatalf("list dormant: n=%d total=%d err=%v", len(rows), total, err)
+	}
+	dormant, err := store.ListDormantFeeds(ctx, 20*24*time.Hour)
+	if err != nil || len(dormant) != 1 || dormant[0].ID != quiet.ID || dormant[0].Error != "ни одной записи с момента добавления" {
+		t.Fatalf("dormant alert list: %+v err=%v", dormant, err)
+	}
+	if d, _ := store.ListDormantFeeds(ctx, 0); d != nil {
+		t.Fatalf("dormant off: %+v", d)
+	}
+	if d, _ := store.ListDormantFeeds(ctx, 5*24*time.Hour); len(d) != 2 || !strings.HasPrefix(d[1].Error, "последняя запись 20") {
+		t.Fatalf("dormant 5d: %+v", d)
 	}
 	rows, total, err := store.ListAdminFeedsPage(ctx, AdminFeedsListParams{Status: "silent", SortKey: "last_entry", Order: "desc", SilentAfter: week})
 	if err != nil || total != 2 || len(rows) != 2 {
@@ -93,7 +113,7 @@ WHERE f.last_entry_at IS NULL`); err != nil {
 	if !got.LastEntryAt.Equal(now) || !got.LastCheckedAt.Equal(later) {
 		t.Fatalf("empty poll must not touch last_entry_at: entry=%v checked=%v", got.LastEntryAt, got.LastCheckedAt)
 	}
-	if sum, _ := store.AdminFeedSummary(ctx, week); sum.SilentCount != 1 {
+	if sum, _ := store.AdminFeedSummary(ctx, week, 0); sum.SilentCount != 1 {
 		t.Fatalf("quiet is no longer silent: %+v", sum)
 	}
 	_ = fresh
@@ -123,7 +143,7 @@ func TestIntegration_InboundFeedSilentByInterval(t *testing.T) {
 
 	// The global window is off: polled feeds are never silent, the inbound
 	// feed is judged by its own interval.
-	sum, err := store.AdminFeedSummary(ctx, 0)
+	sum, err := store.AdminFeedSummary(ctx, 0, 0)
 	if err != nil || sum.SilentCount != 1 {
 		t.Fatalf("summary: %+v err=%v", sum, err)
 	}
@@ -149,7 +169,7 @@ func TestIntegration_InboundFeedSilentByInterval(t *testing.T) {
 	if err := store.UpdateFeedRefreshMeta(ctx, UpdateFeedRefreshMetaParams{ID: hourly.ID, LastCheckedAt: time.Now(), NewEntries: 1}); err != nil {
 		t.Fatal(err)
 	}
-	if sum, _ := store.AdminFeedSummary(ctx, 0); sum.SilentCount != 0 {
+	if sum, _ := store.AdminFeedSummary(ctx, 0, 0); sum.SilentCount != 0 {
 		t.Fatalf("after delivery: %+v", sum)
 	}
 	// The global window of 7 days does not apply to inbound feeds: 3 hours
@@ -158,7 +178,7 @@ func TestIntegration_InboundFeedSilentByInterval(t *testing.T) {
 	if _, err := store.db.Exec(ctx, `UPDATE feed_poll_state SET last_entry_at = now() - interval '2 hours' WHERE feed_id = $1`, hourly.ID); err != nil {
 		t.Fatal(err)
 	}
-	if sum, _ := store.AdminFeedSummary(ctx, 7*24*time.Hour); sum.SilentCount != 1 {
+	if sum, _ := store.AdminFeedSummary(ctx, 7*24*time.Hour, 0); sum.SilentCount != 1 {
 		t.Fatalf("with window: %+v", sum)
 	}
 }

@@ -582,11 +582,10 @@
     var titleInput = document.getElementById('feed-title-input');
     var submitBtn = document.getElementById('feed-submit-btn');
     var rutubeChannelEl = document.getElementById('rutube-channel-id');
-    var vkSearchQueryEl = document.getElementById('vk-search-query');
+    var vkEl = document.getElementById('vk-target');
     var dzenSearchQueryEl = document.getElementById('dzen-search-query');
     var dzenChannelEl = document.getElementById('dzen-channel-id');
     var okGroupEl = document.getElementById('ok-group-id');
-    var vkGroupEl = document.getElementById('vk-group-id');
     var smotrimBrandEl = document.getElementById('smotrim-brand-id');
     var tlsCheckbox = document.getElementById('feed-tls-insecure');
     var settingsPanels = Array.from(document.querySelectorAll('.feed-type-settings'));
@@ -629,10 +628,12 @@
           ? 'ID канала: ' + data.channel_id
           : '';
       }
-      if (vkSearchQueryEl) {
-        vkSearchQueryEl.textContent = (feedType === 'vk_search' && data && data.search_query)
-          ? 'Поисковый запрос: ' + data.search_query
-          : '';
+      if (vkEl) {
+        vkEl.textContent = (feedType === 'vk' && data && data.search_query)
+          ? 'Режим: поиск · запрос: ' + data.search_query
+          : (feedType === 'vk' && data && data.channel_id)
+            ? 'Режим: стена · ' + data.channel_id
+            : '';
       }
       if (dzenSearchQueryEl) {
         dzenSearchQueryEl.textContent = (feedType === 'dzen_news' && data && data.search_query)
@@ -647,11 +648,6 @@
       if (okGroupEl) {
         okGroupEl.textContent = (feedType === 'ok_group' && data && data.channel_id)
           ? 'Группа: ' + data.channel_id
-          : '';
-      }
-      if (vkGroupEl) {
-        vkGroupEl.textContent = (feedType === 'vk_group' && data && data.channel_id)
-          ? 'Стена: ' + data.channel_id
           : '';
       }
       if (smotrimBrandEl) {

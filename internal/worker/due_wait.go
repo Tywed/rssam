@@ -90,6 +90,6 @@ func (r *Runner) ensureFeedPollStateRows(ctx context.Context) {
 		return
 	}
 	if n > 0 {
-		r.Log.Warn("feed poll state rows re-created; those feeds are fetched in full once", "feeds", n)
+		r.Log.Warn("feed poll state rows re-created; those feeds are fetched in full once within 30 minutes", "feeds", n)
 	}
 }

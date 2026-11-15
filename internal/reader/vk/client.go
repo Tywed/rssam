@@ -18,6 +18,7 @@ import (
 
 type Client struct {
 	http   *http.Client
+	cfgMu  sync.RWMutex
 	cfg    Config
 	apiURL string
 
@@ -25,11 +26,10 @@ type Client struct {
 	next   time.Time
 }
 
+// NewClient accepts an empty token: the bridge page can set one at runtime
+// (UpdateConfig); until then every call fails with ErrMissingToken.
 func NewClient(client *http.Client, guard *ssrf.Guard, cfg Config) (*Client, error) {
 	cfg = cfg.withDefaults()
-	if strings.TrimSpace(cfg.AccessToken) == "" {
-		return nil, errMissingToken
-	}
 	if client == nil {
 		client = http.DefaultClient
 	}
@@ -72,7 +72,9 @@ func (c *Client) pace(ctx context.Context) error {
 // UpdateConfig replaces client settings at runtime.
 func (c *Client) UpdateConfig(cfg Config) {
 	cfg = cfg.withDefaults()
+	c.cfgMu.Lock()
 	c.cfg = cfg
+	c.cfgMu.Unlock()
 }
 
 type SearchParams struct {
@@ -85,7 +87,7 @@ type SearchParams struct {
 func (c *Client) Search(ctx context.Context, p SearchParams) (*searchResponseBody, *apiError, error) {
 	count := p.Count
 	if count < 1 {
-		count = c.cfg.DefaultCount
+		count = c.config().DefaultCount
 	}
 	if count > 100 {
 		count = 100
@@ -121,12 +123,16 @@ func (c *Client) call(ctx context.Context, method string, q url.Values) (*search
 		return nil, nil, fmt.Errorf("vk: parse api url: %w", err)
 	}
 	q.Set("extended", "1")
-	q.Set("v", c.cfg.APIVersion)
+	q.Set("v", c.config().APIVersion)
 	u.RawQuery = q.Encode()
 
 	// The host is fixed (validated in NewClient) and the guarded transport
 	// checks the resolved address when it dials; a ValidateURL here would
 	// be one more DNS query per request.
+	token := strings.TrimSpace(c.config().AccessToken)
+	if token == "" {
+		return nil, nil, ErrMissingToken
+	}
 	if err := c.pace(ctx); err != nil {
 		return nil, nil, err
 	}
@@ -136,7 +142,7 @@ func (c *Client) call(ctx context.Context, method string, q url.Values) (*search
 		return nil, nil, fmt.Errorf("vk: create request: %w", err)
 	}
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("Authorization", "Bearer "+c.cfg.AccessToken)
+	req.Header.Set("Authorization", "Bearer "+token)
 
 	resp, err := c.http.Do(req)
 	if err != nil {
@@ -160,4 +166,10 @@ func (c *Client) call(ctx context.Context, method string, q url.Values) (*search
 		return nil, nil, fmt.Errorf("vk: empty response")
 	}
 	return parsed.Response, nil, nil
+}
+
+func (c *Client) config() Config {
+	c.cfgMu.RLock()
+	defer c.cfgMu.RUnlock()
+	return c.cfg
 }

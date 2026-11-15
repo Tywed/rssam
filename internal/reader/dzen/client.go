@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 
 	"rssam/internal/ssrf"
 )
@@ -13,6 +14,7 @@ import (
 type Client struct {
 	http  *http.Client
 	guard *ssrf.Guard
+	cfgMu sync.RWMutex
 	cfg   Config
 }
 
@@ -29,7 +31,9 @@ func NewClient(client *http.Client, guard *ssrf.Guard, cfg Config) (*Client, err
 }
 
 func (c *Client) UpdateConfig(cfg Config) {
+	c.cfgMu.Lock()
 	c.cfg = cfg.withDefaults()
+	c.cfgMu.Unlock()
 }
 
 func (c *Client) SearchNews(ctx context.Context, query string) ([]NewsItem, error) {
@@ -37,7 +41,7 @@ func (c *Client) SearchNews(ctx context.Context, query string) ([]NewsItem, erro
 	if query == "" {
 		return nil, errMissingQuery
 	}
-	reqURL := SearchPageURL(c.cfg.SearchURL, query)
+	reqURL := SearchPageURL(c.config().SearchURL, query)
 	if c.guard != nil {
 		if err := c.guard.ValidateURL(reqURL); err != nil {
 			return nil, err
@@ -50,10 +54,10 @@ func (c *Client) SearchNews(ctx context.Context, query string) ([]NewsItem, erro
 	}
 	req.Header.Set("Accept", "text/html,application/xhtml+xml")
 	req.Header.Set("Accept-Language", "ru-RU,ru;q=0.9")
-	if ua := strings.TrimSpace(c.cfg.UserAgent); ua != "" {
+	if ua := strings.TrimSpace(c.config().UserAgent); ua != "" {
 		req.Header.Set("User-Agent", ua)
 	}
-	if cookie := strings.TrimSpace(c.cfg.Cookie); cookie != "" {
+	if cookie := strings.TrimSpace(c.config().Cookie); cookie != "" {
 		req.Header.Set("Cookie", cookie)
 	}
 
@@ -79,4 +83,10 @@ func (c *Client) SearchNews(ctx context.Context, query string) ([]NewsItem, erro
 		return nil, errEmptyResults
 	}
 	return items, nil
+}
+
+func (c *Client) config() Config {
+	c.cfgMu.RLock()
+	defer c.cfgMu.RUnlock()
+	return c.cfg
 }

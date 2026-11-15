@@ -1,17 +1,14 @@
 package reader
 
 import (
-	"regexp"
-	"strings"
-
 	"rssam/internal/bridge/v1"
+	"rssam/internal/feedrules"
 )
 
 // ApplyFeedRules filters entries using blocked_rules and keep_rules (regexp per line).
 func ApplyFeedRules(entries []bridge.Entry, blockedRules, keepRules string) []bridge.Entry {
-	blockedRE := compileMultilineRegex(blockedRules)
-	keepRE := compileMultilineRegex(keepRules)
-	if blockedRE == nil && keepRE == nil {
+	r := feedrules.Cached(blockedRules, keepRules, "")
+	if r == nil || (r.Blocked == nil && r.Keep == nil) {
 		return entries
 	}
 
@@ -21,10 +18,10 @@ func ApplyFeedRules(entries []bridge.Entry, blockedRules, keepRules string) []br
 		if entry.Author != nil {
 			text += " " + *entry.Author
 		}
-		if blockedRE != nil && blockedRE.MatchString(text) {
+		if r.Blocked != nil && r.Blocked.MatchString(text) {
 			continue
 		}
-		if keepRE != nil && !keepRE.MatchString(text) {
+		if r.Keep != nil && !r.Keep.MatchString(text) {
 			continue
 		}
 		filtered = append(filtered, entry)
@@ -35,64 +32,14 @@ func ApplyFeedRules(entries []bridge.Entry, blockedRules, keepRules string) []br
 // ApplyURLRewriteRules rewrites entry URLs using pattern/replacement pairs.
 // Format: "pattern1\nreplacement1\npattern2\nreplacement2".
 func ApplyURLRewriteRules(entries []bridge.Entry, rules string) []bridge.Entry {
-	rules = strings.TrimSpace(rules)
-	if rules == "" {
+	r := feedrules.Cached("", "", rules)
+	if r == nil || len(r.Rewrites) == 0 {
 		return entries
 	}
-	lines := strings.Split(rules, "\n")
-	if len(lines)%2 != 0 {
-		return entries
-	}
-
-	type rewriteRule struct {
-		pattern     *regexp.Regexp
-		replacement string
-	}
-	compiled := make([]rewriteRule, 0, len(lines)/2)
-	for i := 0; i < len(lines)-1; i += 2 {
-		pattern := strings.TrimSpace(lines[i])
-		if pattern == "" {
-			continue
-		}
-		re, err := regexp.Compile(pattern)
-		if err != nil {
-			continue
-		}
-		compiled = append(compiled, rewriteRule{pattern: re, replacement: lines[i+1]})
-	}
-	if len(compiled) == 0 {
-		return entries
-	}
-
 	out := make([]bridge.Entry, len(entries))
 	copy(out, entries)
 	for i := range out {
-		for _, rule := range compiled {
-			out[i].URL = rule.pattern.ReplaceAllString(out[i].URL, rule.replacement)
-		}
+		out[i].URL = r.Apply(out[i].URL)
 	}
 	return out
-}
-
-func compileMultilineRegex(rules string) *regexp.Regexp {
-	rules = strings.TrimSpace(rules)
-	if rules == "" {
-		return nil
-	}
-	lines := strings.Split(rules, "\n")
-	patterns := make([]string, 0, len(lines))
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if line != "" {
-			patterns = append(patterns, line)
-		}
-	}
-	if len(patterns) == 0 {
-		return nil
-	}
-	re, err := regexp.Compile("(?:" + strings.Join(patterns, ")|(?:") + ")")
-	if err != nil {
-		return nil
-	}
-	return re
 }

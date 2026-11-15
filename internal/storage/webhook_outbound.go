@@ -1,12 +1,10 @@
 package storage
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"html"
 	"strings"
-	"text/template"
 )
 
 type WebhookOutbound struct {
@@ -149,34 +147,6 @@ func renderChatTemplate(bodyTemplate string, feed WebhookFeed, entry Entry, filt
 		return "", err
 	}
 	return string(b), nil
-}
-
-func parseBodyTemplate(bodyTemplate string) (*template.Template, error) {
-	tmpl, err := template.New("webhook_body").Option("missingkey=error").Parse(bodyTemplate)
-	if err != nil {
-		return nil, fmt.Errorf("invalid body_template: %w", err)
-	}
-	return tmpl, nil
-}
-
-func RenderWebhookBodyTemplate(bodyTemplate string, feed WebhookFeed, entry Entry, filter *Filter, payloadJSON []byte) ([]byte, error) {
-	tmpl, err := parseBodyTemplate(bodyTemplate)
-	if err != nil {
-		return nil, err
-	}
-	data := map[string]any{
-		"entry":  entry,
-		"feed":   feed,
-		"filter": filter,
-	}
-	if payloadJSON != nil {
-		data["payload"] = string(payloadJSON)
-	}
-	var buf bytes.Buffer
-	if err := tmpl.Execute(&buf, data); err != nil {
-		return nil, fmt.Errorf("render body_template: %w", err)
-	}
-	return buf.Bytes(), nil
 }
 
 func ProviderDeliveryOK(kind string, statusCode int, snippet string) (bool, string) {

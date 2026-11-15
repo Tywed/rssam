@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"rssam/internal/bridge/v1"
@@ -13,6 +14,7 @@ import (
 // Handler fetches Smotrim brand videos.
 type Handler struct {
 	client *Client
+	cfgMu  sync.RWMutex
 	cfg    Config
 }
 
@@ -22,7 +24,9 @@ func NewHandler(client *Client, cfg Config) *Handler {
 
 func (h *Handler) UpdateConfig(cfg Config) {
 	cfg = cfg.withDefaults()
+	h.cfgMu.Lock()
 	h.cfg = cfg
+	h.cfgMu.Unlock()
 	if h.client != nil {
 		h.client.UpdateConfig(cfg)
 	}
@@ -83,7 +87,7 @@ func (h *Handler) fetch(ctx context.Context, feedURL string, st FetchState) (Fet
 		Entries:   entries,
 		State:     resolved,
 		FeedTitle: FeedTitle(brandTitle, resolved.BrandID),
-		FeedURI:   BrandPageURL(h.cfg.BrandBaseURL, resolved.BrandID),
+		FeedURI:   BrandPageURL(h.config().BrandBaseURL, resolved.BrandID),
 	}, nil
 }
 
@@ -131,4 +135,10 @@ func FeedTitle(brandTitle, brandID string) string {
 
 func DedupHash(publicID int64) string {
 	return model.DedupHashFromString(fmt.Sprintf("smotrim-video-%d", publicID))
+}
+
+func (h *Handler) config() Config {
+	h.cfgMu.RLock()
+	defer h.cfgMu.RUnlock()
+	return h.cfg
 }

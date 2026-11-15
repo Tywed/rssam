@@ -45,8 +45,9 @@ WITH f AS (
   VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $17, $18)
   RETURNING id, created_at, updated_at
 ), p AS (
-  INSERT INTO feed_poll_state(feed_id, bridge_state) SELECT id, COALESCE($16::jsonb, '{}'::jsonb) FROM f
-  ON CONFLICT (feed_id) DO UPDATE SET bridge_state = EXCLUDED.bridge_state
+  INSERT INTO feed_poll_state(feed_id) SELECT id FROM f ON CONFLICT (feed_id) DO NOTHING
+), b AS (
+  INSERT INTO feed_bridge_state(feed_id, state) SELECT id, $16::jsonb FROM f WHERE $16::jsonb IS NOT NULL
 )
 SELECT id, created_at, updated_at FROM f`
 		if err := tx.QueryRow(ctx, q,
@@ -126,12 +127,13 @@ func (s *PostgresStore) GetFeedByID(ctx context.Context, id int64) (Feed, error)
 // Subscribed come from the subscription alias s.
 const feedColumns = `f.id, COALESCE(f.owner_id, 0), f.feed_url, f.feed_type, f.title, f.category_id, f.interval_minutes, ps.etag, ps.last_modified, ps.last_checked_at, ps.last_error,
        ps.parsing_error_count, ps.poll_paused, f.manual_paused, f.store_mode, f.entry_retention_days, f.adaptive_interval, ps.next_check_at,
-       ps.bridge_state, ps.items_hash, f.scraper_rules, f.rewrite_rules, f.blocked_rules, f.keep_rules, f.fetch_via_proxy, f.tls_insecure, f.crawler, f.user_agent,
+       COALESCE(bs.state, '{}'::jsonb), ps.items_hash, f.scraper_rules, f.rewrite_rules, f.blocked_rules, f.keep_rules, f.fetch_via_proxy, f.tls_insecure, f.crawler, f.user_agent,
        s.webhook_id, s.user_id IS NOT NULL, f.icon_url, ps.last_entry_at, f.created_at, f.updated_at`
 
-// feedsFrom is the FROM clause behind feedColumns: the catalog row and its
-// poll state (always present, created with the feed).
-const feedsFrom = `feeds f JOIN feed_poll_state ps ON ps.feed_id = f.id`
+// feedsFrom is the FROM clause behind feedColumns: the catalog row, its
+// poll state (always present, created with the feed) and its bridge cursor
+// (present once a bridge stored one).
+const feedsFrom = `feeds f JOIN feed_poll_state ps ON ps.feed_id = f.id LEFT JOIN feed_bridge_state bs ON bs.feed_id = f.id`
 
 // subscribedJoin restricts to the feeds $1 reads; catalogUserJoin keeps
 // every feed and marks the ones $1 reads; catalogJoin knows no user.
@@ -318,20 +320,27 @@ func (s *PostgresStore) UpdateFeed(ctx context.Context, userID int64, params Upd
 	params.StoreMode = mode
 	var f Feed
 	err = withTx(ctx, s.db, func(tx pgx.Tx) error {
-		if err := checkSubscriptionRefs(ctx, tx, userID, SubscriptionParams{WebhookID: params.WebhookID}); err != nil {
-			return err
+		if params.SetWebhook {
+			if err := checkSubscriptionRefs(ctx, tx, userID, SubscriptionParams{WebhookID: params.WebhookID}); err != nil {
+				return err
+			}
 		}
 		var oldCat *int64
-		var oldURL string
-		if err := tx.QueryRow(ctx, `SELECT category_id, feed_url FROM feeds WHERE id = $1 FOR UPDATE`, params.ID).Scan(&oldCat, &oldURL); err != nil {
+		var oldURL, oldType string
+		if err := tx.QueryRow(ctx, `SELECT category_id, feed_url, feed_type FROM feeds WHERE id = $1 FOR UPDATE`, params.ID).Scan(&oldCat, &oldURL, &oldType); err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
 				return ErrNotFound
 			}
 			return err
 		}
-		if _, err := tx.Exec(ctx, `UPDATE subscriptions SET webhook_id = $3 WHERE user_id = $1 AND feed_id = $2`,
-			userID, params.ID, params.WebhookID); err != nil {
-			return err
+		if oldURL != params.FeedURL && oldType == FeedTypeInbound {
+			return ErrInboundURLImmutable
+		}
+		if params.SetWebhook {
+			if _, err := tx.Exec(ctx, `UPDATE subscriptions SET webhook_id = $3 WHERE user_id = $1 AND feed_id = $2`,
+				userID, params.ID, params.WebhookID); err != nil {
+				return err
+			}
 		}
 		const q = `
 WITH u AS (
@@ -343,19 +352,22 @@ SET feed_url = $2, title = $3, interval_minutes = $4,
     entry_retention_days = $14,
     adaptive_interval = $16,
     category_id = $17,
+    feed_type = CASE WHEN $15::boolean OR $18 = '' THEN f.feed_type ELSE $18 END,
     updated_at = now()
 WHERE f.id = $1
 RETURNING f.id
 )
 UPDATE feed_poll_state ps
-SET bridge_state = COALESCE($15::jsonb, ps.bridge_state),
-    items_hash = CASE WHEN $18::boolean THEN ps.items_hash ELSE '' END
+SET items_hash = CASE WHEN $15::boolean THEN ps.items_hash ELSE '' END
 FROM u WHERE ps.feed_id = u.id`
 		if _, err := tx.Exec(ctx, q,
 			params.ID, params.FeedURL, params.Title, params.IntervalMinutes,
 			params.ScraperRules, params.RewriteRules, params.BlockedRules, params.KeepRules,
-			params.FetchViaProxy, params.TLSInsecure, params.Crawler, params.UserAgent, params.StoreMode, params.EntryRetentionDays, nullableJSON(params.BridgeState), params.AdaptiveInterval,
-			params.CategoryID, oldURL == params.FeedURL); err != nil {
+			params.FetchViaProxy, params.TLSInsecure, params.Crawler, params.UserAgent, params.StoreMode, params.EntryRetentionDays, oldURL == params.FeedURL, params.AdaptiveInterval,
+			params.CategoryID, params.FeedType); err != nil {
+			return err
+		}
+		if err := upsertBridgeState(ctx, tx, params.ID, params.BridgeState); err != nil {
 			return err
 		}
 		if err := syncCategoryFollowersTx(ctx, tx, params.ID, oldCat, params.CategoryID); err != nil {

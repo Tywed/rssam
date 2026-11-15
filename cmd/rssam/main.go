@@ -179,7 +179,7 @@ func main() {
 		log.Warn("FETCH_TLS_INSECURE is enabled: TLS certificate verification is disabled for outbound fetches")
 	}
 	httpClient := ssrfGuard.HTTPClient(fetchTimeout)
-	webhookClient := ssrfGuard.HTTPClient(cfg.WebhookTimeout)
+	webhookClient := ssrfGuard.HTTPClientNoRedirect(cfg.WebhookTimeout)
 
 	registryBundle, err := reader.NewRegistry(reader.RegistryConfig{
 		HTTPClient:           httpClient,
@@ -287,6 +287,8 @@ func main() {
 		Activity:                pgStore,
 		SilentAfter:             time.Duration(cfg.FeedSilentDays) * 24 * time.Hour,
 		SilentInterval:          cfg.FeedSilentInterval,
+		DormantAfter:            time.Duration(cfg.FeedDormantDays) * 24 * time.Hour,
+		DormantInterval:         cfg.FeedDormantInterval,
 		Hosts:                   service.NewHostLimiter(cfg.PollHostConcurrency),
 	}
 
@@ -337,11 +339,13 @@ func main() {
 
 			FeedPollDailyResetEnabled: cfg.FeedPollDailyResetEnabled,
 			FeedPollDailyResetTZ:      cfg.FeedPollDailyResetTZ,
+			DrainTimeout:              worker.DrainTimeoutFor(cfg.ShutdownTimeout),
 		},
 		WebhookHTTPClient: webhookClient,
 		SSRFGuard:         ssrfGuard,
 		SystemAlerts: worker.SystemAlertsConfig{
 			SilentAfter:    time.Duration(cfg.FeedSilentDays) * 24 * time.Hour,
+			DormantAfter:   time.Duration(cfg.FeedDormantDays) * 24 * time.Hour,
 			BackupDir:      cfg.BackupDir,
 			BackupMaxAge:   cfg.BackupMaxAge,
 			CurrentVersion: version.Version,
@@ -356,7 +360,9 @@ func main() {
 			},
 		},
 	}
+	workersDone := make(chan struct{})
 	go func() {
+		defer close(workersDone)
 		if err := w.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
 			log.Error("workers not running", "err", err)
 		}
@@ -430,6 +436,8 @@ func main() {
 		FeedActivityStore:       pgStore,
 		FeedSilentDays:          cfg.FeedSilentDays,
 		FeedSilentInterval:      cfg.FeedSilentInterval,
+		FeedDormantDays:         cfg.FeedDormantDays,
+		FeedDormantInterval:     cfg.FeedDormantInterval,
 		DedupStore:              pgStore,
 		QueryMatcher:            pgStore,
 		CategoryPollHours:       pgStore,
@@ -463,6 +471,13 @@ func main() {
 	defer cancel()
 	if err := pprofShutdown(shutdownCtx); err != nil && !errors.Is(err, context.Canceled) {
 		log.Warn("pprof shutdown", "err", err)
+	}
+	// Polls and deliveries in flight finish on their own budget
+	// (worker.Config.DrainTimeout) before the process exits.
+	select {
+	case <-workersDone:
+	case <-shutdownCtx.Done():
+		log.Warn("workers did not stop in time", "timeout", cfg.ShutdownTimeout)
 	}
 	log.Info("shutdown complete")
 }

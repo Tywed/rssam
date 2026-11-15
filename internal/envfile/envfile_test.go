@@ -46,3 +46,21 @@ func TestSetKeys_createsFile(t *testing.T) {
 		t.Fatalf("got %s", b)
 	}
 }
+
+func TestSetKeys_RejectsControlCharacters(t *testing.T) {
+	path := filepath.Join(t.TempDir(), ".env")
+	for _, v := range []string{"a\nB=1", "a\r", "a\x00"} {
+		if err := SetKeys(path, map[string]string{"A": v}); err == nil {
+			t.Fatalf("%q: expected error", v)
+		}
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatal("rejected write must not create the file")
+	}
+	if err := SetKeys(path, map[string]string{"A": "ok"}); err != nil {
+		t.Fatal(err)
+	}
+	if entries, _ := os.ReadDir(filepath.Dir(path)); len(entries) != 1 {
+		t.Fatalf("temp file left behind: %v", entries)
+	}
+}

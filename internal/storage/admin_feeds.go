@@ -28,7 +28,10 @@ type AdminFeedSummary struct {
 	WaitingCount int
 	// SilentCount: active feeds (not paused, no error) whose last new item is
 	// older than SilentAfter (inbound feeds: than their interval_minutes).
-	SilentCount  int
+	SilentCount int
+	// DormantCount: the subset of SilentCount (polled feeds only) whose last
+	// item is older than DormantAfter.
+	DormantCount int
 	TotalEntries int
 	TotalUnread  int
 	// TotalSubscriptions / TotalUserEntries size the per-user tables of
@@ -59,15 +62,17 @@ type AdminFeedsListParams struct {
 	Order   string
 	Limit   int
 	Offset  int
-	// SilentAfter is needed for Status "silent" (see adminFeedsSilentWhere).
-	SilentAfter time.Duration
+	// SilentAfter is needed for Status "silent" (see adminFeedsSilentWhere),
+	// DormantAfter for Status "dormant".
+	SilentAfter  time.Duration
+	DormantAfter time.Duration
 }
 
 // AdminFeedStore provides admin-only feed monitoring queries.
 type AdminFeedStore interface {
 	GetAdminFeedRow(ctx context.Context, feedID int64) (AdminFeedRow, error)
 	ListAdminFeedsPage(ctx context.Context, params AdminFeedsListParams) ([]AdminFeedRow, int, error)
-	AdminFeedSummary(ctx context.Context, silentAfter time.Duration) (AdminFeedSummary, error)
+	AdminFeedSummary(ctx context.Context, silentAfter, dormantAfter time.Duration) (AdminFeedSummary, error)
 	PollFeedJobCounts(ctx context.Context) (PollFeedJobCounts, error)
 	OfferedPollsPerMin(ctx context.Context) (float64, error)
 	DueWebhookLogCount(ctx context.Context) (int, error)
@@ -177,10 +182,21 @@ const (
 	adminFeedsSilentInbound = `(f.feed_type = '` + FeedTypeInbound + `' AND ` + adminFeedsHealthy + ` AND ` + adminFeedsInboundLate + `)`
 )
 
-func adminFeedsStatusWhere(status string, silentAfter time.Duration) string {
+// adminFeedsDormantWhere is the second tier: a polled, healthy feed whose
+// last item is older than dormantAfter (0 = nobody).
+func adminFeedsDormantWhere(dormantAfter time.Duration) string {
+	secs := int64(dormantAfter / time.Second)
+	return fmt.Sprintf(`(`+adminFeedsHealthy+`
+  AND f.feed_type <> '`+FeedTypeInbound+`'
+  AND %d > 0 AND COALESCE(ps.last_entry_at, f.created_at) < now() - interval '%d seconds')`, secs, secs)
+}
+
+func adminFeedsStatusWhere(status string, silentAfter, dormantAfter time.Duration) string {
 	switch status {
 	case "silent":
 		return adminFeedsSilentWhere(silentAfter)
+	case "dormant":
+		return adminFeedsDormantWhere(dormantAfter)
 	case "paused":
 		return `(ps.poll_paused = TRUE OR f.manual_paused = TRUE)`
 	case "errors":
@@ -256,7 +272,7 @@ func (s *PostgresStore) ListAdminFeedsPage(ctx context.Context, params AdminFeed
 	if status == "" {
 		status = "all"
 	}
-	where := adminFeedsStatusWhere(status, params.SilentAfter)
+	where := adminFeedsStatusWhere(status, params.SilentAfter, params.DormantAfter)
 	orderBy := adminFeedsOrderClause(strings.TrimSpace(params.SortKey), strings.TrimSpace(params.Order))
 
 	countQ := `SELECT COUNT(*)::int ` + adminFeedFromJoins
@@ -294,10 +310,13 @@ func (s *PostgresStore) ListAdminFeedsPage(ctx context.Context, params AdminFeed
 	return out, total, nil
 }
 
-func (s *PostgresStore) AdminFeedSummary(ctx context.Context, silentAfter time.Duration) (AdminFeedSummary, error) {
-	silentSeconds := int64(0)
+func (s *PostgresStore) AdminFeedSummary(ctx context.Context, silentAfter, dormantAfter time.Duration) (AdminFeedSummary, error) {
+	silentSeconds, dormantSeconds := int64(0), int64(0)
 	if silentAfter > 0 {
 		silentSeconds = int64(silentAfter / time.Second)
+	}
+	if dormantAfter > 0 {
+		dormantSeconds = int64(dormantAfter / time.Second)
 	}
 	const q = `
 SELECT
@@ -331,6 +350,14 @@ SELECT
            THEN COALESCE(last_entry_at, created_at) < now() - make_interval(mins => interval_minutes)
            ELSE $1::bigint > 0 AND COALESCE(last_entry_at, created_at) < now() - make_interval(secs => $1::bigint) END
   )::int,
+  COUNT(*) FILTER (
+    WHERE poll_paused = FALSE
+      AND manual_paused = FALSE
+      AND COALESCE(NULLIF(last_error, ''), '') = ''
+      AND parsing_error_count = 0
+      AND feed_type <> '` + FeedTypeInbound + `'
+      AND $2::bigint > 0 AND COALESCE(last_entry_at, created_at) < now() - make_interval(secs => $2::bigint)
+  )::int,
   COALESCE((SELECT GREATEST(reltuples, 0)::bigint FROM pg_class WHERE oid = 'public.entries'::regclass), 0)::int,
   COALESCE((SELECT COUNT(*)::int FROM user_unread), 0),
   COALESCE((SELECT COUNT(*)::int FROM subscriptions), 0),
@@ -338,13 +365,14 @@ SELECT
   COALESCE((SELECT COUNT(*)::int FROM category_followers), 0)
 FROM ` + feedsFrom + ``
 	var sum AdminFeedSummary
-	err := s.db.QueryRow(ctx, q, silentSeconds).Scan(
+	err := s.db.QueryRow(ctx, q, silentSeconds, dormantSeconds).Scan(
 		&sum.TotalFeeds,
 		&sum.OKCount,
 		&sum.ErrorCount,
 		&sum.PausedCount,
 		&sum.WaitingCount,
 		&sum.SilentCount,
+		&sum.DormantCount,
 		&sum.TotalEntries,
 		&sum.TotalUnread,
 		&sum.TotalSubscriptions,

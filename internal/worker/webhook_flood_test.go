@@ -65,7 +65,7 @@ func TestWebhookPauses(t *testing.T) {
 	}
 }
 
-func TestProcessWebhookLog_429PausesWebhookWithoutAttempt(t *testing.T) {
+func TestProcessWebhookLog_429PausesWebhook(t *testing.T) {
 	var hits atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		hits.Add(1)
@@ -88,8 +88,8 @@ func TestProcessWebhookLog_429PausesWebhookWithoutAttempt(t *testing.T) {
 		t.Fatal("status must be stored")
 	}
 	got := store.log(1)
-	if got.Status != "failed" || got.Attempt != 3 {
-		t.Fatalf("a 429 is not an attempt: status=%s attempt=%d", got.Status, got.Attempt)
+	if got.Status != "failed" || got.Attempt != 4 {
+		t.Fatalf("a 429 counts against the flood ceiling: status=%s attempt=%d", got.Status, got.Attempt)
 	}
 	if got.LastStatusCode == nil || *got.LastStatusCode != 429 || got.NextRetryAt == nil {
 		t.Fatalf("row=%+v", got)
@@ -121,7 +121,7 @@ func TestProcessWebhookLog_429HTTPRetryAfterHeader(t *testing.T) {
 	r := processTestRunner(store, 0)
 	r.processWebhookLog(context.Background(), log)
 	got := store.log(1)
-	if got.Attempt != 0 || got.Status != "failed" || got.NextRetryAt == nil {
+	if got.Attempt != 1 || got.Status != "failed" || got.NextRetryAt == nil {
 		t.Fatalf("row=%+v", got)
 	}
 	if d := time.Until(*got.NextRetryAt); d < time.Second || d > 2*time.Second {
@@ -132,5 +132,68 @@ func TestProcessWebhookLog_429HTTPRetryAfterHeader(t *testing.T) {
 	}
 	if ids, _, ok := r.pausedHooks.active(time.Now().Add(3 * time.Second)); ok || len(ids) != 0 {
 		t.Fatalf("pause must end with the retry: %v", ids)
+	}
+}
+
+// A receiver that answers 429 for ever (revoked token, exhausted quota)
+// ends in a dead row after three times the ordinary attempts.
+func TestProcessWebhookLog_429CeilingIsDead(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Retry-After", "1")
+		w.WriteHeader(http.StatusTooManyRequests)
+	}))
+	defer srv.Close()
+	del := storage.WebhookDeliveryContext{
+		Webhook: storage.Webhook{ID: 5, Enabled: true, URL: srv.URL, Method: http.MethodPost},
+		Entry:   storage.Entry{ID: 42}, Feed: storage.WebhookFeed{ID: 7},
+	}
+	log := storage.WebhookLog{ID: 1, WebhookID: 5, EntryID: 42, Status: "failed", Attempt: 10*floodAttemptsFactor - 2}
+	store := newMemWebhookDelivery(log, del)
+	r := processTestRunner(store, 0)
+	r.processWebhookLog(context.Background(), log)
+	if got := store.log(1); got.Status != "failed" || got.NextRetryAt == nil {
+		t.Fatalf("one below the ceiling: row=%+v", got)
+	}
+	log.Attempt++
+	store = newMemWebhookDelivery(log, del)
+	r = processTestRunner(store, 0)
+	r.processWebhookLog(context.Background(), log)
+	if got := store.log(1); got.Status != "dead" || got.NextRetryAt != nil || got.Attempt != 10*floodAttemptsFactor {
+		t.Fatalf("at the ceiling: row=%+v", got)
+	}
+}
+
+// A webhook whose receiver answered 429 thirty times in a row kills its
+// rows one per pause, even though each row is young; a success resets.
+func TestProcessWebhookLog_429StreakIsDead(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Retry-After", "1")
+		w.WriteHeader(http.StatusTooManyRequests)
+	}))
+	defer srv.Close()
+	del := storage.WebhookDeliveryContext{
+		Webhook: storage.Webhook{ID: 5, Enabled: true, URL: srv.URL, Method: http.MethodPost},
+		Entry:   storage.Entry{ID: 42}, Feed: storage.WebhookFeed{ID: 7},
+	}
+	log := storage.WebhookLog{ID: 1, WebhookID: 5, EntryID: 42, Status: "pending"}
+	store := newMemWebhookDelivery(log, del)
+	r := processTestRunner(store, 0)
+	limit := 10 * floodAttemptsFactor
+	for i := 1; i < limit; i++ {
+		r.processWebhookLog(context.Background(), log)
+		if got := store.log(1); got.Status != "failed" {
+			t.Fatalf("hit %d: row=%+v", i, got)
+		}
+	}
+	r.processWebhookLog(context.Background(), log)
+	if got := store.log(1); got.Status != "dead" || got.Attempt != 1 {
+		t.Fatalf("hit %d: row=%+v", limit, got)
+	}
+	r.floodStreaks.reset(5)
+	store = newMemWebhookDelivery(log, del)
+	r.WebhookDelivery = store
+	r.processWebhookLog(context.Background(), log)
+	if got := store.log(1); got.Status != "failed" {
+		t.Fatalf("after reset: row=%+v", got)
 	}
 }

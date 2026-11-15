@@ -3,6 +3,7 @@ package worker
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -68,8 +69,19 @@ func (r *Runner) groupDigestLogs(ctx context.Context, logs []storage.WebhookLog)
 
 // processWebhookDigest delivers one digest and reports whether the final
 // status of its rows reached the database.
-func (r *Runner) processWebhookDigest(ctx context.Context, l storage.WebhookLog) bool {
+func (r *Runner) processWebhookDigest(ctx context.Context, l storage.WebhookLog) (stored bool) {
 	store := &markedDigest{webhookDigestStore: r.webhookDigest()}
+	defer func() {
+		if v := recover(); v != nil {
+			recovered(r.Log, "webhook digest", v, "log_id", l.ID, "webhook_id", l.WebhookID)
+			ids := l.Peers
+			if len(ids) == 0 {
+				ids = []int64{l.ID}
+			}
+			r.digestFailure(ctx, store, ids, l.Attempt+1, nil, "panic: "+fmt.Sprint(v), "", true)
+		}
+		stored = store.stored
+	}()
 	r.deliverWebhookDigest(ctx, store, l)
 	return store.stored
 }
@@ -80,12 +92,16 @@ type markedDigest struct {
 }
 
 func (m *markedDigest) MarkWebhookLogsSent(ctx context.Context, logIDs []int64, statusCode int, responseSnippet string) error {
+	ctx, cancel := statusContext(ctx)
+	defer cancel()
 	err := m.webhookDigestStore.MarkWebhookLogsSent(ctx, logIDs, statusCode, responseSnippet)
 	m.stored = err == nil
 	return err
 }
 
 func (m *markedDigest) MarkWebhookLogsFailed(ctx context.Context, logIDs []int64, statusCode *int, errMsg string, responseSnippet string, nextRetryAt *time.Time, dead bool, countAttempt bool) error {
+	ctx, cancel := statusContext(ctx)
+	defer cancel()
 	err := m.webhookDigestStore.MarkWebhookLogsFailed(ctx, logIDs, statusCode, errMsg, responseSnippet, nextRetryAt, dead, countAttempt)
 	m.stored = err == nil
 	return err
@@ -161,6 +177,7 @@ func (r *Runner) deliverWebhookDigest(ctx context.Context, store webhookDigestSt
 	snippet := storage.RedactWebhookText(readSnippet(resp.Body, webhookResponseSnippetMaxBytes))
 	ok, failMsg := storage.ProviderDeliveryOK(out.Kind, resp.StatusCode, snippet)
 	if ok {
+		r.floodStreaks.reset(l.WebhookID)
 		_ = store.MarkWebhookLogsSent(ctx, ids, resp.StatusCode, snippet)
 		r.applyDigestOnSuccess(ctx, wh, items)
 		metrics.WebhookDeliveriesTotal.WithLabelValues("sent").Inc()
@@ -168,10 +185,16 @@ func (r *Runner) deliverWebhookDigest(ctx context.Context, store webhookDigestSt
 	}
 	code := resp.StatusCode
 	if code == http.StatusTooManyRequests {
-		next := r.floodPause(l.WebhookID, resp, snippet)
-		_ = store.MarkWebhookLogsFailed(ctx, ids, &code, failMsg, snippet, &next, false, false)
+		next, dead := r.floodPause(l.WebhookID, attempt, resp, snippet)
+		if dead {
+			_ = store.MarkWebhookLogsFailed(ctx, ids, &code, failMsg, snippet, nil, true, true)
+			metrics.WebhookDeliveriesTotal.WithLabelValues("dead").Inc()
+			return
+		}
+		_ = store.MarkWebhookLogsFailed(ctx, ids, &code, failMsg, snippet, &next, false, true)
 		return
 	}
+	r.floodStreaks.reset(l.WebhookID)
 	retryable := webhookHTTPRetryable(code) && (code < 200 || code > 299)
 	r.digestFailure(ctx, store, ids, attempt, &code, failMsg, snippet, retryable)
 }

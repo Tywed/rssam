@@ -323,7 +323,11 @@ func (h *Handler) handleFeedUpdate(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusUnprocessableEntity)
 		return
 	}
-	existing, _ := h.cfg.Feeds.GetFeedByID(r.Context(), id)
+	existing, err := h.cfg.Feeds.GetFeedByID(r.Context(), id)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
 	bridgeState := existing.BridgeState
 	if existing.FeedType == reader.FeedTypeTelegram || reader.DetectFeedTypeFromURL(params.FeedURL) == reader.FeedTypeTelegram {
 		var msg string
@@ -336,6 +340,7 @@ func (h *Handler) handleFeedUpdate(w http.ResponseWriter, r *http.Request) {
 	_, err = h.cfg.Feeds.UpdateFeed(r.Context(), p.UserID, storage.UpdateFeedParams{
 		ID:                 id,
 		FeedURL:            params.FeedURL,
+		FeedType:           reader.DetectFeedTypeFromURL(params.FeedURL),
 		Title:              params.Title,
 		CategoryID:         params.CategoryID,
 		IntervalMinutes:    params.IntervalMinutes,
@@ -344,7 +349,17 @@ func (h *Handler) handleFeedUpdate(w http.ResponseWriter, r *http.Request) {
 		EntryRetentionDays: params.EntryRetentionDays,
 		AdaptiveInterval:   params.AdaptiveInterval,
 		WebhookID:          params.WebhookID,
+		SetWebhook:         true,
 		BridgeState:        bridgeState,
+		// The form has no fields for these; the row keeps what the API
+		// or OPML import set.
+		ScraperRules:  existing.ScraperRules,
+		RewriteRules:  existing.RewriteRules,
+		BlockedRules:  existing.BlockedRules,
+		KeepRules:     existing.KeepRules,
+		FetchViaProxy: existing.FetchViaProxy,
+		Crawler:       existing.Crawler,
+		UserAgent:     existing.UserAgent,
 	})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -586,7 +601,6 @@ func applyTelegramFormData(data *pageData, feed storage.Feed) {
 		useProxy = *o.UseProxy
 	}
 	data.TgUseProxy = useProxy
-	data.TgProxyServiceURL = o.ProxyServiceURL
 	data.TgStaticProxy = o.StaticProxy
 }
 
@@ -599,7 +613,7 @@ func (h *Handler) bridgeStateFromTelegramForm(r *http.Request, existing []byte) 
 	_ = bridge.DecodeState(st.Raw(reader.FeedTypeTelegram), &o)
 	useProxy := r.FormValue("telegram_use_proxy") == "1"
 	o.UseProxy = &useProxy
-	o.ProxyServiceURL = strings.TrimSpace(r.FormValue("telegram_proxy_service_url"))
+	o.ProxyServiceURL = ""
 	o.StaticProxy = strings.TrimSpace(r.FormValue("telegram_static_proxy"))
 	if o.StaticProxy != "" {
 		p, err := proxy.ParseStaticProxy(o.StaticProxy)

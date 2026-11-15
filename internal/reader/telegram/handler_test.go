@@ -28,7 +28,7 @@ func TestEffectiveConfig_override(t *testing.T) {
 	use := false
 	base := Config{ProxyServiceURL: "http://a", MaxPages: 1, UseProxy: true}
 	out := EffectiveConfig(base, &BridgeOverride{ProxyServiceURL: "http://b", MaxPages: 3, UseProxy: &use, StaticProxy: "127.0.0.1:1080"})
-	if out.ProxyServiceURL != "http://b" || out.MaxPages != 3 || out.UseProxy || out.StaticProxy != "127.0.0.1:1080" {
+	if out.ProxyServiceURL != "http://a" || out.MaxPages != 3 || out.UseProxy || out.StaticProxy != "127.0.0.1:1080" {
 		t.Fatalf("%+v", out)
 	}
 }
@@ -52,5 +52,16 @@ func TestResolveProxyMode(t *testing.T) {
 	}
 	if (Config{UseProxy: true, ProxyServiceURL: "http://x"}).ResolveProxyMode() != ProxyModeService {
 		t.Fatal("want service")
+	}
+}
+
+// The service URL carries the operator's bearer token, so a row written by
+// an editor cannot point it elsewhere: the override is ignored even when
+// an old row still has one.
+func TestEffectiveConfig_ProxyServiceURLNotOverridable(t *testing.T) {
+	base := Config{ProxyServiceURL: "http://proxy-service:8787", UseProxy: true}
+	out := EffectiveConfig(base, &BridgeOverride{ProxyServiceURL: "http://attacker.example/steal"})
+	if out.ProxyServiceURL != base.ProxyServiceURL {
+		t.Fatalf("service URL overridden: %q", out.ProxyServiceURL)
 	}
 }

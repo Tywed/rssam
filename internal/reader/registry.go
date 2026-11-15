@@ -94,7 +94,8 @@ type RegistryBundle struct {
 }
 
 // NewRegistry creates a registry with the bridges and RSS as the fallback.
-// Bridges that need a token (max, vk_search) are registered only when it is set.
+// The VK bridge is always registered: its token may arrive from the bridge
+// page after start; without one every VK poll fails with vk.ErrMissingToken.
 func NewRegistry(cfg RegistryConfig) (*RegistryBundle, error) {
 	rssFetcher := NewRSSFetcher(cfg.HTTPClient, cfg.UserAgent, cfg.SSRFGuard, cfg.FetchViaProxyURL)
 	reg := NewHandlerRegistry()
@@ -102,7 +103,7 @@ func NewRegistry(cfg RegistryConfig) (*RegistryBundle, error) {
 	proxyHTTP := proxyServiceHTTPClient(cfg)
 	proxyClient := proxy.NewClient(proxyHTTP)
 	if tok := strings.TrimSpace(cfg.TelegramProxyServiceToken); tok != "" {
-		proxyClient.ServiceToken = tok
+		proxyClient.SetServiceToken(tok)
 	}
 	tgHandler := telegram.NewHandler(proxyClient, cfg.HTTPClient, telegram.Config{
 		ProxyServiceURL:       cfg.TelegramProxyServiceURL,
@@ -162,30 +163,20 @@ func NewRegistry(cfg RegistryConfig) (*RegistryBundle, error) {
 	})
 	reg.Register(Adapt(maxstatHandler))
 
-	var vkHandler *vk.Handler
-	if strings.TrimSpace(cfg.VKAccessToken) != "" {
-		vkClient, err := vk.NewClient(cfg.HTTPClient, cfg.SSRFGuard, vk.Config{
-			AccessToken:       cfg.VKAccessToken,
-			APIVersion:        cfg.VKAPIVersion,
-			DefaultCount:      cfg.VKDefaultCount,
-			DefaultLookback:   cfg.VKDefaultLookback,
-			Overlap:           cfg.VKOverlap,
-			RateLimitCooldown: time.Duration(cfg.VKRateLimitSeconds) * time.Second,
-		})
-		if err != nil {
-			return nil, fmt.Errorf("vk client: %w", err)
-		}
-		vkHandler = vk.NewHandler(vkClient, vk.Config{
-			AccessToken:       cfg.VKAccessToken,
-			APIVersion:        cfg.VKAPIVersion,
-			DefaultCount:      cfg.VKDefaultCount,
-			DefaultLookback:   cfg.VKDefaultLookback,
-			Overlap:           cfg.VKOverlap,
-			RateLimitCooldown: time.Duration(cfg.VKRateLimitSeconds) * time.Second,
-		})
-		reg.Register(Adapt(vkHandler))
-		reg.Register(Adapt(vk.NewGroupHandler(vkClient)))
+	vkCfg := vk.Config{
+		AccessToken:       cfg.VKAccessToken,
+		APIVersion:        cfg.VKAPIVersion,
+		DefaultCount:      cfg.VKDefaultCount,
+		DefaultLookback:   cfg.VKDefaultLookback,
+		Overlap:           cfg.VKOverlap,
+		RateLimitCooldown: time.Duration(cfg.VKRateLimitSeconds) * time.Second,
 	}
+	vkClient, err := vk.NewClient(cfg.HTTPClient, cfg.SSRFGuard, vkCfg)
+	if err != nil {
+		return nil, fmt.Errorf("vk client: %w", err)
+	}
+	vkHandler := vk.NewHandler(vkClient, vkCfg)
+	reg.Register(Adapt(vkHandler))
 
 	rutubeClient, err := rutube.NewClient(cfg.HTTPClient, cfg.SSRFGuard, rutube.Config{
 		APIBaseURL: cfg.RutubeAPIBaseURL,

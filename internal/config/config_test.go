@@ -484,3 +484,30 @@ func TestLoad_InboundWebhooks(t *testing.T) {
 		t.Fatalf("bad cidr: err=%v", err)
 	}
 }
+
+func TestLoad_DormantTier(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://u:p@localhost:5432/db?sslmode=disable")
+	cfg, err := Load()
+	if err != nil || cfg.FeedDormantDays != 90 || cfg.FeedDormantInterval != 0 {
+		t.Fatalf("defaults: days=%d interval=%s err=%v", cfg.FeedDormantDays, cfg.FeedDormantInterval, err)
+	}
+	t.Setenv("FEED_SILENT_DAYS", "14")
+	t.Setenv("FEED_SILENT_INTERVAL", "30m")
+	t.Setenv("FEED_DORMANT_INTERVAL", "6h")
+	if cfg, err = Load(); err != nil || cfg.FeedDormantInterval != 6*time.Hour {
+		t.Fatalf("6h: %s err=%v", cfg.FeedDormantInterval, err)
+	}
+	t.Setenv("FEED_DORMANT_DAYS", "14")
+	if _, err = Load(); err == nil || !strings.Contains(err.Error(), "FEED_DORMANT_DAYS must be > FEED_SILENT_DAYS") {
+		t.Fatalf("days <= silent days must be rejected, got %v", err)
+	}
+	t.Setenv("FEED_DORMANT_DAYS", "0")
+	if cfg, err = Load(); err != nil || cfg.FeedDormantDays != 0 {
+		t.Fatalf("0 disables the tier: %v", err)
+	}
+	t.Setenv("FEED_DORMANT_DAYS", "90")
+	t.Setenv("FEED_DORMANT_INTERVAL", "10m")
+	if _, err = Load(); err == nil || !strings.Contains(err.Error(), "FEED_DORMANT_INTERVAL must be >= FEED_SILENT_INTERVAL") {
+		t.Fatalf("interval below the silent one must be rejected, got %v", err)
+	}
+}

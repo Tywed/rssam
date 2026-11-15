@@ -13,7 +13,6 @@ import (
 	"math/rand/v2"
 	"net/http"
 	"strings"
-	"text/template"
 	"time"
 
 	"rssam/internal/metrics"
@@ -79,17 +78,21 @@ func (r *Runner) webhookDispatchLoop(ctx context.Context, out chan<- storage.Web
 	}
 }
 
-func (r *Runner) webhookWorkerLoop(ctx context.Context, in <-chan storage.WebhookLog) {
+func (r *Runner) webhookWorkerLoop(ctx, workCtx context.Context, in <-chan storage.WebhookLog) {
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case l := <-in:
+			if ctx.Err() != nil {
+				r.inflightHooks.forget(l.WebhookID)
+				return
+			}
 			var stored bool
 			if l.DigestMinutes > 0 {
-				stored = r.processWebhookDigest(ctx, l)
+				stored = r.processWebhookDigest(workCtx, l)
 			} else {
-				stored = r.processWebhookLog(ctx, l)
+				stored = r.processWebhookLog(workCtx, l)
 			}
 			// A webhook whose row status is written is free at once (the
 			// retry time is in the row); one whose write failed stays
@@ -126,8 +129,15 @@ func (r *Runner) webhookDelivery() webhookDeliveryStore {
 
 // processWebhookLog delivers one row and reports whether its final status
 // reached the database.
-func (r *Runner) processWebhookLog(ctx context.Context, l storage.WebhookLog) bool {
+func (r *Runner) processWebhookLog(ctx context.Context, l storage.WebhookLog) (stored bool) {
 	store := &markedDelivery{webhookDeliveryStore: r.webhookDelivery()}
+	defer func() {
+		if v := recover(); v != nil {
+			recovered(r.Log, "webhook delivery", v, "log_id", l.ID, "webhook_id", l.WebhookID)
+			r.recordWebhookFailure(ctx, store, l.ID, l.Attempt+1, nil, "panic: "+fmt.Sprint(v), "", true)
+		}
+		stored = store.stored
+	}()
 	r.deliverWebhookLog(ctx, store, l)
 	return store.stored
 }
@@ -139,12 +149,16 @@ type markedDelivery struct {
 }
 
 func (m *markedDelivery) MarkWebhookLogSent(ctx context.Context, logID int64, attempt int, statusCode int, responseSnippet string) error {
+	ctx, cancel := statusContext(ctx)
+	defer cancel()
 	err := m.webhookDeliveryStore.MarkWebhookLogSent(ctx, logID, attempt, statusCode, responseSnippet)
 	m.stored = err == nil
 	return err
 }
 
 func (m *markedDelivery) MarkWebhookLogFailed(ctx context.Context, logID int64, statusCode *int, errMsg string, responseSnippet string, attempt int, nextRetryAt *time.Time, dead bool) error {
+	ctx, cancel := statusContext(ctx)
+	defer cancel()
 	err := m.webhookDeliveryStore.MarkWebhookLogFailed(ctx, logID, statusCode, errMsg, responseSnippet, attempt, nextRetryAt, dead)
 	m.stored = err == nil
 	return err
@@ -198,7 +212,7 @@ func (r *Runner) deliverWebhookLog(ctx context.Context, store webhookDeliverySto
 		bodyBytes = out.Body
 		signHMAC = false
 	} else if strings.TrimSpace(delCtx.Webhook.BodyTemplate) != "" {
-		b, tmplErr := renderBodyTemplate(delCtx.Webhook.BodyTemplate, delCtx, payloadBytes)
+		b, tmplErr := storage.RenderWebhookBodyTemplate(delCtx.Webhook.BodyTemplate, delCtx.Feed, delCtx.Entry, delCtx.Filter, payloadBytes)
 		if tmplErr != nil {
 			_ = store.MarkWebhookLogFailed(ctx, l.ID, nil, tmplErr.Error(), "", attempt, nil, true)
 			metrics.WebhookDeliveriesTotal.WithLabelValues("dead").Inc()
@@ -255,6 +269,7 @@ func (r *Runner) deliverWebhookLog(ctx context.Context, store webhookDeliverySto
 	snippet := storage.RedactWebhookText(readSnippet(resp.Body, webhookResponseSnippetMaxBytes))
 	ok, failMsg := storage.ProviderDeliveryOK(kind, resp.StatusCode, snippet)
 	if ok {
+		r.floodStreaks.reset(l.WebhookID)
 		// The body of a successful delivery (Telegram echoes the whole
 		// message back) is not kept: the log row only needs it for diagnosis.
 		_ = store.MarkWebhookLogSent(ctx, l.ID, attempt, resp.StatusCode, "")
@@ -265,10 +280,16 @@ func (r *Runner) deliverWebhookLog(ctx context.Context, store webhookDeliverySto
 
 	code := resp.StatusCode
 	if code == http.StatusTooManyRequests {
-		next := r.floodPause(l.WebhookID, resp, snippet)
-		_ = store.MarkWebhookLogFailed(ctx, l.ID, &code, failMsg, snippet, l.Attempt, &next, false)
+		next, dead := r.floodPause(l.WebhookID, attempt, resp, snippet)
+		if dead {
+			_ = store.MarkWebhookLogFailed(ctx, l.ID, &code, failMsg, snippet, attempt, nil, true)
+			metrics.WebhookDeliveriesTotal.WithLabelValues("dead").Inc()
+			return
+		}
+		_ = store.MarkWebhookLogFailed(ctx, l.ID, &code, failMsg, snippet, attempt, &next, false)
 		return
 	}
+	r.floodStreaks.reset(l.WebhookID)
 	retryable := webhookHTTPRetryable(resp.StatusCode)
 	if resp.StatusCode >= 200 && resp.StatusCode <= 299 {
 		retryable = false
@@ -276,14 +297,27 @@ func (r *Runner) deliverWebhookLog(ctx context.Context, store webhookDeliverySto
 	r.recordWebhookFailure(ctx, store, l.ID, attempt, &code, failMsg, snippet, retryable)
 }
 
+// floodAttemptsFactor sets the 429 ceiling: a flood wait is the receiver's
+// own schedule, not a failure, so a row gets three times the ordinary
+// attempts, and a webhook three times the ordinary attempts in a row,
+// before rows are dead.
+const floodAttemptsFactor = 3
+
 // floodPause parks the webhook for the time a 429 asked for and returns
-// the moment the row is due again.
-func (r *Runner) floodPause(webhookID int64, resp *http.Response, body string) time.Time {
+// the moment the row is due again, and whether the row is dead instead:
+// this row or the webhook's unbroken streak exhausted the 429 ceiling.
+func (r *Runner) floodPause(webhookID int64, attempt int, resp *http.Response, body string) (next time.Time, dead bool) {
 	now := time.Now().UTC()
-	next := now.Add(retryAfterOf(resp, body, now))
+	next = now.Add(retryAfterOf(resp, body, now))
 	r.pausedHooks.pause(webhookID, next)
 	metrics.WebhookFloodWaitsTotal.Inc()
-	return next
+	limit := r.Cfg.WebhookMaxAttempts
+	if limit <= 0 {
+		limit = 10
+	}
+	limit *= floodAttemptsFactor
+	streak := r.floodStreaks.hit(webhookID)
+	return next, attempt >= limit || streak >= limit
 }
 
 func (r *Runner) recordWebhookFailure(ctx context.Context, store webhookDeliveryStore, logID int64, attempt int, statusCode *int, errMsg, snippet string, retryable bool) {
@@ -436,24 +470,6 @@ func setWebhookHeaders(req *http.Request, raw []byte) {
 		}
 		req.Header.Set(k, v)
 	}
-}
-
-func renderBodyTemplate(bodyTemplate string, ctx storage.WebhookDeliveryContext, payloadJSON []byte) ([]byte, error) {
-	tmpl, err := template.New("webhook_body").Option("missingkey=error").Parse(bodyTemplate)
-	if err != nil {
-		return nil, fmt.Errorf("invalid body_template: %w", err)
-	}
-	data := map[string]any{
-		"payload": string(payloadJSON),
-		"entry":   ctx.Entry,
-		"feed":    ctx.Feed,
-		"filter":  ctx.Filter,
-	}
-	var buf bytes.Buffer
-	if err := tmpl.Execute(&buf, data); err != nil {
-		return nil, fmt.Errorf("render body_template: %w", err)
-	}
-	return buf.Bytes(), nil
 }
 
 func signWebhookPayload(secret string, payload []byte) string {

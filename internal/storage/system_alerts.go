@@ -29,6 +29,7 @@ type SystemAlertStore interface {
 	// ListSilentFeeds: healthy feeds without a new item for silentAfter;
 	// inbound feeds without a delivery for their interval_minutes.
 	ListSilentFeeds(ctx context.Context, silentAfter time.Duration) ([]SystemAlertFeed, error)
+	ListDormantFeeds(ctx context.Context, dormantAfter time.Duration) ([]SystemAlertFeed, error)
 	// ListFailingWebhooks: enabled webhooks whose last final delivery died.
 	ListFailingWebhooks(ctx context.Context) ([]SystemAlertWebhook, error)
 	RecordAudit(ctx context.Context, ev AuditEvent) error
@@ -70,6 +71,21 @@ SELECT f.id, f.title,
   CASE WHEN f.feed_type = '`+FeedTypeInbound+`' THEN 'нет доставок дольше ' || f.interval_minutes || ' мин.' ELSE '' END
 FROM `+feedsFrom+`
 WHERE `+adminFeedsSilentWhere(silentAfter)+`
+ORDER BY f.id`)
+}
+
+// ListDormantFeeds: polled feeds without an item for dormantAfter (nil when
+// the tier is off); the detail is how long ago the last item was.
+func (s *PostgresStore) ListDormantFeeds(ctx context.Context, dormantAfter time.Duration) ([]SystemAlertFeed, error) {
+	if dormantAfter <= 0 {
+		return nil, nil
+	}
+	return s.queryAlertFeeds(ctx, `
+SELECT f.id, f.title,
+  CASE WHEN ps.last_entry_at IS NULL THEN 'ни одной записи с момента добавления'
+       ELSE 'последняя запись ' || to_char(ps.last_entry_at AT TIME ZONE 'UTC', 'YYYY-MM-DD') END
+FROM `+feedsFrom+`
+WHERE `+adminFeedsDormantWhere(dormantAfter)+`
 ORDER BY f.id`)
 }
 

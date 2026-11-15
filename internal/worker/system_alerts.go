@@ -31,6 +31,8 @@ type SystemAlertsConfig struct {
 	// SilentAfter mirrors FEED_SILENT_DAYS (0 = polled feeds are never
 	// silent; inbound feeds are judged by their interval_minutes).
 	SilentAfter time.Duration
+	// DormantAfter mirrors FEED_DORMANT_DAYS (0 = no second tier).
+	DormantAfter time.Duration
 	// BackupDir is checked for a fresh dump ("" = no backup alert);
 	// BackupMaxAge is how old the newest dump may be before an alert.
 	BackupDir    string
@@ -49,6 +51,7 @@ type SystemAlertsConfig struct {
 type systemAlertState struct {
 	Paused   map[int64]bool `json:"paused,omitempty"`
 	Silent   map[int64]bool `json:"silent,omitempty"`
+	Dormant  map[int64]bool `json:"dormant,omitempty"`
 	Webhooks map[int64]bool `json:"webhooks,omitempty"`
 	Release  string         `json:"release,omitempty"`
 	Backup   bool           `json:"backup_stale,omitempty"`
@@ -222,6 +225,23 @@ func (a *systemAlerter) diff(ctx context.Context) ([]alertMessage, systemAlertSt
 			title = fmt.Sprintf("Ленты молчат дольше %d дн.", days)
 		}
 		msgs = append(msgs, feedsAlert("feeds_silent", title, newSilent, true))
+	}
+
+	dormant, err := a.store.ListDormantFeeds(ctx, a.cfg.DormantAfter)
+	if err != nil {
+		return nil, next, err
+	}
+	next.Dormant = map[int64]bool{}
+	var newDormant []storage.SystemAlertFeed
+	for _, f := range dormant {
+		next.Dormant[f.ID] = true
+		if !a.state.Dormant[f.ID] {
+			newDormant = append(newDormant, f)
+		}
+	}
+	if len(newDormant) > 0 {
+		title := fmt.Sprintf("Ленты без записей дольше %d дн.", int(a.cfg.DormantAfter.Hours()/24))
+		msgs = append(msgs, feedsAlert("feeds_dormant", title, newDormant, true))
 	}
 
 	failing, err := a.store.ListFailingWebhooks(ctx)

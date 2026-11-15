@@ -8,7 +8,11 @@ import (
 
 var spaceCollapse = regexp.MustCompile(`\s+`)
 
-const feedTypeVKSearch = "vk_search"
+// FeedType is the bridge name and feeds.feed_type of every VK feed.
+const FeedType = "vk"
+
+// FeedTitle is the default title of a search feed.
+func FeedTitle(q string) string { return "VK: " + q }
 
 // NormalizeQuery lowercases and collapses whitespace (cursor key).
 func NormalizeQuery(q string) string {

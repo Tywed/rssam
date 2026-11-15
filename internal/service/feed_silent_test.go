@@ -125,3 +125,46 @@ func TestRefreshLoadedFeed_FailureReturnsPollFailedWithPersistedState(t *testing
 		t.Fatalf("persisted state = %+v", failed.Feed)
 	}
 }
+
+// The dormant tier: a feed quiet for DormantAfter is polled every
+// DormantInterval, one quiet for less than that (but more than SilentAfter)
+// every SilentInterval; the tier works on its own when SilentInterval is 0.
+func TestRefreshLoadedFeed_DormantTier(t *testing.T) {
+	old := time.Now().UTC().Add(-100 * 24 * time.Hour)
+	feed := storage.Feed{ID: 23, OwnerID: 1, FeedURL: "https://example.com/d.xml", IntervalMinutes: 5, CreatedAt: old, LastEntryAt: &old, StoreMode: storage.StoreModeFiltered}
+	h := &stubHandler{res: reader.FetchResponse{NotModified: true}}
+	r, fs, _, _ := newStatusRefresher(h, feed)
+	r.SilentAfter, r.SilentInterval = 14*24*time.Hour, 30*time.Minute
+	r.DormantAfter, r.DormantInterval = 90*24*time.Hour, 6*time.Hour
+	r.MaxPollInterval = 24 * time.Hour
+
+	if _, err := r.RefreshLoadedFeed(context.Background(), feed); err != nil {
+		t.Fatal(err)
+	}
+	if d := time.Until(fs.next); d < 5*time.Hour+59*time.Minute || d > 6*time.Hour+time.Minute {
+		t.Fatalf("dormant feed next check in %s, want ~6h", d)
+	}
+	month := time.Now().UTC().Add(-30 * 24 * time.Hour)
+	feed.LastEntryAt = &month
+	if _, err := r.RefreshLoadedFeed(context.Background(), feed); err != nil {
+		t.Fatal(err)
+	}
+	if d := time.Until(fs.next); d < 29*time.Minute || d > 31*time.Minute {
+		t.Fatalf("silent-only feed next check in %s, want ~30m", d)
+	}
+	feed.LastEntryAt = &old
+	r.SilentInterval = 0
+	if _, err := r.RefreshLoadedFeed(context.Background(), feed); err != nil {
+		t.Fatal(err)
+	}
+	if d := time.Until(fs.next); d < 5*time.Hour+59*time.Minute {
+		t.Fatalf("dormant tier without silent tier: %s, want ~6h", d)
+	}
+	r.DormantInterval = 48 * time.Hour
+	if _, err := r.RefreshLoadedFeed(context.Background(), feed); err != nil {
+		t.Fatal(err)
+	}
+	if d := time.Until(fs.next); d > 24*time.Hour+time.Minute {
+		t.Fatalf("dormant interval must stay within MAX_POLL_INTERVAL: %s", d)
+	}
+}

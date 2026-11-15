@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 
 	"rssam/internal/bridge/v1"
 	"rssam/internal/ssrf"
@@ -17,6 +18,7 @@ const personVideosPathPrefix = "/video/person/"
 type Client struct {
 	http   *http.Client
 	guard  *ssrf.Guard
+	cfgMu  sync.RWMutex
 	cfg    Config
 	apiURL string
 }
@@ -37,8 +39,10 @@ func NewClient(client *http.Client, guard *ssrf.Guard, cfg Config) (*Client, err
 // UpdateConfig replaces client settings at runtime.
 func (c *Client) UpdateConfig(cfg Config) {
 	cfg = cfg.withDefaults()
+	c.cfgMu.Lock()
 	c.cfg = cfg
 	c.apiURL = cfg.APIBaseURL + personVideosPathPrefix
+	c.cfgMu.Unlock()
 }
 
 func (c *Client) ListPersonVideos(ctx context.Context, channelID string) (*personVideosResponse, error) {
@@ -46,7 +50,7 @@ func (c *Client) ListPersonVideos(ctx context.Context, channelID string) (*perso
 	if channelID == "" {
 		return nil, errMissingChannel
 	}
-	reqURL := c.apiURL + channelID + "/"
+	reqURL := c.endpoint() + channelID + "/"
 	if c.guard != nil {
 		if err := c.guard.ValidateURL(reqURL); err != nil {
 			return nil, err
@@ -58,7 +62,7 @@ func (c *Client) ListPersonVideos(ctx context.Context, channelID string) (*perso
 		return nil, fmt.Errorf("rutube: create request: %w", err)
 	}
 	req.Header.Set("Accept", "application/json")
-	if ua := strings.TrimSpace(c.cfg.UserAgent); ua != "" {
+	if ua := strings.TrimSpace(c.config().UserAgent); ua != "" {
 		req.Header.Set("User-Agent", ua)
 	}
 
@@ -81,4 +85,16 @@ func (c *Client) ListPersonVideos(ctx context.Context, channelID string) (*perso
 		return nil, &bridge.LayoutError{Bridge: "rutube", Marker: "api json", Err: err}
 	}
 	return &parsed, nil
+}
+
+func (c *Client) config() Config {
+	c.cfgMu.RLock()
+	defer c.cfgMu.RUnlock()
+	return c.cfg
+}
+
+func (c *Client) endpoint() string {
+	c.cfgMu.RLock()
+	defer c.cfgMu.RUnlock()
+	return c.apiURL
 }

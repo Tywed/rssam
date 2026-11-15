@@ -18,8 +18,11 @@ import (
 type memWebhookDelivery struct {
 	mu sync.Mutex
 
-	loadErr           error
-	markErr           error
+	loadErr error
+	markErr error
+	// failOnCancelled makes status writes fail with the ctx error, as a
+	// database does.
+	failOnCancelled   bool
 	delCtx            storage.WebhookDeliveryContext
 	incomplete        int
 	resolvedOnSuccess string
@@ -45,11 +48,14 @@ func (m *memWebhookDelivery) LoadWebhookDeliveryContext(context.Context, int64) 
 	return m.delCtx, nil
 }
 
-func (m *memWebhookDelivery) MarkWebhookLogSent(_ context.Context, logID int64, attempt int, statusCode int, snippet string) error {
+func (m *memWebhookDelivery) MarkWebhookLogSent(ctx context.Context, logID int64, attempt int, statusCode int, snippet string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.markErr != nil {
 		return m.markErr
+	}
+	if m.failOnCancelled && ctx.Err() != nil {
+		return ctx.Err()
 	}
 	l := m.logs[logID]
 	l.Status = "sent"
@@ -64,11 +70,14 @@ func (m *memWebhookDelivery) MarkWebhookLogSent(_ context.Context, logID int64, 
 	return nil
 }
 
-func (m *memWebhookDelivery) MarkWebhookLogFailed(_ context.Context, logID int64, statusCode *int, errMsg string, snippet string, attempt int, nextRetryAt *time.Time, dead bool) error {
+func (m *memWebhookDelivery) MarkWebhookLogFailed(ctx context.Context, logID int64, statusCode *int, errMsg string, snippet string, attempt int, nextRetryAt *time.Time, dead bool) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.markErr != nil {
 		return m.markErr
+	}
+	if m.failOnCancelled && ctx.Err() != nil {
+		return ctx.Err()
 	}
 	l := m.logs[logID]
 	if snippet != "" {

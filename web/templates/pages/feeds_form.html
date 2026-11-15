@@ -75,10 +75,6 @@
           <p class="meta">Если выключено — прямой HTTP на t.me/s (может не работать без VPN).</p>
         </div>
         <div class="form-group">
-          <label>Proxy-service URL (override)</label>
-          <input name="telegram_proxy_service_url" value="{{.TgProxyServiceURL}}" placeholder="http://proxy-service:8787">
-        </div>
-        <div class="form-group">
           <label>Статический SOCKS (override)</label>
           <input name="telegram_static_proxy" value="{{.TgStaticProxy}}" placeholder="host:port или socks5://user:pass@host:port">
           <p class="meta">Если задан — используется этот прокси вместо proxy-service.</p>
@@ -96,27 +92,21 @@
         <p class="meta">Лента постов канала Max. URL вида <code>https://max.ru/имя-канала</code>.</p>
       </div>
 
-      <div class="card feed-type-settings" id="feed-settings-vk_search" data-feed-type="vk_search" {{if .Feed.ID}}{{if ne .Feed.FeedType "vk_search"}}hidden{{end}}{{else}}hidden{{end}}>
-        <h2>VK Search</h2>
-        <p class="meta">Подписка на <strong>результаты поиска</strong> VK, а не на группу или страницу.</p>
+      <div class="card feed-type-settings" id="feed-settings-vk" data-feed-type="vk" {{if .Feed.ID}}{{if ne .Feed.FeedType "vk"}}hidden{{end}}{{else}}hidden{{end}}>
+        <h2>VK</h2>
+        <p class="meta">Режим определяется по URL.</p>
+        <p class="meta"><strong>Поиск постов</strong> (newsfeed.search), одна лента = один запрос:</p>
         <ul class="meta">
           <li><code>vk-search://ваш запрос</code></li>
           <li><code>https://vk.com/feed?section=search&amp;q=ваш+запрос</code></li>
         </ul>
-        <p class="meta">Access token задаётся в <a href="/ui/settings/bridges/vk">настройках VK Search</a>.</p>
-        <p class="meta" id="vk-search-query"></p>
-      </div>
-
-      <div class="card feed-type-settings" id="feed-settings-vk_group" data-feed-type="vk_group" {{if .Feed.ID}}{{if ne .Feed.FeedType "vk_group"}}hidden{{end}}{{else}}hidden{{end}}>
-        <h2>Стена VK</h2>
-        <p class="meta">Посты одного сообщества или страницы VK: свои, репосты и записи подписчиков (20 последних за опрос). Название подставляется из VK.</p>
+        <p class="meta"><strong>Стена сообщества или страницы</strong> (wall.get): свои посты, репосты и записи подписчиков, 20 последних за опрос; название подставляется из VK. Нужна открытая стена.</p>
         <ul class="meta">
           <li><code>https://vk.com/tass</code>, <code>https://vk.com/public36441046</code>, <code>https://vk.com/club123</code>, <code>https://vk.com/id1</code></li>
           <li><code>vk-group://tass</code></li>
-          <li>Нужна открытая стена; закрытые сообщества и приватные профили недоступны</li>
         </ul>
         <p class="meta">Access token задаётся в <a href="/ui/settings/bridges/vk">настройках VK</a>.</p>
-        <p class="meta" id="vk-group-id"></p>
+        <p class="meta" id="vk-target"></p>
       </div>
 
       <div class="card feed-type-settings" id="feed-settings-dzen_news" data-feed-type="dzen_news" {{if .Feed.ID}}{{if ne .Feed.FeedType "dzen_news"}}hidden{{end}}{{else}}hidden{{end}}>

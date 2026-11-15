@@ -58,6 +58,10 @@
         <div class="admin-feeds-card-value">{{.AdminFeedSummary.SilentCount}}</div>
         <div class="admin-feeds-card-label">Молчат{{if gt .FeedSilentDays 0}} &gt; {{.FeedSilentDays}} дн.{{end}}</div>
       </a>
+      {{if gt .FeedDormantDays 0}}<a href="{{adminFeedsPageLink "dormant" .AdminFeedsSort .AdminFeedsOrder 1}}" class="admin-feeds-card {{if eq .AdminFeedsFilter "dormant"}}active{{end}}" title="Из молчащих: ни одной записи дольше {{.FeedDormantDays}} дн. или вообще с момента добавления (FEED_DORMANT_DAYS); опрашиваются раз в FEED_DORMANT_INTERVAL">
+        <div class="admin-feeds-card-value">{{.AdminFeedSummary.DormantCount}}</div>
+        <div class="admin-feeds-card-label">Без записей &gt; {{.FeedDormantDays}} дн.</div>
+      </a>{{end}}
       <div class="admin-feeds-card">
         <div class="admin-feeds-card-value">{{add .PollFeedJobCounts.Pending .PollFeedJobCounts.Running}}</div>
         <div class="admin-feeds-card-label">В очереди</div>

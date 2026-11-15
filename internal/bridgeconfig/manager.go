@@ -75,6 +75,9 @@ func (m *Manager) Stored() Stored {
 }
 
 func (m *Manager) Save(ctx context.Context, stored Stored) error {
+	if err := stored.Validate(); err != nil {
+		return err
+	}
 	raw, err := json.Marshal(stored)
 	if err != nil {
 		return err

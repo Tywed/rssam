@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"rssam/internal/ssrf"
@@ -18,6 +19,7 @@ import (
 type Client struct {
 	http  *http.Client
 	guard *ssrf.Guard
+	cfgMu sync.RWMutex
 	cfg   Config
 }
 
@@ -30,7 +32,9 @@ func NewClient(client *http.Client, guard *ssrf.Guard, cfg Config) (*Client, err
 }
 
 func (c *Client) UpdateConfig(cfg Config) {
+	c.cfgMu.Lock()
 	c.cfg = cfg.withDefaults()
+	c.cfgMu.Unlock()
 }
 
 func (c *Client) ListBrandVideos(ctx context.Context, st FetchState) ([]VideoItem, string, error) {
@@ -42,7 +46,7 @@ func (c *Client) ListBrandVideos(ctx context.Context, st FetchState) ([]VideoIte
 }
 
 func (c *Client) listViaBrandPage(ctx context.Context, st FetchState) ([]VideoItem, string, error) {
-	pageURL := BrandPageURL(c.cfg.BrandBaseURL, st.BrandID)
+	pageURL := BrandPageURL(c.config().BrandBaseURL, st.BrandID)
 	if c.guard != nil {
 		if err := c.guard.ValidateURL(pageURL); err != nil {
 			return nil, "", err
@@ -54,7 +58,7 @@ func (c *Client) listViaBrandPage(ctx context.Context, st FetchState) ([]VideoIt
 	}
 	req.Header.Set("Accept", "text/html,application/xhtml+xml")
 	req.Header.Set("Accept-Language", "ru-RU,ru;q=0.9")
-	if ua := strings.TrimSpace(c.cfg.UserAgent); ua != "" {
+	if ua := strings.TrimSpace(c.config().UserAgent); ua != "" {
 		req.Header.Set("User-Agent", ua)
 	}
 
@@ -80,7 +84,7 @@ func (c *Client) listViaGraphQL(ctx context.Context, st FetchState) ([]VideoItem
 		return nil, "", errMissingBrandID
 	}
 	if c.guard != nil {
-		if err := c.guard.ValidateURL(c.cfg.GraphQLURL); err != nil {
+		if err := c.guard.ValidateURL(c.config().GraphQLURL); err != nil {
 			return nil, "", err
 		}
 	}
@@ -226,7 +230,7 @@ func (c *Client) graphql(ctx context.Context, query string, variables map[string
 	if err != nil {
 		return err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.cfg.GraphQLURL, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.config().GraphQLURL, bytes.NewReader(body))
 	if err != nil {
 		return fmt.Errorf("smotrim: create graphql request: %w", err)
 	}
@@ -234,7 +238,7 @@ func (c *Client) graphql(ctx context.Context, query string, variables map[string
 	req.Header.Set("Accept", "application/graphql-response+json, application/json")
 	req.Header.Set("Origin", "https://smotrim.ru")
 	req.Header.Set("Referer", "https://smotrim.ru/")
-	if ua := strings.TrimSpace(c.cfg.UserAgent); ua != "" {
+	if ua := strings.TrimSpace(c.config().UserAgent); ua != "" {
 		req.Header.Set("User-Agent", ua)
 	}
 
@@ -377,4 +381,10 @@ func sortVideoItems(items []VideoItem) {
 		}
 		return items[i].PublishedAt.After(items[j].PublishedAt)
 	})
+}
+
+func (c *Client) config() Config {
+	c.cfgMu.RLock()
+	defer c.cfgMu.RUnlock()
+	return c.cfg
 }

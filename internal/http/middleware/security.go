@@ -22,7 +22,7 @@ func isUIRoute(path string) bool {
 // uiCSP allows no inline style/handler attributes at all; the only inline
 // <style>/<script> blocks are the ones the layout emits with this nonce.
 func uiCSP(nonce string) string {
-	return "default-src 'self'; script-src 'self' 'nonce-" + nonce + "'; style-src 'self' 'nonce-" + nonce + "'; img-src 'self' https: data:; connect-src 'self' ws: wss:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+	return "default-src 'self'; script-src 'self' 'nonce-" + nonce + "'; style-src 'self' 'nonce-" + nonce + "'; img-src 'self' https: data:; media-src 'self' https:; connect-src 'self' ws: wss:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
 }
 
 const apiCSP = "default-src 'none'; frame-ancestors 'none'"

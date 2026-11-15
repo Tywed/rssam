@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"rssam/internal/ssrf"
@@ -178,4 +179,40 @@ func TestCreateFeedIntervalValidation(t *testing.T) {
 			t.Fatalf("expected 400, got %d", rec.Code)
 		}
 	})
+}
+
+// A rule text that would not compile is refused with the field and line
+// instead of being saved and silently ignored by every poll.
+func TestCreateFeedRulesValidation(t *testing.T) {
+	s := New(Dependencies{
+		UserStore:     secretTokenUsers(),
+		CategoryStore: &fakeCategoryStore{},
+		FeedStore:     &fakeFeedStore{},
+		SSRFGuard:     testSSRFGuard(t),
+	})
+	h := s.wrapAPI(http.HandlerFunc(s.handleCreateFeed))
+	post := func(body string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodPost, "/v1/feeds", bytes.NewBufferString(body))
+		req.Header.Set("X-Auth-Token", "secret")
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		return rec
+	}
+	cases := map[string]string{
+		`{"feed_url":"https://example.com/a.xml","blocked_rules":"spam\n("}`:            "blocked_rules line 2",
+		`{"feed_url":"https://example.com/b.xml","keep_rules":"["}`:                     "keep_rules line 1",
+		`{"feed_url":"https://example.com/c.xml","rewrite_rules":"only-pattern"}`:       "rewrite_rules line 1: pattern without a replacement line",
+		`{"feed_url":"https://example.com/d.xml","scraper_rules":"content=div[\nmain"}`: "scraper_rules line 1",
+		`{"feed_url":"https://example.com/e.xml","rewrite_rules":"\r\nrepl\r\n"}`:       "rewrite_rules line 1: empty pattern",
+	}
+	for body, want := range cases {
+		rec := post(body)
+		if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), want) {
+			t.Errorf("%s: status=%d body=%s (want 400 with %q)", body, rec.Code, rec.Body.String(), want)
+		}
+	}
+	ok := `{"feed_url":"https://example.com/ok.xml","blocked_rules":"spam\r\n(?i)promo","keep_rules":"","rewrite_rules":"\\?utm_\\w+=\\w+\r\n\r\n","scraper_rules":"content=article .body\r\ndiv#main"}`
+	if rec := post(ok); rec.Code != http.StatusCreated {
+		t.Fatalf("valid rules refused: status=%d body=%s", rec.Code, rec.Body.String())
+	}
 }

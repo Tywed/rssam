@@ -22,7 +22,7 @@ func TestLegacyBridgeState_DecodesWithContractBridges(t *testing.T) {
 		"telegram":{"use_proxy":false,"proxy_service_url":"http://p","static_proxy":"socks5://s","max_pages":2},
 		"max":{"last_end_time_ms":1700000000000,"rate_limited_until":"2026-10-05T10:00:00Z"},
 		"maxstat":{"q":"краснодар","api_token":"tok","last_end_time":1700000000},
-		"vk_search":{"q":"golang","last_end_time":150},
+		"vk":{"q":"golang","last_end_time":150},
 		"rutube":{"channel_id":"26119699"},
 		"dzen_news":{"q":"python"},
 		"smotrim":{"brand_id":"67725","limit":5,"video_type":"plot"},
@@ -41,8 +41,8 @@ func TestLegacyBridgeState_DecodesWithContractBridges(t *testing.T) {
 		t.Fatalf("maxstat: %+v %v", ms, err)
 	}
 	var v vk.FetchState
-	if err := bridge.DecodeState(st.Raw(FeedTypeVKSearch), &v); err != nil || v.Query != "golang" || v.LastEndTime != 150 {
-		t.Fatalf("vk_search: %+v %v", v, err)
+	if err := bridge.DecodeState(st.Raw(FeedTypeVK), &v); err != nil || v.Query != "golang" || v.LastEndTime != 150 {
+		t.Fatalf("vk: %+v %v", v, err)
 	}
 	var rt rutube.FetchState
 	if err := bridge.DecodeState(st.Raw(FeedTypeRutube), &rt); err != nil || rt.ChannelID != "26119699" {

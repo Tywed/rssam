@@ -10,9 +10,13 @@ import (
 	"rssam/internal/model"
 )
 
-// Handler fetches posts via VK newsfeed.search.
+// Handler is the VK bridge: a feed is either a search (newsfeed.search,
+// vk-search://q) or one wall (wall.get, https://vk.com/name); the URL decides
+// on every poll. Search keeps a time cursor in FetchState; a wall keeps no
+// cursor (see fetchWall).
 type Handler struct {
 	client *Client
+	cfgMu  sync.RWMutex
 	cfg    Config
 
 	mu          sync.Mutex
@@ -30,17 +34,19 @@ func NewHandler(client *Client, cfg Config) *Handler {
 // UpdateConfig replaces global VK bridge settings at runtime.
 func (h *Handler) UpdateConfig(cfg Config) {
 	cfg = cfg.withDefaults()
+	h.cfgMu.Lock()
 	h.cfg = cfg
+	h.cfgMu.Unlock()
 	if h.client != nil {
 		h.client.UpdateConfig(cfg)
 	}
 }
 
-func (h *Handler) Name() string { return feedTypeVKSearch }
+func (h *Handler) Name() string { return FeedType }
 
 func (h *Handler) DetectFeedType(feedURL string) string {
-	if DetectFeedURL(feedURL) {
-		return feedTypeVKSearch
+	if DetectFeedURL(feedURL) || DetectGroupFeedURL(feedURL) {
+		return FeedType
 	}
 	return ""
 }
@@ -58,8 +64,12 @@ type FetchResult struct {
 	State   FetchState
 }
 
-// Fetch implements bridge.Handler; State is FetchState.
+// Fetch implements bridge.Handler; State is FetchState for searches and
+// empty for walls.
 func (h *Handler) Fetch(ctx context.Context, req bridge.Request) (bridge.Response, error) {
+	if !DetectFeedURL(req.FeedURL) {
+		return h.fetchWall(ctx, req)
+	}
 	var st FetchState
 	_ = bridge.DecodeState(req.State, &st)
 	res, err := h.fetch(ctx, req.FeedURL, st)
@@ -68,7 +78,7 @@ func (h *Handler) Fetch(ctx context.Context, req bridge.Request) (bridge.Respons
 
 func (h *Handler) fetch(ctx context.Context, feedURL string, st FetchState) (FetchResult, error) {
 	if h == nil || h.client == nil {
-		return FetchResult{}, errMissingToken
+		return FetchResult{}, ErrMissingToken
 	}
 
 	query, err := ResolveQuery(feedURL, st.Query)
@@ -86,11 +96,11 @@ func (h *Handler) fetch(ctx context.Context, feedURL string, st FetchState) (Fet
 	}
 
 	lastEnd := st.LastEndTime
-	win := ComputeTimeWindow(lastEnd, h.cfg.DefaultLookback, h.cfg.Overlap, now)
+	win := ComputeTimeWindow(lastEnd, h.config().DefaultLookback, h.config().Overlap, now)
 
 	body, apiErr, err := h.client.Search(ctx, SearchParams{
 		Query:     query,
-		Count:     h.cfg.DefaultCount,
+		Count:     h.config().DefaultCount,
 		StartTime: win.StartTime,
 		EndTime:   win.EndTime,
 	})
@@ -99,12 +109,12 @@ func (h *Handler) fetch(ctx context.Context, feedURL string, st FetchState) (Fet
 	}
 	if apiErr != nil {
 		if apiErr.ErrorCode == 6 {
-			until := now.Add(h.cfg.RateLimitCooldown)
+			until := now.Add(h.config().RateLimitCooldown)
 			st.RateLimitedUntil = &until
 			h.setQueryRateLimit(query, until)
 			return FetchResult{State: st}, fmt.Errorf("vk: rate limited (error %d)", apiErr.ErrorCode)
 		}
-		return FetchResult{}, fmt.Errorf("vk api error %d: %s", apiErr.ErrorCode, apiErr.ErrorMsg)
+		return FetchResult{}, mapAPIError(apiErr, now, h.config().RateLimitCooldown)
 	}
 
 	ownerNames := buildOwnerNames(body.Profiles, body.Groups)
@@ -170,4 +180,10 @@ func (h *Handler) setQueryRateLimit(query string, until time.Time) {
 	h.mu.Lock()
 	h.rateLimited[query] = until
 	h.mu.Unlock()
+}
+
+func (h *Handler) config() Config {
+	h.cfgMu.RLock()
+	defer h.cfgMu.RUnlock()
+	return h.cfg
 }

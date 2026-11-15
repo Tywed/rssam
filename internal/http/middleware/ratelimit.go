@@ -94,6 +94,20 @@ func (l *Limiter) Allow(key string) bool {
 	return true
 }
 
+// Exhausted reports whether key has no token left, without consuming one.
+func (l *Limiter) Exhausted(key string) bool {
+	if l == nil || !l.enabled {
+		return false
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	b, ok := l.buckets[strings.TrimSpace(key)]
+	if !ok {
+		return false
+	}
+	return b.tokens+time.Since(b.last).Seconds()*l.rate < 1
+}
+
 func (l *Limiter) evictStaleLocked(now time.Time) {
 	cutoff := now.Add(-bucketTTL)
 	for key, b := range l.buckets {
@@ -145,6 +159,9 @@ func IsSensitiveRoute(r *http.Request) bool {
 		return true
 	}
 	if strings.Contains(p, "/webhooks/") && strings.HasSuffix(p, "/test") {
+		return true
+	}
+	if strings.HasPrefix(p, "/v1/entries/") && strings.HasSuffix(p, "/fetch-content") {
 		return true
 	}
 	return false

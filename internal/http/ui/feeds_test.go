@@ -15,7 +15,8 @@ import (
 )
 
 type uiMemFeeds struct {
-	feeds []storage.Feed
+	feeds      []storage.Feed
+	lastUpdate *storage.UpdateFeedParams
 }
 
 func (m *uiMemFeeds) ListFeeds(_ context.Context, _ int64, limit, offset int) ([]storage.Feed, int, error) {
@@ -175,7 +176,8 @@ func (m *uiMemFeeds) GetFeed(_ context.Context, _ int64, id int64) (storage.Feed
 func (m *uiMemFeeds) CreateFeed(context.Context, int64, storage.CreateFeedParams) (storage.Feed, error) {
 	return storage.Feed{}, nil
 }
-func (m *uiMemFeeds) UpdateFeed(context.Context, int64, storage.UpdateFeedParams) (storage.Feed, error) {
+func (m *uiMemFeeds) UpdateFeed(_ context.Context, _ int64, p storage.UpdateFeedParams) (storage.Feed, error) {
+	m.lastUpdate = &p
 	return storage.Feed{}, nil
 }
 func (m *uiMemFeeds) DeleteFeed(_ context.Context, _ int64, id int64) error {

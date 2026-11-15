@@ -246,8 +246,10 @@ type adminSystemInfo struct {
 	// InboundEnabled: POST /hooks/{id} is mounted (INBOUND_WEBHOOKS=true).
 	InboundEnabled bool
 	// FeedSilentDays / FeedSilentInterval: the silent-feed schedule.
-	FeedSilentDays     int
-	FeedSilentInterval time.Duration
+	FeedSilentDays      int
+	FeedSilentInterval  time.Duration
+	FeedDormantDays     int
+	FeedDormantInterval time.Duration
 	// PollDeferrals: polls put back since start, per bridge and reason.
 	PollDeferrals []PollDeferral
 }
@@ -264,29 +266,31 @@ func (h *Handler) handleAdminSystem(w http.ResponseWriter, r *http.Request) {
 	canR, rHint := ops.CanRestart()
 	canU, uHint := ops.CanUpdate()
 	info := adminSystemInfo{
-		Version:            version.Version,
-		Commit:             version.Commit,
-		GoVersion:          runtime.Version(),
-		BuildDate:          version.Date,
-		Arch:               runtime.GOARCH,
-		OS:                 runtime.GOOS,
-		UsersCount:         count,
-		MemAllocBytes:      int64(ms.Alloc),
-		BinaryPath:         ops.BinaryPath(),
-		EnvFile:            h.envPath(),
-		Systemd:            ops.SystemdActive(),
-		DatabaseHost:       ops.RedactDatabaseURL(h.cfg.DatabaseURL),
-		InDocker:           ops.InDocker(),
-		DualWarning:        ops.DualProcessWarning(),
-		LocaleWarning:      localeWarning(h.cfg.DatabaseLocale),
-		CanRestart:         canR,
-		RestartHint:        rHint,
-		CanUpdate:          canU,
-		UpdateHint:         uHint,
-		WorkersPaused:      h.cfg.WorkersPaused != nil && h.cfg.WorkersPaused(),
-		InboundEnabled:     h.cfg.InboundFeeds != nil,
-		FeedSilentDays:     h.cfg.FeedSilentDays,
-		FeedSilentInterval: h.cfg.FeedSilentInterval,
+		Version:             version.Version,
+		Commit:              version.Commit,
+		GoVersion:           runtime.Version(),
+		BuildDate:           version.Date,
+		Arch:                runtime.GOARCH,
+		OS:                  runtime.GOOS,
+		UsersCount:          count,
+		MemAllocBytes:       int64(ms.Alloc),
+		BinaryPath:          ops.BinaryPath(),
+		EnvFile:             h.envPath(),
+		Systemd:             ops.SystemdActive(),
+		DatabaseHost:        ops.RedactDatabaseURL(h.cfg.DatabaseURL),
+		InDocker:            ops.InDocker(),
+		DualWarning:         ops.DualProcessWarning(),
+		LocaleWarning:       localeWarning(h.cfg.DatabaseLocale),
+		CanRestart:          canR,
+		RestartHint:         rHint,
+		CanUpdate:           canU,
+		UpdateHint:          uHint,
+		WorkersPaused:       h.cfg.WorkersPaused != nil && h.cfg.WorkersPaused(),
+		InboundEnabled:      h.cfg.InboundFeeds != nil,
+		FeedSilentDays:      h.cfg.FeedSilentDays,
+		FeedSilentInterval:  h.cfg.FeedSilentInterval,
+		FeedDormantDays:     h.cfg.FeedDormantDays,
+		FeedDormantInterval: h.cfg.FeedDormantInterval,
 	}
 	if h.releases != nil {
 		_, _ = h.releases.Refresh()
@@ -300,7 +304,7 @@ func (h *Handler) handleAdminSystem(w http.ResponseWriter, r *http.Request) {
 		if size, err := h.cfg.AdminFeeds.EstimateDatabaseSize(r.Context()); err == nil {
 			info.DBSizeBytes = size
 		}
-		summary, err := h.cfg.AdminFeeds.AdminFeedSummary(r.Context(), 0)
+		summary, err := h.cfg.AdminFeeds.AdminFeedSummary(r.Context(), 0, 0)
 		if err == nil {
 			info.TotalEntries = summary.TotalEntries
 			info.TotalUnread = summary.TotalUnread

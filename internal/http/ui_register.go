@@ -121,6 +121,8 @@ func (s *Server) registerUI(mux *http.ServeMux) {
 	cfg.Retention = s.retention
 	cfg.FeedSilentDays = s.feedSilentDays
 	cfg.FeedSilentInterval = s.feedSilentInterval
+	cfg.FeedDormantDays = s.feedDormantDays
+	cfg.FeedDormantInterval = s.feedDormantInterval
 	cfg.RunRetentionCleanup = s.runRetentionCleanup
 	cfg.DatabaseURL = s.databaseURL
 	cfg.DatabaseLocale = s.databaseLocale

@@ -105,7 +105,7 @@ func TestRenderBodyTemplate_FeedTitle(t *testing.T) {
 		Entry: storage.Entry{Title: "Hello", URL: "https://example.com/a"},
 		Feed:  storage.WebhookFeed{ID: 7, Title: "Вести Кубань"},
 	}
-	got, err := renderBodyTemplate(`{"text":"{{.feed.Title}}: {{.entry.Title}}"}`, ctx, []byte(`{}`))
+	got, err := storage.RenderWebhookBodyTemplate(`{"text":"{{.feed.Title}}: {{.entry.Title}}"}`, ctx.Feed, ctx.Entry, ctx.Filter, []byte(`{}`))
 	if err != nil {
 		t.Fatal(err)
 	}

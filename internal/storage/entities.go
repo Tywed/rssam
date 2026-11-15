@@ -10,7 +10,9 @@ import (
 var (
 	ErrNotFound         = errors.New("not found")
 	ErrDuplicateFeedURL = errors.New("feed_url already exists")
-	ErrInvalidReference = errors.New("invalid reference")
+	// ErrInboundURLImmutable: an inbound feed's URL is its /hooks/{id} address.
+	ErrInboundURLImmutable = errors.New("feed_url of an inbound feed cannot be changed")
+	ErrInvalidReference    = errors.New("invalid reference")
 	// ErrCategoryNotEmpty: a category with feeds cannot be deleted.
 	ErrCategoryNotEmpty  = errors.New("category has feeds")
 	ErrDuplicateCategory = errors.New("category title already exists")
@@ -483,20 +485,27 @@ type CreateFeedParams struct {
 }
 
 type UpdateFeedParams struct {
-	ID                 int64
-	FeedURL            string
-	Title              string
-	CategoryID         *int64
-	IntervalMinutes    int
-	ScraperRules       string
-	RewriteRules       string
-	BlockedRules       string
-	KeepRules          string
-	FetchViaProxy      bool
-	TLSInsecure        bool
-	Crawler            bool
-	UserAgent          string
+	ID      int64
+	FeedURL string
+	// FeedType is applied only when FeedURL changes (the caller detects it
+	// from the new URL); otherwise the stored type stays.
+	FeedType        string
+	Title           string
+	CategoryID      *int64
+	IntervalMinutes int
+	ScraperRules    string
+	RewriteRules    string
+	BlockedRules    string
+	KeepRules       string
+	FetchViaProxy   bool
+	TLSInsecure     bool
+	Crawler         bool
+	UserAgent       string
+	// WebhookID is written to the caller's subscription only when
+	// SetWebhook is true; the REST feed update leaves the subscription
+	// alone (it has its own endpoint).
 	WebhookID          *int64
+	SetWebhook         bool
 	StoreMode          string
 	EntryRetentionDays *int
 	AdaptiveInterval   bool

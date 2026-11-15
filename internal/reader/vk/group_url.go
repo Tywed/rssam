@@ -7,8 +7,6 @@ import (
 	"strings"
 )
 
-const feedTypeVKGroup = "vk_group"
-
 // Wall is one VK wall: a numeric owner (negative for communities) or a
 // screen name that the API resolves itself via the domain parameter.
 type Wall struct {
@@ -41,7 +39,7 @@ var vkServicePaths = map[string]struct{}{
 
 // ParseWallFromFeedURL accepts https://vk.com/<name>, /public123, /club123,
 // /event123, /id123 and vk-group://<name>; posts, search and service pages
-// are rejected so that vk_search and plain links keep their own detection.
+// are rejected so that search and plain links keep their own detection.
 func ParseWallFromFeedURL(feedURL string) (Wall, bool) {
 	feedURL = strings.TrimSpace(feedURL)
 	if feedURL == "" {

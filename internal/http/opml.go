@@ -7,6 +7,7 @@ import (
 	"io"
 	"mime"
 	"net/http"
+	"rssam/internal/feedrules"
 	"strings"
 
 	"rssam/internal/auth"
@@ -398,6 +399,24 @@ func importFeedParams(feedURL string, entry opml.FeedEntry, webhookByName map[st
 	if err := storage.ValidateEntryRetentionDays(retention); err != nil {
 		notes = append(notes, "rssam:retentionDays: "+err.Error()+", ignored")
 		retention = nil
+	}
+	// A rule text that would not compile is dropped with a note; the
+	// other texts of the feed stay.
+	if err := feedrules.ValidateScraper(st.ScraperRules); err != nil {
+		notes = append(notes, "rssam:scraperRules: "+err.Error()+", ignored")
+		st.ScraperRules = ""
+	}
+	if _, err := feedrules.CompileRewrites(st.RewriteRules); err != nil {
+		notes = append(notes, "rssam:rewriteRules: "+err.Error()+", ignored")
+		st.RewriteRules = ""
+	}
+	if _, err := feedrules.CompileMatch("blocked_rules", st.BlockedRules); err != nil {
+		notes = append(notes, "rssam:blockedRules: "+err.Error()+", ignored")
+		st.BlockedRules = ""
+	}
+	if _, err := feedrules.CompileMatch("keep_rules", st.KeepRules); err != nil {
+		notes = append(notes, "rssam:keepRules: "+err.Error()+", ignored")
+		st.KeepRules = ""
 	}
 
 	var webhookID *int64

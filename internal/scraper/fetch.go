@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"strings"
 	"sync"
 
@@ -59,7 +58,7 @@ func newProxyClientCache(base *http.Client, proxyURL string) *proxyClientCache {
 	return &proxyClientCache{base: base, proxy: strings.TrimSpace(proxyURL)}
 }
 
-func (c *proxyClientCache) client(useProxy bool) (*http.Client, error) {
+func (c *proxyClientCache) client(useProxy bool, guard *ssrf.Guard) (*http.Client, error) {
 	if !useProxy || c == nil || c.proxy == "" {
 		return c.base, nil
 	}
@@ -68,22 +67,15 @@ func (c *proxyClientCache) client(useProxy bool) (*http.Client, error) {
 	if c.cached != nil {
 		return c.cached, nil
 	}
-	u, err := url.Parse(c.proxy)
+	if guard == nil {
+		return nil, fmt.Errorf("fetch via proxy requires the ssrf guard")
+	}
+	cl, err := guard.HTTPClientViaProxy(c.base.Timeout, false, c.proxy)
 	if err != nil {
-		return nil, fmt.Errorf("invalid proxy URL: %w", err)
+		return nil, err
 	}
-	transport := c.base.Transport
-	if transport == nil {
-		transport = http.DefaultTransport
-	}
-	rt, ok := transport.(*http.Transport)
-	if !ok {
-		return nil, fmt.Errorf("unsupported transport for proxy")
-	}
-	cp := rt.Clone()
-	cp.Proxy = http.ProxyURL(u)
-	c.cached = &http.Client{Timeout: c.base.Timeout, Transport: cp, CheckRedirect: c.base.CheckRedirect}
-	return c.cached, nil
+	c.cached = cl
+	return cl, nil
 }
 
 // FetchHTML downloads a page and returns its HTML body (truncated to max size).
@@ -114,7 +106,7 @@ func (f *Fetcher) FetchHTML(ctx context.Context, pageURL, feedUserAgent string, 
 	client := f.client
 	if f.proxy != nil {
 		var errClient error
-		client, errClient = f.proxy.client(useProxy)
+		client, errClient = f.proxy.client(useProxy, f.guard)
 		if errClient != nil {
 			return "", errClient
 		}

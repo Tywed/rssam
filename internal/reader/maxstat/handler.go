@@ -14,6 +14,7 @@ import (
 // Handler fetches posts via maxstat.ru search API.
 type Handler struct {
 	client *Client
+	cfgMu  sync.RWMutex
 	cfg    Config
 
 	mu          sync.Mutex
@@ -30,7 +31,9 @@ func NewHandler(client *Client, cfg Config) *Handler {
 
 func (h *Handler) UpdateConfig(cfg Config) {
 	cfg = cfg.withDefaults()
+	h.cfgMu.Lock()
 	h.cfg = cfg
+	h.cfgMu.Unlock()
 	if h.client != nil {
 		h.client.UpdateConfig(cfg)
 	}
@@ -88,12 +91,12 @@ func (h *Handler) fetch(ctx context.Context, feedURL string, st FetchState) (Fet
 	lastEnd := st.LastEndTime
 	body, status, err := h.client.Search(ctx, SearchParams{
 		Query:       query,
-		Limit:       h.cfg.DefaultLimit,
+		Limit:       h.config().DefaultLimit,
 		AccessToken: st.ApiToken,
 	})
 	if err != nil {
 		if status == 429 {
-			until := now.Add(h.cfg.RateLimitCooldown)
+			until := now.Add(h.config().RateLimitCooldown)
 			st.RateLimitedUntil = &until
 			h.setQueryRateLimit(query, until)
 		}
@@ -170,4 +173,10 @@ func (h *Handler) setQueryRateLimit(query string, until time.Time) {
 	h.mu.Lock()
 	h.rateLimited[query] = until
 	h.mu.Unlock()
+}
+
+func (h *Handler) config() Config {
+	h.cfgMu.RLock()
+	defer h.cfgMu.RUnlock()
+	return h.cfg
 }

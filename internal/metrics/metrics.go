@@ -63,6 +63,11 @@ var (
 		Help: "Number of times a webhook was paused by a 429 (Retry-After).",
 	})
 
+	PanicsTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "rssam_panics_total",
+		Help: "Panics recovered in workers, by place.",
+	}, []string{"where"})
+
 	CleanupDeletedRows = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "rssam_cleanup_deleted_rows_total",
 		Help: "Number of rows deleted by the retention cleanup job.",
@@ -93,6 +98,7 @@ func Init() {
 			WebhookDeliveryDuration,
 			WebhookRetriesTotal,
 			WebhookFloodWaitsTotal,
+			PanicsTotal,
 			CleanupDeletedRows,
 			FilterMatchesTotal,
 			FilterProcessingDuration,

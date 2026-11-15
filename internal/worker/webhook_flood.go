@@ -9,11 +9,11 @@ import (
 	"time"
 )
 
-// A 429 is the endpoint saying "not now", not a failed delivery: the row
-// keeps its attempt count and the whole webhook waits for the announced
-// time, so the rows behind it are not sent into the same wall (each would
-// burn an attempt and write a failed status). The wait is bounded: a
-// provider cannot park a webhook for longer than webhookFloodMaxWait.
+// A 429 is the endpoint saying "not now". The row still spends an attempt
+// (the ceiling is WEBHOOK_MAX_ATTEMPTS × 3, see floodPause), and the whole
+// webhook waits for the announced time so the rows behind it are not sent
+// into the same wall. The wait is bounded: a provider cannot park a webhook
+// for longer than webhookFloodMaxWait.
 const (
 	webhookFloodDefaultWait = 10 * time.Second
 	webhookFloodMaxWait     = time.Hour
@@ -66,6 +66,33 @@ func (p *duePauses[K]) pausedUntil(id K, now time.Time) (time.Time, bool) {
 		return time.Time{}, false
 	}
 	return u, true
+}
+
+// floodStreaks counts, per webhook, the 429 answers since the last answer
+// that was not one. A receiver that keeps saying "not now" after its own
+// retry_after has been honoured thirty times is not busy, it is gone
+// (revoked token, exhausted quota): from then on each 429 kills its row,
+// one per pause, instead of leaving the queue to live for ever.
+type floodStreaks struct {
+	mu sync.Mutex
+	n  map[int64]int
+}
+
+// hit records a 429 and returns the streak length including it.
+func (f *floodStreaks) hit(id int64) int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.n == nil {
+		f.n = make(map[int64]int)
+	}
+	f.n[id]++
+	return f.n[id]
+}
+
+func (f *floodStreaks) reset(id int64) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	delete(f.n, id)
 }
 
 // retryAfterOf is how long a 429 asks to wait: Telegram's

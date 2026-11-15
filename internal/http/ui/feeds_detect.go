@@ -64,16 +64,15 @@ func (h *Handler) handleFeedDetectType(w http.ResponseWriter, r *http.Request) {
 			resp.ChannelID = id
 		}
 	}
-	if ft == reader.FeedTypeVKSearch {
+	vkSearch := false
+	if ft == reader.FeedTypeVK {
 		if q, ok := vkbridge.ParseQueryFromFeedURL(feedURL); ok {
+			vkSearch = true
 			resp.SearchQuery = q
 			if resp.Title == "" {
-				resp.Title = "VK: " + q
+				resp.Title = vkbridge.FeedTitle(q)
 			}
-		}
-	}
-	if ft == reader.FeedTypeVKGroup {
-		if w, ok := vkbridge.ParseWallFromFeedURL(feedURL); ok {
+		} else if w, ok := vkbridge.ParseWallFromFeedURL(feedURL); ok {
 			resp.ChannelID = w.String()
 		}
 	}
@@ -111,9 +110,9 @@ func (h *Handler) handleFeedDetectType(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	if h.cfg.DiscoverFeed != nil {
+	if h.cfg.DiscoverFeed != nil && !vkSearch {
 		switch ft {
-		case reader.FeedTypeTelegram, reader.FeedTypeRSS, reader.FeedTypePage, reader.FeedTypeDzenChannel, reader.FeedTypeOKGroup, reader.FeedTypeVKGroup:
+		case reader.FeedTypeTelegram, reader.FeedTypeRSS, reader.FeedTypePage, reader.FeedTypeDzenChannel, reader.FeedTypeOKGroup, reader.FeedTypeVK:
 			d, err := h.cfg.DiscoverFeed(r.Context(), feedURL, ft, tlsInsecure)
 			if err != nil {
 				if ft != reader.FeedTypeTelegram {
@@ -161,8 +160,8 @@ func formatRSSDetectError(err error) string {
 	if errors.Is(err, okgroup.ErrNotGroup) {
 		return "Это не группа Одноклассников (профиль пользователя или другая страница)"
 	}
-	if errors.Is(err, reader.ErrBridgeNotConfigured) {
-		return "Мост не настроен: задайте токен доступа в настройках моста"
+	if errors.Is(err, vkbridge.ErrMissingToken) {
+		return "Мост VK не настроен: задайте токен доступа в настройках моста VK"
 	}
 	if errors.Is(err, vkbridge.ErrWallNotFound) {
 		return "Сообщество или страница VK не найдены: проверьте адрес (https://vk.com/имя, https://vk.com/public123)"
@@ -200,7 +199,6 @@ func (h *Handler) renderFeedFormError(w http.ResponseWriter, r *http.Request, pa
 		TLSInsecure:     params.TLSInsecure,
 	}
 	data.TgUseProxy = r.FormValue("telegram_use_proxy") == "1"
-	data.TgProxyServiceURL = strings.TrimSpace(r.FormValue("telegram_proxy_service_url"))
 	data.TgStaticProxy = strings.TrimSpace(r.FormValue("telegram_static_proxy"))
 	data.FlashErr = errMsg
 	data.Title = "Новая лента"
@@ -240,7 +238,7 @@ func resolveFeedBeforeCreate(ctx context.Context, h *Handler, params *storage.Cr
 		if params.Title == "" {
 			params.Title = strings.TrimSpace(d.Title)
 		}
-	case reader.FeedTypeTelegram, reader.FeedTypeDzenChannel, reader.FeedTypeOKGroup, reader.FeedTypeVKGroup:
+	case reader.FeedTypeTelegram, reader.FeedTypeDzenChannel, reader.FeedTypeOKGroup, reader.FeedTypeVK:
 		if params.Title == "" {
 			if d, err := h.cfg.DiscoverFeed(ctx, params.FeedURL, params.FeedType, params.TLSInsecure); err == nil {
 				params.Title = strings.TrimSpace(d.Title)

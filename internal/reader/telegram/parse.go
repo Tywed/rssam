@@ -379,8 +379,8 @@ func processReply(reply *goquery.Selection) string {
 		text = innerHTML(body)
 	}
 	href, _ := reply.Attr("href")
-	return fmt.Sprintf("<blockquote>%s<br>%s<br><a href=%q>%s</a></blockquote><hr>",
-		html.EscapeString(author), text, href, html.EscapeString(href))
+	return fmt.Sprintf("<blockquote>%s<br>%s<br><a href=\"%s\">%s</a></blockquote><hr>",
+		html.EscapeString(author), text, html.EscapeString(href), html.EscapeString(href))
 }
 
 func processSticker(msg *goquery.Selection, channelUsername string) (string, string) {
@@ -397,7 +397,7 @@ func processSticker(msg *goquery.Selection, channelUsername string) (string, str
 	}
 	if style, ok := wrap.Find("i").First().Attr("style"); ok {
 		if m := backgroundImageRegex.FindStringSubmatch(style); len(m) > 1 {
-			return fmt.Sprintf(`<img src=%q>`, m[1]), title
+			return `<img src="` + html.EscapeString(m[1]) + `">`, title
 		}
 	}
 	return "", title
@@ -418,7 +418,7 @@ func processPhoto(msg *goquery.Selection, channelUsername string) (string, strin
 		}
 		enc = append(enc, m[1])
 		href, _ := wrap.Attr("href")
-		fmt.Fprintf(&b, `<a href=%q><img src=%q></a><br>`, href, m[1])
+		fmt.Fprintf(&b, `<a href="%s"><img src="%s"></a><br>`, html.EscapeString(href), html.EscapeString(m[1]))
 	})
 	return b.String(), title, enc
 }
@@ -449,8 +449,8 @@ func processVideo(msg *goquery.Selection, channelUsername string) (string, strin
 	if src != "" {
 		enc = append(enc, src)
 	}
-	htmlOut := fmt.Sprintf(`<video controls poster=%q style="max-width:100%%"><source src=%q type="video/mp4"></video>`,
-		poster, src)
+	htmlOut := fmt.Sprintf(`<video controls poster="%s" style="max-width:100%%"><source src="%s" type="video/mp4"></video>`,
+		html.EscapeString(poster), html.EscapeString(src))
 	return htmlOut, title, enc
 }
 
@@ -507,7 +507,7 @@ func processGroupedMedia(grouped *goquery.Selection, channelUsername string) (st
 		}
 		enc = append(enc, m[1])
 		href, _ := wrap.Attr("href")
-		fmt.Fprintf(&b, `<a href=%q><img src=%q></a><br>`, href, m[1])
+		fmt.Fprintf(&b, `<a href="%s"><img src="%s"></a><br>`, html.EscapeString(href), html.EscapeString(m[1]))
 	})
 
 	grouped.Find("a.tgme_widget_message_video_player").Each(func(_ int, player *goquery.Selection) {
@@ -524,8 +524,8 @@ func processGroupedMedia(grouped *goquery.Selection, channelUsername string) (st
 		if src != "" {
 			enc = append(enc, src)
 		}
-		fmt.Fprintf(&b, `<video controls poster=%q style="max-width:100%%"><source src=%q type="video/mp4"></video><br>`,
-			poster, src)
+		fmt.Fprintf(&b, `<video controls poster="%s" style="max-width:100%%"><source src="%s" type="video/mp4"></video><br>`,
+			html.EscapeString(poster), html.EscapeString(src))
 	})
 
 	return b.String(), title, uniqueStrings(enc)
@@ -538,7 +538,7 @@ func processLinkPreview(preview *goquery.Selection) string {
 	var image, title, site, desc string
 	if style, ok := preview.Find("i").First().Attr("style"); ok {
 		if m := backgroundImageRegex.FindStringSubmatch(style); len(m) > 1 {
-			image = fmt.Sprintf(`<img src=%q>`, m[1])
+			image = `<img src="` + html.EscapeString(m[1]) + `">`
 		}
 	}
 	if el := preview.Find("div.link_preview_title").First(); el.Length() > 0 {
@@ -551,7 +551,8 @@ func processLinkPreview(preview *goquery.Selection) string {
 		desc = html.EscapeString(strings.TrimSpace(el.Text()))
 	}
 	href, _ := preview.Attr("href")
-	return fmt.Sprintf(`<blockquote><a href=%q>%s</a><br><a href=%q>%s - %s</a><br>%s</blockquote>`,
+	href = html.EscapeString(href)
+	return fmt.Sprintf(`<blockquote><a href="%s">%s</a><br><a href="%s">%s - %s</a><br>%s</blockquote>`,
 		href, image, href, title, site, desc)
 }
 

@@ -315,7 +315,7 @@ func TestOPMLSettingsRoundtrip(t *testing.T) {
 	if _, err := src.CreateFeed(context.Background(), 1, storage.CreateFeedParams{
 		FeedURL: "https://example.com/tg", FeedType: "telegram", Title: "TG", IntervalMinutes: 5,
 		TLSInsecure: true, FetchViaProxy: true, Crawler: true, StoreMode: "filtered", EntryRetentionDays: &retention,
-		UserAgent: "ua/2", WebhookID: &webhookID, ScraperRules: "div.post", RewriteRules: "rw", BlockedRules: "ads", KeepRules: "go",
+		UserAgent: "ua/2", WebhookID: &webhookID, ScraperRules: "div.post", RewriteRules: "rw\nrw2", BlockedRules: "ads", KeepRules: "go",
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -338,7 +338,7 @@ func TestOPMLSettingsRoundtrip(t *testing.T) {
 
 	// Target instance: import the export plus two hand-edited outlines.
 	edited := strings.Replace(exported, "</body>", `
-    <outline type="rss" text="Bad" xmlUrl="https://example.com/bad" rssam:interval="999999" rssam:webhook="nope" rssam:feedType="martian" rssam:tlsInsecure="yes-please"/>
+    <outline type="rss" text="Bad" xmlUrl="https://example.com/bad" rssam:interval="999999" rssam:webhook="nope" rssam:feedType="martian" rssam:tlsInsecure="yes-please" rssam:blockedRules="(" rssam:rewriteRules="odd" rssam:scraperRules="div[" rssam:keepRules="fine"/>
     <outline type="rss" text="Dup" xmlUrl="https://example.com/dup" rssam:webhook="dup"/>
   </body>`, 1)
 	dst := newOpmlFeedStore()
@@ -367,7 +367,7 @@ func TestOPMLSettingsRoundtrip(t *testing.T) {
 	tg := byURL["https://example.com/tg"]
 	if tg.FeedType != "telegram" || tg.IntervalMinutes != 5 || !tg.TLSInsecure || !tg.FetchViaProxy || !tg.Crawler || tg.StoreMode != "filtered" ||
 		tg.EntryRetentionDays == nil || *tg.EntryRetentionDays != 30 || tg.UserAgent != "ua/2" ||
-		tg.WebhookID == nil || *tg.WebhookID != 7 || tg.ScraperRules != "div.post" || tg.RewriteRules != "rw" || tg.BlockedRules != "ads" || tg.KeepRules != "go" {
+		tg.WebhookID == nil || *tg.WebhookID != 7 || tg.ScraperRules != "div.post" || tg.RewriteRules != "rw\nrw2" || tg.BlockedRules != "ads" || tg.KeepRules != "go" {
 		t.Fatalf("settings lost on import: %+v", tg)
 	}
 	plain := byURL["https://example.com/plain"]
@@ -375,7 +375,8 @@ func TestOPMLSettingsRoundtrip(t *testing.T) {
 		t.Fatalf("plain feed changed: %+v", plain)
 	}
 	bad := byURL["https://example.com/bad"]
-	if bad.IntervalMinutes != defaultIntervalMinutes || bad.WebhookID != nil || bad.FeedType != "rss" || bad.TLSInsecure {
+	if bad.IntervalMinutes != defaultIntervalMinutes || bad.WebhookID != nil || bad.FeedType != "rss" || bad.TLSInsecure ||
+		bad.BlockedRules != "" || bad.RewriteRules != "" || bad.ScraperRules != "" || bad.KeepRules != "fine" {
 		t.Fatalf("invalid attributes must fall back to defaults: %+v", bad)
 	}
 	if dup := byURL["https://example.com/dup"]; dup.WebhookID != nil {
@@ -386,7 +387,8 @@ func TestOPMLSettingsRoundtrip(t *testing.T) {
 	for _, e := range resp.Data.Errors {
 		reasons.WriteString(e.FeedURL + ": " + e.Reason + "\n")
 	}
-	for _, want := range []string{"rssam:interval: 999999", `rssam:webhook: no webhook named "nope"`, `rssam:feedType: unknown type "martian"`, "rssam:tlsInsecure: expected true/false", `several webhooks are named "dup"`} {
+	for _, want := range []string{"rssam:interval: 999999", `rssam:webhook: no webhook named "nope"`, `rssam:feedType: unknown type "martian"`, "rssam:tlsInsecure: expected true/false", `several webhooks are named "dup"`,
+		"rssam:blockedRules: blocked_rules line 1: error parsing regexp", "rssam:rewriteRules: rewrite_rules line 1: pattern without a replacement line", "rssam:scraperRules: scraper_rules line 1:"} {
 		if !strings.Contains(reasons.String(), want) {
 			t.Fatalf("report lacks %q:\n%s", want, reasons.String())
 		}

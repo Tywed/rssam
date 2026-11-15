@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"rssam/internal/bridge/v1"
@@ -20,6 +21,7 @@ const feedTypeTelegram = "telegram"
 type Handler struct {
 	proxyClient *proxy.Client
 	httpClient  *http.Client
+	cfgMu       sync.RWMutex
 	cfg         Config
 	slots       *fetchSlots
 	static      proxy.StaticClients
@@ -48,7 +50,7 @@ func NewHandler(proxyClient *proxy.Client, httpClient *http.Client, cfg Config) 
 		cfg.UseProxy = true
 	}
 	if proxyClient != nil && cfg.ProxyServiceToken != "" {
-		proxyClient.ServiceToken = cfg.ProxyServiceToken
+		proxyClient.SetServiceToken(cfg.ProxyServiceToken)
 	}
 	cfg.ConcurrentSlots = ClampConcurrentSlots(cfg.ConcurrentSlots)
 	return &Handler{proxyClient: proxyClient, httpClient: httpClient, cfg: cfg, slots: newFetchSlots(cfg.ConcurrentSlots)}
@@ -72,11 +74,13 @@ func (h *Handler) UpdateConfig(cfg Config) {
 		cfg.UseProxy = true
 	}
 	if h.proxyClient != nil && cfg.ProxyServiceToken != "" {
-		h.proxyClient.ServiceToken = cfg.ProxyServiceToken
+		h.proxyClient.SetServiceToken(cfg.ProxyServiceToken)
 	}
 	cfg.ConcurrentSlots = ClampConcurrentSlots(cfg.ConcurrentSlots)
 	h.slots.setLimit(cfg.ConcurrentSlots)
+	h.cfgMu.Lock()
 	h.cfg = cfg
+	h.cfgMu.Unlock()
 }
 
 func (h *Handler) Name() string { return feedTypeTelegram }
@@ -137,7 +141,7 @@ func (h *Handler) fetch(ctx context.Context, feedURL string, override *BridgeOve
 	if h == nil {
 		return FetchResult{}, fmt.Errorf("telegram: handler is not configured")
 	}
-	cfg := EffectiveConfig(h.cfg, override)
+	cfg := EffectiveConfig(h.config(), override)
 	if err := cfg.validateFetch(); err != nil {
 		return FetchResult{}, err
 	}
@@ -225,7 +229,7 @@ func (h *Handler) DiscoverChannelTitle(ctx context.Context, feedURL string) (str
 	if !ok || username == "" {
 		return "", fmt.Errorf("telegram: cannot extract channel username from URL: %s", feedURL)
 	}
-	body, err := h.fetchPage(ctx, h.cfg, PreviewURL(username))
+	body, err := h.fetchPage(ctx, h.config(), PreviewURL(username))
 	if err != nil {
 		return "", err
 	}
@@ -283,7 +287,7 @@ func (h *Handler) fetchViaStatic(ctx context.Context, cfg Config, pageURL string
 	if err != nil {
 		return nil, err
 	}
-	if cfg.StaticProxy != h.cfg.StaticProxy {
+	if cfg.StaticProxy != h.config().StaticProxy {
 		if err := h.guard.ValidateHost(p.Host); err != nil {
 			return nil, fmt.Errorf("telegram: static proxy: %w", err)
 		}
@@ -372,4 +376,10 @@ func messageToEntry(m ParsedMessage) bridge.Entry {
 		PublishedAt: pub,
 		Hash:        model.DedupHashFromURL(uri),
 	}
+}
+
+func (h *Handler) config() Config {
+	h.cfgMu.RLock()
+	defer h.cfgMu.RUnlock()
+	return h.cfg
 }

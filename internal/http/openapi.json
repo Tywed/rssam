@@ -1542,13 +1542,13 @@
           "description": "Object id."
         }
       ],
-      "get": {
+      "post": {
         "tags": [
           "entries"
         ],
         "summary": "Fetch full article content",
         "operationId": "fetchEntryContent",
-        "description": "Downloads the entry URL (SSRF-guarded), applies the feed's scraper rules or the readability extractor, and stores the result.",
+        "description": "Downloads the entry URL (SSRF-guarded), applies the feed's scraper rules or the readability extractor, and stores the result. Requires write or admin scope; the request is rate-limited like other sensitive routes.",
         "responses": {
           "200": {
             "description": "Entry with content replaced by the extracted article; original kept in original_content.",
@@ -1589,6 +1589,55 @@
             "$ref": "#/components/responses/ServiceUnavailable"
           }
         }
+      },
+      "get": {
+        "tags": [
+          "entries"
+        ],
+        "summary": "Fetch full article content (deprecated, use POST)",
+        "operationId": "fetchEntryContentGet",
+        "description": "Deprecated alias of POST; kept for existing clients. Requires write or admin scope.",
+        "responses": {
+          "200": {
+            "description": "Entry with content replaced by the extracted article; original kept in original_content.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EntryResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "502": {
+            "description": "The article page could not be fetched or parsed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        },
+        "deprecated": true
       }
     },
     "/v1/filters": {
@@ -3529,7 +3578,7 @@
           },
           "feed_type": {
             "type": "string",
-            "description": "Detected feed format (rss, atom, json, ...); omitted when unknown."
+            "description": "Detected feed format (rss, atom, json, telegram, vk, ...); omitted when unknown. vk covers both VK searches (vk-search://q) and walls (https://vk.com/name); the legacy values vk_search and vk_group are accepted on write and normalized to vk."
           },
           "title": {
             "type": "string"
@@ -3544,16 +3593,20 @@
             "description": "Refresh interval; 0 = use the global default."
           },
           "scraper_rules": {
-            "type": "string"
+            "type": "string",
+            "description": "CSS selectors, one per line, bare or as key=selector (content=, article=). Each line must be a valid selector (400 with the line number otherwise); at most 8 KB."
           },
           "rewrite_rules": {
-            "type": "string"
+            "type": "string",
+            "description": "Pattern/replacement pairs: a Go regexp on one line, the replacement verbatim on the next (an empty line deletes the match). An odd pattern or an invalid regexp is refused with the line number; at most 8 KB."
           },
           "blocked_rules": {
-            "type": "string"
+            "type": "string",
+            "description": "Regexps, one per line, matched against title, content, URL and author; an entry matching any is dropped. An invalid line is refused with its number; at most 8 KB."
           },
           "keep_rules": {
-            "type": "string"
+            "type": "string",
+            "description": "Regexps, one per line; when set, only entries matching at least one are kept. An invalid line is refused with its number; at most 8 KB."
           },
           "fetch_via_proxy": {
             "type": "boolean"
@@ -3569,7 +3622,11 @@
           },
           "store_mode": {
             "type": "string",
-            "enum": ["full", "filtered", "relay"],
+            "enum": [
+              "full",
+              "filtered",
+              "relay"
+            ],
             "description": "full: every item is stored and shown. filtered: an item is stored only when it matches a subscriber's filter, the rest as hash. relay: a matched item lives only until its webhooks are delivered — no search vector, no unread rows, no filter_matches, hidden from lists. Replaces `store_hash_only` (still accepted on write: true means filtered; reported as true for filtered and relay)."
           },
           "store_hash_only": {
@@ -3627,16 +3684,20 @@
             "description": "Refresh interval; 0 = use the global default."
           },
           "scraper_rules": {
-            "type": "string"
+            "type": "string",
+            "description": "CSS selectors, one per line, bare or as key=selector (content=, article=). Each line must be a valid selector (400 with the line number otherwise); at most 8 KB."
           },
           "rewrite_rules": {
-            "type": "string"
+            "type": "string",
+            "description": "Pattern/replacement pairs: a Go regexp on one line, the replacement verbatim on the next (an empty line deletes the match). An odd pattern or an invalid regexp is refused with the line number; at most 8 KB."
           },
           "blocked_rules": {
-            "type": "string"
+            "type": "string",
+            "description": "Regexps, one per line, matched against title, content, URL and author; an entry matching any is dropped. An invalid line is refused with its number; at most 8 KB."
           },
           "keep_rules": {
-            "type": "string"
+            "type": "string",
+            "description": "Regexps, one per line; when set, only entries matching at least one are kept. An invalid line is refused with its number; at most 8 KB."
           },
           "fetch_via_proxy": {
             "type": "boolean"
@@ -3652,7 +3713,11 @@
           },
           "store_mode": {
             "type": "string",
-            "enum": ["full", "filtered", "relay"],
+            "enum": [
+              "full",
+              "filtered",
+              "relay"
+            ],
             "description": "full: every item is stored and shown. filtered: an item is stored only when it matches a subscriber's filter, the rest as hash. relay: a matched item lives only until its webhooks are delivered — no search vector, no unread rows, no filter_matches, hidden from lists. Replaces `store_hash_only` (still accepted on write: true means filtered; reported as true for filtered and relay)."
           },
           "store_hash_only": {

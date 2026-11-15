@@ -20,17 +20,16 @@ SET parsing_error_count = parsing_error_count + 1,
     poll_paused = (parsing_error_count + 1 >= $3),
     last_error = $2,
     last_checked_at = $4,
-    next_check_at = $5,
-    bridge_state = COALESCE($6::jsonb, bridge_state)
+    next_check_at = $5
 WHERE feed_id = $1`
-	cmd, err := s.db.Exec(ctx, q, params.ID, params.Error, threshold, params.CheckedAt, params.NextCheckAt, params.BridgeState)
+	cmd, err := s.db.Exec(ctx, q, params.ID, params.Error, threshold, params.CheckedAt, params.NextCheckAt)
 	if err != nil {
 		return fmt.Errorf("record feed poll failure: %w", err)
 	}
 	if cmd.RowsAffected() == 0 {
 		return ErrNotFound
 	}
-	return nil
+	return upsertBridgeState(ctx, s.db, params.ID, params.BridgeState)
 }
 
 // ResetFeedPollCircuit clears consecutive errors and circuit-breaker poll_paused.

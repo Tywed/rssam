@@ -69,8 +69,9 @@ func TestSettingsTelegramRedirect(t *testing.T) {
 func TestNormalizeBridgeFeedType(t *testing.T) {
 	cases := map[string]string{
 		"telegram":  "telegram",
-		"vk_search": "vk_search",
-		"vk":        "vk_search",
+		"vk_search": "vk",
+		"vk_group":  "vk",
+		"vk":        "vk",
 		"atom":      "rss",
 		"":          "rss",
 	}

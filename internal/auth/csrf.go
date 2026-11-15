@@ -40,12 +40,5 @@ func ValidateCSRF(secret, sessionID, token string) bool {
 }
 
 func subtleConstantTimeCompare(a, b string) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	var v byte
-	for i := 0; i < len(a); i++ {
-		v |= a[i] ^ b[i]
-	}
-	return v == 0
+	return hmac.Equal([]byte(a), []byte(b))
 }

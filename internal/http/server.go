@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/netip"
+	"sync"
 	"time"
 
 	"rssam/internal/audit"
@@ -116,6 +117,8 @@ type Dependencies struct {
 	FeedActivityStore   storage.FeedActivityStore
 	FeedSilentDays      int
 	FeedSilentInterval  time.Duration
+	FeedDormantDays     int
+	FeedDormantInterval time.Duration
 	StoreEntriesMode    string
 
 	DedupStore              storage.EntryDedupStore
@@ -177,7 +180,15 @@ type Server struct {
 	wsEnabled          bool
 	wsHub              *ws.Hub
 
-	rateLimiter           *middleware.Limiter
+	rateLimiter *middleware.Limiter
+	// Failed API-token lookups cost a database query each. badTokens
+	// remembers hashes that missed (a stale key in a cron job retries the
+	// same token forever); badTokenLimiter budgets distinct misses per IP
+	// (a brute force), after which tokens from that IP are rejected
+	// without a query until the bucket refills.
+	badTokens             sync.Map // token hash → time.Time of the miss
+	badTokenLimiter       *middleware.Limiter
+	apiKeyTouched         sync.Map // key id → last TouchAPIKeyUsed (time.Time)
 	loginLimiter          *middleware.Limiter
 	maxRequestBodyBytes   int64
 	compressEnabled       bool
@@ -195,6 +206,8 @@ type Server struct {
 	retention             ui.RetentionSettings
 	feedSilentDays        int
 	feedSilentInterval    time.Duration
+	feedDormantDays       int
+	feedDormantInterval   time.Duration
 	runRetentionCleanup   func(ctx context.Context) (storage.RetentionCleanupResult, error)
 	databaseURL           string
 	databaseLocale        storage.DatabaseLocale
@@ -292,7 +305,7 @@ func New(dep Dependencies) *Server {
 	}
 	webhookClient := dep.WebhookHTTPClient
 	if webhookClient == nil && guard != nil {
-		webhookClient = guard.HTTPClient(10 * time.Second)
+		webhookClient = guard.HTTPClientNoRedirect(10 * time.Second)
 	} else if webhookClient == nil {
 		webhookClient = &http.Client{Timeout: 10 * time.Second}
 	}
@@ -427,6 +440,7 @@ func New(dep Dependencies) *Server {
 		wsHub:              wsHub,
 
 		rateLimiter:           middleware.NewLimiter(dep.RateLimitEnabled, dep.RateLimitRPS, dep.RateLimitBurst),
+		badTokenLimiter:       middleware.NewLimiter(true, 5, 100),
 		loginLimiter:          middleware.NewLimiter(dep.RateLimitEnabled, dep.LoginRateLimitRPS, dep.LoginRateLimitBurst),
 		maxRequestBodyBytes:   maxBody,
 		compressEnabled:       dep.CompressEnabled,
@@ -444,6 +458,8 @@ func New(dep Dependencies) *Server {
 		retention:             dep.Retention,
 		feedSilentDays:        dep.FeedSilentDays,
 		feedSilentInterval:    dep.FeedSilentInterval,
+		feedDormantDays:       dep.FeedDormantDays,
+		feedDormantInterval:   dep.FeedDormantInterval,
 		runRetentionCleanup:   dep.RunRetentionCleanup,
 		databaseURL:           dep.DatabaseURL,
 		databaseLocale:        dep.DatabaseLocale,
@@ -502,7 +518,8 @@ func (s *Server) Handler() http.Handler {
 	api.HandleFunc("GET /v1/entries", s.handleListEntries)
 	api.HandleFunc("PUT /v1/entries", s.handleBulkUpdateEntries)
 	api.HandleFunc("GET /v1/entries/{id}", s.handleGetEntry)
-	api.HandleFunc("GET /v1/entries/{id}/fetch-content", s.handleFetchEntryContent)
+	api.HandleFunc("POST /v1/entries/{id}/fetch-content", s.handleFetchEntryContent)
+	api.HandleFunc("GET /v1/entries/{id}/fetch-content", s.handleFetchEntryContent) // deprecated: use POST
 	api.HandleFunc("GET /v1/filters", s.handleListFilters)
 	api.HandleFunc("POST /v1/filters", s.handleCreateFilter)
 	api.HandleFunc("GET /v1/filters/{id}", s.handleGetFilter)

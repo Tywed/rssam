@@ -20,6 +20,7 @@ import (
 
 var bridgeFeedSchemes = map[string]struct{}{
 	"vk-search":      {},
+	"vk-group":       {},
 	"maxstat-search": {},
 	"dzen-news":      {},
 	"dzen-search":    {},
@@ -98,10 +99,8 @@ func FeedTypeLabel(feedType string) string {
 		return "Max"
 	case FeedTypeMaxstat:
 		return "MaxStat"
-	case FeedTypeVKSearch:
+	case FeedTypeVK:
 		return "VK"
-	case FeedTypeVKGroup:
-		return "VK (стена)"
 	case FeedTypeRutube:
 		return "Rutube"
 	case FeedTypeDzenNews:
@@ -145,9 +144,9 @@ func ValidateBridgeFeedURL(feedURL, feedType string) error {
 		if !maxstatbridge.DetectFeedURL(feedURL) {
 			return fmt.Errorf("не удалось распознать поисковый запрос MaxStat в URL")
 		}
-	case FeedTypeVKSearch:
-		if !vkbridge.DetectFeedURL(feedURL) {
-			return fmt.Errorf("не удалось распознать VK-поиск в URL")
+	case FeedTypeVK:
+		if !vkbridge.DetectFeedURL(feedURL) && !vkbridge.DetectGroupFeedURL(feedURL) {
+			return fmt.Errorf("ожидается VK-поиск (vk-search://запрос) или адрес сообщества/страницы VK: https://vk.com/имя, https://vk.com/public123, https://vk.com/club123")
 		}
 	case FeedTypeRutube:
 		if _, ok := rutube.ParseChannelIDFromFeedURL(feedURL); !ok {
@@ -160,10 +159,6 @@ func ValidateBridgeFeedURL(feedURL, feedType string) error {
 	case FeedTypeDzenChannel:
 		if !dzenchannel.Detect(feedURL) {
 			return fmt.Errorf("ожидается адрес канала Дзен: https://dzen.ru/имя или https://dzen.ru/id/…")
-		}
-	case FeedTypeVKGroup:
-		if !vkbridge.DetectGroupFeedURL(feedURL) {
-			return fmt.Errorf("ожидается адрес сообщества или страницы VK: https://vk.com/имя, https://vk.com/public123, https://vk.com/club123")
 		}
 	case FeedTypeOKGroup:
 		if !okgroup.Detect(feedURL) {

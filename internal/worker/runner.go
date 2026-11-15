@@ -9,6 +9,7 @@ import (
 	"os"
 	"rssam/internal/bridge/v1"
 	"strconv"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -46,6 +47,23 @@ type Config struct {
 
 	FeedPollDailyResetEnabled bool
 	FeedPollDailyResetTZ      string
+
+	// DrainTimeout bounds how long Run lets polls and deliveries already
+	// running finish after ctx is cancelled; 0 means defaultDrainTimeout.
+	DrainTimeout time.Duration
+}
+
+// defaultDrainTimeout leaves room inside SHUTDOWN_TIMEOUT (15 s) for the
+// HTTP server and the status writes that follow a drained job.
+const defaultDrainTimeout = 10 * time.Second
+
+// DrainTimeoutFor derives the drain budget from SHUTDOWN_TIMEOUT: all of it
+// but 3 s, never under a second.
+func DrainTimeoutFor(shutdown time.Duration) time.Duration {
+	if shutdown <= 0 {
+		return defaultDrainTimeout
+	}
+	return max(shutdown-3*time.Second, time.Second)
 }
 
 // FeedRefreshService refreshes a single feed (implemented by service.FeedRefresher).
@@ -83,6 +101,7 @@ type Runner struct {
 	inflight          inflightPolls
 	inflightHooks     inflightPolls
 	pausedHooks       duePauses[int64]
+	floodStreaks      floodStreaks
 	deferredFeeds     duePauses[int64]
 	deferredBridges   duePauses[string]
 	deferrals         deferralCounts
@@ -170,30 +189,65 @@ func (r *Runner) Run(ctx context.Context) error {
 	// A delivery whose status update failed is retried after the same
 	// 30 s the old lease column gave it.
 	r.inflightHooks.init(0, 30*time.Second)
-	go r.listenDueLoop(ctx)
+
+	// The loops stop on ctx; the poll or delivery a worker is in the
+	// middle of runs on workCtx, which outlives ctx by DrainTimeout, so
+	// that a sent message gets its status row and the lock is released
+	// only after the last worker returned — the next process must not
+	// claim the same webhook_logs rows.
+	workCtx, cancelWork := context.WithCancel(context.WithoutCancel(ctx))
+	defer cancelWork()
+	var wg sync.WaitGroup
+	spawn := func(where string, f func()) {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			runLoop(ctx, r.Log, where, f)
+		}()
+	}
+	spawn("listen_due", func() { r.listenDueLoop(ctx) })
 
 	// Retention cleanup: periodically purge old removed entries and logs.
-	go r.cleanupLoop(ctx)
+	spawn("cleanup", func() { r.cleanupLoop(ctx) })
 
 	// Daily reset of feed error backoff / circuit breaker (optional, timezone-aware).
-	go r.dailyFeedResetLoop(ctx)
-	go r.systemAlertsLoop(ctx)
+	spawn("daily_reset", func() { r.dailyFeedResetLoop(ctx) })
+	spawn("system_alerts", func() { r.systemAlertsLoop(ctx) })
 
 	// Dispatcher: hand due feeds to the worker pool.
-	go r.dispatchLoop(ctx, feedsCh)
+	spawn("dispatch", func() { r.dispatchLoop(ctx, feedsCh) })
 
 	// Worker pool.
 	for i := 0; i < r.Cfg.PoolSize; i++ {
-		go r.workerLoop(ctx, feedsCh)
+		spawn("poll_worker", func() { r.workerLoop(ctx, workCtx, feedsCh) })
 	}
 
 	// Webhooks dispatcher + workers.
-	go r.webhookDispatchLoop(ctx, webhookLogsCh)
+	spawn("webhook_dispatch", func() { r.webhookDispatchLoop(ctx, webhookLogsCh) })
 	for i := 0; i < r.Cfg.WebhookPoolSize; i++ {
-		go r.webhookWorkerLoop(ctx, webhookLogsCh)
+		spawn("webhook_worker", func() { r.webhookWorkerLoop(ctx, workCtx, webhookLogsCh) })
 	}
 
 	<-ctx.Done()
+	drain := r.Cfg.DrainTimeout
+	if drain <= 0 {
+		drain = defaultDrainTimeout
+	}
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+	started := time.Now()
+	select {
+	case <-done:
+	case <-time.After(drain):
+		running, _ := r.inflight.counts(time.Now())
+		r.Log.Warn("workers: drain timeout, aborting running jobs", "timeout", drain, "polls_running", running)
+		cancelWork()
+		<-done
+	}
+	r.Log.Info("workers stopped", "drained_in", time.Since(started).Round(time.Millisecond))
 	return nil
 }
 
@@ -268,13 +322,20 @@ func (r *Runner) dispatchLoop(ctx context.Context, out chan<- storage.DueFeed) {
 	}
 }
 
-func (r *Runner) workerLoop(ctx context.Context, in <-chan storage.DueFeed) {
+func (r *Runner) workerLoop(ctx, workCtx context.Context, in <-chan storage.DueFeed) {
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case d := <-in:
-			switch until, scope := processPollFeed(ctx, d.Feed, r.Store, r.Refresher, r.Cfg, r.Log, &r.deferrals); scope {
+			// select picks at random between a closed ctx and a full
+			// queue; a feed not yet started stays due in the table for
+			// the next process.
+			if ctx.Err() != nil {
+				r.inflight.done(d.ID, time.Now())
+				return
+			}
+			switch until, scope := processPollFeed(workCtx, d.Feed, r.Store, r.Refresher, r.Cfg, r.Log, &r.deferrals); scope {
 			case deferFeed:
 				r.deferredFeeds.pause(d.ID, until)
 			case deferBridge:

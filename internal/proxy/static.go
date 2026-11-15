@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"fmt"
+	"net"
 	"net/url"
 	"strconv"
 	"strings"
@@ -23,9 +24,9 @@ func ParseStaticProxy(raw string) (Proxy, error) {
 		if host == "" || portStr == "" {
 			return Proxy{}, fmt.Errorf("proxy: static proxy URL must include host and port")
 		}
-		port, err := strconv.Atoi(portStr)
-		if err != nil || port <= 0 {
-			return Proxy{}, fmt.Errorf("proxy: invalid static proxy port")
+		port, err := parsePort(portStr)
+		if err != nil {
+			return Proxy{}, err
 		}
 		p := Proxy{ID: "static", Host: host, Port: port}
 		if u.User != nil {
@@ -60,13 +61,21 @@ func ParseStaticProxy(raw string) (Proxy, error) {
 }
 
 func parseHostPort(raw string) (Proxy, error) {
-	host, portStr, ok := strings.Cut(raw, ":")
-	if !ok || strings.TrimSpace(host) == "" {
+	host, portStr, err := net.SplitHostPort(raw)
+	if err != nil || strings.TrimSpace(host) == "" {
 		return Proxy{}, fmt.Errorf("proxy: static proxy must be host:port")
 	}
-	port, err := strconv.Atoi(portStr)
-	if err != nil || port <= 0 {
-		return Proxy{}, fmt.Errorf("proxy: invalid static proxy port")
+	port, err := parsePort(portStr)
+	if err != nil {
+		return Proxy{}, err
 	}
 	return Proxy{Host: host, Port: port}, nil
+}
+
+func parsePort(s string) (int, error) {
+	port, err := strconv.Atoi(s)
+	if err != nil || port <= 0 || port > 65535 {
+		return 0, fmt.Errorf("proxy: invalid static proxy port")
+	}
+	return port, nil
 }

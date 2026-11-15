@@ -45,7 +45,7 @@ func TestParseWallFromFeedURL(t *testing.T) {
 	}
 }
 
-func newWallServer(t *testing.T, status int, body []byte, seen *[]string) (*GroupHandler, *httptest.Server) {
+func newWallServer(t *testing.T, status int, body []byte, seen *[]string) (*Handler, *httptest.Server) {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if seen != nil {
@@ -63,10 +63,10 @@ func newWallServer(t *testing.T, status int, body []byte, seen *[]string) (*Grou
 		cfg:    Config{AccessToken: "tok", RateLimitCooldown: 7 * time.Second}.withDefaults(),
 		apiURL: srv.URL,
 	}
-	return NewGroupHandler(client), srv
+	return NewHandler(client, client.cfg), srv
 }
 
-func TestGroupHandler_Fetch(t *testing.T) {
+func TestWall_Fetch(t *testing.T) {
 	fixture, err := os.ReadFile("testdata/wall_get.json")
 	if err != nil {
 		t.Fatal(err)
@@ -127,7 +127,7 @@ func TestGroupHandler_Fetch(t *testing.T) {
 	}
 }
 
-func TestGroupHandler_OwnerIDRequest(t *testing.T) {
+func TestWall_OwnerIDRequest(t *testing.T) {
 	var seen []string
 	h, _ := newWallServer(t, http.StatusOK, []byte(`{"response":{"count":0,"items":[],"profiles":[],"groups":[]}}`), &seen)
 	res, err := h.Fetch(context.Background(), bridge.Request{FeedURL: "https://vk.com/club123"})
@@ -139,7 +139,7 @@ func TestGroupHandler_OwnerIDRequest(t *testing.T) {
 	}
 }
 
-func TestGroupHandler_Errors(t *testing.T) {
+func TestWall_Errors(t *testing.T) {
 	cases := []struct {
 		code int
 		want error
@@ -223,5 +223,42 @@ func TestClient_PacesRequests(t *testing.T) {
 	defer cancel()
 	if _, _, err := c.WallGet(ctx, Wall{Domain: "a"}); !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("cancelled wait err=%v", err)
+	}
+}
+
+// One bridge, two modes: the URL picks newsfeed.search or wall.get, the
+// search cursor lives in State, a wall keeps none, and a search title needs
+// no request.
+func TestHandler_RoutesByURL(t *testing.T) {
+	var seen []string
+	h, _ := newWallServer(t, http.StatusOK, []byte(`{"response":{"count":0,"items":[],"profiles":[],"groups":[]}}`), &seen)
+	if h.Name() != FeedType || h.DetectFeedType("vk-search://golang") != FeedType || h.DetectFeedType("https://vk.com/tass") != FeedType || h.DetectFeedType("https://vk.com/wall-1_2") != "" {
+		t.Fatal("detection")
+	}
+	res, err := h.Fetch(context.Background(), bridge.Request{FeedURL: "vk-search://Go Lang"})
+	if err != nil || res.State == nil {
+		t.Fatalf("search: res=%+v err=%v", res, err)
+	}
+	var st FetchState
+	if err := bridge.DecodeState(res.State, &st); err != nil || st.Query != "go lang" || st.LastEndTime == 0 {
+		t.Fatalf("search state=%+v err=%v", st, err)
+	}
+	res, err = h.Fetch(context.Background(), bridge.Request{FeedURL: "https://vk.com/tass", State: res.State})
+	if err != nil || res.State != nil {
+		t.Fatalf("wall: res=%+v err=%v", res, err)
+	}
+	if len(seen) != 2 || !strings.Contains(seen[0], "/newsfeed.search?") || !strings.Contains(seen[1], "/wall.get?") {
+		t.Fatalf("requests=%v", seen)
+	}
+	if _, err := h.Fetch(context.Background(), bridge.Request{FeedURL: "https://vk.com/wall-1_2"}); err == nil {
+		t.Fatal("post link must not fetch")
+	}
+	title, err := h.DiscoverTitle(context.Background(), "vk-search://golang")
+	if err != nil || title != "VK: golang" || len(seen) != 2 {
+		t.Fatalf("search title=%q err=%v requests=%d", title, err, len(seen))
+	}
+	var none *Handler
+	if _, err := none.Fetch(context.Background(), bridge.Request{FeedURL: "https://vk.com/tass"}); !errors.Is(err, ErrMissingToken) {
+		t.Fatalf("nil handler: %v", err)
 	}
 }

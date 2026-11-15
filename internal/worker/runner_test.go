@@ -223,7 +223,7 @@ func TestDuePausesEarliestResume(t *testing.T) {
 	now := time.Now()
 	p.pause("max", now.Add(3*time.Second))
 	p.pause("telegram", now.Add(time.Second))
-	p.pause("vk_search", now.Add(-time.Second))
+	p.pause("vk", now.Add(-time.Second))
 	ids, resume, ok := p.active(now)
 	if !ok || len(ids) != 2 || !resume.Equal(now.Add(time.Second)) {
 		t.Fatalf("ids=%v resume=%v ok=%v", ids, resume, ok)

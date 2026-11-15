@@ -36,7 +36,7 @@ func TestIntegration_FeedPollUpdateIsHOT(t *testing.T) {
 	for i := range 5 {
 		next := time.Now().Add(time.Duration(i+1) * time.Minute)
 		if _, err := tx.Exec(ctx, `
-UPDATE feed_poll_state SET etag = $2, last_checked_at = now(), last_error = '', bridge_state = '{"rss":{"body":"x"}}',
+UPDATE feed_poll_state SET etag = $2, last_checked_at = now(), last_error = '',
   parsing_error_count = 0, poll_paused = FALSE, next_check_at = $3, items_hash = 'abc'
 WHERE feed_id = $1`, f.ID, "e", next); err != nil {
 			t.Fatal(err)

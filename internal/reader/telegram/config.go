@@ -42,9 +42,9 @@ func EffectiveConfig(base Config, override *BridgeOverride) Config {
 	if override.UseProxy != nil {
 		out.UseProxy = *override.UseProxy
 	}
-	if s := strings.TrimSpace(override.ProxyServiceURL); s != "" {
-		out.ProxyServiceURL = s
-	}
+	// ProxyServiceURL is not overridable per feed: the request to the
+	// service carries the operator's bearer token, and the row is written
+	// by any editor.
 	if s := strings.TrimSpace(override.ProxyTargetURL); s != "" {
 		out.ProxyTargetURL = s
 	}
@@ -76,7 +76,8 @@ func (c Config) StaticProxyEndpoint() (proxy.Proxy, error) {
 // BridgeOverride is the per-feed JSON in bridge_state.telegram: proxy
 // settings the feed form writes, plus the poll cursor Fetch maintains.
 type BridgeOverride struct {
-	UseProxy        *bool  `json:"use_proxy,omitempty"`
+	UseProxy *bool `json:"use_proxy,omitempty"`
+	// ProxyServiceURL is kept only so that old rows decode; it is ignored.
 	ProxyServiceURL string `json:"proxy_service_url,omitempty"`
 	ProxyTargetURL  string `json:"proxy_target_url,omitempty"`
 	StaticProxy     string `json:"static_proxy,omitempty"`

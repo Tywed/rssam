@@ -59,7 +59,7 @@ type webhookWriteRequest struct {
 }
 
 func toWebhookDTO(w storage.Webhook) webhookDTO {
-	headers := w.Headers
+	headers := maskWebhookHeaders(w.Headers)
 	if len(headers) == 0 {
 		headers = []byte(`{}`)
 	}
@@ -290,6 +290,10 @@ func (s *Server) handleUpdateWebhook(w http.ResponseWriter, r *http.Request) {
 	headers := req.Headers
 	if len(bytes.TrimSpace(headers)) == 0 {
 		headers = []byte(`{}`)
+	} else if bytes.Contains(headers, []byte(webhookHeaderMask)) {
+		if prev, perr := s.webhooks.GetWebhook(r.Context(), p.UserID, id); perr == nil {
+			headers = unmaskWebhookHeaders(headers, prev.Headers)
+		}
 	}
 	wh, err := s.webhooks.UpdateWebhook(r.Context(), storage.UpdateWebhookParams{
 		ID:             id,

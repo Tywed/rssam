@@ -77,6 +77,10 @@ type FeedRefresher struct {
 	// = off).
 	SilentAfter    time.Duration
 	SilentInterval time.Duration
+	// DormantAfter / DormantInterval mirror FEED_DORMANT_DAYS /
+	// FEED_DORMANT_INTERVAL: the second, slower tier of the same rule.
+	DormantAfter    time.Duration
+	DormantInterval time.Duration
 
 	// PollHours supplies per-category polling windows (nil = no windows).
 	PollHours storage.CategoryPollHoursStore
@@ -305,6 +309,14 @@ func (r *FeedRefresher) refreshLoaded(ctx context.Context, feed storage.Feed, ma
 	if manual {
 		bridgeState = fullRefetchState(&feed, bridgeState)
 	}
+	// A bug in a bridge is this feed's failure, not the worker's end:
+	// counted, logged, backed off like any other.
+	defer func() {
+		if v := recover(); v != nil {
+			cause := recoveredPanic(r.logger(), v, "feed_id", feedID, "feed_type", feed.FeedType)
+			inserted, err = 0, r.failPoll(ctx, feed, subs, now, started, bridgeState, cause, ErrFetchFeed, false)
+		}
+	}()
 
 	res, fetchErr := r.Registry.Fetch(ctx, reader.FetchRequest{
 		FeedURL:       feed.FeedURL,
@@ -317,6 +329,11 @@ func (r *FeedRefresher) refreshLoaded(ctx context.Context, feed storage.Feed, ma
 		TLSInsecure:   feed.TLSInsecure,
 	})
 	if fetchErr != nil {
+		if errors.Is(ctx.Err(), context.Canceled) {
+			// The process is stopping (not the fetch timing out): nothing
+			// is known about the source, nothing is recorded.
+			return 0, fetchErr
+		}
 		if proxy.IsUnavailable(fetchErr) {
 			// The proxy path failed before the source was asked; the feed
 			// keeps its ordinary schedule and its error counter.
@@ -552,25 +569,31 @@ func (r *FeedRefresher) storeFetched(ctx context.Context, feed storage.Feed, sub
 	return inserted, insertedEntries, metaStored, nil
 }
 
-// silentNextCheck applies FEED_SILENT_INTERVAL: a feed that has not
-// produced an item (entry or dedup hash; a new feed counts from creation)
-// for SilentAfter is next checked SilentInterval from now, unless its own
-// schedule is already later. The admin page's "silent" card uses the same
-// definition. On the production fleet 535 of 1272 Telegram channels were
+// silentNextCheck applies FEED_SILENT_INTERVAL and FEED_DORMANT_INTERVAL:
+// a feed that has not produced an item (entry or dedup hash; a new feed
+// counts from creation) for SilentAfter is next checked SilentInterval from
+// now, for DormantAfter — DormantInterval from now, unless its own schedule
+// is already later. The admin page's cards use the same definitions. On the production fleet 535 of 1272 Telegram channels were
 // silent for a month yet polled every 5 minutes — 29 % of all polls.
 func (r *FeedRefresher) silentNextCheck(feed storage.Feed, now, next time.Time) (time.Time, bool) {
-	if r.SilentAfter <= 0 || r.SilentInterval <= 0 {
-		return next, false
-	}
 	lastItem := feed.CreatedAt
 	if feed.LastEntryAt != nil {
 		lastItem = *feed.LastEntryAt
 	}
-	if lastItem.IsZero() || now.Sub(lastItem) < r.SilentAfter {
+	if lastItem.IsZero() {
+		return next, false
+	}
+	age := now.Sub(lastItem)
+	var d time.Duration
+	switch {
+	case r.DormantAfter > 0 && r.DormantInterval > 0 && age >= r.DormantAfter:
+		d = r.DormantInterval
+	case r.SilentAfter > 0 && r.SilentInterval > 0 && age >= r.SilentAfter:
+		d = r.SilentInterval
+	default:
 		return next, false
 	}
 	_, hi := r.pollBounds()
-	d := r.SilentInterval
 	if hi > 0 && d > hi {
 		d = hi
 	}

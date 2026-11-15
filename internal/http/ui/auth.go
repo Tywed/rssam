@@ -7,6 +7,7 @@ import (
 	"html/template"
 	"math"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -135,7 +136,6 @@ type pageData struct {
 	BridgeFeedCounts          map[string]int
 	BridgeLayout              map[string]storage.FeedTypeStat
 	TgUseProxy                bool
-	TgProxyServiceURL         string
 	TgStaticProxy             string
 	AdminFeedsFilter          string
 	AdminFeedsSort            string
@@ -145,6 +145,7 @@ type pageData struct {
 	AdminFeedsTotal           int
 	AdminFeedSummary          storage.AdminFeedSummary
 	FeedSilentDays            int
+	FeedDormantDays           int
 	AdminFeedRows             []adminFeedRowView
 	AdminFeedDetail           adminFeedDetailView
 	PollFeedJobCounts         storage.PollFeedJobCounts
@@ -358,7 +359,7 @@ func (h *Handler) handleRoot(w http.ResponseWriter, r *http.Request) {
 }
 
 func urlQueryEscape(s string) string {
-	return strings.ReplaceAll(s, " ", "%20")
+	return url.QueryEscape(s)
 }
 
 func assetVersion() string {
@@ -513,14 +514,8 @@ func parsePathID(r *http.Request, keys ...string) (int64, error) {
 	if raw == "" {
 		return 0, errors.New("id required")
 	}
-	var id int64
-	for _, c := range raw {
-		if c < '0' || c > '9' {
-			return 0, errors.New("invalid id")
-		}
-		id = id*10 + int64(c-'0')
-	}
-	if id <= 0 {
+	id, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil || id <= 0 {
 		return 0, errors.New("invalid id")
 	}
 	return id, nil

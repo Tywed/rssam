@@ -32,26 +32,16 @@
         <p class="meta">Лент: {{bridgeFeedCount .BridgeFeedCounts "max"}}</p>
         {{with bridgeLayout .BridgeLayout "max"}}<p class="meta bridge-layout">Лент с ошибкой: {{.Layout}} из {{.Total}} · маркер <code>{{.LayoutMarker}}</code>{{if .LayoutAt}} · последняя проверка {{formatTime .LayoutAt}}{{end}}</p>{{end}}
       </a>
-      <a class="card bridge-card{{if bridgeLayout .BridgeLayout "vk_search"}} bridge-card-alert{{end}}" href="/ui/settings/bridges/vk">
+      <a class="card bridge-card{{if bridgeLayout .BridgeLayout "vk"}} bridge-card-alert{{end}}" href="/ui/settings/bridges/vk">
         <div class="bridge-card-head">
-          <strong>VK Search</strong>
-          {{if bridgeLayout .BridgeLayout "vk_search"}}<span class="badge badge-err">вёрстка не распознана</span>{{end}}
+          <strong>VK</strong>
+          {{if bridgeLayout .BridgeLayout "vk"}}<span class="badge badge-err">вёрстка не распознана</span>{{end}}
           {{if .BridgeSettings.VK.Enabled}}<span class="badge badge-ok">включён</span>{{else}}<span class="badge badge-muted">выключен</span>{{end}}
         </div>
-        <p class="meta">Поиск постов VK (newsfeed.search)</p>
-        <p class="meta">Лент: {{bridgeFeedCount .BridgeFeedCounts "vk_search"}}</p>
-        {{with bridgeLayout .BridgeLayout "vk_search"}}<p class="meta bridge-layout">Лент с ошибкой: {{.Layout}} из {{.Total}} · маркер <code>{{.LayoutMarker}}</code>{{if .LayoutAt}} · последняя проверка {{formatTime .LayoutAt}}{{end}}</p>{{end}}
-      </a>
-      <a class="card bridge-card{{if bridgeLayout .BridgeLayout "vk_group"}} bridge-card-alert{{end}}" href="/ui/settings/bridges/vk">
-        <div class="bridge-card-head">
-          <strong>VK (стены)</strong>
-          {{if bridgeLayout .BridgeLayout "vk_group"}}<span class="badge badge-err">вёрстка не распознана</span>{{end}}
-          {{if .BridgeSettings.VK.Enabled}}<span class="badge badge-ok">включён</span>{{else}}<span class="badge badge-muted">выключен</span>{{end}}
-        </div>
-        <p class="meta">Посты сообщества или страницы VK (wall.get, тот же токен, что у VK Search)</p>
-        <p class="meta">Лент: {{bridgeFeedCount .BridgeFeedCounts "vk_group"}}</p>
-        {{with bridgeLayout .BridgeLayout "vk_group"}}<p class="meta bridge-layout">Лент с ошибкой: {{.Layout}} из {{.Total}} · маркер <code>{{.LayoutMarker}}</code>{{if .LayoutAt}} · последняя проверка {{formatTime .LayoutAt}}{{end}}</p>{{end}}
-        <p class="meta">URL: <code>https://vk.com/имя</code>, <code>https://vk.com/public123</code>, <code>https://vk.com/club123</code></p>
+        <p class="meta">Поиск постов (newsfeed.search) и стены сообществ или страниц (wall.get)</p>
+        <p class="meta">Лент: {{bridgeFeedCount .BridgeFeedCounts "vk"}}</p>
+        {{with bridgeLayout .BridgeLayout "vk"}}<p class="meta bridge-layout">Лент с ошибкой: {{.Layout}} из {{.Total}} · маркер <code>{{.LayoutMarker}}</code>{{if .LayoutAt}} · последняя проверка {{formatTime .LayoutAt}}{{end}}</p>{{end}}
+        <p class="meta">URL: <code>vk-search://запрос</code>, <code>https://vk.com/имя</code>, <code>https://vk.com/public123</code></p>
       </a>
       <a class="card bridge-card{{if bridgeLayout .BridgeLayout "rutube"}} bridge-card-alert{{end}}" href="/ui/settings/bridges/rutube">
         <div class="bridge-card-head">

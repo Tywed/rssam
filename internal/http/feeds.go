@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"rssam/internal/feedrules"
 	"strconv"
 	"strings"
 	"time"
@@ -206,6 +207,7 @@ func (s *Server) handleUpdateFeed(w http.ResponseWriter, r *http.Request) {
 	feed, err := s.feeds.UpdateFeed(r.Context(), p.UserID, storage.UpdateFeedParams{
 		ID:                 id,
 		FeedURL:            params.FeedURL,
+		FeedType:           params.FeedType,
 		Title:              params.Title,
 		CategoryID:         params.CategoryID,
 		IntervalMinutes:    params.IntervalMinutes,
@@ -231,6 +233,9 @@ func (s *Server) handleUpdateFeed(w http.ResponseWriter, r *http.Request) {
 			return
 		case errors.Is(err, storage.ErrInvalidReference):
 			writeError(w, http.StatusBadRequest, "invalid category_id or webhook_id")
+			return
+		case errors.Is(err, storage.ErrInboundURLImmutable):
+			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		default:
 			s.log.ErrorContext(r.Context(), "update feed failed", "err", err)
@@ -305,6 +310,9 @@ func validateFeedWriteRequest(req feedWriteRequest, guard *ssrf.Guard) (storage.
 	}
 	storeMode, err := storage.NormalizeStoreMode(storeMode)
 	if err != nil {
+		return storage.CreateFeedParams{}, err
+	}
+	if err := feedrules.Validate(req.ScraperRules, req.RewriteRules, req.BlockedRules, req.KeepRules); err != nil {
 		return storage.CreateFeedParams{}, err
 	}
 	return storage.CreateFeedParams{

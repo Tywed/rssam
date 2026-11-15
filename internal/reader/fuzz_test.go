@@ -2,6 +2,7 @@ package reader
 
 import (
 	"bytes"
+	"rssam/internal/feedrules"
 	"strings"
 	"testing"
 
@@ -117,8 +118,8 @@ func FuzzCompileMultilineRegex(f *testing.F) {
 		f.Add(s)
 	}
 	f.Fuzz(func(t *testing.T, rules string) {
-		re := compileMultilineRegex(rules)
-		if re == nil {
+		re, err := feedrules.CompileMatch("blocked_rules", rules)
+		if err != nil || re == nil {
 			return
 		}
 		// A compiled rule set must match each of its own literal lines that

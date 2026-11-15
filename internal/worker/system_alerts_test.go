@@ -21,6 +21,7 @@ type memAlertStore struct {
 	hooks    []storage.Webhook
 	paused   []storage.SystemAlertFeed
 	silent   []storage.SystemAlertFeed
+	dormant  []storage.SystemAlertFeed
 	failing  []storage.SystemAlertWebhook
 	types    []storage.FeedTypeStat
 	audit    []storage.AuditEvent
@@ -36,6 +37,9 @@ func (m *memAlertStore) ListPausedFeeds(context.Context) ([]storage.SystemAlertF
 }
 func (m *memAlertStore) ListSilentFeeds(context.Context, time.Duration) ([]storage.SystemAlertFeed, error) {
 	return m.silent, nil
+}
+func (m *memAlertStore) ListDormantFeeds(context.Context, time.Duration) ([]storage.SystemAlertFeed, error) {
+	return m.dormant, nil
 }
 func (m *memAlertStore) ListFailingWebhooks(context.Context) ([]storage.SystemAlertWebhook, error) {
 	return m.failing, nil
@@ -109,7 +113,7 @@ func TestSystemAlerts_FirstPassSeedsThenAlertsOnlyNewProblems(t *testing.T) {
 		hooks:  []storage.Webhook{{ID: 1, Enabled: true, SystemAlerts: true, Kind: storage.WebhookKindHTTP, URL: srv.URL}},
 		paused: []storage.SystemAlertFeed{{ID: 10, Title: "Old broken", Error: "dial tcp"}},
 	}
-	a := newAlerter(store, SystemAlertsConfig{SilentAfter: 7 * 24 * time.Hour})
+	a := newAlerter(store, SystemAlertsConfig{SilentAfter: 7 * 24 * time.Hour, DormantAfter: 90 * 24 * time.Hour})
 	a.load(context.Background())
 	ctx := context.Background()
 
@@ -127,12 +131,16 @@ func TestSystemAlerts_FirstPassSeedsThenAlertsOnlyNewProblems(t *testing.T) {
 	// One more feed pauses, one goes silent, a webhook starts failing.
 	store.paused = append(store.paused, storage.SystemAlertFeed{ID: 11, Title: "New broken", Error: "HTTP 500"})
 	store.silent = []storage.SystemAlertFeed{{ID: 12, Title: "Quiet"}}
+	store.dormant = []storage.SystemAlertFeed{{ID: 13, Title: "Asleep", Error: "ни одной записи с момента добавления"}}
 	store.failing = []storage.SystemAlertWebhook{{ID: 2, Name: "tg", LastError: "chat not found"}}
 	a.pass(ctx)
-	if sink.count() != 3 || len(store.audit) != 3 {
+	if sink.count() != 4 || len(store.audit) != 4 {
 		t.Fatalf("sent=%d audit=%d", sink.count(), len(store.audit))
 	}
 	joined := strings.Join(sink.bodies, "\n")
+	if !strings.Contains(joined, "Ленты без записей дольше 90 дн.") || !strings.Contains(joined, "#13 Asleep — ни одной записи") || !strings.Contains(joined, `"alert":"feeds_dormant"`) {
+		t.Fatalf("dormant alert:\n%s", joined)
+	}
 	if strings.Contains(joined, "Old broken") || !strings.Contains(joined, "New broken") || !strings.Contains(joined, "HTTP 500") {
 		t.Fatalf("only the new feed must be reported:\n%s", joined)
 	}
@@ -145,7 +153,7 @@ func TestSystemAlerts_FirstPassSeedsThenAlertsOnlyNewProblems(t *testing.T) {
 
 	// Same state again: silence.
 	a.pass(ctx)
-	if sink.count() != 3 {
+	if sink.count() != 4 {
 		t.Fatalf("repeat alert for unchanged problems: %d", sink.count())
 	}
 
@@ -154,18 +162,18 @@ func TestSystemAlerts_FirstPassSeedsThenAlertsOnlyNewProblems(t *testing.T) {
 	a.pass(ctx)
 	store.paused = append(store.paused, storage.SystemAlertFeed{ID: 11, Title: "New broken", Error: "HTTP 500"})
 	a.pass(ctx)
-	if sink.count() != 4 {
+	if sink.count() != 5 {
 		t.Fatalf("re-broken feed must be re-announced: %d", sink.count())
 	}
 
 	// State survives a restart through app_settings.
 	b := newAlerter(store, SystemAlertsConfig{SilentAfter: 7 * 24 * time.Hour})
 	b.load(ctx)
-	if !b.seeded || !b.state.Paused[11] || !b.state.Silent[12] || !b.state.Webhooks[2] {
+	if !b.seeded || !b.state.Paused[11] || !b.state.Silent[12] || !b.state.Dormant[13] || !b.state.Webhooks[2] {
 		t.Fatalf("state not restored: %+v", b.state)
 	}
 	b.pass(ctx)
-	if sink.count() != 4 {
+	if sink.count() != 5 {
 		t.Fatalf("restart must not re-alert: %d", sink.count())
 	}
 }
