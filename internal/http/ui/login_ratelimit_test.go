@@ -37,9 +37,12 @@ func TestUI_LoginRateLimit(t *testing.T) {
 	h.Register(mux)
 
 	do := func() int {
-		token := auth.CSRFToken("csrf-test", "login")
+		token := auth.CSRFToken("csrf-test", "login|test-nonce")
 		form := url.Values{"username": {"alice"}, "password": {"wrong"}, "csrf_token": {token}}
 		req := httptest.NewRequest(http.MethodPost, "/ui/login", strings.NewReader(form.Encode()))
+		req.Header.Set("Sec-Fetch-Site", "same-origin")
+		req.AddCookie(&http.Cookie{Name: auth.LoginNonceCookieName, Value: "test-nonce"})
+		req.Header.Set("Sec-Fetch-Site", "same-origin")
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		req.RemoteAddr = "203.0.113.9:12345"
 		rec := httptest.NewRecorder()
@@ -51,9 +54,12 @@ func TestUI_LoginRateLimit(t *testing.T) {
 		t.Fatalf("first request: status=%d", code)
 	}
 
-	token := auth.CSRFToken("csrf-test", "login")
+	token := auth.CSRFToken("csrf-test", "login|test-nonce")
 	form := url.Values{"username": {"alice"}, "password": {"wrong"}, "csrf_token": {token}}
 	req := httptest.NewRequest(http.MethodPost, "/ui/login", strings.NewReader(form.Encode()))
+	req.Header.Set("Sec-Fetch-Site", "same-origin")
+	req.AddCookie(&http.Cookie{Name: auth.LoginNonceCookieName, Value: "test-nonce"})
+	req.Header.Set("Sec-Fetch-Site", "same-origin")
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.RemoteAddr = "203.0.113.9:12345"
 	rec := httptest.NewRecorder()

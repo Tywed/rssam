@@ -98,7 +98,7 @@ jobs:
           done
           if [ "$ok" != 1 ]; then echo "rssam did not become healthy"; cat /tmp/rssam.log; exit 1; fi
           csrf=$(curl -s -c /tmp/cj http://127.0.0.1:8090/ui/login | grep -o 'name="csrf_token" value="[^"]*"' | head -1 | sed 's/.*value="//;s/"//')
-          code=$(curl -s -o /dev/null -w '%{http_code}' -b /tmp/cj -c /tmp/cj \
+          code=$(curl -s -o /dev/null -w '%{http_code}' -H 'Origin: http://127.0.0.1:8090' -b /tmp/cj -c /tmp/cj \
             -d "csrf_token=$csrf&username=admin&password=changeme-ci-123" http://127.0.0.1:8090/ui/login)
           echo "login status: $code"; tail -20 /tmp/rssam.log
           [ "$code" = "302" ]

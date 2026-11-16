@@ -83,7 +83,7 @@ func TestIntegration_WebhookOnSuccessEntry_ResolvesAcrossWebhooks(t *testing.T) 
 	if merged := MergeOnSuccessActions([]string{WebhookOnSuccessHash, action}); merged != WebhookOnSuccessHash {
 		t.Fatalf("merged action for read+hash = %q, want hash", merged)
 	}
-	if err := store.StripEntryPayloadAfterWebhook(ctx, entries[0].ID); err != nil {
+	if err := store.StripEntryPayloadAfterWebhook(ctx, entries[0].ID, owner.ID); err != nil {
 		t.Fatal(err)
 	}
 	e0, err := store.GetEntry(ctx, owner.ID, entries[0].ID)

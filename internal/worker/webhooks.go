@@ -113,7 +113,7 @@ type webhookDeliveryStore interface {
 	LoadWebhookDeliveryContext(ctx context.Context, logID int64) (storage.WebhookDeliveryContext, error)
 	MarkWebhookLogSent(ctx context.Context, logID int64, attempt int, statusCode int, responseSnippet string) error
 	MarkWebhookLogFailed(ctx context.Context, logID int64, statusCode *int, errMsg string, responseSnippet string, attempt int, nextRetryAt *time.Time, dead bool) error
-	StripEntryPayloadAfterWebhook(ctx context.Context, entryID int64) error
+	StripEntryPayloadAfterWebhook(ctx context.Context, entryID, userID int64) error
 	EntryWebhookOutcome(ctx context.Context, entryID, excludeLogID int64) (incomplete int, action string, err error)
 	DeleteRelayEntryAfterWebhook(ctx context.Context, entryID, excludeLogID int64) (bool, error)
 	MarkEntryRemovedKeepPayload(ctx context.Context, userID, entryID int64) error
@@ -373,7 +373,13 @@ func (r *Runner) applyOnSuccessEntry(ctx context.Context, store webhookDeliveryS
 
 	switch storage.MergeOnSuccessActions([]string{thisAction, resolved}) {
 	case storage.WebhookOnSuccessHash:
-		if err := store.StripEntryPayloadAfterWebhook(ctx, l.EntryID); err != nil && r.Log != nil {
+		err := store.StripEntryPayloadAfterWebhook(ctx, l.EntryID, delCtx.Webhook.UserID)
+		if errors.Is(err, storage.ErrEntryShared) {
+			// Other users still read this feed: the entry keeps its text
+			// and only leaves this user's view.
+			err = store.MarkEntryRemovedKeepPayload(ctx, delCtx.Webhook.UserID, l.EntryID)
+		}
+		if err != nil && r.Log != nil {
 			r.Log.Error("webhook on_success: hash entry", "entry_id", l.EntryID, "err", err)
 		}
 	case storage.WebhookOnSuccessDelete:
@@ -440,12 +446,28 @@ var reservedWebhookHeaders = map[string]struct{}{
 	"Trailer":           {},
 	"Proxy-Connection":  {},
 	"X-Rssam-Signature": {},
+	// Client-identity headers a receiver on our own network would trust:
+	// a webhook aimed at rssam itself must not be able to pose as a proxied
+	// browser request.
+	"Forwarded":         {},
+	"X-Forwarded-For":   {},
+	"X-Forwarded-Host":  {},
+	"X-Forwarded-Proto": {},
+	"X-Real-Ip":         {},
+	"Origin":            {},
+	"Referer":           {},
+	"Cookie":            {},
 }
 
 // isReservedWebhookHeader reports whether a user-supplied header name may not
-// be set on outgoing webhook requests. Names are canonicalised first.
+// be set on outgoing webhook requests. Names are canonicalised first;
+// Sec-* (Sec-Fetch-Site and friends) are browser-only by definition.
 func isReservedWebhookHeader(name string) bool {
-	_, reserved := reservedWebhookHeaders[http.CanonicalHeaderKey(name)]
+	canon := http.CanonicalHeaderKey(name)
+	if strings.HasPrefix(canon, "Sec-") {
+		return true
+	}
+	_, reserved := reservedWebhookHeaders[canon]
 	return reserved
 }
 

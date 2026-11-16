@@ -1,0 +1,11 @@
+[Unit]
+Description=rssam: execute one restart/update request
+# Not After=rssam.service: this unit must run while rssam is being restarted.
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/rssam-update --request
+# Own cgroup: restarting rssam.service does not kill the updater, and the
+# updater's log is separate from the service's.
+StandardOutput=append:/var/log/rssam-update.log
+StandardError=append:/var/log/rssam-update.log

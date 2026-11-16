@@ -46,6 +46,7 @@ func TestCategoryBulkActionsRequireAdmin(t *testing.T) {
 
 	form := url.Values{"csrf_token": {token}, "interval_minutes": {"30"}}
 	req := httptest.NewRequest(http.MethodPost, "/ui/categories/10/feeds/bulk-interval", strings.NewReader(form.Encode()))
+	req.Header.Set("Sec-Fetch-Site", "same-origin")
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: sid})
 	rec := httptest.NewRecorder()
@@ -62,6 +63,7 @@ func TestCategoryBulkInterval(t *testing.T) {
 
 	form := url.Values{"csrf_token": {token}, "interval_minutes": {"15"}}
 	req := httptest.NewRequest(http.MethodPost, "/ui/categories/10/feeds/bulk-interval", strings.NewReader(form.Encode()))
+	req.Header.Set("Sec-Fetch-Site", "same-origin")
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: sid})
 	rec := httptest.NewRecorder()
@@ -87,6 +89,7 @@ func TestCategoryBulkPause(t *testing.T) {
 
 	form := url.Values{"csrf_token": {token}, "action": {"pause"}}
 	req := httptest.NewRequest(http.MethodPost, "/ui/categories/10/feeds/bulk-pause", strings.NewReader(form.Encode()))
+	req.Header.Set("Sec-Fetch-Site", "same-origin")
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: sid})
 	rec := httptest.NewRecorder()
@@ -106,6 +109,7 @@ func TestCategoryBulkStoreMode(t *testing.T) {
 
 	form := url.Values{"csrf_token": {token}, "store_mode": {"filtered"}}
 	req := httptest.NewRequest(http.MethodPost, "/ui/categories/10/feeds/bulk-store-mode", strings.NewReader(form.Encode()))
+	req.Header.Set("Sec-Fetch-Site", "same-origin")
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: sid})
 	rec := httptest.NewRecorder()
@@ -143,7 +147,7 @@ func (m *uiMemDedup) FilterKnownEntryHashes(context.Context, int64, []string) (m
 func (m *uiMemDedup) RecordFeedEntryDedup(context.Context, int64, []storage.FeedEntryDedupParams) (int, error) {
 	return 0, nil
 }
-func (m *uiMemDedup) StripEntryPayloadAfterWebhook(context.Context, int64) error { return nil }
+func (m *uiMemDedup) StripEntryPayloadAfterWebhook(context.Context, int64, int64) error { return nil }
 func (m *uiMemDedup) CollapseEntriesToHashes(_ context.Context, p storage.CollapseEntriesParams) (int64, error) {
 	m.last = p
 	return m.n, nil
@@ -156,6 +160,7 @@ func TestCategoryBulkHashEntries(t *testing.T) {
 
 	form := url.Values{"csrf_token": {token}}
 	req := httptest.NewRequest(http.MethodPost, "/ui/categories/10/feeds/bulk-hash-entries", strings.NewReader(form.Encode()))
+	req.Header.Set("Sec-Fetch-Site", "same-origin")
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: sid})
 	rec := httptest.NewRecorder()
@@ -175,6 +180,7 @@ func TestAdminHashAllEntries(t *testing.T) {
 
 	form := url.Values{"csrf_token": {token}}
 	req := httptest.NewRequest(http.MethodPost, "/ui/admin/system/hash-entries", strings.NewReader(form.Encode()))
+	req.Header.Set("Sec-Fetch-Site", "same-origin")
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: sid})
 	rec := httptest.NewRecorder()
@@ -209,6 +215,7 @@ func TestAdminHashAllEntriesIncludesLabeled(t *testing.T) {
 	token := auth.CSRFToken("csrf-test", sid)
 	form := url.Values{"csrf_token": {token}}
 	req := httptest.NewRequest(http.MethodPost, "/ui/admin/system/hash-entries", strings.NewReader(form.Encode()))
+	req.Header.Set("Sec-Fetch-Site", "same-origin")
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: sid})
 	rec := httptest.NewRecorder()

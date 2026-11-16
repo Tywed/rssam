@@ -340,9 +340,12 @@ func (m *uiMemCategories) ReorderCategories(_ context.Context, ids []int64) erro
 
 func uiSessionCookie(t *testing.T, h *Handler, mux http.Handler) string {
 	t.Helper()
-	token := auth.CSRFToken("csrf-test", "login")
+	token := auth.CSRFToken("csrf-test", "login|test-nonce")
 	form := url.Values{"username": {"alice"}, "password": {"secret"}, "csrf_token": {token}}
 	req := httptest.NewRequest(http.MethodPost, "/ui/login", strings.NewReader(form.Encode()))
+	req.Header.Set("Sec-Fetch-Site", "same-origin")
+	req.AddCookie(&http.Cookie{Name: auth.LoginNonceCookieName, Value: "test-nonce"})
+	req.Header.Set("Sec-Fetch-Site", "same-origin")
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
@@ -571,6 +574,7 @@ func TestFeedParamsFromFormIntervalValidation(t *testing.T) {
 			"interval_minutes": {"1"},
 		}
 		req := httptest.NewRequest(http.MethodPost, "/ui/feeds", strings.NewReader(form.Encode()))
+		req.Header.Set("Sec-Fetch-Site", "same-origin")
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		params, err := feedParamsFromForm(req)
 		if err != nil {
@@ -587,6 +591,7 @@ func TestFeedParamsFromFormIntervalValidation(t *testing.T) {
 			"interval_minutes": {"0"},
 		}
 		req := httptest.NewRequest(http.MethodPost, "/ui/feeds", strings.NewReader(form.Encode()))
+		req.Header.Set("Sec-Fetch-Site", "same-origin")
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		_, err := feedParamsFromForm(req)
 		if err == nil {

@@ -69,6 +69,9 @@ type pageData struct {
 	CategoryFollowerCounts map[int64]int
 	FeedSubscriberCounts   map[int64]int
 	FeedSubscribers        []storage.FeedSubscriber
+	// FeedOtherSubscribers: readers of the feed besides the current user;
+	// a non-admin cannot delete the feed while it is > 0.
+	FeedOtherSubscribers int
 	// InboundEnabled: this instance accepts inbound webhooks (buttons shown).
 	// InboundFeed + InboundHookURL + InboundSecret: delivery details of the
 	// inbound feed on its page, editors only.
@@ -183,9 +186,32 @@ func (h *Handler) sessionTTL() time.Duration {
 func (h *Handler) csrfToken(r *http.Request) string {
 	sid := auth.SessionIDFromRequest(r)
 	if sid == "" {
-		return auth.CSRFToken(h.cfg.CSRFSecret, "login")
+		return auth.CSRFToken(h.cfg.CSRFSecret, loginCSRFSubject(auth.LoginNonceFromRequest(r)))
 	}
 	return auth.CSRFToken(h.cfg.CSRFSecret, sid)
+}
+
+// loginCSRFSubject binds the anonymous login form to a per-browser nonce
+// cookie, so no two visitors share a token.
+func loginCSRFSubject(nonce string) string {
+	if nonce == "" {
+		return ""
+	}
+	return "login|" + nonce
+}
+
+// ensureLoginNonce sets the nonce cookie on the login page when the browser
+// has none yet and returns the nonce the rendered form must use.
+func (h *Handler) ensureLoginNonce(w http.ResponseWriter, r *http.Request) {
+	if auth.LoginNonceFromRequest(r) != "" {
+		return
+	}
+	nonce, err := auth.NewSessionID()
+	if err != nil {
+		return
+	}
+	auth.SetLoginNonceCookie(w, h.sessionCookieCfg(r), nonce)
+	r.AddCookie(&http.Cookie{Name: auth.LoginNonceCookieName, Value: nonce})
 }
 
 func parseRequestForm(r *http.Request) error {
@@ -202,13 +228,27 @@ func (h *Handler) validateCSRF(r *http.Request) bool {
 	token := r.FormValue("csrf_token")
 	sid := auth.SessionIDFromRequest(r)
 	if sid == "" {
-		sid = "login"
+		sid = loginCSRFSubject(auth.LoginNonceFromRequest(r))
 	}
 	return auth.ValidateCSRF(h.cfg.CSRFSecret, sid, token)
 }
 
-func (h *Handler) requireAuth(next http.Handler) http.Handler {
+// requireSameOrigin rejects state-changing requests that do not carry
+// browser evidence of coming from our own origin (Sec-Fetch-Site, Origin or
+// Referer). The form token alone would suffice against a classic CSRF; this
+// is the same second line /v1 and the WebSocket already have.
+func requireSameOrigin(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !middleware.IsSafeMethod(r.Method) && !middleware.SameOriginRequest(r) {
+			http.Error(w, "cross-origin request rejected", http.StatusForbidden)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func (h *Handler) requireAuth(next http.Handler) http.Handler {
+	return requireSameOrigin(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		p, sid, ok := h.authenticate(r)
 		if !ok {
 			http.Redirect(w, r, "/ui/login?next="+urlQueryEscape(r.URL.RequestURI()), http.StatusFound)
@@ -217,7 +257,7 @@ func (h *Handler) requireAuth(next http.Handler) http.Handler {
 		ctx := auth.WithPrincipal(r.Context(), p)
 		ctx = context.WithValue(ctx, sessionKey, sid)
 		next.ServeHTTP(w, r.WithContext(ctx))
-	})
+	}))
 }
 
 func (h *Handler) requireAdmin(next http.Handler) http.Handler {
@@ -247,11 +287,7 @@ func (h *Handler) authenticate(r *http.Request) (auth.Principal, string, bool) {
 	if sid == "" {
 		return auth.Principal{}, "", false
 	}
-	sess, err := h.cfg.Sessions.LookupSession(r.Context(), sid)
-	if err != nil {
-		return auth.Principal{}, "", false
-	}
-	u, err := h.cfg.Users.GetUser(r.Context(), sess.UserID)
+	sess, u, err := storage.LookupSessionUser(r.Context(), h.cfg.Sessions, h.cfg.Users, sid)
 	if err != nil {
 		return auth.Principal{}, "", false
 	}
@@ -273,6 +309,7 @@ func (h *Handler) handleLoginGet(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/ui/unread", http.StatusFound)
 		return
 	}
+	h.ensureLoginNonce(w, r)
 	h.render(w, r, "login", h.loginData(r, ""))
 }
 
@@ -295,6 +332,7 @@ func (h *Handler) loginData(r *http.Request, errMsg string) pageData {
 
 func (h *Handler) handleLoginPost(w http.ResponseWriter, r *http.Request) {
 	if !h.validateCSRF(r) {
+		h.ensureLoginNonce(w, r)
 		h.render(w, r, "login", h.loginData(r, "Неверный CSRF-токен"))
 		return
 	}
@@ -322,6 +360,7 @@ func (h *Handler) handleLoginPost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	auth.SetSessionCookie(w, h.sessionCookieCfg(r), sid)
+	auth.ClearLoginNonceCookie(w, h.sessionCookieCfg(r))
 	// A login that succeeds with the example password proves the account
 	// still has it; the reader can wait until it is changed.
 	if config.IsPlaceholderPassword(password) {

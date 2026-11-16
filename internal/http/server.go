@@ -186,7 +186,7 @@ type Server struct {
 	// same token forever); badTokenLimiter budgets distinct misses per IP
 	// (a brute force), after which tokens from that IP are rejected
 	// without a query until the bucket refills.
-	badTokens             sync.Map // token hash → time.Time of the miss
+	badTokens             badTokenCache
 	badTokenLimiter       *middleware.Limiter
 	apiKeyTouched         sync.Map // key id → last TouchAPIKeyUsed (time.Time)
 	loginLimiter          *middleware.Limiter
@@ -312,6 +312,12 @@ func New(dep Dependencies) *Server {
 	wsHub := dep.WSHub
 	if wsHub == nil {
 		wsHub = ws.NewHub(dep.WSClientBuffer, dep.WSPingInterval)
+	}
+	if sessionStore != nil {
+		sessionStore = revokingSessions{SessionStore: sessionStore, users: userStore, hub: wsHub}
+	}
+	if userStore != nil {
+		userStore = revokingUsers{UserStore: userStore, hub: wsHub}
 	}
 
 	registry := dep.HandlerRegistry
@@ -564,9 +570,11 @@ func (s *Server) Run(ctx context.Context, addr string, shutdownTimeout time.Dura
 		// Bound slow readers and idle keep-alives; without these a handful of
 		// stalled connections can pin goroutines indefinitely. WebSocket
 		// connections are hijacked and therefore unaffected by WriteTimeout.
-		WriteTimeout:   120 * time.Second,
-		IdleTimeout:    120 * time.Second,
-		MaxHeaderBytes: 1 << 20,
+		WriteTimeout: 120 * time.Second,
+		IdleTimeout:  120 * time.Second,
+		// Cookie + Authorization + proxy headers fit in a few KiB; the Go
+		// default (1 MiB) only buys an attacker a cheaper slow-header DoS.
+		MaxHeaderBytes: 64 << 10,
 	}
 
 	errCh := make(chan error, 1)

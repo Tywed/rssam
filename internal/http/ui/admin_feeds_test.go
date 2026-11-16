@@ -21,6 +21,8 @@ type uiMemAdminFeeds struct {
 	typeStats []storage.FeedTypeStat
 }
 
+func (m *uiMemAdminFeeds) PauseGoneFeeds(context.Context) (int64, error) { return 0, nil }
+
 func (m *uiMemAdminFeeds) FeedTypeStats(context.Context) ([]storage.FeedTypeStat, error) {
 	return m.typeStats, nil
 }
@@ -131,9 +133,12 @@ func TestUI_AdminFeedsForbidden(t *testing.T) {
 	mux := http.NewServeMux()
 	h.Register(mux)
 
-	token := auth.CSRFToken("csrf-test", "login")
+	token := auth.CSRFToken("csrf-test", "login|test-nonce")
 	form := strings.NewReader("username=alice&password=secret&csrf_token=" + token)
 	req := httptest.NewRequest(http.MethodPost, "/ui/login", form)
+	req.Header.Set("Sec-Fetch-Site", "same-origin")
+	req.AddCookie(&http.Cookie{Name: auth.LoginNonceCookieName, Value: "test-nonce"})
+	req.Header.Set("Sec-Fetch-Site", "same-origin")
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)

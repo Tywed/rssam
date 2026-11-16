@@ -18,9 +18,7 @@ type Config struct {
 	BlockedHosts        []string
 	// TLSInsecureSkipVerify disables TLS certificate verification for outbound fetches.
 	TLSInsecureSkipVerify bool
-	// AllowedHosts bypasses private-IP checks for these hostnames (e.g. internal proxy-service).
-	AllowedHosts []string
-	Resolver     *net.Resolver
+	Resolver              *net.Resolver
 	// LookupHost overrides DNS resolution (tests); nil uses Resolver or net.DefaultResolver.
 	LookupHost func(ctx context.Context, host string) ([]string, error)
 }
@@ -32,7 +30,6 @@ type Guard struct {
 	allowedNets           []*net.IPNet
 	blockedNets           []*net.IPNet
 	blockedHosts          map[string]struct{}
-	allowedHosts          map[string]struct{}
 	resolver              *net.Resolver
 	lookupHost            func(ctx context.Context, host string) ([]string, error)
 
@@ -135,13 +132,6 @@ func New(cfg Config) (*Guard, error) {
 			g.blockedHosts[h] = struct{}{}
 		}
 	}
-	g.allowedHosts = make(map[string]struct{})
-	for _, h := range cfg.AllowedHosts {
-		h = normalizeHost(h)
-		if h != "" {
-			g.allowedHosts[h] = struct{}{}
-		}
-	}
 	return g, nil
 }
 
@@ -201,9 +191,6 @@ func (g *Guard) checkBlockedHost(hostname string) error {
 	if host == "" {
 		return fmt.Errorf("ssrf: empty hostname")
 	}
-	if _, allowed := g.allowedHosts[host]; allowed {
-		return nil
-	}
 	if _, blocked := g.blockedHosts[host]; blocked {
 		return fmt.Errorf("ssrf: blocked host: %s", hostname)
 	}
@@ -217,9 +204,6 @@ func (g *Guard) resolveHost(ctx context.Context, hostname string) ([]net.IP, err
 	ips, err := g.lookupIPs(ctx, hostname)
 	if err != nil {
 		return nil, err
-	}
-	if g.isAllowedHost(hostname) {
-		return ips, nil
 	}
 	for _, ip := range ips {
 		if err := g.validateIP(ip); err != nil {
@@ -287,14 +271,6 @@ func (g *Guard) validateIP(ip net.IP) error {
 		}
 	}
 	return nil
-}
-
-func (g *Guard) isAllowedHost(hostname string) bool {
-	if g == nil {
-		return false
-	}
-	_, ok := g.allowedHosts[normalizeHost(hostname)]
-	return ok
 }
 
 func normalizeHost(host string) string {

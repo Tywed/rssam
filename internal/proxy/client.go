@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -276,13 +277,21 @@ func truncate(s string, n int) string {
 	return s[:n] + "..."
 }
 
-// ServiceHost returns the hostname of a proxy-service URL (for SSRF allowlist).
-func ServiceHost(serviceURL string) (string, error) {
+// ServiceEndpoint returns host:port of a proxy-service URL — the one
+// private endpoint the service client may dial.
+func ServiceEndpoint(serviceURL string) (string, error) {
 	u, err := url.Parse(strings.TrimSpace(serviceURL))
-	if err != nil || u.Host == "" {
+	if err != nil || u.Hostname() == "" {
 		return "", fmt.Errorf("proxy: invalid service URL host")
 	}
-	return strings.ToLower(u.Hostname()), nil
+	port := u.Port()
+	if port == "" {
+		port = "80"
+		if strings.EqualFold(u.Scheme, "https") {
+			port = "443"
+		}
+	}
+	return net.JoinHostPort(strings.ToLower(u.Hostname()), port), nil
 }
 
 // SetServiceToken replaces the bearer token for the proxy service; safe

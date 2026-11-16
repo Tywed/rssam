@@ -29,9 +29,11 @@ type memWebhookDelivery struct {
 
 	logs     map[int64]storage.WebhookLog
 	stripped []int64
-	removed  []int64
-	deleted  []int64
-	read     []int64
+	// shared makes StripEntryPayloadAfterWebhook answer ErrEntryShared.
+	shared  bool
+	removed []int64
+	deleted []int64
+	read    []int64
 }
 
 func newMemWebhookDelivery(log storage.WebhookLog, ctx storage.WebhookDeliveryContext) *memWebhookDelivery {
@@ -97,9 +99,12 @@ func (m *memWebhookDelivery) MarkWebhookLogFailed(ctx context.Context, logID int
 	return nil
 }
 
-func (m *memWebhookDelivery) StripEntryPayloadAfterWebhook(_ context.Context, entryID int64) error {
+func (m *memWebhookDelivery) StripEntryPayloadAfterWebhook(_ context.Context, entryID int64, _ int64) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.shared {
+		return storage.ErrEntryShared
+	}
 	m.stripped = append(m.stripped, entryID)
 	return nil
 }
@@ -347,6 +352,30 @@ func TestProcessWebhookLog_HashAppliedWhenAlone(t *testing.T) {
 	processTestRunner(store, 0).processWebhookLog(context.Background(), log)
 	if len(store.stripped) != 1 {
 		t.Fatalf("expected strip, got %v", store.stripped)
+	}
+}
+
+// A hash action on a feed with other readers degrades to a per-user
+// removal instead of erasing the shared payload.
+func TestProcessWebhookLog_HashOnSharedFeedRemovesForUserOnly(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+	log := storage.WebhookLog{ID: 7, EntryID: 99, Attempt: 0}
+	store := newMemWebhookDelivery(log, storage.WebhookDeliveryContext{
+		Webhook: storage.Webhook{
+			Enabled:        true,
+			URL:            srv.URL,
+			Method:         http.MethodPost,
+			OnSuccessEntry: storage.WebhookOnSuccessHash,
+		},
+		Entry: storage.Entry{ID: 99},
+	})
+	store.shared = true
+	processTestRunner(store, 0).processWebhookLog(context.Background(), log)
+	if len(store.stripped) != 0 || len(store.removed) != 1 || store.removed[0] != 99 {
+		t.Fatalf("stripped=%v removed=%v, want per-user removal only", store.stripped, store.removed)
 	}
 }
 

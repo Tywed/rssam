@@ -20,6 +20,7 @@ type Envelope struct {
 type Hub struct {
 	mu           sync.RWMutex
 	clients      map[*Client]struct{}
+	perUser      map[int64]int
 	clientBuffer int
 	pingInterval time.Duration
 }
@@ -33,6 +34,7 @@ func NewHub(clientBuffer int, pingInterval time.Duration) *Hub {
 	}
 	return &Hub{
 		clients:      make(map[*Client]struct{}),
+		perUser:      make(map[int64]int),
 		clientBuffer: clientBuffer,
 		pingInterval: pingInterval,
 	}
@@ -74,6 +76,80 @@ func (h *Hub) Unregister(c *Client) {
 	delete(h.clients, c)
 	c.gone = true
 	close(c.send)
+}
+
+// Reserve takes one of the user's MaxConnectionsPerUser slots before the
+// upgrade, so the check and the count move together; the caller must
+// Release when the socket is gone.
+func (h *Hub) Reserve(userID int64) bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.perUser[userID] >= MaxConnectionsPerUser {
+		return false
+	}
+	h.perUser[userID]++
+	return true
+}
+
+func (h *Hub) Release(userID int64) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.perUser[userID] <= 1 {
+		delete(h.perUser, userID)
+		return
+	}
+	h.perUser[userID]--
+}
+
+// UserConnections reports the user's reserved slots.
+func (h *Hub) UserConnections(userID int64) int {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return h.perUser[userID]
+}
+
+// MaxConnectionsPerUser bounds sockets per account: a browser needs one per
+// tab, anything beyond this is a leak or abuse. The limit is per process.
+const MaxConnectionsPerUser = 10
+
+// KickSession closes every socket opened with sessionID.
+func (h *Hub) KickSession(sessionID string) {
+	if sessionID == "" {
+		return
+	}
+	h.kick(func(c *Client) bool { return c.SessionID == sessionID })
+}
+
+// KickUser closes every socket of userID; keepSessionID (may be empty) is
+// spared, mirroring DeleteUserSessionsExcept.
+func (h *Hub) KickUser(userID int64, keepSessionID string) {
+	h.kick(func(c *Client) bool {
+		return c.UserID == userID && (keepSessionID == "" || c.SessionID != keepSessionID)
+	})
+}
+
+// KickKey closes every socket authenticated with API key keyID.
+func (h *Hub) KickKey(keyID int64) {
+	if keyID <= 0 {
+		return
+	}
+	h.kick(func(c *Client) bool { return c.KeyID == keyID })
+}
+
+// kick collects matches under the read lock and closes them outside it:
+// Close makes readPump return, which takes the write lock in Unregister.
+func (h *Hub) kick(match func(*Client) bool) {
+	h.mu.RLock()
+	var victims []*Client
+	for c := range h.clients {
+		if match(c) {
+			victims = append(victims, c)
+		}
+	}
+	h.mu.RUnlock()
+	for _, c := range victims {
+		c.Close()
+	}
 }
 
 // PublishToUser delivers event only to clients authenticated as userID.

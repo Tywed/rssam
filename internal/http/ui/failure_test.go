@@ -52,6 +52,7 @@ func TestUIMutation_StoreFailureIsVisible(t *testing.T) {
 	post := func(path string) *httptest.ResponseRecorder {
 		form := url.Values{"csrf_token": {token}}
 		req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(form.Encode()))
+		req.Header.Set("Sec-Fetch-Site", "same-origin")
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		req.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: sid})
 		rec := httptest.NewRecorder()

@@ -233,12 +233,14 @@ func (h *Handler) collapseEntries(r *http.Request, userID int64, feedID, categor
 	if h.cfg.Dedup == nil {
 		return 0, fmt.Errorf("dedup store is not configured")
 	}
+	p, _ := principal(r)
 	n, err := h.cfg.Dedup.CollapseEntriesToHashes(r.Context(), storage.CollapseEntriesParams{
-		UserID:            userID,
-		FeedID:            feedID,
-		CategoryID:        categoryID,
-		OnlyHashOnlyFeeds: onlyHashOnly,
-		IncludeLabeled:    true,
+		UserID:             userID,
+		FeedID:             feedID,
+		CategoryID:         categoryID,
+		OnlyHashOnlyFeeds:  onlyHashOnly,
+		OnlySoleSubscriber: userID > 0 && !p.IsAdmin(),
+		IncludeLabeled:     true,
 	})
 	if err != nil {
 		return 0, err

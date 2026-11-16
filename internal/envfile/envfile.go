@@ -1,11 +1,13 @@
 package envfile
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
 	"unicode"
 )
 
@@ -41,6 +43,9 @@ func SetKeys(path string, keys map[string]string) error {
 	}
 	tmp, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".*.tmp")
 	if err != nil {
+		if errors.Is(err, os.ErrPermission) || errors.Is(err, syscall.EROFS) {
+			return writeInPlace(path, text)
+		}
 		return err
 	}
 	tmpName := tmp.Name()
@@ -63,6 +68,27 @@ func SetKeys(path string, keys map[string]string) error {
 		return err
 	}
 	return nil
+}
+
+// writeInPlace rewrites the file through its existing inode. Used when the
+// directory is root-owned (the installed layout keeps /opt/rssam read-only
+// for the service and grants write access to the .env file itself), so an
+// atomic replace by rename is not possible; the content is fsynced before
+// return, and the file is only a few hundred bytes.
+func writeInPlace(path, text string) error {
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_TRUNC, 0o600)
+	if err != nil {
+		return err
+	}
+	if _, err := f.WriteString(text); err != nil {
+		_ = f.Close()
+		return err
+	}
+	if err := f.Sync(); err != nil {
+		_ = f.Close()
+		return err
+	}
+	return f.Close()
 }
 
 func validKey(k string) bool {

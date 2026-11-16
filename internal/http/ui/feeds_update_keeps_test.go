@@ -41,6 +41,7 @@ func TestFeedUpdateForm_KeepsFieldsTheFormDoesNotHave(t *testing.T) {
 		"interval_minutes": {"30"},
 	}
 	req := httptest.NewRequest(http.MethodPost, "/ui/feeds/1", strings.NewReader(form.Encode()))
+	req.Header.Set("Sec-Fetch-Site", "same-origin")
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: sid})
 	rec := httptest.NewRecorder()

@@ -131,6 +131,7 @@ func TestUI_ColoursViaNoncedStyleAndLabelMarkRead(t *testing.T) {
 
 	form := "csrf_token=" + auth.CSRFToken("csrf-test", sid)
 	req = httptest.NewRequest(http.MethodPost, "/ui/labels/3/mark-read", strings.NewReader(form))
+	req.Header.Set("Sec-Fetch-Site", "same-origin")
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: sid})
 	rec = httptest.NewRecorder()
@@ -143,6 +144,7 @@ func TestUI_ColoursViaNoncedStyleAndLabelMarkRead(t *testing.T) {
 	}
 
 	req = httptest.NewRequest(http.MethodPost, "/ui/labels/3/mark-read", strings.NewReader("csrf_token=bad"))
+	req.Header.Set("Sec-Fetch-Site", "same-origin")
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: sid})
 	rec = httptest.NewRecorder()

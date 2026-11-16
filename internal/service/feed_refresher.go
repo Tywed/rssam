@@ -394,6 +394,7 @@ func (r *FeedRefresher) refreshLoaded(ctx context.Context, feed storage.Feed, ma
 		BridgeState:   bridgeStateJSON(res.BridgeState),
 		NextCheckAt:   &next,
 		NewFeedURL:    movedTo,
+		Succeeded:     true,
 	}
 
 	// NewEntries counts items the feed delivered for the first time,

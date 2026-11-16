@@ -309,6 +309,20 @@ WHERE token_hash = $1`
 	return k, nil
 }
 
+// APIKeyExpiry reports whether key id still exists and when it expires
+// (nil = never). Used to re-validate long-lived WebSocket connections.
+func (s *PostgresStore) APIKeyExpiry(ctx context.Context, keyID int64) (*time.Time, error) {
+	var exp *time.Time
+	err := s.db.QueryRow(ctx, `SELECT expires_at FROM api_keys WHERE id = $1`, keyID).Scan(&exp)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		return nil, fmt.Errorf("api key expiry: %w", err)
+	}
+	return exp, nil
+}
+
 // TouchAPIKeyUsed records use of a key. last_used_at is informational, so
 // it is written at most once per hour per key rather than on every request.
 func (s *PostgresStore) TouchAPIKeyUsed(ctx context.Context, keyID int64) error {

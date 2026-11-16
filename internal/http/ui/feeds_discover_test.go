@@ -78,6 +78,7 @@ func TestUI_FeedDetectAndCreateUseDiscoveredURL(t *testing.T) {
 
 	form := url.Values{"csrf_token": {token}, "feed_url": {"https://site.example/"}, "interval_minutes": {"60"}}
 	req := httptest.NewRequest(http.MethodPost, "/ui/feeds", strings.NewReader(form.Encode()))
+	req.Header.Set("Sec-Fetch-Site", "same-origin")
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: sid})
 	rec := httptest.NewRecorder()
@@ -91,6 +92,7 @@ func TestUI_FeedDetectAndCreateUseDiscoveredURL(t *testing.T) {
 
 	form.Set("feed_url", "https://nofeed.example/")
 	req = httptest.NewRequest(http.MethodPost, "/ui/feeds", strings.NewReader(form.Encode()))
+	req.Header.Set("Sec-Fetch-Site", "same-origin")
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: sid})
 	rec = httptest.NewRecorder()

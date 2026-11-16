@@ -145,13 +145,33 @@ func TestIntegration_SharedFeed_RemovalAndRetention(t *testing.T) {
 	if _, err := store.MarkEntriesRemoved(ctx, alice.ID, []int64{entries[1].ID}); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.StripEntryPayloadAfterWebhook(ctx, entries[2].ID); err != nil {
+	// A per-user hash action cannot erase a shared entry; the admin-wide
+	// path (no acting user, i.e. nobody else counts as "other") can.
+	if err := store.StripEntryPayloadAfterWebhook(ctx, entries[2].ID, bob.ID); !errors.Is(err, ErrEntryShared) {
+		t.Fatalf("strip of a shared entry by one reader: err=%v", err)
+	}
+	if err := store.MarkEntryRemovedKeepPayload(ctx, bob.ID, entries[2].ID); err != nil {
 		t.Fatal(err)
 	}
-	for _, u := range []User{alice, bob} {
-		if e, _ := store.GetEntry(ctx, u.ID, entries[2].ID); e.Status != EntryStatusRemoved {
-			t.Fatalf("strip did not remove for user %d: %+v", u.ID, e)
-		}
+	if e, _ := store.GetEntry(ctx, alice.ID, entries[2].ID); e.Status == EntryStatusRemoved || e.Title == "" {
+		t.Fatalf("bob's hash action touched alice: %+v", e)
+	}
+	if err := store.Unsubscribe(ctx, bob.ID, feed.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.StripEntryPayloadAfterWebhook(ctx, entries[2].ID, alice.ID); err != nil {
+		t.Fatal(err)
+	}
+	if e, _ := store.GetEntry(ctx, alice.ID, entries[2].ID); e.Status != EntryStatusRemoved {
+		t.Fatalf("strip did not remove for the sole reader: %+v", e)
+	}
+	// Bob comes back (his per-user rows went with the subscription) and
+	// removes the same two entries again.
+	if _, err := store.Subscribe(ctx, bob.ID, feed.ID, SubscriptionParams{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.MarkEntriesRemoved(ctx, bob.ID, []int64{entries[0].ID, entries[1].ID}); err != nil {
+		t.Fatal(err)
 	}
 	if _, err := store.db.Exec(ctx, `UPDATE user_entries SET updated_at = now() - interval '40 days' WHERE entry_id IN (SELECT id FROM entries WHERE feed_id = $1)`, feed.ID); err != nil {
 		t.Fatal(err)
@@ -480,8 +500,13 @@ func TestIntegration_SharedFeed_CatalogAndDelete(t *testing.T) {
 		t.Fatalf("subscriber names: %+v err=%v", names, err)
 	}
 
-	// Bob (a subscriber, not the owner) deletes the feed from the catalog.
-	if err := store.DeleteFeed(ctx, bob.ID, feed.ID); err != nil {
+	// Bob (a subscriber, not the owner) cannot delete while alice reads it;
+	// an admin removes the row for everyone.
+	var inUse *FeedInUseError
+	if err := store.DeleteFeed(ctx, bob.ID, feed.ID); !errors.As(err, &inUse) {
+		t.Fatalf("delete by non-sole subscriber: err=%v", err)
+	}
+	if err := store.DeleteFeedByID(ctx, feed.ID); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := store.GetFeedByID(ctx, feed.ID); !errors.Is(err, ErrNotFound) {

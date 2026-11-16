@@ -179,6 +179,12 @@ func TestSetWebhookHeaders_ReservedAndUnsafeSkipped(t *testing.T) {
 		"transfer-encoding": "chunked",
 		"Connection": "close",
 		"x-rssam-signature": "sha256=forged",
+		"X-Forwarded-For": "127.0.0.1",
+		"x-real-ip": "127.0.0.1",
+		"Forwarded": "for=127.0.0.1",
+		"Origin": "http://127.0.0.1:8080",
+		"Cookie": "rssam_session=x",
+		"Sec-Fetch-Site": "same-origin",
 		"X-Injected": "a\r\nX-Smuggled: b",
 		" ": "blank"
 	}`)
@@ -193,7 +199,7 @@ func TestSetWebhookHeaders_ReservedAndUnsafeSkipped(t *testing.T) {
 	if req.Host != "hooks.example.com" || req.Header.Get("Host") != "" {
 		t.Fatalf("Host overridden: req.Host=%q header=%q", req.Host, req.Header.Get("Host"))
 	}
-	for _, h := range []string{"Content-Length", "Transfer-Encoding", "Connection", "X-RSSAM-Signature", "X-Injected", "X-Smuggled"} {
+	for _, h := range []string{"Content-Length", "Transfer-Encoding", "Connection", "X-RSSAM-Signature", "X-Forwarded-For", "X-Real-IP", "Forwarded", "Origin", "Cookie", "Sec-Fetch-Site", "X-Injected", "X-Smuggled"} {
 		if v := req.Header.Get(h); v != "" {
 			t.Fatalf("%s must not be set, got %q", h, v)
 		}

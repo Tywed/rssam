@@ -91,3 +91,47 @@ func TestHub_RegisterAfterUnregisterIsIgnored(t *testing.T) {
 		t.Fatal("unregistered client came back")
 	}
 }
+
+func TestHub_KickByCredential(t *testing.T) {
+	hub := NewHub(4, time.Minute)
+	mk := func(user int64, sid string, key int64) *Client {
+		c := &Client{hub: hub, UserID: user, SessionID: sid, KeyID: key, send: make(chan []byte, 4), subscriptions: map[string]struct{}{}}
+		hub.Register(c)
+		return c
+	}
+	a := mk(1, "s1", 0)
+	b := mk(1, "s2", 0)
+	k := mk(1, "", 7)
+	o := mk(2, "s3", 0)
+	closed := func(c *Client) bool { c.mu.RLock(); defer c.mu.RUnlock(); return c.closed }
+	hub.KickSession("s1")
+	if !closed(a) || closed(b) || closed(k) || closed(o) {
+		t.Fatal("KickSession must close exactly s1")
+	}
+	hub.KickKey(7)
+	if !closed(k) || closed(b) {
+		t.Fatal("KickKey must close exactly key 7")
+	}
+	hub.KickUser(1, "s2")
+	if closed(b) || closed(o) {
+		t.Fatal("KickUser with keep must spare the kept session and other users")
+	}
+	hub.KickUser(1, "")
+	if !closed(b) || closed(o) {
+		t.Fatal("KickUser must close the rest of user 1 only")
+	}
+	registered := func(user int64) int {
+		hub.mu.RLock()
+		defer hub.mu.RUnlock()
+		n := 0
+		for c := range hub.clients {
+			if c.UserID == user {
+				n++
+			}
+		}
+		return n
+	}
+	if registered(2) != 1 || registered(1) != 3 {
+		t.Fatalf("counts: u1=%d u2=%d (Close does not unregister without a pump)", registered(1), registered(2))
+	}
+}

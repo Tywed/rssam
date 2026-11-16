@@ -46,6 +46,7 @@ func TestUI_EntriesBulk(t *testing.T) {
 
 	post := func(form url.Values, referer string) *httptest.ResponseRecorder {
 		req := httptest.NewRequest(http.MethodPost, "/ui/entries/bulk", strings.NewReader(form.Encode()))
+		req.Header.Set("Sec-Fetch-Site", "same-origin")
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		if referer != "" {
 			req.Header.Set("Referer", referer)

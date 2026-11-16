@@ -168,6 +168,7 @@ func TestParseFilterActionParam(t *testing.T) {
 
 func TestParseActionsFromFormPrefixed(t *testing.T) {
 	r := httptest.NewRequest(http.MethodPost, "/", strings.NewReader("action_type=webhook&action_param=webhook:1&action_type=label&action_param=label:2"))
+	r.Header.Set("Sec-Fetch-Site", "same-origin")
 	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	if err := r.ParseForm(); err != nil {
 		t.Fatal(err)
@@ -294,6 +295,7 @@ func TestUI_FilterCreateRejectsInvalidRegex(t *testing.T) {
 			"rule_pattern": {pattern},
 		}
 		req := httptest.NewRequest(http.MethodPost, "/ui/filters", strings.NewReader(form.Encode()))
+		req.Header.Set("Sec-Fetch-Site", "same-origin")
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		req.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: sid})
 		rec := httptest.NewRecorder()

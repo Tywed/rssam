@@ -36,11 +36,10 @@ func TestHTTPClient_RedirectToPrivateHostBlocked(t *testing.T) {
 		t.Fatal(err)
 	}
 	guard.allowPrivate = false
-	guard.allowedHosts = map[string]struct{}{"127.0.0.1": {}}
 	resp, err := guard.HTTPClient(2 * time.Second).Get(srv.URL)
 	if err == nil {
 		resp.Body.Close()
-		t.Fatal("expected redirect to a blocked address to fail")
+		t.Fatal("expected request to a private address to fail")
 	}
 	if !strings.Contains(err.Error(), "ssrf") {
 		t.Fatalf("expected ssrf error, got %v", err)

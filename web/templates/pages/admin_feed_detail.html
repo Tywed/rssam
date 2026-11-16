@@ -54,6 +54,7 @@
         {{if .AdminFeedDetail.OwnerName}}<tr><th>Владелец</th><td>{{.AdminFeedDetail.OwnerName}}</td></tr>{{end}}
         <tr><th>Интервал</th><td>{{.AdminFeedDetail.Feed.IntervalMinutes}} мин{{if .AdminFeedDetail.Feed.AdaptiveInterval}} (адаптивный){{end}}</td></tr>
         <tr><th>Последний опрос</th><td>{{formatTime .AdminFeedDetail.Feed.LastCheckedAt}}</td></tr>
+        <tr><th>Последний успех</th><td>{{if .AdminFeedDetail.Feed.LastSuccessAt}}{{formatTime .AdminFeedDetail.Feed.LastSuccessAt}}{{else}}—{{end}}</td></tr>
         <tr><th>Следующий опрос</th><td>{{formatTime .AdminFeedDetail.Feed.NextCheckAt}}</td></tr>
         <tr><th>Последняя запись</th><td>{{if .AdminFeedDetail.Feed.LastEntryAt}}{{formatTime .AdminFeedDetail.Feed.LastEntryAt}}{{else}}—{{end}}</td></tr>
         <tr><th>Ошибок подряд</th><td>{{.AdminFeedDetail.Feed.ParsingErrorCount}}</td></tr>

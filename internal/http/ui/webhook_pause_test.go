@@ -95,6 +95,7 @@ func TestWebhookPauseUnpause(t *testing.T) {
 	post := func(path, status string) *httptest.ResponseRecorder {
 		form := url.Values{"csrf_token": {token}, "status": {status}}
 		req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(form.Encode()))
+		req.Header.Set("Sec-Fetch-Site", "same-origin")
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		req.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: sid})
 		rec := httptest.NewRecorder()
@@ -171,6 +172,7 @@ func TestWebhookFormSystemAlertsAndDigest(t *testing.T) {
 	post := func(path string, form url.Values) *httptest.ResponseRecorder {
 		form.Set("csrf_token", token)
 		req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(form.Encode()))
+		req.Header.Set("Sec-Fetch-Site", "same-origin")
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		req.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: sid})
 		rec := httptest.NewRecorder()

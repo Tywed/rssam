@@ -202,7 +202,17 @@ func (a *systemAlerter) diff(ctx context.Context) ([]alertMessage, systemAlertSt
 		}
 	}
 	if len(newPaused) > 0 {
-		msgs = append(msgs, feedsAlert("feeds_paused", "Ленты остановлены (ошибки)", newPaused, true))
+		title := "Ленты остановлены (ошибки)"
+		gone := 0
+		for _, f := range newPaused {
+			if f.Gone {
+				gone++
+			}
+		}
+		if gone > 0 {
+			title += fmt.Sprintf(" — из них исчезли (404/410/канал не найден): %d", gone)
+		}
+		msgs = append(msgs, feedsAlert("feeds_paused", title, newPaused, true))
 	}
 
 	// Inbound feeds are judged by their own interval_minutes, so the list

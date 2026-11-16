@@ -883,7 +883,7 @@
         ],
         "summary": "Update feed",
         "operationId": "updateFeed",
-        "description": "Catalog columns (URL, title, category, interval, rules, flags) are shared by every subscriber. Requires an editor principal.",
+        "description": "Catalog columns (URL, title, category, interval, rules, flags) are shared by every subscriber. Changing feed_url (and with it the feed type) is allowed only to the feed author or an admin (otherwise 403). Requires an editor principal.",
         "requestBody": {
           "required": true,
           "content": {
@@ -954,7 +954,7 @@
         ],
         "summary": "Delete feed",
         "operationId": "deleteFeed",
-        "description": "Removes the feed from the catalog for every subscriber, with its entries. To stop reading a feed others still use, DELETE /v1/subscriptions/{id} instead. Requires an editor principal.",
+        "description": "Removes the feed from the catalog for every subscriber, with its entries. An editor can delete only a feed nobody else is subscribed to (otherwise 409 with the number of other subscribers); an admin can delete any feed. To stop reading a feed others still use, DELETE /v1/subscriptions/{id} instead. Requires an editor principal.",
         "responses": {
           "200": {
             "description": "Deleted from the catalog with its entries.",
@@ -977,6 +977,16 @@
           },
           "404": {
             "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "description": "The feed has other subscribers and the caller is not an admin.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "429": {
             "$ref": "#/components/responses/TooManyRequests"
@@ -3276,7 +3286,7 @@
             }
           },
           "401": {
-            "description": "Missing or wrong signature.",
+            "description": "Missing or wrong signature, unknown feed id, or a polled (not inbound) feed — one answer for all three, so ids cannot be enumerated.",
             "content": {
               "application/json": {
                 "schema": {
@@ -3296,7 +3306,7 @@
             }
           },
           "404": {
-            "description": "Unknown feed, a polled (not inbound) feed, or inbound webhooks disabled.",
+            "description": "Inbound webhooks disabled (`INBOUND_WEBHOOKS` unset).",
             "content": {
               "application/json": {
                 "schema": {

@@ -39,7 +39,7 @@ curl -fsSL https://raw.githubusercontent.com/Tywed/rssam/main/install.sh | sudo 
 | --- | --- |
 | Бинарь | `/opt/rssam/bin/rssam` |
 | Конфиг | `/opt/rssam/.env` |
-| Логи update | `/opt/rssam/log/update.log` |
+| Логи update | `/var/log/rssam-update.log` |
 | Бэкапы | `/opt/rssam/backups/` (ежедневно, см. ниже) |
 | Health | `GET /healthz` → `ok` (не `/health`) |
 
@@ -57,6 +57,7 @@ Self-update и restart из веб-UI в **Docker не работают** — о
 ./install.sh --no-backup             # без ежедневного бэкапа
 ./install.sh update                  # или: install.sh --update
 ./install.sh remove                  # БД и .env по умолчанию сохраняются
+./install.sh --migrate-layout        # после обновления с ≤ 0.3.6: новая раскладка и юниты
 ```
 
 Обновление:
@@ -65,7 +66,7 @@ Self-update и restart из веб-UI в **Docker не работают** — о
 curl -fsSL https://raw.githubusercontent.com/Tywed/rssam/main/install.sh | sudo sh -s -- --update
 ```
 
-Из UI (admin → Система): перезапуск и обновление, если установлены sudoers из installer.
+Из UI (admin → Система): перезапуск и обновление. Сервис не получает прав root: он кладёт запрос в `/opt/rssam/run/ops.request`, root-юнит `rssam-ops.path` подхватывает его и запускает `rssam-update`. Перед заменой бинарника делается дамп БД (`rssam-backup`), откат версии из UI запрещён. После обновления с ≤ 0.3.6 один раз выполнить `install.sh --migrate-layout`: `/opt/rssam/bin` становится root-owned, `/etc/sudoers.d/rssam` удаляется, юнит получает `NoNewPrivileges=`/`ProtectSystem=strict`.
 
 ## Резервное копирование
 
@@ -126,7 +127,7 @@ rssam слушает plain HTTP (`LISTEN_ADDR`, по умолчанию `:8080`)
 5. `FETCH_ALLOW_PRIVATE_NETWORK=false` (по умолчанию): rssam ходит по URL, которые вводят пользователи; SSRF-guard не пускает его в приватные сети.
 6. Не публиковать порт PostgreSQL. `docker-compose.yml` в репозитории — dev-конфигурация (пароль `rssam`, порт 5432 наружу).
 
-Ограничения по умолчанию: логин — 10 попыток, затем одна в 5 с с одного IP (`LOGIN_RATE_LIMIT_*`); тело запроса 1 MiB (`MAX_REQUEST_BODY_BYTES`); лента до 16 MiB; заголовки 1 MiB. Обновление из UI запускает `rssam-update` через sudo — доступно только admin и принимает только semver-тег.
+Ограничения по умолчанию: логин — 10 попыток, затем одна в 5 с с одного IP (`LOGIN_RATE_LIMIT_*`); тело запроса 1 MiB (`MAX_REQUEST_BODY_BYTES`); лента до 16 MiB; заголовки 1 MiB. Обновление из UI доступно только admin, принимает только semver-тег и выполняется root-юнитом `rssam-ops.service` по файлу-запросу; сам сервис работает с `NoNewPrivileges=`.
 
 ## Конфигурация
 

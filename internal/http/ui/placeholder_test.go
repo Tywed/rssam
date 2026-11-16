@@ -31,10 +31,13 @@ func TestUI_LoginWithPlaceholderPasswordGoesToPasswordForm(t *testing.T) {
 	form := url.Values{
 		"username":   {"alice"},
 		"password":   {"changeme"},
-		"csrf_token": {auth.CSRFToken("csrf-test", "login")},
+		"csrf_token": {auth.CSRFToken("csrf-test", "login|test-nonce")},
 		"next":       {"/ui/feeds"},
 	}
 	req := httptest.NewRequest(http.MethodPost, "/ui/login", strings.NewReader(form.Encode()))
+	req.Header.Set("Sec-Fetch-Site", "same-origin")
+	req.AddCookie(&http.Cookie{Name: auth.LoginNonceCookieName, Value: "test-nonce"})
+	req.Header.Set("Sec-Fetch-Site", "same-origin")
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)

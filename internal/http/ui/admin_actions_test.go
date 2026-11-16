@@ -64,6 +64,7 @@ func (e *adminActionsEnv) do(method, path string, form url.Values, withCSRF bool
 	}
 	body := strings.NewReader(form.Encode())
 	req := httptest.NewRequest(method, path, body)
+	req.Header.Set("Sec-Fetch-Site", "same-origin")
 	if method == http.MethodPost {
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	}

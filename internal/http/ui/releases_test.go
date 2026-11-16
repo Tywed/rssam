@@ -49,8 +49,11 @@ func TestUI_SharedReleaseClient(t *testing.T) {
 		t.Fatalf("handler construction must not call GitHub, got %d requests", n)
 	}
 
-	form := url.Values{"username": {"alice"}, "password": {"secret"}, "csrf_token": {auth.CSRFToken("csrf-test", "login")}}
+	form := url.Values{"username": {"alice"}, "password": {"secret"}, "csrf_token": {auth.CSRFToken("csrf-test", "login|test-nonce")}}
 	req := httptest.NewRequest(http.MethodPost, "/ui/login", strings.NewReader(form.Encode()))
+	req.Header.Set("Sec-Fetch-Site", "same-origin")
+	req.AddCookie(&http.Cookie{Name: auth.LoginNonceCookieName, Value: "test-nonce"})
+	req.Header.Set("Sec-Fetch-Site", "same-origin")
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)

@@ -64,3 +64,29 @@ func TestSetKeys_RejectsControlCharacters(t *testing.T) {
 		t.Fatalf("temp file left behind: %v", entries)
 	}
 }
+
+func TestSetKeys_ReadOnlyDirWritesInPlace(t *testing.T) {
+	if os.Getuid() == 0 {
+		t.Skip("root ignores directory permissions")
+	}
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".env")
+	if err := os.WriteFile(path, []byte("A=1\nB=2\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(dir, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o700) })
+	if err := SetKeys(path, map[string]string{"B": "3", "C": "4"}); err != nil {
+		t.Fatalf("in-place fallback: %v", err)
+	}
+	b, _ := os.ReadFile(path)
+	if string(b) != "A=1\nB=3\nC=4\n" {
+		t.Fatalf("content %q", b)
+	}
+	entries, _ := os.ReadDir(dir)
+	if len(entries) != 1 {
+		t.Fatalf("stray files: %v", entries)
+	}
+}

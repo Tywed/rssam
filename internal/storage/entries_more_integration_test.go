@@ -53,7 +53,7 @@ func TestIntegration_EntryDedupAndCollapse(t *testing.T) {
 	}
 
 	// Strip after webhook: body cleared, status removed, hash recorded.
-	if err := store.StripEntryPayloadAfterWebhook(ctx, entries[0].ID); err != nil {
+	if err := store.StripEntryPayloadAfterWebhook(ctx, entries[0].ID, owner.ID); err != nil {
 		t.Fatal(err)
 	}
 	stripped, _ := store.GetEntry(ctx, owner.ID, entries[0].ID)
@@ -64,7 +64,7 @@ func TestIntegration_EntryDedupAndCollapse(t *testing.T) {
 	if len(known) != 1 {
 		t.Fatal("stripped entry hash not in dedup table")
 	}
-	if err := store.StripEntryPayloadAfterWebhook(ctx, 999999999); !errors.Is(err, ErrNotFound) {
+	if err := store.StripEntryPayloadAfterWebhook(ctx, 999999999, owner.ID); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("strip missing: err=%v", err)
 	}
 

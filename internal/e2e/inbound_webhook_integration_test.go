@@ -146,10 +146,12 @@ func TestE2E_InboundWebhook_NodeToNode(t *testing.T) {
 	if code, _ := post(hookURL, signHMAC(secret, stale), stale); code != http.StatusBadRequest {
 		t.Fatalf("stale: %d", code)
 	}
-	if code, _ := post(fmt.Sprintf("%s/hooks/%d", receiver.URL, src.ID), signHMAC(secret, fresh), fresh); code != http.StatusNotFound {
+	// A polled or unknown feed answers exactly like a bad signature, so the
+	// id space cannot be probed.
+	if code, _ := post(fmt.Sprintf("%s/hooks/%d", receiver.URL, src.ID), signHMAC(secret, fresh), fresh); code != http.StatusUnauthorized {
 		t.Fatalf("polled feed: %d", code)
 	}
-	if code, _ := post(receiver.URL+"/hooks/999999999", signHMAC(secret, fresh), fresh); code != http.StatusNotFound {
+	if code, _ := post(receiver.URL+"/hooks/999999999", signHMAC(secret, fresh), fresh); code != http.StatusUnauthorized {
 		t.Fatalf("unknown feed: %d", code)
 	}
 

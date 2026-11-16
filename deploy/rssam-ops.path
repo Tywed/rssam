@@ -1,0 +1,11 @@
+[Unit]
+Description=rssam: watch for restart/update requests from the admin UI
+
+[Path]
+# The service (user rssam) writes "restart" or "update vX.Y.Z" here; the
+# root-owned rssam-ops.service consumes the file and acts on it.
+PathExists=/opt/rssam/run/ops.request
+Unit=rssam-ops.service
+
+[Install]
+WantedBy=multi-user.target

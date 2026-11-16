@@ -36,8 +36,10 @@ func TestLoginUsesDedicatedLimiter(t *testing.T) {
 	h := s.wrapMiddleware(mux)
 
 	attempt := func(ip string) int {
-		form := url.Values{"username": {"admin"}, "password": {"wrong"}, "csrf_token": {auth.CSRFToken("csrf-test", "login")}}
+		form := url.Values{"username": {"admin"}, "password": {"wrong"}, "csrf_token": {auth.CSRFToken("csrf-test", "login|test-nonce")}}
 		req := httptest.NewRequest(http.MethodPost, "/ui/login", strings.NewReader(form.Encode()))
+		req.AddCookie(&http.Cookie{Name: auth.LoginNonceCookieName, Value: "test-nonce"})
+		req.Header.Set("Sec-Fetch-Site", "same-origin")
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		req.RemoteAddr = ip + ":40000"
 		rec := httptest.NewRecorder()

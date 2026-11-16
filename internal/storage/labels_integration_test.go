@@ -28,7 +28,7 @@ func TestIntegration_LabelEntriesHideRemovedAndMarkRead(t *testing.T) {
 			t.Fatalf("assign label: %v", err)
 		}
 	}
-	if err := store.StripEntryPayloadAfterWebhook(ctx, entries[0].ID); err != nil {
+	if err := store.StripEntryPayloadAfterWebhook(ctx, entries[0].ID, owner.ID); err != nil {
 		t.Fatalf("strip: %v", err)
 	}
 	if _, err := store.MarkEntriesRemoved(ctx, owner.ID, []int64{entries[3].ID}); err != nil {

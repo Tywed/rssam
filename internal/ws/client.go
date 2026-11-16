@@ -20,6 +20,15 @@ type Client struct {
 	// UserID is the authenticated owner of this connection. Tenant-scoped
 	// events are only delivered when it matches the publishing user.
 	UserID int64
+	// SessionID / KeyID identify the credential behind the connection so a
+	// logout, password change or key deletion can close exactly the sockets
+	// that credential opened.
+	SessionID string
+	KeyID     int64
+	// Alive, when set, is asked on every ping tick whether the credential
+	// still exists; a false answer closes the socket. Covers session expiry
+	// and any revocation path that bypassed the hub.
+	Alive func() bool
 
 	send chan []byte
 	// gone is set by Hub.Unregister together with close(send); guarded by
@@ -57,7 +66,9 @@ func (c *Client) Close() {
 		return
 	}
 	c.closed = true
-	_ = c.conn.Close()
+	if c.conn != nil {
+		_ = c.conn.Close()
+	}
 }
 
 // trySend queues payload unless the client was unregistered. Unregister
@@ -125,6 +136,9 @@ func (c *Client) writePump() {
 				return
 			}
 		case <-ticker.C:
+			if c.Alive != nil && !c.Alive() {
+				return
+			}
 			_ = c.conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
 			if err := websocket.Message.Send(c.conn, []byte(`{"event":"ping"}`)); err != nil {
 				return

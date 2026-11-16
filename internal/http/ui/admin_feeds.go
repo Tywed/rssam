@@ -126,7 +126,7 @@ func formatBytes(n int64) string {
 }
 
 var adminFeedSortKeys = map[string]struct{}{
-	"name": {}, "id": {}, "status": {}, "last_checked": {}, "next_check": {}, "last_entry": {},
+	"name": {}, "id": {}, "status": {}, "last_checked": {}, "last_success": {}, "next_check": {}, "last_entry": {},
 	"errors": {}, "entries": {}, "unread": {},
 }
 
@@ -144,7 +144,7 @@ func parseAdminFeedsSort(r *http.Request) (sortKey, order string) {
 
 func parseAdminFeedsStatus(v string) string {
 	switch strings.TrimSpace(v) {
-	case "errors", "paused", "waiting", "ok", "silent", "dormant", "layout", "all":
+	case "errors", "gone", "blocked", "paused", "waiting", "ok", "silent", "dormant", "layout", "all":
 		return strings.TrimSpace(v)
 	default:
 		return "all"
@@ -415,6 +415,23 @@ func (h *Handler) handleAdminFeedResetCircuit(w http.ResponseWriter, r *http.Req
 		h.failRedirect(w, r, adminFeedsRedirect(r), "feed circuit reset", err)
 		return
 	}
+	http.Redirect(w, r, adminFeedsRedirect(r), http.StatusFound)
+}
+
+// handleAdminFeedsPauseGone: manual pause for every feed whose source has
+// said "does not exist" for several polls in a row — they stop costing a
+// poll per interval and leave the error list, keeping last_error.
+func (h *Handler) handleAdminFeedsPauseGone(w http.ResponseWriter, r *http.Request) {
+	if !h.validateCSRF(r) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	n, err := h.cfg.AdminFeeds.PauseGoneFeeds(r.Context())
+	if err != nil {
+		h.failRedirect(w, r, adminFeedsRedirect(r), "pause gone feeds", err)
+		return
+	}
+	h.cfg.Audit.Record(r, storage.AuditFeedUpdate, "", 0, map[string]any{"action": "pause_gone", "count": n})
 	http.Redirect(w, r, adminFeedsRedirect(r), http.StatusFound)
 }
 

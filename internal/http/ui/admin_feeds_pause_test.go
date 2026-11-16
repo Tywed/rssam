@@ -45,6 +45,7 @@ func TestAdminFeedManualPauseUnpause(t *testing.T) {
 	post := func(path string) *httptest.ResponseRecorder {
 		form := url.Values{"csrf_token": {token}}
 		req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(form.Encode()))
+		req.Header.Set("Sec-Fetch-Site", "same-origin")
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		req.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: sid})
 		rec := httptest.NewRecorder()
@@ -98,6 +99,7 @@ func TestAdminFeedsResetCircuitsBulk(t *testing.T) {
 		"status":     {"errors"},
 	}
 	req := httptest.NewRequest(http.MethodPost, "/ui/admin/feeds/reset-circuits", strings.NewReader(form.Encode()))
+	req.Header.Set("Sec-Fetch-Site", "same-origin")
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: sid})
 	rec := httptest.NewRecorder()
@@ -123,6 +125,7 @@ func TestAdminFeedDelete(t *testing.T) {
 
 	form := url.Values{"csrf_token": {token}}
 	req := httptest.NewRequest(http.MethodPost, "/ui/admin/feeds/2/delete", strings.NewReader(form.Encode()))
+	req.Header.Set("Sec-Fetch-Site", "same-origin")
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("Referer", "/ui/admin/feeds?status=errors")
 	req.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: sid})
@@ -141,6 +144,7 @@ func TestAdminFeedDelete(t *testing.T) {
 	}
 
 	req = httptest.NewRequest(http.MethodPost, "/ui/admin/feeds/99/delete", strings.NewReader(form.Encode()))
+	req.Header.Set("Sec-Fetch-Site", "same-origin")
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: sid})
 	rec = httptest.NewRecorder()
@@ -163,6 +167,7 @@ func TestFeedParamsStoreHashOnly(t *testing.T) {
 		"store_hash_only": {"1"},
 	}
 	req := httptest.NewRequest(http.MethodPost, "/ui/feeds", strings.NewReader(form.Encode()))
+	req.Header.Set("Sec-Fetch-Site", "same-origin")
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	params, err := feedParamsFromForm(req)
 	if err != nil {

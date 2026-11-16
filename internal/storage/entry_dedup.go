@@ -77,7 +77,7 @@ ON CONFLICT (feed_id, hash) DO NOTHING`)
 // webhook delivery. The row (and hash) remain for FK references and poll
 // dedup; the entry becomes removed for every subscriber (removed_at) and the
 // retention pass deletes it later.
-func (s *PostgresStore) StripEntryPayloadAfterWebhook(ctx context.Context, entryID int64) error {
+func (s *PostgresStore) StripEntryPayloadAfterWebhook(ctx context.Context, entryID, userID int64) error {
 	const q = `
 WITH e AS (
   UPDATE entries
@@ -90,25 +90,31 @@ WITH e AS (
       removed_at = COALESCE(removed_at, now()),
       updated_at = now()
   WHERE id = $1
+    AND NOT EXISTS (SELECT 1 FROM subscriptions s WHERE s.feed_id = entries.feed_id AND s.user_id <> $2)
   RETURNING id, feed_id, hash
 ), un AS (
-  DELETE FROM user_unread WHERE entry_id = $1
+  DELETE FROM user_unread WHERE entry_id IN (SELECT id FROM e)
 ), ue AS (
-  DELETE FROM user_entries WHERE entry_id = $1
+  DELETE FROM user_entries WHERE entry_id IN (SELECT id FROM e)
 ), d AS (
   INSERT INTO feed_entry_dedup(feed_id, hash)
   SELECT feed_id, rssam_dedup_key(hash) FROM e WHERE hash <> ''
   ON CONFLICT (feed_id, hash) DO NOTHING
 )
-SELECT count(*) FROM e`
+SELECT (SELECT count(*) FROM e), EXISTS (SELECT 1 FROM entries WHERE id = $1)`
 	var n int
-	if err := s.db.QueryRow(ctx, q, entryID).Scan(&n); err != nil {
+	var exists bool
+	if err := s.db.QueryRow(ctx, q, entryID, userID).Scan(&n, &exists); err != nil {
 		return fmt.Errorf("strip entry payload after webhook: %w", err)
 	}
-	if n == 0 {
+	switch {
+	case n > 0:
+		return nil
+	case exists:
+		return ErrEntryShared
+	default:
 		return ErrNotFound
 	}
-	return nil
 }
 
 const collapseEntriesBatchSize = 5000
@@ -161,6 +167,7 @@ WITH doomed AS (
       WHERE wl.entry_id = e.id AND wl.status NOT IN ('sent', 'dead')
     )
     AND (NOT $4::boolean OR f.store_mode <> 'full')
+    AND (NOT $7::boolean OR NOT EXISTS (SELECT 1 FROM subscriptions o WHERE o.feed_id = f.id AND o.user_id <> $1))
   LIMIT $5
 ),
 ins AS (
@@ -178,7 +185,7 @@ del AS (
 SELECT COUNT(*) FROM del`
 
 	var n int64
-	if err := s.db.QueryRow(ctx, q, params.UserID, feedID, categoryID, params.OnlyHashOnlyFeeds, collapseEntriesBatchSize, params.IncludeLabeled).Scan(&n); err != nil {
+	if err := s.db.QueryRow(ctx, q, params.UserID, feedID, categoryID, params.OnlyHashOnlyFeeds, collapseEntriesBatchSize, params.IncludeLabeled, params.OnlySoleSubscriber).Scan(&n); err != nil {
 		return 0, fmt.Errorf("collapse entries to hashes: %w", err)
 	}
 	return n, nil

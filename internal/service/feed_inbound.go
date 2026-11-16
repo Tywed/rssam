@@ -43,6 +43,7 @@ func (r *FeedRefresher) Ingest(ctx context.Context, feed storage.Feed, entries [
 		LastModified:  feed.LastModified,
 		LastCheckedAt: now,
 		BridgeState:   feed.BridgeState,
+		Succeeded:     true,
 	}
 	inserted, insertedEntries, metaStored, err := r.storeFetched(ctx, feed, subs, entries, &meta)
 	if err != nil {

@@ -63,6 +63,7 @@ func TestAdminFeedsRedirectFromForm(t *testing.T) {
 		"page":   {"2"},
 	}
 	req := httptest.NewRequest(http.MethodPost, "/ui/admin/feeds/1/refresh", strings.NewReader(form.Encode()))
+	req.Header.Set("Sec-Fetch-Site", "same-origin")
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	got := adminFeedsRedirect(req)
 	want := "/ui/admin/feeds?status=errors&sort=id&order=desc&page=2"
@@ -86,6 +87,7 @@ func TestAdminFeedsRedirectFromReferer(t *testing.T) {
 	}
 	for ref, want := range cases {
 		req := httptest.NewRequest(http.MethodPost, "/ui/admin/feeds/1/refresh", nil)
+		req.Header.Set("Sec-Fetch-Site", "same-origin")
 		if ref != "" {
 			req.Header.Set("Referer", ref)
 		}

@@ -11,6 +11,8 @@ type SystemAlertFeed struct {
 	ID    int64
 	Title string
 	Error string
+	// Gone: the error says the source no longer exists (adminFeedsGoneWhere).
+	Gone bool
 }
 
 // SystemAlertWebhook is a webhook named in a system alert.
@@ -59,7 +61,7 @@ func (s *PostgresStore) ListPausedFeeds(ctx context.Context) ([]SystemAlertFeed,
 	// A 410 feed is manual_paused with last_error kept; a user pause clears
 	// the error, so the error text separates the two.
 	return s.queryAlertFeeds(ctx, `
-SELECT f.id, f.title, ps.last_error
+SELECT f.id, f.title, ps.last_error, `+adminFeedsGoneWhere+`
 FROM `+feedsFrom+`
 WHERE ps.poll_paused OR (f.manual_paused AND COALESCE(ps.last_error, '') <> '')
 ORDER BY f.id`)
@@ -68,7 +70,7 @@ ORDER BY f.id`)
 func (s *PostgresStore) ListSilentFeeds(ctx context.Context, silentAfter time.Duration) ([]SystemAlertFeed, error) {
 	return s.queryAlertFeeds(ctx, `
 SELECT f.id, f.title,
-  CASE WHEN f.feed_type = '`+FeedTypeInbound+`' THEN 'нет доставок дольше ' || f.interval_minutes || ' мин.' ELSE '' END
+  CASE WHEN f.feed_type = '`+FeedTypeInbound+`' THEN 'нет доставок дольше ' || f.interval_minutes || ' мин.' ELSE '' END, FALSE
 FROM `+feedsFrom+`
 WHERE `+adminFeedsSilentWhere(silentAfter)+`
 ORDER BY f.id`)
@@ -83,7 +85,7 @@ func (s *PostgresStore) ListDormantFeeds(ctx context.Context, dormantAfter time.
 	return s.queryAlertFeeds(ctx, `
 SELECT f.id, f.title,
   CASE WHEN ps.last_entry_at IS NULL THEN 'ни одной записи с момента добавления'
-       ELSE 'последняя запись ' || to_char(ps.last_entry_at AT TIME ZONE 'UTC', 'YYYY-MM-DD') END
+       ELSE 'последняя запись ' || to_char(ps.last_entry_at AT TIME ZONE 'UTC', 'YYYY-MM-DD') END, FALSE
 FROM `+feedsFrom+`
 WHERE `+adminFeedsDormantWhere(dormantAfter)+`
 ORDER BY f.id`)
@@ -98,7 +100,7 @@ func (s *PostgresStore) queryAlertFeeds(ctx context.Context, q string) ([]System
 	var out []SystemAlertFeed
 	for rows.Next() {
 		var f SystemAlertFeed
-		if err := rows.Scan(&f.ID, &f.Title, &f.Error); err != nil {
+		if err := rows.Scan(&f.ID, &f.Title, &f.Error, &f.Gone); err != nil {
 			return nil, fmt.Errorf("scan alert feed: %w", err)
 		}
 		out = append(out, f)

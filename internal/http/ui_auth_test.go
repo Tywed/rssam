@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
 	"time"
 
@@ -12,8 +13,15 @@ import (
 )
 
 type memSessionStore struct {
+	mu      sync.Mutex
 	s       storage.Session
 	revoked []int64
+}
+
+func (m *memSessionStore) expire() {
+	m.mu.Lock()
+	m.s.ExpiresAt = time.Now().Add(-time.Minute)
+	m.mu.Unlock()
 }
 
 func (m *memSessionStore) CreateSession(_ context.Context, userID int64, sessionID string, expiresAt time.Time) (storage.Session, error) {
@@ -21,7 +29,9 @@ func (m *memSessionStore) CreateSession(_ context.Context, userID int64, session
 	return m.s, nil
 }
 func (m *memSessionStore) LookupSession(_ context.Context, sessionID string) (storage.Session, error) {
-	if m.s.SessionID == sessionID {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.s.SessionID == sessionID && m.s.ExpiresAt.After(time.Now()) {
 		return m.s, nil
 	}
 	return storage.Session{}, storage.ErrNotFound

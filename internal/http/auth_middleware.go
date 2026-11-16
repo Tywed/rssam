@@ -1,10 +1,13 @@
 package httpserver
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"net/http"
+	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"rssam/internal/auth"
@@ -38,7 +41,7 @@ func (s *Server) authenticateRequestSource(ctx context.Context, r *http.Request)
 			s.touchAPIKey(ctx, key.ID)
 			u, uerr := s.users.GetUser(ctx, key.UserID)
 			if uerr == nil {
-				return auth.Principal{UserID: u.ID, Role: u.Role, Username: u.Username, Scope: key.Scope}, true, false
+				return auth.Principal{UserID: u.ID, Role: u.Role, Username: u.Username, Scope: key.Scope, KeyID: key.ID}, true, false
 			}
 		}
 		if errors.Is(err, storage.ErrNotFound) {
@@ -60,33 +63,63 @@ const (
 	badTokenMax = 4096
 )
 
-func (s *Server) knownBadToken(hash string) bool {
-	v, ok := s.badTokens.Load(hash)
+// badTokenCache remembers token hashes that missed the api_keys table.
+type badTokenCache struct {
+	mu sync.Mutex
+	m  map[string]time.Time
+}
+
+func (c *badTokenCache) known(hash string) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	t, ok := c.m[hash]
 	if !ok {
 		return false
 	}
-	if time.Since(v.(time.Time)) > badTokenTTL {
-		s.badTokens.Delete(hash)
+	if time.Since(t) > badTokenTTL {
+		delete(c.m, hash)
 		return false
 	}
 	return true
 }
 
-func (s *Server) rememberBadToken(hash string) {
-	n := 0
-	s.badTokens.Range(func(k, v any) bool {
-		n++
-		if time.Since(v.(time.Time)) > badTokenTTL {
-			s.badTokens.Delete(k)
-			n--
-		}
-		return true
-	})
-	if n >= badTokenMax {
-		s.badTokens.Clear()
+// remember inserts hash; when the cache is full it first drops expired
+// entries and, if that is not enough, the oldest half — one pass per
+// badTokenMax/2 misses instead of a full scan per miss.
+func (c *badTokenCache) remember(hash string) {
+	now := time.Now()
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.m == nil {
+		c.m = make(map[string]time.Time, 64)
 	}
-	s.badTokens.Store(hash, time.Now())
+	if _, ok := c.m[hash]; !ok && len(c.m) >= badTokenMax {
+		for k, t := range c.m {
+			if now.Sub(t) > badTokenTTL {
+				delete(c.m, k)
+			}
+		}
+		if len(c.m) >= badTokenMax {
+			type kv struct {
+				k string
+				t int64
+			}
+			all := make([]kv, 0, len(c.m))
+			for k, t := range c.m {
+				all = append(all, kv{k, t.UnixNano()})
+			}
+			slices.SortFunc(all, func(a, b kv) int { return cmp.Compare(a.t, b.t) })
+			for _, e := range all[:len(all)/2] {
+				delete(c.m, e.k)
+			}
+		}
+	}
+	c.m[hash] = now
 }
+
+func (s *Server) knownBadToken(hash string) bool { return s.badTokens.known(hash) }
+
+func (s *Server) rememberBadToken(hash string) { s.badTokens.remember(hash) }
 
 // touchAPIKey updates last_used_at at most once a minute per key: the
 // column is informational, one UPDATE per request is not.
@@ -117,11 +150,7 @@ func (s *Server) authenticateSession(ctx context.Context, r *http.Request) (auth
 	if sessionID == "" {
 		return auth.Principal{}, false
 	}
-	sess, err := s.sessions.LookupSession(ctx, sessionID)
-	if err != nil {
-		return auth.Principal{}, false
-	}
-	u, err := s.users.GetUser(ctx, sess.UserID)
+	sess, u, err := storage.LookupSessionUser(ctx, s.sessions, s.users, sessionID)
 	if err != nil {
 		return auth.Principal{}, false
 	}
@@ -129,7 +158,7 @@ func (s *Server) authenticateSession(ctx context.Context, r *http.Request) (auth
 	if ttl := s.sessionTTL(); storage.SessionNeedsTouch(sess.ExpiresAt, now, ttl) {
 		_ = s.sessions.TouchSession(ctx, sessionID, now.Add(ttl))
 	}
-	return auth.Principal{UserID: u.ID, Role: u.Role, Username: u.Username}, true
+	return auth.Principal{UserID: u.ID, Role: u.Role, Username: u.Username, SessionID: sessionID}, true
 }
 
 func (s *Server) wrapAPI(next http.Handler) http.Handler {

@@ -13,9 +13,12 @@ import (
 
 func loginSID(t *testing.T, mux *http.ServeMux) string {
 	t.Helper()
-	token := auth.CSRFToken("csrf-test", "login")
+	token := auth.CSRFToken("csrf-test", "login|test-nonce")
 	form := url.Values{"username": {"alice"}, "password": {"secret"}, "csrf_token": {token}}
 	req := httptest.NewRequest(http.MethodPost, "/ui/login", strings.NewReader(form.Encode()))
+	req.Header.Set("Sec-Fetch-Site", "same-origin")
+	req.AddCookie(&http.Cookie{Name: auth.LoginNonceCookieName, Value: "test-nonce"})
+	req.Header.Set("Sec-Fetch-Site", "same-origin")
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
@@ -31,6 +34,7 @@ func loginSID(t *testing.T, mux *http.ServeMux) string {
 func postPassword(mux *http.ServeMux, sid, current, next string) *httptest.ResponseRecorder {
 	form := url.Values{"current_password": {current}, "password": {next}, "csrf_token": {auth.CSRFToken("csrf-test", sid)}}
 	req := httptest.NewRequest(http.MethodPost, "/ui/settings/password", strings.NewReader(form.Encode()))
+	req.Header.Set("Sec-Fetch-Site", "same-origin")
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: sid})
 	rec := httptest.NewRecorder()
@@ -81,6 +85,7 @@ func TestUI_APIKeyTokenNotInRedirectURL(t *testing.T) {
 
 	form := url.Values{"name": {"cli"}, "csrf_token": {auth.CSRFToken("csrf-test", sid)}}
 	req := httptest.NewRequest(http.MethodPost, "/ui/settings/api-keys", strings.NewReader(form.Encode()))
+	req.Header.Set("Sec-Fetch-Site", "same-origin")
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: sid})
 	rec := httptest.NewRecorder()
@@ -132,6 +137,7 @@ func TestUI_LogoutOtherSessions(t *testing.T) {
 	post := func(sid, csrf string) *httptest.ResponseRecorder {
 		form := url.Values{"csrf_token": {csrf}}
 		req := httptest.NewRequest(http.MethodPost, "/ui/settings/sessions/logout-others", strings.NewReader(form.Encode()))
+		req.Header.Set("Sec-Fetch-Site", "same-origin")
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		req.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: sid})
 		rec := httptest.NewRecorder()
@@ -168,9 +174,12 @@ func TestUI_SessionMaxAgeAppliesToCookieAndStore(t *testing.T) {
 	mux := http.NewServeMux()
 	h.Register(mux)
 
-	token := auth.CSRFToken("csrf-test", "login")
+	token := auth.CSRFToken("csrf-test", "login|test-nonce")
 	form := url.Values{"username": {"alice"}, "password": {"secret"}, "csrf_token": {token}}
 	req := httptest.NewRequest(http.MethodPost, "/ui/login", strings.NewReader(form.Encode()))
+	req.Header.Set("Sec-Fetch-Site", "same-origin")
+	req.AddCookie(&http.Cookie{Name: auth.LoginNonceCookieName, Value: "test-nonce"})
+	req.Header.Set("Sec-Fetch-Site", "same-origin")
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)

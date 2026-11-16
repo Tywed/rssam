@@ -78,6 +78,7 @@ func TestFeedsRBAC_NonAdminCannotMutateSubscriptions(t *testing.T) {
 	form := url.Values{"csrf_token": {token}, "feed_url": {"https://example.com/x.xml"}}
 	post := func(path string) *httptest.ResponseRecorder {
 		req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(form.Encode()))
+		req.Header.Set("Sec-Fetch-Site", "same-origin")
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		req.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: sid})
 		rec := httptest.NewRecorder()
@@ -144,6 +145,7 @@ func TestFeedsRBAC_NonAdminCannotMutateSubscriptions(t *testing.T) {
 
 	refreshForm := url.Values{"csrf_token": {token}}
 	req = httptest.NewRequest(http.MethodPost, "/ui/feeds/1/refresh", strings.NewReader(refreshForm.Encode()))
+	req.Header.Set("Sec-Fetch-Site", "same-origin")
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: sid})
 	rec = httptest.NewRecorder()

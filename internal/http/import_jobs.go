@@ -1,6 +1,7 @@
 package httpserver
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"net/http"
@@ -66,14 +67,15 @@ func (m *importJobManager) create(userID int64, total int) *importJob {
 	return j
 }
 
-func (m *importJobManager) get(userID int64, id string) (*importJob, bool) {
+// get returns a copy: the import goroutine keeps mutating the stored job.
+func (m *importJobManager) get(userID int64, id string) (importJob, bool) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	j, ok := m.jobs[id]
 	if !ok || j.UserID != userID {
-		return nil, false
+		return importJob{}, false
 	}
-	return j, true
+	return *j, true
 }
 
 func (m *importJobManager) update(id string, fn func(*importJob)) {
@@ -147,7 +149,7 @@ func (s *Server) handleGetImportJob(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "import job not found")
 		return
 	}
-	writeJSON(w, http.StatusOK, listResponse[importJobDTO]{Data: toImportJobDTO(j), Total: 1})
+	writeJSON(w, http.StatusOK, listResponse[importJobDTO]{Data: toImportJobDTO(&j), Total: 1})
 }
 
 func (s *Server) startAsyncOPMLImport(r *http.Request, doc *opml.Document, userID int64) string {
@@ -158,16 +160,29 @@ func (s *Server) startAsyncOPMLImport(r *http.Request, doc *opml.Document, userI
 	}
 	total := min(len(entries), limit)
 	j := s.importJobs.create(userID, total)
+	// The request context is cancelled as soon as 202 is written; the job
+	// keeps the principal and request metadata but not the cancellation.
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), asyncImportTimeout)
+	detached := r.WithContext(ctx)
 	go func() {
+		defer cancel()
 		s.importJobs.update(j.ID, func(job *importJob) {
 			job.Status = importJobRunning
 		})
-		report := s.importOPML(r, doc, userID, j.ID)
+		report := s.importOPML(detached, doc, userID, j.ID)
 		s.importJobs.update(j.ID, func(job *importJob) {
 			job.Status = importJobDone
+			if ctx.Err() != nil {
+				job.Status = importJobFailed
+				job.Error = ctx.Err().Error()
+			}
 			job.Processed = job.Total
 			job.Report = report
 		})
 	}()
 	return j.ID
 }
+
+// asyncImportTimeout bounds one background OPML import (500 feeds with
+// title discovery stay well inside it).
+const asyncImportTimeout = 10 * time.Minute

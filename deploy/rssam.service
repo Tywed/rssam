@@ -14,19 +14,42 @@ Restart=on-failure
 RestartSec=5
 LimitNOFILE=65535
 
-# --- Sandboxing (compatible with restart/update from the admin UI) ---------
-# The admin UI restarts and updates the service through `sudo systemctl` and
-# `sudo rssam-update` (deploy/sudoers.rssam). sudo needs to gain privileges,
-# so only options that do NOT imply NoNewPrivileges= are used here. If you do
-# not need restart/update from the UI, install deploy/rssam-hardened.service
-# instead and drop /etc/sudoers.d/rssam.
-ProtectSystem=full
+# --- Sandbox -----------------------------------------------------------------
+# The process needs outbound TCP (feeds, webhooks, PostgreSQL), read access to
+# /opt/rssam and write access to exactly: its log and backup directories, the
+# request directory for restart/update (see rssam-ops.path) and the .env file
+# (settings saved from the admin UI; rewritten in place). /opt/rssam itself
+# and /opt/rssam/bin are root-owned and read-only for the service, so a
+# compromised process cannot swap the binary that systemd starts next time.
+# Restart and update from the UI go through a request file picked up by the
+# root-owned rssam-ops.path unit, so the service never needs to gain
+# privileges and NoNewPrivileges= holds.
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/opt/rssam/log /opt/rssam/backups /opt/rssam/run /opt/rssam/.env
 ProtectHome=true
 PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
 ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
 ProtectProc=invisible
 ProcSubset=pid
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
 RemoveIPC=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources
+CapabilityBoundingSet=
+AmbientCapabilities=
 UMask=0077
 
 [Install]

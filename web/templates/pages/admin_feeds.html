@@ -14,6 +14,13 @@
         <button type="submit" class="btn">Сбросить автостоп у всех</button>
       </form>
       {{end}}
+      {{if and (eq .AdminFeedsFilter "gone") (gt .AdminFeedSummary.GoneCount 0)}}
+      <form method="post" action="/ui/admin/feeds/pause-gone" class="inline-form" data-confirm="Поставить на ручную паузу все исчезнувшие ленты ({{.AdminFeedSummary.GoneCount}})? Записи сохранятся, опрос прекратится; снять паузу можно по одной.">
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+        {{template "admin_feeds_return_fields" .}}
+        <button type="submit" class="btn">Поставить исчезнувшие на паузу</button>
+      </form>
+      {{end}}
     </div>
 
     <div class="admin-feeds-meta meta">
@@ -45,6 +52,14 @@
       <a href="{{adminFeedsPageLink "errors" .AdminFeedsSort .AdminFeedsOrder 1}}" class="admin-feeds-card {{if eq .AdminFeedsFilter "errors"}}active{{end}}">
         <div class="admin-feeds-card-value">{{.AdminFeedSummary.ErrorCount}}</div>
         <div class="admin-feeds-card-label">Ошибки</div>
+      </a>
+      <a href="{{adminFeedsPageLink "gone" .AdminFeedsSort .AdminFeedsOrder 1}}" class="admin-feeds-card {{if eq .AdminFeedsFilter "gone"}}active{{end}}" title="Источник отвечает «не существует» (404/410, канал или группа не найдены, хост не резолвится) третий опрос подряд и дольше; ручная пауза в один клик">
+        <div class="admin-feeds-card-value">{{.AdminFeedSummary.GoneCount}}</div>
+        <div class="admin-feeds-card-label">Исчезли</div>
+      </a>
+      <a href="{{adminFeedsPageLink "blocked" .AdminFeedsSort .AdminFeedsOrder 1}}" class="admin-feeds-card {{if eq .AdminFeedsFilter "blocked"}}active{{end}}" title="Источник отвечает, но отказывает этому клиенту: 401/403/407/429/451, лимит запросов, исчерпанная квота API — может ожить само">
+        <div class="admin-feeds-card-value">{{.AdminFeedSummary.BlockedCount}}</div>
+        <div class="admin-feeds-card-label">Заблокированы</div>
       </a>
       <a href="{{adminFeedsPageLink "paused" .AdminFeedsSort .AdminFeedsOrder 1}}" class="admin-feeds-card {{if eq .AdminFeedsFilter "paused"}}active{{end}}">
         <div class="admin-feeds-card-value">{{.AdminFeedSummary.PausedCount}}</div>
@@ -78,6 +93,7 @@
             <th>Тип</th>
             <th><a href="{{adminFeedsSortLink .AdminFeedsFilter .AdminFeedsSort .AdminFeedsOrder "status"}}">Статус{{adminFeedsSortIndicator .AdminFeedsSort .AdminFeedsOrder "status"}}</a></th>
             <th><a href="{{adminFeedsSortLink .AdminFeedsFilter .AdminFeedsSort .AdminFeedsOrder "last_checked"}}">Последний опрос{{adminFeedsSortIndicator .AdminFeedsSort .AdminFeedsOrder "last_checked"}}</a></th>
+            <th><a href="{{adminFeedsSortLink .AdminFeedsFilter .AdminFeedsSort .AdminFeedsOrder "last_success"}}" title="Последний опрос без ошибки">Последний успех{{adminFeedsSortIndicator .AdminFeedsSort .AdminFeedsOrder "last_success"}}</a></th>
             <th><a href="{{adminFeedsSortLink .AdminFeedsFilter .AdminFeedsSort .AdminFeedsOrder "next_check"}}">Следующий опрос{{adminFeedsSortIndicator .AdminFeedsSort .AdminFeedsOrder "next_check"}}</a></th>
             <th><a href="{{adminFeedsSortLink .AdminFeedsFilter .AdminFeedsSort .AdminFeedsOrder "last_entry"}}">Последняя запись{{adminFeedsSortIndicator .AdminFeedsSort .AdminFeedsOrder "last_entry"}}</a></th>
             <th><a href="{{adminFeedsSortLink .AdminFeedsFilter .AdminFeedsSort .AdminFeedsOrder "errors"}}">Ошибок подряд{{adminFeedsSortIndicator .AdminFeedsSort .AdminFeedsOrder "errors"}}</a></th>
@@ -96,6 +112,7 @@
             <td class="meta">{{feedTypeLabel .FeedType}}</td>
             <td><span class="feed-status-badge {{adminFeedStatusClass .Status}}">{{adminFeedStatusLabel .Status}}</span></td>
             <td class="meta">{{formatTime .LastCheckedAt}}</td>
+            <td class="meta">{{if .LastSuccessAt}}{{formatTime .LastSuccessAt}}{{else}}—{{end}}</td>
             <td class="meta">{{formatTime .NextCheckAt}}</td>
             <td class="meta">{{if .LastEntryAt}}{{formatTime .LastEntryAt}}{{else}}—{{end}}</td>
             <td>{{if gt .ParsingErrorCount 0}}{{.ParsingErrorCount}}{{else}}—{{end}}</td>
@@ -142,7 +159,7 @@
             </td>
           </tr>
           {{else}}
-          <tr><td colspan="13" class="meta">Нет лент по выбранному фильтру</td></tr>
+          <tr><td colspan="14" class="meta">Нет лент по выбранному фильтру</td></tr>
           {{end}}
         </tbody>
       </table>

@@ -46,9 +46,12 @@ func TestUI_LoginCookieSecureFollowsTrustedForwardedProto(t *testing.T) {
 
 	login := func(remote string) *http.Cookie {
 		t.Helper()
-		token := auth.CSRFToken("csrf-test", "login")
+		token := auth.CSRFToken("csrf-test", "login|test-nonce")
 		body := "username=alice&password=secret&csrf_token=" + token
 		req := httptest.NewRequest(http.MethodPost, "/ui/login", strings.NewReader(body))
+		req.Header.Set("Sec-Fetch-Site", "same-origin")
+		req.AddCookie(&http.Cookie{Name: auth.LoginNonceCookieName, Value: "test-nonce"})
+		req.Header.Set("Sec-Fetch-Site", "same-origin")
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		req.Header.Set("X-Forwarded-Proto", "https")
 		req.RemoteAddr = remote

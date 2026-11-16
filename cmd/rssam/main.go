@@ -22,7 +22,6 @@ import (
 	"rssam/internal/logger"
 	"rssam/internal/metrics"
 	"rssam/internal/migrations"
-	"rssam/internal/proxy"
 	"rssam/internal/quota"
 	"rssam/internal/reader"
 	"rssam/internal/service"
@@ -160,15 +159,10 @@ func main() {
 		fetchTimeout = time.Duration(cfg.FetchTimeoutSeconds) * time.Second
 	}
 
-	var ssrfAllowedHosts []string
-	if h, err := proxy.ServiceHost(cfg.TelegramProxyServiceURL); err == nil && h != "" {
-		ssrfAllowedHosts = append(ssrfAllowedHosts, h)
-	}
 	ssrfGuard, err := ssrf.New(ssrf.Config{
 		AllowPrivateNetwork:   cfg.FetchAllowPrivateNetwork,
 		AllowedCIDRs:          cfg.FetchAllowedCIDRs,
 		BlockedHosts:          cfg.FetchBlockedHosts,
-		AllowedHosts:          ssrfAllowedHosts,
 		TLSInsecureSkipVerify: cfg.FetchTLSInsecureSkipVerify,
 	})
 	if err != nil {

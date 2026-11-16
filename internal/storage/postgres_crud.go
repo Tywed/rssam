@@ -128,7 +128,7 @@ func (s *PostgresStore) GetFeedByID(ctx context.Context, id int64) (Feed, error)
 const feedColumns = `f.id, COALESCE(f.owner_id, 0), f.feed_url, f.feed_type, f.title, f.category_id, f.interval_minutes, ps.etag, ps.last_modified, ps.last_checked_at, ps.last_error,
        ps.parsing_error_count, ps.poll_paused, f.manual_paused, f.store_mode, f.entry_retention_days, f.adaptive_interval, ps.next_check_at,
        COALESCE(bs.state, '{}'::jsonb), ps.items_hash, f.scraper_rules, f.rewrite_rules, f.blocked_rules, f.keep_rules, f.fetch_via_proxy, f.tls_insecure, f.crawler, f.user_agent,
-       s.webhook_id, s.user_id IS NOT NULL, f.icon_url, ps.last_entry_at, f.created_at, f.updated_at`
+       s.webhook_id, s.user_id IS NOT NULL, f.icon_url, ps.last_entry_at, ps.last_success_at, f.created_at, f.updated_at`
 
 // feedsFrom is the FROM clause behind feedColumns: the catalog row, its
 // poll state (always present, created with the feed) and its bridge cursor
@@ -148,7 +148,7 @@ func feedScanTargets(f *Feed) []any {
 		&f.ID, &f.OwnerID, &f.FeedURL, &f.FeedType, &f.Title, &f.CategoryID, &f.IntervalMinutes, &f.ETag, &f.LastModified, &f.LastCheckedAt, &f.LastError,
 		&f.ParsingErrorCount, &f.PollPaused, &f.ManualPaused, &f.StoreMode, &f.EntryRetentionDays, &f.AdaptiveInterval, &f.NextCheckAt,
 		&f.BridgeState, &f.ItemsHash, &f.ScraperRules, &f.RewriteRules, &f.BlockedRules, &f.KeepRules, &f.FetchViaProxy, &f.TLSInsecure, &f.Crawler, &f.UserAgent,
-		&f.WebhookID, &f.Subscribed, &f.IconURL, &f.LastEntryAt, &f.CreatedAt, &f.UpdatedAt,
+		&f.WebhookID, &f.Subscribed, &f.IconURL, &f.LastEntryAt, &f.LastSuccessAt, &f.CreatedAt, &f.UpdatedAt,
 	}
 }
 
@@ -327,14 +327,20 @@ func (s *PostgresStore) UpdateFeed(ctx context.Context, userID int64, params Upd
 		}
 		var oldCat *int64
 		var oldURL, oldType string
-		if err := tx.QueryRow(ctx, `SELECT category_id, feed_url, feed_type FROM feeds WHERE id = $1 FOR UPDATE`, params.ID).Scan(&oldCat, &oldURL, &oldType); err != nil {
+		var ownerID int64
+		if err := tx.QueryRow(ctx, `SELECT category_id, feed_url, feed_type, COALESCE(owner_id, 0) FROM feeds WHERE id = $1 FOR UPDATE`, params.ID).Scan(&oldCat, &oldURL, &oldType, &ownerID); err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
 				return ErrNotFound
 			}
 			return err
 		}
-		if oldURL != params.FeedURL && oldType == FeedTypeInbound {
-			return ErrInboundURLImmutable
+		if oldURL != params.FeedURL {
+			if oldType == FeedTypeInbound {
+				return ErrInboundURLImmutable
+			}
+			if !params.Admin && ownerID != userID {
+				return ErrNotFeedOwner
+			}
 		}
 		if params.SetWebhook {
 			if _, err := tx.Exec(ctx, `UPDATE subscriptions SET webhook_id = $3 WHERE user_id = $1 AND feed_id = $2`,
@@ -387,6 +393,9 @@ FROM u WHERE ps.feed_id = u.id`
 		if isForeignKeyViolation(err) {
 			return Feed{}, ErrInvalidReference
 		}
+		if errors.Is(err, ErrNotFeedOwner) || errors.Is(err, ErrInboundURLImmutable) {
+			return Feed{}, err
+		}
 		return Feed{}, fmt.Errorf("update feed: %w", err)
 	}
 	return f, nil
@@ -408,16 +417,28 @@ WHERE id = $1`
 }
 
 // DeleteFeed removes the catalog row (entries, dedup hashes, poll log and
-// every subscriber's state).
+// every subscriber's state) unless another user is subscribed.
 func (s *PostgresStore) DeleteFeed(ctx context.Context, userID int64, id int64) error {
-	cmd, err := s.db.Exec(ctx, `DELETE FROM feeds WHERE id = $1`, id)
-	if err != nil {
+	const q = `
+WITH others AS (
+  SELECT count(*)::int AS n FROM subscriptions WHERE feed_id = $1 AND user_id <> $2
+), d AS (
+  DELETE FROM feeds WHERE id = $1 AND (SELECT n FROM others) = 0
+  RETURNING id
+)
+SELECT (SELECT n FROM others), EXISTS (SELECT 1 FROM d)`
+	var others int
+	var deleted bool
+	if err := s.db.QueryRow(ctx, q, id, userID).Scan(&others, &deleted); err != nil {
 		return fmt.Errorf("delete feed: %w", err)
 	}
-	if cmd.RowsAffected() == 0 {
-		return ErrNotFound
+	if deleted {
+		return nil
 	}
-	return nil
+	if others > 0 {
+		return &FeedInUseError{Subscribers: others}
+	}
+	return ErrNotFound
 }
 
 func (s *PostgresStore) DeleteFeedByID(ctx context.Context, id int64) error {

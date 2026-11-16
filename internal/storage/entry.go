@@ -385,9 +385,10 @@ SET etag = $2,
     poll_paused = CASE WHEN $5 = '' THEN FALSE ELSE poll_paused END,
     next_check_at = COALESCE($6, next_check_at),
     last_entry_at = CASE WHEN $7 THEN $4 ELSE last_entry_at END,
-    items_hash = COALESCE($8, items_hash)
+    items_hash = COALESCE($8, items_hash),
+    last_success_at = CASE WHEN $9 THEN $4 ELSE last_success_at END
 WHERE feed_id = $1`
-	cmd, err := db.Exec(ctx, q, params.ID, params.ETag, params.LastModified, params.LastCheckedAt, params.LastError, params.NextCheckAt, params.NewEntries > 0, params.ItemsHash)
+	cmd, err := db.Exec(ctx, q, params.ID, params.ETag, params.LastModified, params.LastCheckedAt, params.LastError, params.NextCheckAt, params.NewEntries > 0, params.ItemsHash, params.Succeeded)
 	if err != nil {
 		return fmt.Errorf("update feed refresh meta: %w", err)
 	}

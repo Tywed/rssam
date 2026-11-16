@@ -51,19 +51,35 @@ func (g *Guard) HTTPClientViaProxy(timeout time.Duration, feedTLSInsecure bool, 
 		}
 		return u, nil
 	}
-	exempt := func(host string) bool { return strings.ToLower(host) == proxyHost }
+	exempt := func(host, _ string) bool { return strings.ToLower(host) == proxyHost }
 	return g.httpClient(timeout, g.tlsInsecureSkipVerify || feedTLSInsecure, proxy, exempt), nil
+}
+
+// HTTPClientForEndpoint returns a client that may dial one operator-
+// configured host:port on a private network (the Telegram proxy-service)
+// and nothing else private. Only this client carries the exemption: a feed
+// or webhook URL naming the same host — or the same host on another port —
+// goes through the ordinary guard and is refused.
+func (g *Guard) HTTPClientForEndpoint(timeout time.Duration, endpoint string) *http.Client {
+	host, port, err := net.SplitHostPort(strings.ToLower(strings.TrimSpace(endpoint)))
+	if err != nil || host == "" || port == "" {
+		return g.HTTPClient(timeout)
+	}
+	exempt := func(h, p string) bool { return strings.ToLower(h) == host && p == port }
+	c := g.httpClient(timeout, g.tlsInsecureSkipVerify, nil, exempt)
+	c.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	return c
 }
 
 // redirectLimit is how many hops a fetch follows: enough for the usual
 // http→https→www chain, not for a loop.
 const redirectLimit = 5
 
-func (g *Guard) httpClient(timeout time.Duration, tlsInsecureSkipVerify bool, proxy func(*http.Request) (*url.URL, error), exempt func(string) bool) *http.Client {
+func (g *Guard) httpClient(timeout time.Duration, tlsInsecureSkipVerify bool, proxy func(*http.Request) (*url.URL, error), exempt func(host, port string) bool) *http.Client {
 	if timeout <= 0 {
 		timeout = 15 * time.Second
 	}
-	cacheable := proxy == nil
+	cacheable := proxy == nil && exempt == nil
 	key := httpClientKey{timeout: timeout, insecure: tlsInsecureSkipVerify}
 	if cacheable {
 		g.clientsMu.Lock()
@@ -154,14 +170,14 @@ var proxyHosts = func() map[string]struct{} {
 	return out
 }()
 
-func (g *Guard) dialContext(ctx context.Context, network, addr string, exempt func(string) bool) (net.Conn, error) {
+func (g *Guard) dialContext(ctx context.Context, network, addr string, exempt func(host, port string) bool) (net.Conn, error) {
 	host, port, err := net.SplitHostPort(addr)
 	if err != nil {
 		return nil, fmt.Errorf("ssrf dial: %w", err)
 	}
 
 	var ips []net.IP
-	if _, isProxy := proxyHosts[strings.ToLower(host)]; isProxy || (exempt != nil && exempt(host)) {
+	if _, isProxy := proxyHosts[strings.ToLower(host)]; isProxy || (exempt != nil && exempt(host, port)) {
 		ips, err = g.lookupIPs(ctx, host)
 	} else {
 		ips, err = g.resolveHost(ctx, host)

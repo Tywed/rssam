@@ -203,9 +203,12 @@ func TestUI_LoginRedirectUnread(t *testing.T) {
 	}
 
 	// Login POST.
-	token := auth.CSRFToken("csrf-test", "login")
+	token := auth.CSRFToken("csrf-test", "login|test-nonce")
 	form := url.Values{"username": {"alice"}, "password": {"secret"}, "csrf_token": {token}}
 	req = httptest.NewRequest(http.MethodPost, "/ui/login", strings.NewReader(form.Encode()))
+	req.Header.Set("Sec-Fetch-Site", "same-origin")
+	req.AddCookie(&http.Cookie{Name: auth.LoginNonceCookieName, Value: "test-nonce"})
+	req.Header.Set("Sec-Fetch-Site", "same-origin")
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	rec = httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
@@ -238,9 +241,12 @@ func TestUI_AdminForbidden(t *testing.T) {
 	h.Register(mux)
 
 	// Login to get session cookie.
-	token := auth.CSRFToken("csrf-test", "login")
+	token := auth.CSRFToken("csrf-test", "login|test-nonce")
 	form := url.Values{"username": {"alice"}, "password": {"secret"}, "csrf_token": {token}}
 	req := httptest.NewRequest(http.MethodPost, "/ui/login", strings.NewReader(form.Encode()))
+	req.Header.Set("Sec-Fetch-Site", "same-origin")
+	req.AddCookie(&http.Cookie{Name: auth.LoginNonceCookieName, Value: "test-nonce"})
+	req.Header.Set("Sec-Fetch-Site", "same-origin")
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
@@ -265,9 +271,12 @@ func TestUI_CSRFRejected(t *testing.T) {
 	mux := http.NewServeMux()
 	h.Register(mux)
 
-	token := auth.CSRFToken("csrf-test", "login")
+	token := auth.CSRFToken("csrf-test", "login|test-nonce")
 	form := url.Values{"username": {"alice"}, "password": {"secret"}, "csrf_token": {token}}
 	req := httptest.NewRequest(http.MethodPost, "/ui/login", strings.NewReader(form.Encode()))
+	req.Header.Set("Sec-Fetch-Site", "same-origin")
+	req.AddCookie(&http.Cookie{Name: auth.LoginNonceCookieName, Value: "test-nonce"})
+	req.Header.Set("Sec-Fetch-Site", "same-origin")
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
@@ -280,6 +289,7 @@ func TestUI_CSRFRejected(t *testing.T) {
 
 	form = url.Values{"password": {"newpass123"}}
 	req = httptest.NewRequest(http.MethodPost, "/ui/settings/password", strings.NewReader(form.Encode()))
+	req.Header.Set("Sec-Fetch-Site", "same-origin")
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: sid})
 	rec = httptest.NewRecorder()
@@ -295,9 +305,12 @@ func TestUI_PasswordPolicyServerSide(t *testing.T) {
 	mux := http.NewServeMux()
 	h.Register(mux)
 
-	token := auth.CSRFToken("csrf-test", "login")
+	token := auth.CSRFToken("csrf-test", "login|test-nonce")
 	form := url.Values{"username": {"alice"}, "password": {"secret"}, "csrf_token": {token}}
 	req := httptest.NewRequest(http.MethodPost, "/ui/login", strings.NewReader(form.Encode()))
+	req.Header.Set("Sec-Fetch-Site", "same-origin")
+	req.AddCookie(&http.Cookie{Name: auth.LoginNonceCookieName, Value: "test-nonce"})
+	req.Header.Set("Sec-Fetch-Site", "same-origin")
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
@@ -315,6 +328,7 @@ func TestUI_PasswordPolicyServerSide(t *testing.T) {
 	post := func(path string, form url.Values) *httptest.ResponseRecorder {
 		form.Set("csrf_token", csrf)
 		req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(form.Encode()))
+		req.Header.Set("Sec-Fetch-Site", "same-origin")
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		req.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: sid})
 		rec := httptest.NewRecorder()
@@ -347,11 +361,14 @@ func TestUI_LoginUnknownUserTakesBcryptTime(t *testing.T) {
 	restore()
 	mux := http.NewServeMux()
 	h.Register(mux)
-	token := auth.CSRFToken("csrf-test", "login")
+	token := auth.CSRFToken("csrf-test", "login|test-nonce")
 
 	attempt := func(user string) time.Duration {
 		form := url.Values{"username": {user}, "password": {"wrong-password"}, "csrf_token": {token}}
 		req := httptest.NewRequest(http.MethodPost, "/ui/login", strings.NewReader(form.Encode()))
+		req.Header.Set("Sec-Fetch-Site", "same-origin")
+		req.AddCookie(&http.Cookie{Name: auth.LoginNonceCookieName, Value: "test-nonce"})
+		req.Header.Set("Sec-Fetch-Site", "same-origin")
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		rec := httptest.NewRecorder()
 		start := time.Now()
@@ -377,9 +394,12 @@ func TestUI_AdminDeleteLastAdminConflict(t *testing.T) {
 	mux := http.NewServeMux()
 	h.Register(mux)
 
-	token := auth.CSRFToken("csrf-test", "login")
+	token := auth.CSRFToken("csrf-test", "login|test-nonce")
 	form := url.Values{"username": {"alice"}, "password": {"secret"}, "csrf_token": {token}}
 	req := httptest.NewRequest(http.MethodPost, "/ui/login", strings.NewReader(form.Encode()))
+	req.Header.Set("Sec-Fetch-Site", "same-origin")
+	req.AddCookie(&http.Cookie{Name: auth.LoginNonceCookieName, Value: "test-nonce"})
+	req.Header.Set("Sec-Fetch-Site", "same-origin")
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
@@ -397,6 +417,7 @@ func TestUI_AdminDeleteLastAdminConflict(t *testing.T) {
 	post := func(path string) *httptest.ResponseRecorder {
 		f := url.Values{"csrf_token": {csrf}}
 		req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(f.Encode()))
+		req.Header.Set("Sec-Fetch-Site", "same-origin")
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		req.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: sid})
 		rec := httptest.NewRecorder()

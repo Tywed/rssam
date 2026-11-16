@@ -205,6 +205,7 @@ func (s *Server) handleUpdateFeed(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	feed, err := s.feeds.UpdateFeed(r.Context(), p.UserID, storage.UpdateFeedParams{
+		Admin:              p.IsAdmin(),
 		ID:                 id,
 		FeedURL:            params.FeedURL,
 		FeedType:           params.FeedType,
@@ -237,6 +238,9 @@ func (s *Server) handleUpdateFeed(w http.ResponseWriter, r *http.Request) {
 		case errors.Is(err, storage.ErrInboundURLImmutable):
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
+		case errors.Is(err, storage.ErrNotFeedOwner):
+			writeError(w, http.StatusForbidden, err.Error())
+			return
 		default:
 			s.log.ErrorContext(r.Context(), "update feed failed", "err", err)
 			writeError(w, http.StatusInternalServerError, "internal server error")
@@ -255,7 +259,18 @@ func (s *Server) handleDeleteFeed(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if err := s.feeds.DeleteFeed(r.Context(), p.UserID, id); err != nil {
+	var err error
+	if p.IsAdmin() {
+		err = s.feeds.DeleteFeedByID(r.Context(), id)
+	} else {
+		err = s.feeds.DeleteFeed(r.Context(), p.UserID, id)
+	}
+	if err != nil {
+		var inUse *storage.FeedInUseError
+		if errors.As(err, &inUse) {
+			writeError(w, http.StatusConflict, err.Error()+"; unsubscribe instead, or ask an admin")
+			return
+		}
 		s.storeError(w, r, err, "feed not found", "delete feed failed")
 		return
 	}

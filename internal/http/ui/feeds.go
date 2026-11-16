@@ -271,6 +271,13 @@ func (h *Handler) loadFeedSubscribers(r *http.Request, data *pageData, feedID in
 		return
 	}
 	data.FeedSubscribers = subs
+	if p, ok := principal(r); ok {
+		for _, s := range subs {
+			if s.UserID != p.UserID {
+				data.FeedOtherSubscribers++
+			}
+		}
+	}
 }
 
 func (h *Handler) handleFeedEdit(w http.ResponseWriter, r *http.Request) {
@@ -339,6 +346,7 @@ func (h *Handler) handleFeedUpdate(w http.ResponseWriter, r *http.Request) {
 	}
 	_, err = h.cfg.Feeds.UpdateFeed(r.Context(), p.UserID, storage.UpdateFeedParams{
 		ID:                 id,
+		Admin:              p.IsAdmin(),
 		FeedURL:            params.FeedURL,
 		FeedType:           reader.DetectFeedTypeFromURL(params.FeedURL),
 		Title:              params.Title,
@@ -387,7 +395,18 @@ func (h *Handler) handleFeedDelete(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	if err := h.cfg.Feeds.DeleteFeed(r.Context(), p.UserID, id); err != nil {
+	var err2 error
+	if p.IsAdmin() {
+		err2 = h.cfg.Feeds.DeleteFeedByID(r.Context(), id)
+	} else {
+		err2 = h.cfg.Feeds.DeleteFeed(r.Context(), p.UserID, id)
+	}
+	if err2 != nil {
+		var inUse *storage.FeedInUseError
+		if errors.As(err2, &inUse) {
+			http.Error(w, fmt.Sprintf("Ленту читают ещё %d; удалить может только администратор. Отпишитесь от неё вместо удаления.", inUse.Subscribers), http.StatusConflict)
+			return
+		}
 		http.NotFound(w, r)
 		return
 	}

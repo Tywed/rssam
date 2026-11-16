@@ -172,10 +172,14 @@
     {{if .Feed.ID}}
     <div class="toolbar mt-2">
       {{template "feed_subscribe_toggle" .}}
+      {{if or .IsAdmin (eq .FeedOtherSubscribers 0)}}
       <form method="post" action="/ui/feeds/{{.Feed.ID}}/delete" data-confirm="Удалить ленту из каталога для всех? Читателей: {{len .FeedSubscribers}}{{if .IsAdmin}}{{range $i, $s := .FeedSubscribers}}{{if $i}},{{else}} —{{end}} {{$s.Username}}{{end}}{{end}}. Записи ленты будут удалены у всех.">
         <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
         <button type="submit" class="btn btn-danger">Удалить из каталога{{if gt (len .FeedSubscribers) 1}} ({{len .FeedSubscribers}} читателей){{end}}</button>
       </form>
+      {{else}}
+      <span class="meta">Ленту читают ещё {{.FeedOtherSubscribers}} — удалить из каталога может только администратор; вы можете отписаться.</span>
+      {{end}}
     </div>
     {{end}}
   </div>

@@ -467,13 +467,13 @@ func (h *Handler) Register(mux *http.ServeMux) {
 		http.Redirect(w, r, "/ui/static/favicon.ico", http.StatusMovedPermanently)
 	})
 	mux.HandleFunc("GET /ui/login", h.handleLoginGet)
-	loginPost := http.HandlerFunc(h.handleLoginPost)
+	loginPost := requireSameOrigin(http.HandlerFunc(h.handleLoginPost))
 	if h.cfg.RateLimit != nil {
 		mux.Handle("POST /ui/login", h.cfg.RateLimit(loginPost))
 	} else {
 		mux.Handle("POST /ui/login", loginPost)
 	}
-	mux.HandleFunc("POST /ui/logout", h.handleLogout)
+	mux.Handle("POST /ui/logout", requireSameOrigin(http.HandlerFunc(h.handleLogout)))
 
 	auth := h.requireAuth
 	mux.Handle("GET /ui/", auth(http.HandlerFunc(h.handleRoot)))
@@ -587,6 +587,7 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.Handle("POST /ui/admin/users/{id}/delete", auth(h.requireAdmin(http.HandlerFunc(h.handleAdminUserDelete))))
 	mux.Handle("POST /ui/admin/feeds/refresh-all", auth(h.requireAdmin(http.HandlerFunc(h.handleAdminRefreshAll))))
 	mux.Handle("POST /ui/admin/feeds/reset-circuits", auth(h.requireAdmin(http.HandlerFunc(h.handleAdminFeedsResetCircuits))))
+	mux.Handle("POST /ui/admin/feeds/pause-gone", auth(h.requireAdmin(http.HandlerFunc(h.handleAdminFeedsPauseGone))))
 	mux.Handle("GET /ui/admin/feeds", auth(h.requireAdmin(http.HandlerFunc(h.handleAdminFeedsList))))
 	mux.Handle("GET /ui/admin/feeds/{id}", auth(h.requireAdmin(http.HandlerFunc(h.handleAdminFeedShow))))
 	mux.Handle("POST /ui/admin/feeds/{id}/refresh", auth(h.requireAdmin(http.HandlerFunc(h.handleAdminFeedRefresh))))

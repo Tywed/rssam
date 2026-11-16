@@ -32,6 +32,10 @@ type AdminFeedSummary struct {
 	// DormantCount: the subset of SilentCount (polled feeds only) whose last
 	// item is older than DormantAfter.
 	DormantCount int
+	// GoneCount / BlockedCount split ErrorCount by the shape of last_error
+	// (adminFeedsGoneWhere / adminFeedsBlockedWhere).
+	GoneCount    int
+	BlockedCount int
 	TotalEntries int
 	TotalUnread  int
 	// TotalSubscriptions / TotalUserEntries size the per-user tables of
@@ -78,11 +82,35 @@ type AdminFeedStore interface {
 	DueWebhookLogCount(ctx context.Context) (int, error)
 	EstimateDatabaseSize(ctx context.Context) (int64, error)
 	FeedTypeStats(ctx context.Context) ([]FeedTypeStat, error)
+	// PauseGoneFeeds sets manual_paused on every "gone" feed that is not
+	// paused yet and returns how many; last_error is kept so the row still
+	// shows why.
+	PauseGoneFeeds(ctx context.Context) (int64, error)
 }
 
 // LayoutErrorPrefix starts feeds.last_error while a bridge cannot read the
 // source's page (service.LayoutErrorPrefix).
 const LayoutErrorPrefix = "layout: "
+
+// Two shapes of a failing feed the operator treats differently. "Gone": the
+// source says the resource no longer exists (404/410, a channel or group
+// the bridge cannot find, a host that does not resolve) and has said so
+// for goneAfterErrors polls in a row — Telegram's «private or does not
+// exist» is transient on single polls (97 % clear by the next one on the
+// production fleet) but 27 channels there held it for 6+ polls. "Blocked":
+// the source answers but refuses this client (401/403/407/429/451, rate
+// limits, an exhausted API quota) — it may come back when the quota or the
+// proxy does. Everything else stays a plain error.
+const (
+	goneAfterErrors = 3
+
+	adminFeedsGoneErrorRegexp    = `(status( code)?:? (404|410)\M|feed gone|channel is private or does not exist|channel not found|group not found|no such host)`
+	adminFeedsBlockedErrorRegexp = `(status( code)?:? (401|403|407|429|451)\M|rate limited|insufficient_credits|access denied|captcha|forbidden)`
+
+	adminFeedsBlockedWhere = `(COALESCE(ps.last_error, '') ~* '` + adminFeedsBlockedErrorRegexp + `')`
+)
+
+var adminFeedsGoneWhere = fmt.Sprintf(`(COALESCE(ps.last_error, '') ~* '%s' AND ps.parsing_error_count >= %d)`, adminFeedsGoneErrorRegexp, goneAfterErrors)
 
 // FeedTypeStat is one feed_type on the bridges page: how many feeds use
 // it and how many of them currently see unrecognised markup.
@@ -201,6 +229,10 @@ func adminFeedsStatusWhere(status string, silentAfter, dormantAfter time.Duratio
 		return `(ps.poll_paused = TRUE OR f.manual_paused = TRUE)`
 	case "errors":
 		return `(COALESCE(NULLIF(ps.last_error, ''), '') <> '' OR ps.parsing_error_count > 0)`
+	case "gone":
+		return adminFeedsGoneWhere
+	case "blocked":
+		return adminFeedsBlockedWhere
 	case "layout":
 		return `ps.last_error LIKE 'layout: %'`
 	case "waiting":
@@ -237,6 +269,8 @@ func adminFeedsOrderClause(sortKey, order string) string {
 		return fmt.Sprintf("%s %s, f.id ASC", expr, dir)
 	case "last_checked":
 		return fmt.Sprintf("ps.last_checked_at %s %s, f.id ASC", dir, nulls)
+	case "last_success":
+		return fmt.Sprintf("ps.last_success_at %s %s, f.id ASC", dir, nulls)
 	case "next_check":
 		return fmt.Sprintf("ps.next_check_at %s %s, f.id ASC", dir, nulls)
 	case "last_entry":
@@ -318,7 +352,7 @@ func (s *PostgresStore) AdminFeedSummary(ctx context.Context, silentAfter, dorma
 	if dormantAfter > 0 {
 		dormantSeconds = int64(dormantAfter / time.Second)
 	}
-	const q = `
+	q := `
 SELECT
   COUNT(*)::int,
   COUNT(*) FILTER (
@@ -358,10 +392,12 @@ SELECT
       AND feed_type <> '` + FeedTypeInbound + `'
       AND $2::bigint > 0 AND COALESCE(last_entry_at, created_at) < now() - make_interval(secs => $2::bigint)
   )::int,
-  COALESCE((SELECT GREATEST(reltuples, 0)::bigint FROM pg_class WHERE oid = 'public.entries'::regclass), 0)::int,
+  COUNT(*) FILTER (WHERE ` + adminFeedsGoneWhere + `)::int,
+  COUNT(*) FILTER (WHERE ` + adminFeedsBlockedWhere + `)::int,
+  COALESCE((SELECT GREATEST(reltuples, 0)::bigint FROM pg_class WHERE oid = 'entries'::regclass), 0)::int,
   COALESCE((SELECT COUNT(*)::int FROM user_unread), 0),
   COALESCE((SELECT COUNT(*)::int FROM subscriptions), 0),
-  COALESCE((SELECT GREATEST(reltuples, 0)::bigint FROM pg_class WHERE oid = 'public.user_entries'::regclass), 0)::int,
+  COALESCE((SELECT GREATEST(reltuples, 0)::bigint FROM pg_class WHERE oid = 'user_entries'::regclass), 0)::int,
   COALESCE((SELECT COUNT(*)::int FROM category_followers), 0)
 FROM ` + feedsFrom + ``
 	var sum AdminFeedSummary
@@ -373,6 +409,8 @@ FROM ` + feedsFrom + ``
 		&sum.WaitingCount,
 		&sum.SilentCount,
 		&sum.DormantCount,
+		&sum.GoneCount,
+		&sum.BlockedCount,
 		&sum.TotalEntries,
 		&sum.TotalUnread,
 		&sum.TotalSubscriptions,
@@ -435,3 +473,14 @@ func (s *PostgresStore) EstimateDatabaseSize(ctx context.Context) (int64, error)
 }
 
 var _ AdminFeedStore = (*PostgresStore)(nil)
+
+func (s *PostgresStore) PauseGoneFeeds(ctx context.Context) (int64, error) {
+	cmd, err := s.db.Exec(ctx, `
+UPDATE feeds f SET manual_paused = TRUE, updated_at = now()
+FROM feed_poll_state ps
+WHERE ps.feed_id = f.id AND f.manual_paused = FALSE AND `+adminFeedsGoneWhere)
+	if err != nil {
+		return 0, fmt.Errorf("pause gone feeds: %w", err)
+	}
+	return cmd.RowsAffected(), nil
+}

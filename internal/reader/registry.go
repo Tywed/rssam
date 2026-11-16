@@ -262,8 +262,11 @@ func proxyServiceHTTPClient(cfg RegistryConfig) *http.Client {
 	if cfg.TelegramProxyRequestTimeout > 0 {
 		timeout += cfg.TelegramProxyRequestTimeout
 	}
-	if cfg.SSRFGuard != nil {
-		return cfg.SSRFGuard.HTTPClient(timeout)
+	if cfg.SSRFGuard == nil {
+		return &http.Client{Timeout: timeout}
 	}
-	return &http.Client{Timeout: timeout}
+	if ep, err := proxy.ServiceEndpoint(cfg.TelegramProxyServiceURL); err == nil {
+		return cfg.SSRFGuard.HTTPClientForEndpoint(timeout, ep)
+	}
+	return cfg.SSRFGuard.HTTPClient(timeout)
 }

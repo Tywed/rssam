@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"rssam/internal/bridge/v1"
+	"strconv"
 	"time"
 )
 
@@ -13,6 +14,12 @@ var (
 	// ErrInboundURLImmutable: an inbound feed's URL is its /hooks/{id} address.
 	ErrInboundURLImmutable = errors.New("feed_url of an inbound feed cannot be changed")
 	ErrInvalidReference    = errors.New("invalid reference")
+	// ErrNotFeedOwner: only the feed's author or an admin may change its URL
+	// (and with it the type); other subscribers share the row.
+	ErrNotFeedOwner = errors.New("only the feed author or an admin can change its URL")
+	// ErrEntryShared: the entry belongs to a feed with other subscribers, so a
+	// per-user action must not destroy its payload.
+	ErrEntryShared = errors.New("entry is shared with other subscribers")
 	// ErrCategoryNotEmpty: a category with feeds cannot be deleted.
 	ErrCategoryNotEmpty  = errors.New("category has feeds")
 	ErrDuplicateCategory = errors.New("category title already exists")
@@ -89,8 +96,11 @@ type Feed struct {
 	IconData      []byte
 	// LastEntryAt is when the feed last yielded a new entry (or dedup hash).
 	LastEntryAt *time.Time
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	// LastSuccessAt is the last poll that ended without an error
+	// (LastCheckedAt also moves on failures).
+	LastSuccessAt *time.Time
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
 }
 
 // Entry is stored once per feed; Status and Starred are the state of the
@@ -310,6 +320,8 @@ type FeedStore interface {
 	// DeleteFeed removes the catalog row with its entries for every
 	// subscriber (editor). A reader leaves a feed with
 	// SubscriptionStore.Unsubscribe.
+	// DeleteFeed removes the catalog row when no other user is subscribed;
+	// otherwise *FeedInUseError. Admins use DeleteFeedByID.
 	DeleteFeed(ctx context.Context, userID int64, id int64) error
 	DeleteFeedByID(ctx context.Context, id int64) error
 }
@@ -354,7 +366,7 @@ type FeedActivityStore interface {
 type EntryDedupStore interface {
 	FilterKnownEntryHashes(ctx context.Context, feedID int64, hashes []string) (map[string]struct{}, error)
 	RecordFeedEntryDedup(ctx context.Context, feedID int64, items []FeedEntryDedupParams) (int, error)
-	StripEntryPayloadAfterWebhook(ctx context.Context, entryID int64) error
+	StripEntryPayloadAfterWebhook(ctx context.Context, entryID, userID int64) error
 	// CollapseEntriesToHashes copies hashes into feed_entry_dedup and deletes
 	// full entry rows (starred and pending-webhook entries are kept).
 	CollapseEntriesToHashes(ctx context.Context, params CollapseEntriesParams) (int64, error)
@@ -367,6 +379,9 @@ type CollapseEntriesParams struct {
 	UserID     int64
 	FeedID     *int64
 	CategoryID *int64
+	// OnlySoleSubscriber skips feeds that other users are subscribed to
+	// (an editor's bulk action must not erase shared entries).
+	OnlySoleSubscriber bool
 	// OnlyHashOnlyFeeds skips feeds that still store full entries.
 	OnlyHashOnlyFeeds bool
 	// IncludeLabeled also converts entries that have labels (filter matches).
@@ -487,6 +502,8 @@ type CreateFeedParams struct {
 type UpdateFeedParams struct {
 	ID      int64
 	FeedURL string
+	// Admin lifts the author-only rule for URL/type changes.
+	Admin bool
 	// FeedType is applied only when FeedURL changes (the caller detects it
 	// from the new URL); otherwise the stored type stays.
 	FeedType        string
@@ -524,6 +541,9 @@ type UpdateFeedRefreshMetaParams struct {
 	NextCheckAt *time.Time
 	// NewEntries > 0 stamps last_entry_at = LastCheckedAt in the same UPDATE.
 	NewEntries int
+	// Succeeded stamps last_success_at = LastCheckedAt: a real poll that
+	// read the source (soft/layout deferrals only move last_checked_at).
+	Succeeded bool
 	// NewFeedURL, when non-empty, replaces feed_url (source moved for good)
 	// unless the user already has a feed at that address.
 	NewFeedURL string
@@ -693,4 +713,13 @@ type ListEntriesFilter struct {
 	// WithoutBody leaves Content and OriginalContent empty; for callers that
 	// only render titles.
 	WithoutBody bool
+}
+
+// FeedInUseError: a non-admin tried to delete a feed other users follow.
+type FeedInUseError struct {
+	Subscribers int
+}
+
+func (e *FeedInUseError) Error() string {
+	return "feed has " + strconv.Itoa(e.Subscribers) + " other subscriber(s)"
 }

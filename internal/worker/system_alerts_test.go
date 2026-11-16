@@ -129,7 +129,8 @@ func TestSystemAlerts_FirstPassSeedsThenAlertsOnlyNewProblems(t *testing.T) {
 	}
 
 	// One more feed pauses, one goes silent, a webhook starts failing.
-	store.paused = append(store.paused, storage.SystemAlertFeed{ID: 11, Title: "New broken", Error: "HTTP 500"})
+	store.paused = append(store.paused, storage.SystemAlertFeed{ID: 11, Title: "New broken", Error: "HTTP 500"},
+		storage.SystemAlertFeed{ID: 14, Title: "Vanished", Error: "unexpected status code: 404", Gone: true})
 	store.silent = []storage.SystemAlertFeed{{ID: 12, Title: "Quiet"}}
 	store.dormant = []storage.SystemAlertFeed{{ID: 13, Title: "Asleep", Error: "ни одной записи с момента добавления"}}
 	store.failing = []storage.SystemAlertWebhook{{ID: 2, Name: "tg", LastError: "chat not found"}}
@@ -143,6 +144,9 @@ func TestSystemAlerts_FirstPassSeedsThenAlertsOnlyNewProblems(t *testing.T) {
 	}
 	if strings.Contains(joined, "Old broken") || !strings.Contains(joined, "New broken") || !strings.Contains(joined, "HTTP 500") {
 		t.Fatalf("only the new feed must be reported:\n%s", joined)
+	}
+	if !strings.Contains(joined, "из них исчезли (404/410/канал не найден): 1") || !strings.Contains(joined, "#14 Vanished") {
+		t.Fatalf("gone line:\n%s", joined)
 	}
 	if !strings.Contains(joined, "Quiet") || !strings.Contains(joined, "chat not found") || !strings.Contains(joined, `"event_type":"system_alert"`) {
 		t.Fatalf("payload:\n%s", joined)

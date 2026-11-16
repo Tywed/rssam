@@ -48,9 +48,16 @@ jobs:
               -X rssam/internal/version.Commit=${COMMIT} \
               -X rssam/internal/version.Date=${DATE}" \
             -o "dist/${NAME}/rssam" ./cmd/rssam
-          # Deterministic tarball: fixed mtime/owner, sorted entries, no gzip timestamp.
-          tar --sort=name --mtime="${DATE}" --owner=0 --group=0 --numeric-owner \
-            -C "dist/${NAME}" -cf - rssam | gzip -n -9 > "dist/${NAME}.tar.gz"
+          # Units, backup script and the installer travel with the binary so
+          # install.sh never has to fetch unverified files from a branch.
+          mkdir -p "dist/${NAME}/deploy"
+          cp deploy/rssam.service deploy/rssam-ops.path deploy/rssam-ops.service \
+             deploy/rssam-backup.sh deploy/rssam-backup.service deploy/rssam-backup.timer \
+             "dist/${NAME}/deploy/"
+          cp install.sh "dist/${NAME}/install.sh"
+          # Deterministic tarball: fixed mtime/owner/mode, sorted entries, no gzip timestamp.
+          tar --sort=name --mtime="${DATE}" --owner=0 --group=0 --numeric-owner --mode=go=rX,u+rw \
+            -C "dist/${NAME}" -cf - rssam install.sh deploy | gzip -n -9 > "dist/${NAME}.tar.gz"
           rm -r "dist/${NAME}"
           # Per-asset .sha256 kept for install.sh compatibility; SHA256SUMS
           # below is the single file to verify against.

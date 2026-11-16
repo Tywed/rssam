@@ -90,6 +90,53 @@ WHERE session_id = $1 AND expires_at > now()`
 	return sess, nil
 }
 
+// LookupSessionUser returns a live session together with its user in one
+// round-trip; every authenticated request starts with this query.
+func (s *PostgresStore) LookupSessionUser(ctx context.Context, sessionID string) (Session, User, error) {
+	const q = `
+SELECT s.id, s.user_id, s.session_id, s.expires_at, s.created_at,
+       u.id, u.username, u.password_hash, u.role, u.created_at
+FROM sessions s
+JOIN users u ON u.id = s.user_id
+WHERE s.session_id = $1 AND s.expires_at > now()`
+	var sess Session
+	var u User
+	err := s.db.QueryRow(ctx, q, sessionID).Scan(
+		&sess.ID, &sess.UserID, &sess.SessionID, &sess.ExpiresAt, &sess.CreatedAt,
+		&u.ID, &u.Username, &u.PasswordHash, &u.Role, &u.CreatedAt,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return Session{}, User{}, ErrNotFound
+		}
+		return Session{}, User{}, fmt.Errorf("lookup session user: %w", err)
+	}
+	return sess, u, nil
+}
+
+// SessionUserLookup is implemented by stores that can resolve a session and
+// its user in one query; callers fall back to LookupSession + GetUser.
+type SessionUserLookup interface {
+	LookupSessionUser(ctx context.Context, sessionID string) (Session, User, error)
+}
+
+// LookupSessionUser resolves a session and its user via SessionUserLookup
+// when sessions implements it, otherwise with two queries.
+func LookupSessionUser(ctx context.Context, sessions SessionStore, users UserStore, sessionID string) (Session, User, error) {
+	if j, ok := sessions.(SessionUserLookup); ok {
+		return j.LookupSessionUser(ctx, sessionID)
+	}
+	sess, err := sessions.LookupSession(ctx, sessionID)
+	if err != nil {
+		return Session{}, User{}, err
+	}
+	u, err := users.GetUser(ctx, sess.UserID)
+	if err != nil {
+		return Session{}, User{}, err
+	}
+	return sess, u, nil
+}
+
 func (s *PostgresStore) TouchSession(ctx context.Context, sessionID string, expiresAt time.Time) error {
 	cmd, err := s.db.Exec(ctx, `UPDATE sessions SET expires_at = $2 WHERE session_id = $1`, sessionID, expiresAt)
 	if err != nil {

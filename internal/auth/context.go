@@ -15,6 +15,10 @@ type Principal struct {
 	Username string
 	// Scope is the API key scope ("" for sessions = unrestricted).
 	Scope string
+	// SessionID / KeyID name the credential that authenticated the request
+	// (exactly one is set); long-lived connections are revoked by them.
+	SessionID string
+	KeyID     int64
 }
 
 func (p Principal) IsAdmin() bool { return p.Role == RoleAdmin }

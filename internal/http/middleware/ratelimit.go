@@ -1,7 +1,10 @@
 package middleware
 
 import (
+	"cmp"
 	"net/http"
+	"net/netip"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -11,7 +14,31 @@ const (
 	bucketTTL       = 5 * time.Minute
 	cleanupInterval = 5 * time.Minute
 	maxBuckets      = 100_000
+	// evictTarget is the fill level a full table is cut back to, so the
+	// O(n log n) eviction pays for the next 10 % of fresh keys at once
+	// instead of running on every new key.
+	evictTarget = maxBuckets * 9 / 10
 )
+
+// LimiterKey normalises a client address for rate limiting: IPv4 as is,
+// IPv6 by its /64 prefix — one subscriber owns a whole /64 and could
+// otherwise draw a fresh key for every request. Non-address keys pass
+// through unchanged.
+func LimiterKey(key string) string {
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return "unknown"
+	}
+	a, err := netip.ParseAddr(strings.Trim(key, "[]"))
+	if err != nil {
+		return key
+	}
+	a = a.Unmap()
+	if a.Is4() {
+		return a.String()
+	}
+	return netip.PrefixFrom(a, 64).Masked().String()
+}
 
 // Limiter is an in-memory per-key token bucket rate limiter.
 type Limiter struct {
@@ -54,20 +81,17 @@ func (l *Limiter) Allow(key string) bool {
 	if l == nil || !l.enabled {
 		return true
 	}
-	key = strings.TrimSpace(key)
-	if key == "" {
-		key = "unknown"
-	}
+	key = LimiterKey(key)
 
 	now := time.Now()
 
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
-	if len(l.buckets) > maxBuckets || (!l.lastCleanup.IsZero() && now.Sub(l.lastCleanup) >= cleanupInterval) || l.lastCleanup.IsZero() {
+	if len(l.buckets) >= maxBuckets || now.Sub(l.lastCleanup) >= cleanupInterval {
 		l.evictStaleLocked(now)
-		if len(l.buckets) > maxBuckets {
-			l.evictOldestLocked(len(l.buckets) - maxBuckets)
+		if len(l.buckets) >= maxBuckets {
+			l.evictOldestLocked(len(l.buckets) - evictTarget)
 		}
 		l.lastCleanup = now
 	}
@@ -101,11 +125,21 @@ func (l *Limiter) Exhausted(key string) bool {
 	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	b, ok := l.buckets[strings.TrimSpace(key)]
+	b, ok := l.buckets[LimiterKey(key)]
 	if !ok {
 		return false
 	}
 	return b.tokens+time.Since(b.last).Seconds()*l.rate < 1
+}
+
+// Len reports the number of tracked keys (tests and metrics).
+func (l *Limiter) Len() int {
+	if l == nil {
+		return 0
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return len(l.buckets)
 }
 
 func (l *Limiter) evictStaleLocked(now time.Time) {
@@ -117,31 +151,21 @@ func (l *Limiter) evictStaleLocked(now time.Time) {
 	}
 }
 
+// evictOldestLocked drops the n least recently seen keys in one sort pass.
 func (l *Limiter) evictOldestLocked(n int) {
 	if n <= 0 {
 		return
 	}
 	type kv struct {
 		key  string
-		last time.Time
+		last int64
 	}
-	oldest := make([]kv, 0, n)
+	all := make([]kv, 0, len(l.buckets))
 	for key, b := range l.buckets {
-		if len(oldest) < n {
-			oldest = append(oldest, kv{key, b.last})
-			continue
-		}
-		imax := 0
-		for i := 1; i < len(oldest); i++ {
-			if oldest[i].last.After(oldest[imax].last) {
-				imax = i
-			}
-		}
-		if b.last.Before(oldest[imax].last) {
-			oldest[imax] = kv{key, b.last}
-		}
+		all = append(all, kv{key, b.last.UnixNano()})
 	}
-	for _, item := range oldest {
+	slices.SortFunc(all, func(a, b kv) int { return cmp.Compare(a.last, b.last) })
+	for _, item := range all[:min(n, len(all))] {
 		delete(l.buckets, item.key)
 	}
 }

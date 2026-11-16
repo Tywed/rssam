@@ -10,9 +10,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
-	"strconv"
 	"strings"
-	"syscall"
 	"time"
 )
 
@@ -22,9 +20,8 @@ import (
 // resolve to another repository's asset.
 var releaseTagRe = regexp.MustCompile(`^v?[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$`)
 
-// probeTimeout bounds the short sudo/systemctl probes that run inside HTTP
-// handlers. A hung sudo (e.g. PAM waiting on something) must not pin the
-// request goroutine forever. StartUpdate is exempt: it detaches on purpose.
+// probeTimeout bounds the short systemctl probes that run inside HTTP
+// handlers. A hung D-Bus call must not pin the request goroutine forever.
 var probeTimeout = 15 * time.Second
 
 func probeCommand(name string, args ...string) (*exec.Cmd, context.CancelFunc) {
@@ -63,115 +60,127 @@ func InDocker() bool {
 	return os.Getenv("container") != ""
 }
 
-func CanRestart() (bool, string) {
+// Restart and update are requested through a file, not through sudo. The
+// service writes /opt/rssam/run/ops.request ("restart" or "update vX.Y.Z");
+// the root-owned rssam-ops.path unit sees it and starts rssam-ops.service,
+// which runs rssam-update --request in its own cgroup. The service process
+// therefore never gains privileges (NoNewPrivileges= in the unit holds),
+// and a restart of rssam does not kill the updater.
+const (
+	opsUnit        = "rssam-ops"
+	requestDir     = "/opt/rssam/run"
+	requestFile    = "ops.request"
+	updateLogFile  = "/var/log/rssam-update.log"
+	legacyLogFile  = "/opt/rssam/log/update.log"
+	migrateHint    = "Выполните на сервере: curl -fsSL https://raw.githubusercontent.com/Tywed/rssam/main/install.sh | sudo sh -s -- --migrate-layout"
+	opsUnitMissing = "Юнит rssam-ops.path не активен. " + migrateHint
+)
+
+// RequestPath is the file the ops helper watches (overridable for tests).
+var RequestPath = filepath.Join(requestDir, requestFile)
+
+func systemctlState(unit string) string {
+	cmd, cancel := probeCommand("systemctl", "is-active", unit)
+	defer cancel()
+	out, _ := cmd.Output()
+	return strings.TrimSpace(string(out))
+}
+
+// opsAvailable reports whether the request channel to root exists: the path
+// unit is watching and the request directory is writable by this process.
+func opsAvailable() (bool, string) {
 	if InDocker() {
-		return false, "В Docker перезапуск из UI недоступен."
+		return false, "В Docker перезапуск и обновление из UI недоступны."
 	}
 	if _, err := exec.LookPath("systemctl"); err != nil {
 		return false, "systemctl не найден."
 	}
-	if lookSudoers() {
-		return true, ""
+	if st := systemctlState(opsUnit + ".path"); st != "active" {
+		return false, opsUnitMissing
 	}
-	return false, "Нет sudo NOPASSWD для systemctl restart rssam."
-}
-
-func lookSudoers() bool {
-	cmd, cancel := probeCommand("sudo", "-n", "-l")
-	defer cancel()
-	out, err := cmd.Output()
-	if err != nil {
-		return false
+	probe := filepath.Join(filepath.Dir(RequestPath), ".probe")
+	if err := os.WriteFile(probe, nil, 0o600); err != nil {
+		return false, fmt.Sprintf("Каталог %s недоступен для записи: %v", filepath.Dir(RequestPath), err)
 	}
-	s := string(out)
-	return strings.Contains(s, "systemctl") && strings.Contains(s, "rssam")
-}
-
-func Restart() error {
-	if InDocker() {
-		return fmt.Errorf("docker")
-	}
-	cmd, cancel := probeCommand("sudo", "-n", "systemctl", "restart", "--no-block", "rssam")
-	defer cancel()
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
-	out, err := cmd.CombinedOutput()
-	return restartResult(err, out)
-}
-
-// restartResult interprets the exit of `sudo systemctl restart --no-block`.
-// Even with --no-block systemd starts stopping the unit at once, and the stop
-// signal goes to the whole control group - which includes the sudo child
-// (setsid does not leave the cgroup). A sudo killed by a signal therefore
-// means the restart is already in progress, not that it failed.
-func restartResult(err error, out []byte) error {
-	if err == nil {
-		return nil
-	}
-	if ee, ok := errors.AsType[*exec.ExitError](err); ok {
-		if ws, ok := ee.Sys().(syscall.WaitStatus); ok && ws.Signaled() {
-			return nil
-		}
-	}
-	return fmt.Errorf("restart: %w: %s", err, strings.TrimSpace(string(out)))
-}
-
-func UpdateHelperPath() string {
-	for _, p := range []string{"/usr/local/sbin/rssam-update", "/opt/rssam/bin/rssam-update"} {
-		if _, err := os.Stat(p); err == nil {
-			return p
-		}
-	}
-	if p, err := exec.LookPath("rssam-update"); err == nil {
-		return p
-	}
-	return "/usr/local/sbin/rssam-update"
-}
-
-func CanUpdate() (bool, string) {
-	if InDocker() {
-		return false, "В Docker обновление из UI недоступно."
-	}
-	helper := UpdateHelperPath()
-	if _, err := os.Stat(helper); err != nil {
-		return false, "Не найден rssam-update."
-	}
-	help, cancelHelp := probeCommand("sudo", "-n", helper, "--quiet", "--help")
-	defer cancelHelp()
-	if err := help.Run(); err != nil {
-		list, cancelList := probeCommand("sudo", "-n", "-l")
-		defer cancelList()
-		out, e2 := list.Output()
-		if e2 == nil && strings.Contains(string(out), "rssam-update") {
-			return true, ""
-		}
-		_ = err
-		return false, "Нет sudo на rssam-update."
-	}
+	_ = os.Remove(probe)
 	return true, ""
 }
 
+func CanRestart() (bool, string) { return opsAvailable() }
+
+func CanUpdate() (bool, string) { return opsAvailable() }
+
+// writeRequest publishes one request atomically; a request already waiting
+// or an ops run in progress is reported, not overwritten.
+func writeRequest(content string) error {
+	if ok, reason := opsAvailable(); !ok {
+		return errors.New(reason)
+	}
+	if UpdateRunning() {
+		return errors.New("уже выполняется предыдущая операция")
+	}
+	return writeRequestFile(content)
+}
+
+func writeRequestFile(content string) error {
+	dir := filepath.Dir(RequestPath)
+	tmp, err := os.CreateTemp(dir, requestFile+".*.tmp")
+	if err != nil {
+		return err
+	}
+	name := tmp.Name()
+	if _, err := tmp.WriteString(content + "\n"); err != nil {
+		tmp.Close()
+		_ = os.Remove(name)
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		_ = os.Remove(name)
+		return err
+	}
+	if err := os.Rename(name, RequestPath); err != nil {
+		_ = os.Remove(name)
+		return err
+	}
+	return nil
+}
+
+func Restart() error {
+	return writeRequest("restart")
+}
+
+func StartUpdate(ver string) error {
+	ver = strings.TrimSpace(ver)
+	if ver == "" {
+		return fmt.Errorf("не указана версия")
+	}
+	if !ValidReleaseTag(ver) {
+		return fmt.Errorf("недопустимая версия %q", ver)
+	}
+	return writeRequest("update " + ver)
+}
+
 func UpdateLogPath() string {
-	return "/opt/rssam/log/update.log"
+	if _, err := os.Stat(updateLogFile); err == nil {
+		return updateLogFile
+	}
+	if _, err := os.Stat(legacyLogFile); err == nil {
+		return legacyLogFile
+	}
+	return updateLogFile
 }
 
-func updatePIDPath() string {
-	return "/opt/rssam/log/update.pid"
-}
-
+// UpdateRunning: a request is waiting to be picked up, or the ops service is
+// executing one.
 func UpdateRunning() bool {
-	b, err := os.ReadFile(updatePIDPath())
-	if err != nil {
-		return false
+	if _, err := os.Stat(RequestPath); err == nil {
+		return true
 	}
-	pid, convErr := strconv.Atoi(strings.TrimSpace(string(b)))
-	if convErr != nil || pid <= 0 {
-		return false
+	switch systemctlState(opsUnit + ".service") {
+	case "active", "activating", "reloading", "deactivating":
+		return true
 	}
-	proc, err := os.FindProcess(pid)
-	if err != nil {
-		return false
-	}
-	return proc.Signal(syscall.Signal(0)) == nil
+	return false
 }
 
 func ReadUpdateLog() string {
@@ -186,6 +195,9 @@ func ReadUpdateLog() string {
 	return string(b)
 }
 
+// ParseUpdateLog reads the outcome of the last run from its tail: the helper
+// ends every run with "ok <ver>" or "error: <reason>". Restarts log
+// "restart" lines only and count as done.
 func ParseUpdateLog(log string, running bool) (done, ok bool, errMsg string) {
 	log = strings.TrimSpace(log)
 	if running {
@@ -210,49 +222,6 @@ func ParseUpdateLog(log string, running bool) (done, ok bool, errMsg string) {
 		return true, false, strings.TrimSpace(after)
 	}
 	return true, false, last
-}
-
-func StartUpdate(ver string) error {
-	ok, reason := CanUpdate()
-	if !ok {
-		return fmt.Errorf("%s", reason)
-	}
-	if UpdateRunning() {
-		return fmt.Errorf("уже идёт обновление")
-	}
-	ver = strings.TrimSpace(ver)
-	if ver == "" {
-		return fmt.Errorf("не указана версия")
-	}
-	if !ValidReleaseTag(ver) {
-		return fmt.Errorf("недопустимая версия %q", ver)
-	}
-	helper := UpdateHelperPath()
-	args := []string{"-n", helper, "--update", "--quiet", ver}
-	cmd := exec.Command("sudo", args...)
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
-	logDir := "/opt/rssam/log"
-	_ = os.MkdirAll(logDir, 0755)
-	f, err := os.OpenFile(UpdateLogPath(), os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
-	if err == nil {
-		cmd.Stdout = f
-		cmd.Stderr = f
-	}
-	if err := cmd.Start(); err != nil {
-		if f != nil {
-			f.Close()
-		}
-		return err
-	}
-	_ = os.WriteFile(updatePIDPath(), []byte(strconv.Itoa(cmd.Process.Pid)+"\n"), 0644)
-	go func() {
-		_ = cmd.Wait()
-		if f != nil {
-			f.Close()
-		}
-		_ = os.Remove(updatePIDPath())
-	}()
-	return nil
 }
 
 func SystemdActive() string {

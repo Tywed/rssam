@@ -58,20 +58,21 @@ func (s *Server) handleInboundWebhook(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusForbidden, "forbidden")
 		return
 	}
+	// An unknown id, a polled feed and a wrong signature all answer the
+	// same 401 after the same HMAC work, so the endpoint cannot be used to
+	// enumerate inbound feed ids.
 	feedID, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil || feedID <= 0 {
-		writeError(w, http.StatusNotFound, "not found")
-		return
+		feedID = 0
 	}
-	secret, err := s.inboundFeeds.InboundSecret(r.Context(), feedID)
-	if err != nil {
-		if errors.Is(err, storage.ErrNotFound) || errors.Is(err, storage.ErrNotInboundFeed) {
-			writeError(w, http.StatusNotFound, "not found")
+	secret := ""
+	if feedID > 0 {
+		secret, err = s.inboundFeeds.InboundSecret(r.Context(), feedID)
+		if err != nil && !errors.Is(err, storage.ErrNotFound) && !errors.Is(err, storage.ErrNotInboundFeed) {
+			s.log.ErrorContext(r.Context(), "inbound secret lookup failed", "feed_id", feedID, "err", err)
+			writeError(w, http.StatusInternalServerError, "internal server error")
 			return
 		}
-		s.log.ErrorContext(r.Context(), "inbound secret lookup failed", "feed_id", feedID, "err", err)
-		writeError(w, http.StatusInternalServerError, "internal server error")
-		return
 	}
 	body, err := io.ReadAll(io.LimitReader(r.Body, inboundMaxBodyBytes+1))
 	if err != nil {
@@ -80,6 +81,11 @@ func (s *Server) handleInboundWebhook(w http.ResponseWriter, r *http.Request) {
 	}
 	if len(body) > inboundMaxBodyBytes {
 		writeError(w, http.StatusRequestEntityTooLarge, "body too large")
+		return
+	}
+	if secret == "" {
+		inboundSignatureOK(r.Header.Get("X-RSSAM-Signature"), inboundDecoyKey, body)
+		writeError(w, http.StatusUnauthorized, "bad signature")
 		return
 	}
 	if !inboundSignatureOK(r.Header.Get("X-RSSAM-Signature"), secret, body) {
@@ -104,6 +110,11 @@ func (s *Server) handleInboundWebhook(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusAccepted, map[string]int{"received": len(entries), "inserted": inserted})
 }
+
+// inboundDecoyKey is used to spend the same HMAC on requests for feeds
+// that do not exist; it authenticates nothing because the comparison
+// result is discarded.
+var inboundDecoyKey = strings.Repeat("0", 32)
 
 // inboundAllowed applies INBOUND_WEBHOOK_ALLOW_CIDRS (empty = any source).
 func (s *Server) inboundAllowed(r *http.Request) bool {
@@ -172,8 +183,7 @@ func parseInboundPayload(body []byte, now time.Time) ([]bridge.Entry, error) {
 		hash := strings.TrimSpace(e.Hash)
 		if u != "" {
 			hash = model.DedupHashFromURL(u)
-		}
-		if hash == "" {
+		} else if !validDedupHash(hash) {
 			return nil, errors.New("entry without url")
 		}
 		out = append(out, bridge.Entry{
@@ -186,4 +196,19 @@ func parseInboundPayload(body []byte, now time.Time) ([]bridge.Entry, error) {
 		})
 	}
 	return out, nil
+}
+
+// validDedupHash accepts only what rssam itself produces (64 hex chars of
+// SHA-256); a sender cannot smuggle arbitrary text into the dedup key.
+func validDedupHash(h string) bool {
+	if len(h) != 64 {
+		return false
+	}
+	for i := 0; i < len(h); i++ {
+		c := h[i]
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
+			return false
+		}
+	}
+	return true
 }

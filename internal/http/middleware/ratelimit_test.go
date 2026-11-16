@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"testing"
 	"time"
 )
@@ -89,5 +90,49 @@ func TestIsSensitiveRoute(t *testing.T) {
 		if got := IsSensitiveRoute(r); got != tc.want {
 			t.Fatalf("%s %s: got %v want %v", tc.method, tc.path, got, tc.want)
 		}
+	}
+}
+
+func TestLimiterKey_IPv6Prefix(t *testing.T) {
+	cases := map[string]string{
+		"203.0.113.9":            "203.0.113.9",
+		"::ffff:203.0.113.9":     "203.0.113.9",
+		"2001:db8:1:2:3:4:5:6":   "2001:db8:1:2::/64",
+		"[2001:db8:1:2:ffff::1]": "2001:db8:1:2::/64",
+		"2001:db8:1:3::1":        "2001:db8:1:3::/64",
+		"not-an-ip":              "not-an-ip",
+		"":                       "unknown",
+	}
+	for in, want := range cases {
+		if got := LimiterKey(in); got != want {
+			t.Fatalf("LimiterKey(%q)=%q want %q", in, got, want)
+		}
+	}
+	l := NewLimiter(true, 1, 2)
+	if !l.Allow("2001:db8:1:2::1") || !l.Allow("2001:db8:1:2::2") {
+		t.Fatal("burst of 2 must pass")
+	}
+	if l.Allow("2001:db8:1:2:dead:beef::3") {
+		t.Fatal("third address of the same /64 must share the bucket")
+	}
+	if !l.Exhausted("2001:db8:1:2::9") || l.Exhausted("2001:db8:1:3::1") {
+		t.Fatal("Exhausted must use the same key normalisation")
+	}
+}
+
+func TestLimiter_EvictsToTargetNotOneByOne(t *testing.T) {
+	l := NewLimiter(true, 1, 1)
+	for i := range maxBuckets {
+		l.Allow("k" + strconv.Itoa(i))
+	}
+	if n := l.Len(); n != maxBuckets {
+		t.Fatalf("len=%d want %d", n, maxBuckets)
+	}
+	l.Allow("one-more")
+	if n := l.Len(); n != evictTarget+1 {
+		t.Fatalf("after overflow len=%d want %d", n, evictTarget+1)
+	}
+	if !l.Exhausted("k"+strconv.Itoa(maxBuckets-1)) || l.Exhausted("k0") {
+		t.Fatal("the oldest keys must be the ones evicted")
 	}
 }
