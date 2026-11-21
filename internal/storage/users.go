@@ -97,6 +97,7 @@ type UserStore interface {
 	LookupAPIKey(ctx context.Context, tokenHash string) (APIKey, error)
 	TouchAPIKeyUsed(ctx context.Context, keyID int64) error
 	ListAPIKeys(ctx context.Context, userID int64) ([]APIKey, error)
+	// CreateAPIKey fails with ErrTooManyAPIKeys at MaxAPIKeysPerUser.
 	CreateAPIKey(ctx context.Context, params CreateAPIKeyParams) (APIKey, error)
 	DeleteAPIKey(ctx context.Context, userID, keyID int64) error
 }
@@ -365,14 +366,21 @@ func (s *PostgresStore) CreateAPIKey(ctx context.Context, params CreateAPIKeyPar
 	if scope == "" {
 		scope = "admin"
 	}
+	// The count and the insert share one statement; a leaked credential
+	// cannot mint thousands of tokens, and a script in a loop cannot grow
+	// the table.
 	const q = `
 INSERT INTO api_keys(user_id, name, token_hash, scope, expires_at)
-VALUES ($1, $2, $3, $4, $5)
+SELECT $1, $2, $3, $4, $5
+WHERE (SELECT count(*) FROM api_keys WHERE user_id = $1) < $6
 RETURNING id, user_id, name, token_hash, scope, expires_at, last_used_at, created_at`
 	var k APIKey
-	err := s.db.QueryRow(ctx, q, params.UserID, strings.TrimSpace(params.Name), params.TokenHash, scope, params.ExpiresAt).
+	err := s.db.QueryRow(ctx, q, params.UserID, strings.TrimSpace(params.Name), params.TokenHash, scope, params.ExpiresAt, MaxAPIKeysPerUser).
 		Scan(&k.ID, &k.UserID, &k.Name, &k.TokenHash, &k.Scope, &k.ExpiresAt, &k.LastUsedAt, &k.CreatedAt)
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return APIKey{}, ErrTooManyAPIKeys
+		}
 		return APIKey{}, fmt.Errorf("create api key: %w", err)
 	}
 	return k, nil

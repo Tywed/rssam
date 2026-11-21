@@ -98,6 +98,7 @@ type Runner struct {
 	SystemAlerts      SystemAlertsConfig
 	paused            atomic.Bool
 	wake              dueWakers
+	db                dbOutage
 	inflight          inflightPolls
 	inflightHooks     inflightPolls
 	pausedHooks       duePauses[int64]
@@ -295,10 +296,11 @@ func (r *Runner) dispatchLoop(ctx context.Context, out chan<- storage.DueFeed) {
 		}
 		claim, err := r.Store.ClaimFeedsDue(ctx, min(r.Cfg.PoolSize, room), exclude, bridges, caps)
 		if err != nil {
-			r.Log.Error("dispatcher: claim due feeds failed", "err", err)
+			r.db.down(r.Log, "dispatcher: claim due feeds failed", err)
 			idleWait(ctx, r.wake.feeds, time.Time{}, false, r.Cfg.SchedulerTick)
 			continue
 		}
+		r.db.up(r.Log, "feed dispatcher")
 		if len(claim.Due) > 0 {
 			metrics.ClaimedJobs.Add(float64(len(claim.Due)))
 			claimedAt := time.Now().UTC()

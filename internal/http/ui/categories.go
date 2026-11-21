@@ -19,6 +19,12 @@ func (h *Handler) handleCategoriesList(w http.ResponseWriter, r *http.Request) {
 	}
 	data.Categories = cats
 	data.CategoryPollHours = h.cfg.CategoryPollHours != nil
+	if p, ok := principal(r); ok {
+		data.CurrentUserID = p.UserID
+	}
+	if p, ok := principal(r); ok && !p.IsAdmin() {
+		data.CategoryFollowers, _ = h.cfg.Categories.CountOtherCategoryFollowers(r.Context(), p.UserID)
+	}
 	data.FlashMsg, data.FlashErr = feedsFlash(r)
 	data.Title = "Категории"
 	h.render(w, r, "categories_list", data)
@@ -39,9 +45,10 @@ func (h *Handler) handleCategoryCreate(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	p, _ := principal(r)
 	// The quick form on the subscriptions page comes back there.
 	target := refererOr(r, "/ui/categories")
-	cat, err := h.cfg.Categories.CreateCategory(r.Context(), title, strings.TrimSpace(r.FormValue("color")))
+	cat, err := h.cfg.Categories.CreateCategory(r.Context(), p.UserID, title, strings.TrimSpace(r.FormValue("color")))
 	if err != nil {
 		if errors.Is(err, storage.ErrDuplicateCategory) {
 			feedsRedirect(w, r, target, feedsMsgCatDup, 0)
@@ -78,10 +85,15 @@ func (h *Handler) handleCategoryUpdate(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	_, err = h.cfg.Categories.UpdateCategory(r.Context(), id, title, strings.TrimSpace(r.FormValue("color")))
+	p, _ := principal(r)
+	_, err = h.cfg.Categories.UpdateCategory(r.Context(), storage.UpdateCategoryParams{ID: id, UserID: p.UserID, Admin: p.IsAdmin(), Title: title, Color: strings.TrimSpace(r.FormValue("color"))})
 	if err != nil {
 		if errors.Is(err, storage.ErrDuplicateCategory) {
 			feedsRedirect(w, r, "/ui/categories", feedsMsgCatDup, 0)
+			return
+		}
+		if errors.Is(err, storage.ErrNotCategoryOwner) {
+			http.Error(w, "Изменить категорию может только её автор или администратор.", http.StatusForbidden)
 			return
 		}
 		http.NotFound(w, r)
@@ -121,9 +133,21 @@ func (h *Handler) handleCategoryDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	target := refererOr(r, "/ui/categories")
-	if err := h.cfg.Categories.DeleteCategory(r.Context(), id); err != nil {
-		if errors.Is(err, storage.ErrCategoryNotEmpty) {
+	p, _ := principal(r)
+	var derr error
+	if p.IsAdmin() {
+		derr = h.cfg.Categories.DeleteCategoryByID(r.Context(), id)
+	} else {
+		derr = h.cfg.Categories.DeleteCategory(r.Context(), p.UserID, id)
+	}
+	if derr != nil {
+		if errors.Is(derr, storage.ErrCategoryNotEmpty) {
 			feedsRedirect(w, r, target, feedsMsgCatNotEmpty, 0)
+			return
+		}
+		var inUse *storage.CategoryInUseError
+		if errors.As(derr, &inUse) {
+			feedsRedirect(w, r, target, feedsMsgCatInUse, inUse.Followers)
 			return
 		}
 		http.NotFound(w, r)

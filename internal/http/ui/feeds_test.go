@@ -289,13 +289,17 @@ func (m *uiMemCategories) ListCategories(_ context.Context, limit, offset int) (
 	end := min(offset+limit, len(m.cats))
 	return m.cats[offset:end], len(m.cats), nil
 }
-func (m *uiMemCategories) CreateCategory(context.Context, string, string) (storage.Category, error) {
+func (m *uiMemCategories) CreateCategory(context.Context, int64, string, string) (storage.Category, error) {
 	return storage.Category{}, nil
 }
-func (m *uiMemCategories) UpdateCategory(context.Context, int64, string, string) (storage.Category, error) {
+func (m *uiMemCategories) UpdateCategory(context.Context, storage.UpdateCategoryParams) (storage.Category, error) {
 	return storage.Category{}, nil
 }
-func (m *uiMemCategories) DeleteCategory(context.Context, int64) error { return nil }
+func (m *uiMemCategories) DeleteCategory(context.Context, int64, int64) error { return nil }
+func (m *uiMemCategories) DeleteCategoryByID(context.Context, int64) error    { return nil }
+func (m *uiMemCategories) CountOtherCategoryFollowers(context.Context, int64) (map[int64]int, error) {
+	return nil, nil
+}
 func (m *uiMemCategories) FollowCategory(context.Context, int64, int64) (int, error) {
 	return 0, nil
 }

@@ -59,7 +59,7 @@ func (r *FeedRefresher) applyFilterAction(ctx context.Context, userID int64, ent
 		if !ok {
 			return
 		}
-		_ = r.WebhookLogs.EnqueueWebhookLogs(ctx, []int64{webhookID}, entry.ID)
+		_ = r.WebhookLogs.EnqueueOwnedWebhookLog(ctx, userID, webhookID, entry.ID)
 	case storage.FilterActionDelete:
 		if r.Entries == nil {
 			return

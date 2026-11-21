@@ -106,7 +106,7 @@ func TestIntegration_EntryDedupAndCollapse(t *testing.T) {
 	if len(remaining) != 2 {
 		t.Fatalf("remaining after collapse: %d (starred + webhook-pending)", len(remaining))
 	}
-	cat, _ := store.CreateCategory(ctx, "collapse", "")
+	cat, _ := store.CreateCategory(ctx, 0, "collapse", "")
 	if n64, err := store.CollapseEntriesToHashes(ctx, CollapseEntriesParams{UserID: owner.ID, CategoryID: &cat.ID}); err != nil || n64 != 0 {
 		t.Fatalf("collapse empty category: n=%d err=%v", n64, err)
 	}
@@ -120,7 +120,7 @@ func TestIntegration_EnclosuresUnreadCountsAndMarkAll(t *testing.T) {
 	ctx := context.Background()
 	owner := newIntegrationUser(t, store, "encl")
 	other := newIntegrationUser(t, store, "encl_other")
-	cat, _ := store.CreateCategory(ctx, "E", "")
+	cat, _ := store.CreateCategory(ctx, 0, "E", "")
 	feed := newFeedForUser(t, store, owner.ID, "encl", 60)
 	if _, err := store.UpdateFeed(ctx, owner.ID, UpdateFeedParams{ID: feed.ID, FeedURL: feed.FeedURL, Title: feed.Title, IntervalMinutes: 60, CategoryID: &cat.ID}); err != nil {
 		t.Fatal(err)

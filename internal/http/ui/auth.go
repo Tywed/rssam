@@ -75,11 +75,14 @@ type pageData struct {
 	// InboundEnabled: this instance accepts inbound webhooks (buttons shown).
 	// InboundFeed + InboundHookURL + InboundSecret: delivery details of the
 	// inbound feed on its page, editors only.
-	InboundEnabled            bool
-	InboundFeed               bool
-	InboundHookURL            string
-	InboundSecret             string
-	Categories                []storage.Category
+	InboundEnabled bool
+	InboundFeed    bool
+	InboundHookURL string
+	InboundSecret  string
+	Categories     []storage.Category
+	// CategoryFollowers: category id → how many other users follow it
+	// (editors only; decides whether the delete button is shown).
+	CategoryFollowers         map[int64]int
 	CategoryPollHours         bool
 	FeedID                    int64
 	CategoryID                int64
@@ -249,8 +252,13 @@ func requireSameOrigin(next http.Handler) http.Handler {
 
 func (h *Handler) requireAuth(next http.Handler) http.Handler {
 	return requireSameOrigin(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		p, sid, ok := h.authenticate(r)
+		p, sid, ok, err := h.authenticate(r)
 		if !ok {
+			if storage.IsLookupFailure(err) {
+				w.Header().Set("Retry-After", storage.UnavailableRetryAfter)
+				http.Error(w, "service unavailable", http.StatusServiceUnavailable)
+				return
+			}
 			http.Redirect(w, r, "/ui/login?next="+urlQueryEscape(r.URL.RequestURI()), http.StatusFound)
 			return
 		}
@@ -279,17 +287,19 @@ func requireRole(role string, next http.Handler) http.Handler {
 	})
 }
 
-func (h *Handler) authenticate(r *http.Request) (auth.Principal, string, bool) {
+// authenticate resolves the session cookie; a non-nil error means the
+// lookup itself failed (database down), not that the session is invalid.
+func (h *Handler) authenticate(r *http.Request) (auth.Principal, string, bool, error) {
 	if h.cfg.Sessions == nil || h.cfg.Users == nil {
-		return auth.Principal{}, "", false
+		return auth.Principal{}, "", false, nil
 	}
 	sid := auth.SessionIDFromRequest(r)
 	if sid == "" {
-		return auth.Principal{}, "", false
+		return auth.Principal{}, "", false, nil
 	}
 	sess, u, err := storage.LookupSessionUser(r.Context(), h.cfg.Sessions, h.cfg.Users, sid)
 	if err != nil {
-		return auth.Principal{}, "", false
+		return auth.Principal{}, "", false, err
 	}
 	now := time.Now().UTC()
 	if ttl := h.sessionTTL(); storage.SessionNeedsTouch(sess.ExpiresAt, now, ttl) {
@@ -297,7 +307,7 @@ func (h *Handler) authenticate(r *http.Request) (auth.Principal, string, bool) {
 			h.log.WarnContext(r.Context(), "touch session failed", "err", err)
 		}
 	}
-	return auth.Principal{UserID: u.ID, Role: u.Role, Username: u.Username}, sid, true
+	return auth.Principal{UserID: u.ID, Role: u.Role, Username: u.Username}, sid, true, nil
 }
 
 func principal(r *http.Request) (auth.Principal, bool) {
@@ -305,7 +315,7 @@ func principal(r *http.Request) (auth.Principal, bool) {
 }
 
 func (h *Handler) handleLoginGet(w http.ResponseWriter, r *http.Request) {
-	if _, _, ok := h.authenticate(r); ok {
+	if _, _, ok, _ := h.authenticate(r); ok {
 		http.Redirect(w, r, "/ui/unread", http.StatusFound)
 		return
 	}

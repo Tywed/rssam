@@ -3,6 +3,7 @@ package ui
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
@@ -173,6 +174,10 @@ func (h *Handler) handleFilterUpdate(w http.ResponseWriter, r *http.Request) {
 		Actions:      params.Actions,
 	})
 	if err != nil {
+		if errors.Is(err, storage.ErrInvalidReference) {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 		http.NotFound(w, r)
 		return
 	}

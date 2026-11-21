@@ -51,10 +51,11 @@ func (r *Runner) webhookDispatchLoop(ctx context.Context, out chan<- storage.Web
 		exclude = append(exclude, paused...)
 		logs, err := r.Store.ClaimDueWebhookLogs(ctx, r.Cfg.WebhookPoolSize, exclude)
 		if err != nil {
-			r.Log.Error("webhook dispatcher: claim due logs failed", "err", err)
+			r.db.down(r.Log, "webhook dispatcher: claim due logs failed", err)
 			idleWait(ctx, r.wake.webhooks, time.Time{}, false, r.Cfg.SchedulerTick)
 			continue
 		}
+		r.db.up(r.Log, "webhook dispatcher")
 		if len(logs) > 0 {
 			claimedAt := time.Now()
 			for _, l := range r.groupDigestLogs(ctx, logs) {
@@ -69,7 +70,7 @@ func (r *Runner) webhookDispatchLoop(ctx context.Context, out chan<- storage.Web
 		}
 		next, known, err := r.Store.NextWebhookRetryAt(ctx, exclude)
 		if err != nil {
-			r.Log.Error("webhook dispatcher: next retry failed", "err", err)
+			r.db.down(r.Log, "webhook dispatcher: next retry failed", err)
 		}
 		if anyPaused && (!known || resume.Before(next)) {
 			next, known = resume, true

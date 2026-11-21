@@ -14,7 +14,7 @@ func TestIntegration_CategoryPollHours(t *testing.T) {
 	ctx := context.Background()
 	owner := newIntegrationUser(t, store, "ph")
 
-	cat, err := store.CreateCategory(ctx, "Night", "")
+	cat, err := store.CreateCategory(ctx, 0, "Night", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -40,7 +40,7 @@ func TestIntegration_CategoryPollHours(t *testing.T) {
 	if err != nil || len(cats) != 1 || cats[0].PollHours != "08:00-22:00" {
 		t.Fatalf("list: %+v err=%v", cats, err)
 	}
-	upd, err := store.UpdateCategory(ctx, cat.ID, "Night2", "")
+	upd, err := store.UpdateCategory(ctx, UpdateCategoryParams{ID: cat.ID, Admin: true, Title: "Night2", Color: ""})
 	if err != nil || upd.PollHours != "08:00-22:00" {
 		t.Fatalf("title/color update must keep poll_hours: %+v err=%v", upd, err)
 	}

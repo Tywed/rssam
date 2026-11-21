@@ -126,6 +126,10 @@ func (s *Server) handleCreateFilter(w http.ResponseWriter, r *http.Request) {
 	}
 	f, err := s.filters.CreateFilter(r.Context(), params)
 	if err != nil {
+		if errors.Is(err, storage.ErrInvalidReference) {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
 		s.log.ErrorContext(r.Context(), "create filter failed", "err", err)
 		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
@@ -171,6 +175,10 @@ func (s *Server) handleUpdateFilter(w http.ResponseWriter, r *http.Request) {
 	}
 	f, err := s.filters.UpdateFilter(r.Context(), params)
 	if err != nil {
+		if errors.Is(err, storage.ErrInvalidReference) {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
 		s.storeError(w, r, err, "filter not found", "update filter failed")
 		return
 	}

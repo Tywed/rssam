@@ -16,7 +16,7 @@ func TestIntegration_UnreadCountersUseUnreadIndex(t *testing.T) {
 	store := isolatedStore(t)
 	ctx := context.Background()
 	alice := newIntegrationUser(t, store, "ui_alice")
-	cat, _ := store.CreateCategory(ctx, "c", "")
+	cat, _ := store.CreateCategory(ctx, 0, "c", "")
 	var feedIDs []int64
 	for i := 0; i < 4; i++ {
 		f, _ := newIntegrationFeedWithEntries(t, store, alice.ID, 300)

@@ -128,7 +128,7 @@ type alertMessage struct {
 func (a *systemAlerter) pass(ctx context.Context) {
 	hooks, err := a.store.ListSystemAlertWebhooks(ctx)
 	if err != nil {
-		a.r.Log.Error("system alerts: list webhooks failed", "err", err)
+		a.r.db.down(a.r.Log, "system alerts: list webhooks failed", err)
 		return
 	}
 	if len(hooks) == 0 {
@@ -143,7 +143,7 @@ func (a *systemAlerter) pass(ctx context.Context) {
 	}
 	msgs, next, err := a.diff(ctx)
 	if err != nil {
-		a.r.Log.Error("system alerts: collect failed", "err", err)
+		a.r.db.down(a.r.Log, "system alerts: collect failed", err)
 		return
 	}
 	changed := !a.seeded || len(msgs) > 0 || stateChanged(a.state, next)

@@ -21,6 +21,7 @@ const (
 	feedsMsgCatCreated  = "category_created"
 	feedsMsgCatDup      = "category_duplicate"
 	feedsMsgCatNotEmpty = "category_not_empty"
+	feedsMsgCatInUse    = "category_in_use"
 	feedsMsgCatDeleted  = "category_deleted"
 )
 
@@ -52,6 +53,8 @@ func feedsFlash(r *http.Request) (msg, errMsg string) {
 		return "", "Категория с таким названием уже есть."
 	case feedsMsgCatNotEmpty:
 		return "", "В категории есть ленты — сначала перенесите или удалите их."
+	case feedsMsgCatInUse:
+		return "", "Категорию читают ещё " + pluralRu(n, "человек", "человека", "человек") + " — удалить может только администратор; вы можете отписаться от неё."
 	case feedsMsgCatDeleted:
 		return "Категория удалена.", ""
 	}

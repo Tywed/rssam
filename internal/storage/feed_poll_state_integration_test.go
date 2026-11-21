@@ -44,7 +44,7 @@ VALUES ($1, 'https://example.com/ps.xml', 'rss', 'ps', 60) RETURNING id`, u.ID).
 	got := make(chan string, 16)
 	ready := make(chan struct{})
 	go func() {
-		_ = store.ListenDue(listenCtx, func(ch string) {
+		_ = store.ListenDue(listenCtx, nil, func(ch string) {
 			select {
 			case got <- ch:
 			default:

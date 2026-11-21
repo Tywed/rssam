@@ -68,25 +68,41 @@ func waitUntil(ctx context.Context, wake <-chan struct{}, next time.Time, known 
 	}
 }
 
-// listenDueLoop keeps one LISTEN connection and reconnects after a failure.
+// listenDueLoop keeps one LISTEN connection and reconnects after a failure
+// with a growing pause (listenRetryMin doubling to listenRetryMax, the
+// claim loops' own tick, so the listener is never the slower path). Once
+// LISTEN is in place it re-creates the UNLOGGED feed_poll_state rows (a
+// PostgreSQL crash empties them) and wakes both claim loops: a NOTIFY sent
+// while the connection was down is lost, and the loops would otherwise
+// learn about the row only at their next SchedulerTick.
 func (r *Runner) listenDueLoop(ctx context.Context) {
+	pause := listenRetryMin
 	for ctx.Err() == nil {
-		r.ensureFeedPollStateRows(ctx)
-		err := r.Store.ListenDue(ctx, r.wake.wake)
+		err := r.Store.ListenDue(ctx, func() {
+			pause = listenRetryMin
+			r.db.up(r.Log, "due listener")
+			r.ensureFeedPollStateRows(ctx)
+			r.wake.wake(storage.NotifyFeedsDue)
+			r.wake.wake(storage.NotifyWebhooksDue)
+		}, r.wake.wake)
 		if ctx.Err() != nil {
 			return
 		}
-		r.Log.Warn("due listener disconnected; retrying", "err", err)
-		idleWait(ctx, nil, time.Time{}, false, 5*time.Second)
+		r.db.down(r.Log, "due listener disconnected", err)
+		idleWait(ctx, nil, time.Time{}, false, pause)
+		pause = min(pause*2, listenRetryMax)
 	}
 }
 
-// ensureFeedPollStateRows runs on start and whenever the listener connection
-// was lost: a PostgreSQL crash empties the UNLOGGED feed_poll_state.
+const (
+	listenRetryMin = 5 * time.Second
+	listenRetryMax = 30 * time.Second
+)
+
 func (r *Runner) ensureFeedPollStateRows(ctx context.Context) {
 	n, err := r.Store.EnsureFeedPollStateRows(ctx)
 	if err != nil {
-		r.Log.Error("ensure feed poll state rows failed", "err", err)
+		r.db.down(r.Log, "ensure feed poll state rows failed", err)
 		return
 	}
 	if n > 0 {

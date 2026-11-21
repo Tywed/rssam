@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -159,6 +160,10 @@ func (h *Handler) handleAPIKeyCreate(w http.ResponseWriter, r *http.Request) {
 		ExpiresAt: expiresAt,
 	})
 	if err != nil {
+		if errors.Is(err, storage.ErrTooManyAPIKeys) {
+			http.Error(w, fmt.Sprintf("Не больше %d API-ключей на пользователя — удалите неиспользуемые.", storage.MaxAPIKeysPerUser), http.StatusBadRequest)
+			return
+		}
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}

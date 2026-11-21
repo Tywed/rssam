@@ -30,7 +30,7 @@ func TestIntegration_FeedListsMatchGetFeed(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = store.DeleteUser(context.Background(), u.ID) })
 
-	cat, err := store.CreateCategory(ctx, "c"+suffix, "")
+	cat, err := store.CreateCategory(ctx, 0, "c"+suffix, "")
 	if err != nil {
 		t.Fatalf("create category: %v", err)
 	}

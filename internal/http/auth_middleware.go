@@ -19,43 +19,52 @@ import (
 // authenticated by the session cookie (a browser), viaCookie is true so
 // callers can apply the cross-origin check to state-changing requests;
 // header tokens are never forgeable cross-site and skip it.
-func (s *Server) authenticateRequestSource(ctx context.Context, r *http.Request) (p auth.Principal, ok bool, viaCookie bool) {
+//
+// dbErr is set when the caller could not be resolved because a lookup
+// failed for a reason other than "no such token/session" (the database is
+// down): the caller answers 503, not 401.
+func (s *Server) authenticateRequestSource(ctx context.Context, r *http.Request) (p auth.Principal, ok bool, viaCookie bool, dbErr error) {
 	// A header token takes precedence: a scripted client that sends one is
 	// not a browser and must not be subject to the origin check even if a
 	// stale cookie is also attached.
 	token := tokenFromHeader(r)
 	if token == "" {
-		if p, ok := s.authenticateSession(ctx, r); ok {
-			return p, true, true
+		p, ok, err := s.authenticateSession(ctx, r)
+		if ok {
+			return p, true, true, nil
 		}
-		return auth.Principal{}, false, false
+		return auth.Principal{}, false, false, err
 	}
 
 	if s.users != nil {
 		hash := auth.HashToken(token)
 		if s.knownBadToken(hash) || s.badTokenLimiter.Exhausted(middleware.ClientIP(r)) {
-			return auth.Principal{}, false, false
+			return auth.Principal{}, false, false, nil
 		}
 		key, err := s.users.LookupAPIKey(ctx, hash)
 		if err == nil && !key.Expired(time.Now()) {
 			s.touchAPIKey(ctx, key.ID)
 			u, uerr := s.users.GetUser(ctx, key.UserID)
 			if uerr == nil {
-				return auth.Principal{UserID: u.ID, Role: u.Role, Username: u.Username, Scope: key.Scope, KeyID: key.ID}, true, false
+				return auth.Principal{UserID: u.ID, Role: u.Role, Username: u.Username, Scope: key.Scope, KeyID: key.ID}, true, false, nil
 			}
+			err = uerr
 		}
 		if errors.Is(err, storage.ErrNotFound) {
 			s.rememberBadToken(hash)
 			s.badTokenLimiter.Allow(middleware.ClientIP(r))
+		} else if err != nil {
+			dbErr = err
 		}
 	}
 
 	// Invalid header token: fall back to the cookie (a browser tab may also
 	// send a stale token header).
-	if p, ok := s.authenticateSession(ctx, r); ok {
-		return p, true, true
+	p, ok, err := s.authenticateSession(ctx, r)
+	if ok {
+		return p, true, true, nil
 	}
-	return auth.Principal{}, false, false
+	return auth.Principal{}, false, false, cmp.Or(dbErr, err)
 }
 
 const (
@@ -142,23 +151,26 @@ func tokenFromHeader(r *http.Request) string {
 	return ""
 }
 
-func (s *Server) authenticateSession(ctx context.Context, r *http.Request) (auth.Principal, bool) {
+func (s *Server) authenticateSession(ctx context.Context, r *http.Request) (auth.Principal, bool, error) {
 	if s.sessions == nil || s.users == nil {
-		return auth.Principal{}, false
+		return auth.Principal{}, false, nil
 	}
 	sessionID := auth.SessionIDFromRequest(r)
 	if sessionID == "" {
-		return auth.Principal{}, false
+		return auth.Principal{}, false, nil
 	}
 	sess, u, err := storage.LookupSessionUser(ctx, s.sessions, s.users, sessionID)
 	if err != nil {
-		return auth.Principal{}, false
+		if storage.IsLookupFailure(err) {
+			return auth.Principal{}, false, err
+		}
+		return auth.Principal{}, false, nil
 	}
 	now := time.Now().UTC()
 	if ttl := s.sessionTTL(); storage.SessionNeedsTouch(sess.ExpiresAt, now, ttl) {
 		_ = s.sessions.TouchSession(ctx, sessionID, now.Add(ttl))
 	}
-	return auth.Principal{UserID: u.ID, Role: u.Role, Username: u.Username, SessionID: sessionID}, true
+	return auth.Principal{UserID: u.ID, Role: u.Role, Username: u.Username, SessionID: sessionID}, true, nil
 }
 
 func (s *Server) wrapAPI(next http.Handler) http.Handler {
@@ -171,8 +183,15 @@ func (s *Server) wrapAPI(next http.Handler) http.Handler {
 			}
 		}
 
-		p, ok, viaCookie := s.authenticateRequestSource(r.Context(), r)
+		p, ok, viaCookie, dbErr := s.authenticateRequestSource(r.Context(), r)
 		if !ok {
+			// Not logged per request: the access log already carries the
+			// 503 and the worker reports the outage once a minute.
+			if storage.IsLookupFailure(dbErr) {
+				w.Header().Set("Retry-After", storage.UnavailableRetryAfter)
+				writeError(w, http.StatusServiceUnavailable, "service unavailable")
+				return
+			}
 			if s.rateLimiter != nil && s.rateLimiter.Enabled() && !s.rateLimiter.Allow(middleware.ClientIP(r)) {
 				writeError(w, http.StatusTooManyRequests, "rate limit exceeded")
 				return

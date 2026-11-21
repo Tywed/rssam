@@ -8,6 +8,6 @@ import (
 )
 
 func (s *Server) authenticateRequest(ctx context.Context, r *http.Request) (auth.Principal, bool) {
-	p, ok, _ := s.authenticateRequestSource(ctx, r)
+	p, ok, _, _ := s.authenticateRequestSource(ctx, r)
 	return p, ok
 }

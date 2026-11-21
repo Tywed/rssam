@@ -14,6 +14,8 @@ var (
 	// ErrInboundURLImmutable: an inbound feed's URL is its /hooks/{id} address.
 	ErrInboundURLImmutable = errors.New("feed_url of an inbound feed cannot be changed")
 	ErrInvalidReference    = errors.New("invalid reference")
+	// ErrTooManyAPIKeys: the user already has MaxAPIKeysPerUser keys.
+	ErrTooManyAPIKeys = errors.New("too many api keys")
 	// ErrNotFeedOwner: only the feed's author or an admin may change its URL
 	// (and with it the type); other subscribers share the row.
 	ErrNotFeedOwner = errors.New("only the feed author or an admin can change its URL")
@@ -21,7 +23,10 @@ var (
 	// per-user action must not destroy its payload.
 	ErrEntryShared = errors.New("entry is shared with other subscribers")
 	// ErrCategoryNotEmpty: a category with feeds cannot be deleted.
-	ErrCategoryNotEmpty  = errors.New("category has feeds")
+	ErrCategoryNotEmpty = errors.New("category has feeds")
+	// ErrNotCategoryOwner: only the category's author or an admin may
+	// rename or recolour it.
+	ErrNotCategoryOwner  = errors.New("only the category author or an admin can edit it")
 	ErrDuplicateCategory = errors.New("category title already exists")
 	// ErrFollowsCategory: the user reads the feed through its category and
 	// cannot drop the single feed.
@@ -43,7 +48,10 @@ const (
 // Category is shared by everybody: editors file feeds into it, readers
 // follow it as a whole (FollowCategory) or subscribe to single feeds.
 type Category struct {
-	ID        int64
+	ID int64
+	// OwnerID is the author (0 = none, e.g. created before 0.3.8 without
+	// an audit record); only the author or an admin edits the category.
+	OwnerID   int64
 	Title     string
 	Color     string
 	SortOrder int
@@ -261,11 +269,20 @@ type WebhookLog struct {
 }
 
 type CategoryStore interface {
-	CreateCategory(ctx context.Context, title, color string) (Category, error)
+	// CreateCategory records ownerID as the author (0 = none).
+	CreateCategory(ctx context.Context, ownerID int64, title, color string) (Category, error)
 	ListCategories(ctx context.Context, limit, offset int) ([]Category, int, error)
-	UpdateCategory(ctx context.Context, id int64, title, color string) (Category, error)
-	// DeleteCategory removes an empty category (ErrCategoryNotEmpty otherwise).
-	DeleteCategory(ctx context.Context, id int64) error
+	// UpdateCategory renames/recolours; ErrNotCategoryOwner unless the
+	// caller is the author or Admin is set.
+	UpdateCategory(ctx context.Context, params UpdateCategoryParams) (Category, error)
+	// DeleteCategory removes an empty category (ErrCategoryNotEmpty
+	// otherwise) that no other user follows (*CategoryInUseError
+	// otherwise). Admins use DeleteCategoryByID.
+	DeleteCategory(ctx context.Context, userID, id int64) error
+	DeleteCategoryByID(ctx context.Context, id int64) error
+	// CountOtherCategoryFollowers: category id → followers other than
+	// userID, for categories that have any.
+	CountOtherCategoryFollowers(ctx context.Context, userID int64) (map[int64]int, error)
 	ReorderCategories(ctx context.Context, ids []int64) error
 	// FollowCategory subscribes the user to every feed of the category now
 	// and in the future; it returns how many subscriptions were created.
@@ -461,6 +478,10 @@ type WebhookStore interface {
 type WebhookLogStore interface {
 	// EnqueueWebhookLogs inserts delivery rows idempotently.
 	EnqueueWebhookLogs(ctx context.Context, webhookIDs []int64, entryID int64) error
+
+	// EnqueueOwnedWebhookLog is EnqueueWebhookLogs for one webhook that must
+	// belong to userID; a foreign id enqueues nothing.
+	EnqueueOwnedWebhookLog(ctx context.Context, userID, webhookID, entryID int64) error
 
 	// ClaimDueWebhookLogs returns the oldest due row of every webhook not
 	// in excludeWebhooks.
@@ -713,6 +734,32 @@ type ListEntriesFilter struct {
 	// WithoutBody leaves Content and OriginalContent empty; for callers that
 	// only render titles.
 	WithoutBody bool
+}
+
+// Per-user ceilings on credentials. Keys are refused at the limit (the
+// user deletes old ones); sessions evict the soonest-expiring row, so a
+// user who never logs out does not accumulate rows beyond this.
+const (
+	MaxAPIKeysPerUser  = 20
+	MaxSessionsPerUser = 20
+)
+
+type UpdateCategoryParams struct {
+	ID     int64
+	UserID int64
+	Admin  bool
+	Title  string
+	Color  string
+}
+
+// CategoryInUseError: a non-admin tried to delete a category other users
+// follow.
+type CategoryInUseError struct {
+	Followers int
+}
+
+func (e *CategoryInUseError) Error() string {
+	return "category has " + strconv.Itoa(e.Followers) + " other follower(s)"
 }
 
 // FeedInUseError: a non-admin tried to delete a feed other users follow.

@@ -2,6 +2,7 @@ package httpserver
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -437,6 +438,10 @@ func (s *Server) handleCreateAPIKey(w http.ResponseWriter, r *http.Request) {
 		ExpiresAt: expiresAt,
 	})
 	if err != nil {
+		if errors.Is(err, storage.ErrTooManyAPIKeys) {
+			writeError(w, http.StatusBadRequest, fmt.Sprintf("too many api keys: the limit is %d per user, delete unused ones", storage.MaxAPIKeysPerUser))
+			return
+		}
 		s.log.ErrorContext(r.Context(), "create api key failed", "err", err)
 		writeError(w, http.StatusInternalServerError, "internal server error")
 		return

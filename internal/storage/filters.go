@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -86,7 +87,7 @@ RETURNING ` + filterSelectCols
 			}
 		}
 		if len(params.Actions) > 0 {
-			if err := insertFilterActions(ctx, tx, out.ID, params.Actions); err != nil {
+			if err := insertFilterActions(ctx, tx, params.UserID, out.ID, params.Actions); err != nil {
 				return err
 			}
 		}
@@ -164,7 +165,7 @@ RETURNING ` + filterSelectCols
 			}
 		}
 		if len(params.Actions) > 0 {
-			if err := insertFilterActions(ctx, tx, out.ID, params.Actions); err != nil {
+			if err := insertFilterActions(ctx, tx, params.UserID, out.ID, params.Actions); err != nil {
 				return err
 			}
 		}
@@ -539,16 +540,46 @@ func insertFilterScopeItems(ctx context.Context, tx pgx.Tx, filterID int64, item
 	return nil
 }
 
-func insertFilterActions(ctx context.Context, tx pgx.Tx, filterID int64, actions []CreateFilterActionParams) error {
+// insertFilterActions rejects a webhook or label of another user: the id in
+// action_param is a free-form string, so no FK protects it.
+func insertFilterActions(ctx context.Context, tx pgx.Tx, userID, filterID int64, actions []CreateFilterActionParams) error {
 	for _, a := range actions {
 		actionType := strings.ToLower(strings.TrimSpace(a.ActionType))
 		if actionType == "" {
 			continue
 		}
+		param := strings.TrimSpace(a.ActionParam)
+		if err := checkFilterActionRef(ctx, tx, userID, actionType, param); err != nil {
+			return err
+		}
 		const q = `INSERT INTO filter_actions(filter_id, action_type, action_param, priority) VALUES ($1, $2, $3, $4)`
-		if _, err := tx.Exec(ctx, q, filterID, actionType, strings.TrimSpace(a.ActionParam), a.Priority); err != nil {
+		if _, err := tx.Exec(ctx, q, filterID, actionType, param, a.Priority); err != nil {
 			return fmt.Errorf("insert filter action: %w", err)
 		}
+	}
+	return nil
+}
+
+func checkFilterActionRef(ctx context.Context, q querier, userID int64, actionType, param string) error {
+	var table string
+	switch actionType {
+	case FilterActionWebhook:
+		table = "webhooks"
+	case FilterActionLabel:
+		table = "labels"
+	default:
+		return nil
+	}
+	id, err := strconv.ParseInt(param, 10, 64)
+	if err != nil || id <= 0 {
+		return fmt.Errorf("%w: %s id %q", ErrInvalidReference, actionType, param)
+	}
+	var ok bool
+	if err := q.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM `+table+` WHERE id = $1 AND user_id = $2)`, id, userID).Scan(&ok); err != nil {
+		return fmt.Errorf("check filter action ref: %w", err)
+	}
+	if !ok {
+		return fmt.Errorf("%w: %s %d is not yours", ErrInvalidReference, actionType, id)
 	}
 	return nil
 }

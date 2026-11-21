@@ -21,7 +21,7 @@ func TestIntegration_SharedFeed_SubscribeBackfillAndFanOut(t *testing.T) {
 	ctx := context.Background()
 	alice := newIntegrationUser(t, store, "sf_alice")
 	bob := newIntegrationUser(t, store, "sf_bob")
-	cat, _ := store.CreateCategory(ctx, "Shared", "")
+	cat, _ := store.CreateCategory(ctx, 0, "Shared", "")
 
 	feed, entries := newIntegrationFeedWithEntries(t, store, alice.ID, SubscribeUnreadBackfill+20)
 	if _, err := store.UpdateFeed(ctx, alice.ID, UpdateFeedParams{ID: feed.ID, FeedURL: feed.FeedURL, Title: feed.Title, IntervalMinutes: 60, CategoryID: &cat.ID}); err != nil {
@@ -213,7 +213,7 @@ func TestIntegration_SharedFeed_CategoryBulkAndQuota(t *testing.T) {
 	ctx := context.Background()
 	alice := newIntegrationUser(t, store, "sfc_alice")
 	bob := newIntegrationUser(t, store, "sfc_bob")
-	cat, _ := store.CreateCategory(ctx, "A", "")
+	cat, _ := store.CreateCategory(ctx, 0, "A", "")
 	feed := newFeedForUser(t, store, alice.ID, "sfc", 60)
 	if _, err := store.UpdateFeed(ctx, alice.ID, UpdateFeedParams{ID: feed.ID, FeedURL: feed.FeedURL, Title: feed.Title, IntervalMinutes: 60, CategoryID: &cat.ID}); err != nil {
 		t.Fatal(err)
@@ -429,7 +429,7 @@ func TestIntegration_SharedFeed_CatalogAndDelete(t *testing.T) {
 	ctx := context.Background()
 	alice := newIntegrationUser(t, store, "sfc_alice")
 	bob := newIntegrationUser(t, store, "sfc_bob")
-	cat, _ := store.CreateCategory(ctx, "Cat", "")
+	cat, _ := store.CreateCategory(ctx, 0, "Cat", "")
 	aliceHook, err := store.CreateWebhook(ctx, CreateWebhookParams{UserID: alice.ID, Name: "a", Kind: WebhookKindHTTP, URL: "https://example.com/hook", Headers: []byte(`{}`), Enabled: true})
 	if err != nil {
 		t.Fatal(err)
@@ -532,12 +532,12 @@ func TestIntegration_CategoryFollow(t *testing.T) {
 	ctx := context.Background()
 	editor := newIntegrationUser(t, store, "cf_editor")
 	reader := newIntegrationUser(t, store, "cf_reader")
-	a, _ := store.CreateCategory(ctx, "A", "")
-	b, _ := store.CreateCategory(ctx, "B", "")
-	if _, err := store.CreateCategory(ctx, " a ", ""); !errors.Is(err, ErrDuplicateCategory) {
+	a, _ := store.CreateCategory(ctx, 0, "A", "")
+	b, _ := store.CreateCategory(ctx, 0, "B", "")
+	if _, err := store.CreateCategory(ctx, 0, " a ", ""); !errors.Is(err, ErrDuplicateCategory) {
 		t.Fatalf("case-insensitive duplicate title: %v", err)
 	}
-	if _, err := store.UpdateCategory(ctx, b.ID, "A", ""); !errors.Is(err, ErrDuplicateCategory) {
+	if _, err := store.UpdateCategory(ctx, UpdateCategoryParams{ID: b.ID, Admin: true, Title: "A", Color: ""}); !errors.Is(err, ErrDuplicateCategory) {
 		t.Fatalf("rename to an existing title: %v", err)
 	}
 
@@ -572,7 +572,7 @@ func TestIntegration_CategoryFollow(t *testing.T) {
 	if err := store.Unsubscribe(ctx, reader.ID, f1.ID); !errors.Is(err, ErrFollowsCategory) {
 		t.Fatalf("unsubscribe a followed feed: %v", err)
 	}
-	if err := store.DeleteCategory(ctx, a.ID); !errors.Is(err, ErrCategoryNotEmpty) {
+	if err := store.DeleteCategoryByID(ctx, a.ID); !errors.Is(err, ErrCategoryNotEmpty) {
 		t.Fatalf("delete non-empty category: %v", err)
 	}
 
@@ -641,7 +641,7 @@ func TestIntegration_CategoryFollow(t *testing.T) {
 	if err := store.DeleteFeedByID(ctx, f1.ID); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.DeleteCategory(ctx, b.ID); err != nil {
+	if err := store.DeleteCategoryByID(ctx, b.ID); err != nil {
 		t.Fatalf("delete empty category: %v", err)
 	}
 }

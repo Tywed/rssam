@@ -31,7 +31,7 @@ func newOpmlCategoryStore() *opmlCategoryStore {
 	return &opmlCategoryStore{nextID: 1, categories: make(map[string]storage.Category)}
 }
 
-func (s *opmlCategoryStore) CreateCategory(_ context.Context, title, color string) (storage.Category, error) {
+func (s *opmlCategoryStore) CreateCategory(_ context.Context, _ int64, title, color string) (storage.Category, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	key := strings.ToLower(strings.TrimSpace(title))
@@ -54,12 +54,20 @@ func (s *opmlCategoryStore) ListCategories(_ context.Context, _, _ int) ([]stora
 	return out, len(out), nil
 }
 
-func (s *opmlCategoryStore) UpdateCategory(_ context.Context, id int64, title, color string) (storage.Category, error) {
-	return storage.Category{ID: id, Title: title, Color: color}, nil
+func (s *opmlCategoryStore) UpdateCategory(_ context.Context, p storage.UpdateCategoryParams) (storage.Category, error) {
+	return storage.Category{ID: p.ID, Title: p.Title, Color: p.Color}, nil
 }
 
-func (s *opmlCategoryStore) DeleteCategory(_ context.Context, _ int64) error {
+func (s *opmlCategoryStore) DeleteCategory(_ context.Context, _, _ int64) error {
 	return nil
+}
+
+func (s *opmlCategoryStore) DeleteCategoryByID(_ context.Context, _ int64) error {
+	return nil
+}
+
+func (s *opmlCategoryStore) CountOtherCategoryFollowers(_ context.Context, _ int64) (map[int64]int, error) {
+	return nil, nil
 }
 
 func (s *opmlCategoryStore) ReorderCategories(_ context.Context, _ []int64) error {

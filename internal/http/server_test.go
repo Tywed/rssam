@@ -15,16 +15,20 @@ import (
 
 type fakeCategoryStore struct{}
 
-func (f *fakeCategoryStore) CreateCategory(_ context.Context, title, color string) (storage.Category, error) {
-	return storage.Category{ID: 1, Title: title, Color: color}, nil
+func (f *fakeCategoryStore) CreateCategory(_ context.Context, ownerID int64, title, color string) (storage.Category, error) {
+	return storage.Category{ID: 1, OwnerID: ownerID, Title: title, Color: color}, nil
 }
 func (f *fakeCategoryStore) ListCategories(_ context.Context, _, _ int) ([]storage.Category, int, error) {
 	return nil, 0, nil
 }
-func (f *fakeCategoryStore) UpdateCategory(_ context.Context, id int64, title, color string) (storage.Category, error) {
-	return storage.Category{ID: id, Title: title, Color: color}, nil
+func (f *fakeCategoryStore) UpdateCategory(_ context.Context, p storage.UpdateCategoryParams) (storage.Category, error) {
+	return storage.Category{ID: p.ID, Title: p.Title, Color: p.Color}, nil
 }
-func (f *fakeCategoryStore) DeleteCategory(_ context.Context, _ int64) error      { return nil }
+func (f *fakeCategoryStore) DeleteCategory(_ context.Context, _, _ int64) error  { return nil }
+func (f *fakeCategoryStore) DeleteCategoryByID(_ context.Context, _ int64) error { return nil }
+func (f *fakeCategoryStore) CountOtherCategoryFollowers(_ context.Context, _ int64) (map[int64]int, error) {
+	return nil, nil
+}
 func (f *fakeCategoryStore) ReorderCategories(_ context.Context, _ []int64) error { return nil }
 func (f *fakeCategoryStore) FollowCategory(_ context.Context, _, _ int64) (int, error) {
 	return 0, nil

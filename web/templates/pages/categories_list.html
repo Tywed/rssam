@@ -23,6 +23,7 @@
         <td class="cat-drag-handle" title="Перетащите для сортировки" aria-label="Перетащите для сортировки">⋮⋮</td>
         <td data-cat-color="{{.ID}}"><span class="cat-dot"></span></td>
         <td colspan="2">
+          {{if or $.IsAdmin (eq .OwnerID $.CurrentUserID)}}
           <form method="post" action="/ui/categories/{{.ID}}" class="cat-edit-form">
             <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
             <input name="title" value="{{.Title}}">
@@ -30,12 +31,20 @@
             {{if $.CategoryPollHours}}<input name="poll_hours" value="{{.PollHours}}" placeholder="часы опроса" size="12" pattern="\s*\d{1,2}:\d{2}\s*-\s*\d{1,2}:\d{2}\s*|" title="Окно опроса по времени сервера, например 08:00-22:00; пусто — круглосуточно">{{end}}
             <button class="btn btn-sm">Сохранить</button>
           </form>
+          {{else}}
+          <span>{{.Title}}</span>{{if and $.CategoryPollHours .PollHours}} <span class="meta">({{.PollHours}})</span>{{end}}
+          <span class="meta">— изменить может только автор или администратор</span>
+          {{end}}
         </td>
         <td>
+          {{if or $.IsAdmin (eq (index $.CategoryFollowers .ID) 0)}}
           <form method="post" action="/ui/categories/{{.ID}}/delete" data-confirm="Удалить?">
             <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
             <button class="btn btn-sm btn-danger">×</button>
           </form>
+          {{else}}
+          <span class="meta" title="Категорию читают ещё {{index $.CategoryFollowers .ID}} — удалить может только администратор">читают {{index $.CategoryFollowers .ID}}</span>
+          {{end}}
         </td>
       </tr>
       {{else}}

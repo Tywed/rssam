@@ -70,7 +70,8 @@ func (s *Server) handleListCategories(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleCreateCategory(w http.ResponseWriter, r *http.Request) {
-	if _, ok := requireStore(w, r, auth.RoleEditor, s.categories != nil, "category storage is not configured"); !ok {
+	p, ok := requireStore(w, r, auth.RoleEditor, s.categories != nil, "category storage is not configured")
+	if !ok {
 		return
 	}
 	var req categoryWriteRequest
@@ -89,7 +90,7 @@ func (s *Server) handleCreateCategory(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	category, err := s.categories.CreateCategory(r.Context(), req.Title, strings.TrimSpace(req.Color))
+	category, err := s.categories.CreateCategory(r.Context(), p.UserID, req.Title, strings.TrimSpace(req.Color))
 	if err != nil {
 		s.categoryError(w, r, err, "create category failed")
 		return
@@ -107,7 +108,7 @@ func (s *Server) handleCreateCategory(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleUpdateCategory(w http.ResponseWriter, r *http.Request) {
-	_, id, ok := requireStoreID(w, r, auth.RoleEditor, s.categories != nil, "category storage is not configured")
+	p, id, ok := requireStoreID(w, r, auth.RoleEditor, s.categories != nil, "category storage is not configured")
 	if !ok {
 		return
 	}
@@ -127,7 +128,7 @@ func (s *Server) handleUpdateCategory(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	category, err := s.categories.UpdateCategory(r.Context(), id, req.Title, strings.TrimSpace(req.Color))
+	category, err := s.categories.UpdateCategory(r.Context(), storage.UpdateCategoryParams{ID: id, UserID: p.UserID, Admin: p.IsAdmin(), Title: req.Title, Color: strings.TrimSpace(req.Color)})
 	if err != nil {
 		s.categoryError(w, r, err, "update category failed")
 		return
@@ -145,11 +146,17 @@ func (s *Server) handleUpdateCategory(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleDeleteCategory(w http.ResponseWriter, r *http.Request) {
-	_, id, ok := requireStoreID(w, r, auth.RoleEditor, s.categories != nil, "category storage is not configured")
+	p, id, ok := requireStoreID(w, r, auth.RoleEditor, s.categories != nil, "category storage is not configured")
 	if !ok {
 		return
 	}
-	if err := s.categories.DeleteCategory(r.Context(), id); err != nil {
+	var err error
+	if p.IsAdmin() {
+		err = s.categories.DeleteCategoryByID(r.Context(), id)
+	} else {
+		err = s.categories.DeleteCategory(r.Context(), p.UserID, id)
+	}
+	if err != nil {
 		s.categoryError(w, r, err, "delete category failed")
 		return
 	}
@@ -197,7 +204,14 @@ func (s *Server) categoryError(w http.ResponseWriter, r *http.Request, err error
 		writeError(w, http.StatusConflict, "category title already exists")
 	case errors.Is(err, storage.ErrCategoryNotEmpty):
 		writeError(w, http.StatusConflict, "category has feeds")
+	case errors.Is(err, storage.ErrNotCategoryOwner):
+		writeError(w, http.StatusForbidden, err.Error())
 	default:
+		var inUse *storage.CategoryInUseError
+		if errors.As(err, &inUse) {
+			writeError(w, http.StatusConflict, err.Error()+"; unfollow instead, or ask an admin")
+			return
+		}
 		s.storeError(w, r, err, "category not found", logMsg)
 	}
 }

@@ -301,7 +301,7 @@ func (s *Server) importOPML(r *http.Request, doc *opml.Document, userID int64, j
 			key := strings.ToLower(catTitle)
 			id, ok := categoryByTitle[key]
 			if !ok {
-				category, err := s.categories.CreateCategory(ctx, catTitle, "")
+				category, err := s.categories.CreateCategory(ctx, userID, catTitle, "")
 				if err != nil {
 					report.Errors = append(report.Errors, importErrorDTO{
 						Title:  catTitle,

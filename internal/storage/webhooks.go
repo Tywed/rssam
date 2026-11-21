@@ -304,6 +304,17 @@ func (s *PostgresStore) EnqueueWebhookLogs(ctx context.Context, webhookIDs []int
 	if entryID <= 0 || len(webhookIDs) == 0 {
 		return nil
 	}
+	return s.enqueueWebhookLogs(ctx, webhookIDs, entryID, nil)
+}
+
+func (s *PostgresStore) EnqueueOwnedWebhookLog(ctx context.Context, userID, webhookID, entryID int64) error {
+	if entryID <= 0 || webhookID <= 0 {
+		return nil
+	}
+	return s.enqueueWebhookLogs(ctx, []int64{webhookID}, entryID, &userID)
+}
+
+func (s *PostgresStore) enqueueWebhookLogs(ctx context.Context, webhookIDs []int64, entryID int64, ownerID *int64) error {
 	// A digest webhook's rows become due at the end of the current window
 	// (windows are aligned to local midnight, like poll hours); everything
 	// else is due immediately.
@@ -314,9 +325,9 @@ SELECT w.id, e.id, e.feed_id, 'pending', 0,
        THEN date_bin(make_interval(mins => w.digest_minutes), now(), $3::timestamptz) + make_interval(mins => w.digest_minutes)
        ELSE now() END
 FROM webhooks w, entries e
-WHERE w.id = ANY($1::bigint[]) AND e.id = $2
+WHERE w.id = ANY($1::bigint[]) AND e.id = $2 AND ($4::bigint IS NULL OR w.user_id = $4)
 ON CONFLICT (webhook_id, entry_id) DO NOTHING`
-	_, err := s.db.Exec(ctx, q, webhookIDs, entryID, DigestWindowOrigin(time.Now()))
+	_, err := s.db.Exec(ctx, q, webhookIDs, entryID, DigestWindowOrigin(time.Now()), ownerID)
 	if err != nil {
 		return fmt.Errorf("enqueue webhook logs: %w", err)
 	}

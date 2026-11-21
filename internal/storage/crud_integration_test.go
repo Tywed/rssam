@@ -17,18 +17,18 @@ func TestIntegration_CategoriesAndFeedUpdate(t *testing.T) {
 	owner := newIntegrationUser(t, store, "crud")
 	other := newIntegrationUser(t, store, "crud_other")
 
-	news, err := store.CreateCategory(ctx, "News", "#111111")
+	news, err := store.CreateCategory(ctx, 0, "News", "#111111")
 	if err != nil {
 		t.Fatal(err)
 	}
-	tech, err := store.CreateCategory(ctx, "Tech", "#222222")
+	tech, err := store.CreateCategory(ctx, 0, "Tech", "#222222")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.UpdateCategory(ctx, news.ID+1000, "Hijack", ""); !errors.Is(err, ErrNotFound) {
+	if _, err := store.UpdateCategory(ctx, UpdateCategoryParams{ID: news.ID + 1000, Admin: true, Title: "Hijack", Color: ""}); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("missing update: err=%v", err)
 	}
-	upd, err := store.UpdateCategory(ctx, news.ID, "World", " #333333 ")
+	upd, err := store.UpdateCategory(ctx, UpdateCategoryParams{ID: news.ID, Admin: true, Title: "World", Color: " #333333 "})
 	if err != nil || upd.Title != "World" || upd.Color != "#333333" {
 		t.Fatalf("update category: %+v err=%v", upd, err)
 	}
@@ -84,23 +84,23 @@ func TestIntegration_CategoriesAndFeedUpdate(t *testing.T) {
 	}
 
 	// A category with feeds cannot be deleted; an empty one can.
-	if err := store.DeleteCategory(ctx, tech.ID); !errors.Is(err, ErrCategoryNotEmpty) {
+	if err := store.DeleteCategoryByID(ctx, tech.ID); !errors.Is(err, ErrCategoryNotEmpty) {
 		t.Fatalf("delete non-empty category: err=%v", err)
 	}
-	if err := store.DeleteCategory(ctx, tech.ID+1000); !errors.Is(err, ErrNotFound) {
+	if err := store.DeleteCategoryByID(ctx, tech.ID+1000); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("delete missing category: err=%v", err)
 	}
 	if _, err := store.UpdateFeed(ctx, owner.ID, UpdateFeedParams{ID: feed.ID, FeedURL: feed.FeedURL, Title: "x", IntervalMinutes: 45}); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.DeleteCategory(ctx, tech.ID); err != nil {
+	if err := store.DeleteCategoryByID(ctx, tech.ID); err != nil {
 		t.Fatal(err)
 	}
 	got, _ = store.GetFeed(ctx, owner.ID, feed.ID)
 	if got.CategoryID != nil {
 		t.Fatalf("feed still has a category: %+v", got)
 	}
-	if err := store.DeleteCategory(ctx, tech.ID); !errors.Is(err, ErrNotFound) {
+	if err := store.DeleteCategoryByID(ctx, tech.ID); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("double delete: err=%v", err)
 	}
 }
@@ -109,8 +109,8 @@ func TestIntegration_BulkUpdateFeedsByCategory(t *testing.T) {
 	store := isolatedStore(t)
 	ctx := context.Background()
 	owner := newIntegrationUser(t, store, "bulk")
-	cat, _ := store.CreateCategory(ctx, "Bulk", "")
-	dest, _ := store.CreateCategory(ctx, "Dest", "")
+	cat, _ := store.CreateCategory(ctx, 0, "Bulk", "")
+	dest, _ := store.CreateCategory(ctx, 0, "Dest", "")
 	missingCat := dest.ID + 1000
 
 	a := newFeedForUser(t, store, owner.ID, "a", 10)
@@ -197,7 +197,7 @@ func TestIntegration_SearchFeedsAndListByIDs(t *testing.T) {
 	ctx := context.Background()
 	owner := newIntegrationUser(t, store, "fsearch")
 	other := newIntegrationUser(t, store, "fsearch_other")
-	cat, _ := store.CreateCategory(ctx, "S", "")
+	cat, _ := store.CreateCategory(ctx, 0, "S", "")
 
 	mk := func(userID int64, title, url string, catID *int64) Feed {
 		t.Helper()

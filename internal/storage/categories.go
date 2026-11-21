@@ -9,11 +9,11 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-const categoryColumns = `id, title, color, sort_order, poll_hours, created_at, updated_at`
+const categoryColumns = `id, COALESCE(owner_id, 0), title, color, sort_order, poll_hours, created_at, updated_at`
 
 func scanCategory(row pgx.Row) (Category, error) {
 	var c Category
-	if err := row.Scan(&c.ID, &c.Title, &c.Color, &c.SortOrder, &c.PollHours, &c.CreatedAt, &c.UpdatedAt); err != nil {
+	if err := row.Scan(&c.ID, &c.OwnerID, &c.Title, &c.Color, &c.SortOrder, &c.PollHours, &c.CreatedAt, &c.UpdatedAt); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return Category{}, ErrNotFound
 		}
@@ -22,11 +22,11 @@ func scanCategory(row pgx.Row) (Category, error) {
 	return c, nil
 }
 
-func (s *PostgresStore) CreateCategory(ctx context.Context, title, color string) (Category, error) {
+func (s *PostgresStore) CreateCategory(ctx context.Context, ownerID int64, title, color string) (Category, error) {
 	c, err := scanCategory(s.db.QueryRow(ctx, `
-INSERT INTO categories(title, color, sort_order)
-VALUES ($1, $2, COALESCE((SELECT MAX(sort_order) + 1 FROM categories), 0))
-RETURNING `+categoryColumns, strings.TrimSpace(title), strings.TrimSpace(color)))
+INSERT INTO categories(owner_id, title, color, sort_order)
+VALUES (NULLIF($3, 0), $1, $2, COALESCE((SELECT MAX(sort_order) + 1 FROM categories), 0))
+RETURNING `+categoryColumns, strings.TrimSpace(title), strings.TrimSpace(color), ownerID))
 	if err != nil {
 		if isUniqueViolation(err) {
 			return Category{}, ErrDuplicateCategory
@@ -58,7 +58,7 @@ func (s *PostgresStore) ListCategories(ctx context.Context, limit, offset int) (
 	total := 0
 	for rows.Next() {
 		var c Category
-		if err := rows.Scan(&c.ID, &c.Title, &c.Color, &c.SortOrder, &c.PollHours, &c.CreatedAt, &c.UpdatedAt, &total); err != nil {
+		if err := rows.Scan(&c.ID, &c.OwnerID, &c.Title, &c.Color, &c.SortOrder, &c.PollHours, &c.CreatedAt, &c.UpdatedAt, &total); err != nil {
 			return nil, 0, fmt.Errorf("scan categories: %w", err)
 		}
 		out = append(out, c)
@@ -69,13 +69,22 @@ func (s *PostgresStore) ListCategories(ctx context.Context, limit, offset int) (
 	return out, total, nil
 }
 
-func (s *PostgresStore) UpdateCategory(ctx context.Context, id int64, title, color string) (Category, error) {
+func (s *PostgresStore) UpdateCategory(ctx context.Context, params UpdateCategoryParams) (Category, error) {
+	// One statement: the row is updated only when the caller may; the
+	// second branch of the query tells "not yours" from "no such row".
 	c, err := scanCategory(s.db.QueryRow(ctx, `
 UPDATE categories SET title = $2, color = $3, updated_at = now()
-WHERE id = $1
-RETURNING `+categoryColumns, id, strings.TrimSpace(title), strings.TrimSpace(color)))
+WHERE id = $1 AND ($4 OR owner_id = $5)
+RETURNING `+categoryColumns, params.ID, strings.TrimSpace(params.Title), strings.TrimSpace(params.Color), params.Admin, params.UserID))
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {
+			var exists bool
+			if qerr := s.db.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM categories WHERE id = $1)`, params.ID).Scan(&exists); qerr != nil {
+				return Category{}, fmt.Errorf("update category: %w", qerr)
+			}
+			if exists {
+				return Category{}, ErrNotCategoryOwner
+			}
 			return Category{}, err
 		}
 		if isUniqueViolation(err) {
@@ -118,7 +127,51 @@ WHERE c.id = o.id`, ids); err != nil {
 	})
 }
 
-func (s *PostgresStore) DeleteCategory(ctx context.Context, id int64) error {
+func (s *PostgresStore) DeleteCategory(ctx context.Context, userID, id int64) error {
+	const q = `
+WITH others AS (
+  SELECT count(*)::int AS n FROM category_followers WHERE category_id = $1 AND user_id <> $2
+), d AS (
+  DELETE FROM categories WHERE id = $1 AND (SELECT n FROM others) = 0
+  RETURNING id
+)
+SELECT (SELECT n FROM others), EXISTS (SELECT 1 FROM d)`
+	var others int
+	var deleted bool
+	if err := s.db.QueryRow(ctx, q, id, userID).Scan(&others, &deleted); err != nil {
+		if isForeignKeyViolation(err) {
+			return ErrCategoryNotEmpty
+		}
+		return fmt.Errorf("delete category: %w", err)
+	}
+	if deleted {
+		return nil
+	}
+	if others > 0 {
+		return &CategoryInUseError{Followers: others}
+	}
+	return ErrNotFound
+}
+
+func (s *PostgresStore) CountOtherCategoryFollowers(ctx context.Context, userID int64) (map[int64]int, error) {
+	rows, err := s.db.Query(ctx, `SELECT category_id, count(*)::int FROM category_followers WHERE user_id <> $1 GROUP BY category_id`, userID)
+	if err != nil {
+		return nil, fmt.Errorf("count category followers: %w", err)
+	}
+	defer rows.Close()
+	out := map[int64]int{}
+	for rows.Next() {
+		var id int64
+		var n int
+		if err := rows.Scan(&id, &n); err != nil {
+			return nil, fmt.Errorf("scan category followers: %w", err)
+		}
+		out[id] = n
+	}
+	return out, rows.Err()
+}
+
+func (s *PostgresStore) DeleteCategoryByID(ctx context.Context, id int64) error {
 	cmd, err := s.db.Exec(ctx, `DELETE FROM categories WHERE id = $1`, id)
 	if err != nil {
 		if isForeignKeyViolation(err) {

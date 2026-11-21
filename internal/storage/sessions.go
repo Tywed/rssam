@@ -36,6 +36,8 @@ type Session struct {
 }
 
 type SessionStore interface {
+	// CreateSession keeps at most MaxSessionsPerUser rows per user: the
+	// ones expiring soonest are dropped (their browsers log out).
 	CreateSession(ctx context.Context, userID int64, sessionID string, expiresAt time.Time) (Session, error)
 	LookupSession(ctx context.Context, sessionID string) (Session, error)
 	TouchSession(ctx context.Context, sessionID string, expiresAt time.Time) error
@@ -59,12 +61,21 @@ WHERE id IN (
 }
 
 func (s *PostgresStore) CreateSession(ctx context.Context, userID int64, sessionID string, expiresAt time.Time) (Session, error) {
+	// The DELETE sees the snapshot before the INSERT, so OFFSET limit-1
+	// keeps limit-1 old rows plus the new one; one round trip, one index
+	// scan on user_id, no write when the user is under the limit.
 	const q = `
-INSERT INTO sessions(user_id, session_id, expires_at)
-VALUES ($1, $2, $3)
-RETURNING id, user_id, session_id, expires_at, created_at`
+WITH ins AS (
+  INSERT INTO sessions(user_id, session_id, expires_at)
+  VALUES ($1, $2, $3)
+  RETURNING id, user_id, session_id, expires_at, created_at
+), evict AS (
+  DELETE FROM sessions WHERE id IN (
+    SELECT id FROM sessions WHERE user_id = $1 ORDER BY expires_at DESC, id DESC OFFSET $4)
+)
+SELECT id, user_id, session_id, expires_at, created_at FROM ins`
 	var sess Session
-	err := s.db.QueryRow(ctx, q, userID, sessionID, expiresAt).
+	err := s.db.QueryRow(ctx, q, userID, sessionID, expiresAt, MaxSessionsPerUser-1).
 		Scan(&sess.ID, &sess.UserID, &sess.SessionID, &sess.ExpiresAt, &sess.CreatedAt)
 	if err != nil {
 		return Session{}, fmt.Errorf("create session: %w", err)

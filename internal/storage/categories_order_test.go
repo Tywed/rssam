@@ -29,15 +29,15 @@ func TestIntegration_ReorderCategories(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = store.DeleteUser(context.Background(), u.ID) })
 
-	c1, err := store.CreateCategory(ctx, "Alpha", "")
+	c1, err := store.CreateCategory(ctx, 0, "Alpha", "")
 	if err != nil {
 		t.Fatalf("create c1: %v", err)
 	}
-	c2, err := store.CreateCategory(ctx, "Beta", "")
+	c2, err := store.CreateCategory(ctx, 0, "Beta", "")
 	if err != nil {
 		t.Fatalf("create c2: %v", err)
 	}
-	c3, err := store.CreateCategory(ctx, "Gamma", "")
+	c3, err := store.CreateCategory(ctx, 0, "Gamma", "")
 	if err != nil {
 		t.Fatalf("create c3: %v", err)
 	}

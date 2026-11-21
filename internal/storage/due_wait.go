@@ -29,10 +29,11 @@ func (s *PostgresStore) NextWebhookRetryAt(ctx context.Context, excludeWebhooks 
 	return *at, true, nil
 }
 
-// ListenDue holds one connection on the due channels and calls onNotify with
-// the channel name for every notification until ctx ends or the connection
-// fails; the caller reconnects.
-func (s *PostgresStore) ListenDue(ctx context.Context, onNotify func(channel string)) error {
+// ListenDue holds one connection on the due channels, calls onListening
+// once LISTEN is in place, then onNotify with the channel name for every
+// notification until ctx ends or the connection fails; the caller
+// reconnects.
+func (s *PostgresStore) ListenDue(ctx context.Context, onListening func(), onNotify func(channel string)) error {
 	pooled, err := s.db.Acquire(ctx)
 	if err != nil {
 		return fmt.Errorf("listen: acquire: %w", err)
@@ -44,6 +45,9 @@ func (s *PostgresStore) ListenDue(ctx context.Context, onNotify func(channel str
 		if _, err := conn.Exec(ctx, "LISTEN "+ch); err != nil {
 			return fmt.Errorf("listen %s: %w", ch, err)
 		}
+	}
+	if onListening != nil {
+		onListening()
 	}
 	for {
 		n, err := conn.WaitForNotification(ctx)

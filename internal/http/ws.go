@@ -18,8 +18,13 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "websocket is disabled")
 		return
 	}
-	p, ok, viaCookie := s.authenticateRequestSource(r.Context(), r)
+	p, ok, viaCookie, dbErr := s.authenticateRequestSource(r.Context(), r)
 	if !ok || p.UserID <= 0 {
+		if storage.IsLookupFailure(dbErr) {
+			w.Header().Set("Retry-After", storage.UnavailableRetryAfter)
+			writeError(w, http.StatusServiceUnavailable, "service unavailable")
+			return
+		}
 		writeError(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}

@@ -16,7 +16,7 @@ func TestIntegration_DueNotifications(t *testing.T) {
 	defer cancel()
 
 	got := make(chan string, 16)
-	go func() { _ = store.ListenDue(ctx, func(ch string) { got <- ch }) }()
+	go func() { _ = store.ListenDue(ctx, nil, func(ch string) { got <- ch }) }()
 	// LISTEN must be in place before the first write.
 	time.Sleep(300 * time.Millisecond)
 

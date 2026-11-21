@@ -33,11 +33,11 @@ func TestIntegration_FeedCountsByCategory(t *testing.T) {
 	ctx := context.Background()
 	u := testUser(t, store, ctx, "counts_")
 
-	cat1, err := store.CreateCategory(ctx, "Telegram", "")
+	cat1, err := store.CreateCategory(ctx, 0, "Telegram", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	cat2, err := store.CreateCategory(ctx, "VK", "")
+	cat2, err := store.CreateCategory(ctx, 0, "VK", "")
 	if err != nil {
 		t.Fatal(err)
 	}

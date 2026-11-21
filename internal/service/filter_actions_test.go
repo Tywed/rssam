@@ -109,6 +109,10 @@ func (m *memWebhookLogStore) EnqueueWebhookLogs(_ context.Context, webhookIDs []
 	m.enqueued = append(m.enqueued, webhookIDs...)
 	return nil
 }
+func (m *memWebhookLogStore) EnqueueOwnedWebhookLog(_ context.Context, _, webhookID, _ int64) error {
+	m.enqueued = append(m.enqueued, webhookID)
+	return nil
+}
 func (m *memWebhookLogStore) ClaimDueWebhookLogs(context.Context, int, []int64) ([]storage.WebhookLog, error) {
 	return nil, nil
 }
