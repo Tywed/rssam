@@ -120,6 +120,11 @@ func TestIntegration_FeedPollStateUnloggedAndRecreated(t *testing.T) {
 	if n, err := store.EnsureFeedPollStateRows(ctx); err != nil || n != 0 {
 		t.Fatalf("nothing missing: n=%d err=%v", n, err)
 	}
+	// A relay feed keeps no entries; its last item lives in the dedup table.
+	lastSeen := time.Now().Add(-2 * time.Hour).Truncate(time.Second)
+	if _, err := store.db.Exec(ctx, `INSERT INTO feed_entry_dedup (feed_id, hash, first_seen_at) VALUES ($1, '\x01', $2), ($1, '\x02', $2 - interval '1 day')`, created.ID, lastSeen); err != nil {
+		t.Fatal(err)
+	}
 	// What a crash does to an UNLOGGED table.
 	if _, err := store.db.Exec(ctx, `TRUNCATE feed_poll_state`); err != nil {
 		t.Fatal(err)
@@ -134,6 +139,9 @@ func TestIntegration_FeedPollStateUnloggedAndRecreated(t *testing.T) {
 	got, err := store.GetFeedByID(ctx, created.ID)
 	if err != nil || got.NextCheckAt == nil || got.ETag != "" || got.ParsingErrorCount != 0 {
 		t.Fatalf("feed after re-creation: %+v err=%v", got, err)
+	}
+	if got.LastEntryAt == nil || !got.LastEntryAt.Equal(lastSeen) || got.LastSuccessAt == nil || !got.LastSuccessAt.Equal(lastSeen) {
+		t.Fatalf("last_entry_at/last_success_at must come back from the dedup table: %v / %v, want %v", got.LastEntryAt, got.LastSuccessAt, lastSeen)
 	}
 	// Re-created rows are spread over the next 30 minutes, not all due now.
 	if d := time.Until(*got.NextCheckAt); d < -time.Second || d > 30*time.Minute {

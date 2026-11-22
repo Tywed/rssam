@@ -46,6 +46,12 @@ func TestIntegration_DailyReset_KeepsDeadFeeds(t *testing.T) {
 	}
 	fail(dead, "fetch feed: unexpected status code: 404", 3)
 	fail(quota, "maxstat api error insufficient_credits: Not enough credits", 1)
+	// One blocked answer is not death yet (a 403 from a CDN hiccup after a
+	// state-table rebuild would otherwise park an old feed for a day).
+	if list, err := store.ListDeadFeeds(ctx); err != nil || len(list) != 1 || list[0].ID != dead.ID {
+		t.Fatalf("one blocked error must not be dead: %+v err=%v", list, err)
+	}
+	fail(quota, "maxstat api error insufficient_credits: Not enough credits", 2)
 	fail(recent, "fetch feed: unexpected status code: 404", 3)
 	fail(plain, "fetch feed: parse feed: failed to detect feed type", 2)
 

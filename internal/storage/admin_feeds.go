@@ -112,8 +112,9 @@ const (
 
 var adminFeedsGoneWhere = fmt.Sprintf(`(COALESCE(ps.last_error, '') ~* '%s' AND ps.parsing_error_count >= %d)`, adminFeedsGoneErrorRegexp, goneAfterErrors)
 
-// DeadFeedAfter: a gone or blocked feed with no successful poll for this
-// long (never, for a feed younger than this) is dead for the daily reset:
+// DeadFeedAfter: a gone or blocked feed that failed goneAfterErrors polls
+// in a row and had no successful poll for this long (never, for a feed
+// younger than this) is dead for the daily reset:
 // it keeps its error state and gets one control poll a day instead of
 // returning to its interval. On the production fleet 36 such feeds cost
 // 1430 polls a day through the proxies, and none of them came back in 30
@@ -123,8 +124,9 @@ const DeadFeedAfter = 3 * 24 * time.Hour
 // adminFeedsDeadWhere needs feeds f and feed_poll_state ps in scope.
 var adminFeedsDeadWhere = fmt.Sprintf(`(f.manual_paused = FALSE
   AND (%s OR %s)
+  AND ps.parsing_error_count >= %d
   AND COALESCE(ps.last_success_at, f.created_at) < now() - interval '%d seconds')`,
-	adminFeedsGoneWhere, adminFeedsBlockedWhere, int64(DeadFeedAfter/time.Second))
+	adminFeedsGoneWhere, adminFeedsBlockedWhere, goneAfterErrors, int64(DeadFeedAfter/time.Second))
 
 // FeedTypeStat is one feed_type on the bridges page: how many feeds use
 // it and how many of them currently see unrecognised markup.

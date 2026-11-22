@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.3.10
+
+Миграций нет.
+
+- После аварийной остановки PostgreSQL (UNLOGGED `feed_poll_state` пуста) строки восстанавливались с `last_entry_at` только по таблице `entries` — на relay-инстансе записи после доставки удаляются, и 2179 из 2251 лент прода разом стали «молчат > 14 дн.», 1283 — «без записей > 90 дн.», то есть ушли на интервалы медленных ярусов (`FEED_SILENT_INTERVAL` / `FEED_DORMANT_INTERVAL`) вместо своих. Теперь `last_entry_at` и `last_success_at` восстанавливаются ещё и по `feed_entry_dedup` (последняя увиденная запись = последний заведомо успешный опрос). Разовая починка уже восстановленных строк выполнена на проде (1702 строки): `UPDATE feed_poll_state ps SET last_entry_at = GREATEST(ps.last_entry_at, d.seen), last_success_at = GREATEST(ps.last_success_at, d.seen) FROM (SELECT feed_id, max(first_seen_at) AS seen FROM feed_entry_dedup GROUP BY feed_id) d WHERE d.feed_id = ps.feed_id AND (ps.last_entry_at IS NULL OR ps.last_entry_at < d.seen)`. Класс «мёртвая» для суточного сброса дополнительно требует ≥ 3 ошибок подряд и для «заблокирована» — одиночный 403 после такого восстановления (когда `last_success_at` пуст) не отправит старую ленту на один опрос в сутки.
+
 ## 0.3.9
 
 Миграций нет. Новый ключ `.env`: `DAILY_SUMMARY` (по умолчанию выключен). Новый тип системного уведомления `feeds_dead` и (при `DAILY_SUMMARY=true`) `daily_summary` — см. docs/WEBHOOK_RECEIVER_SPEC.md.
