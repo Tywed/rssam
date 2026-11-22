@@ -23,6 +23,11 @@ func TestIsSoftFailure(t *testing.T) {
 		errors.New("http request: read tcp 10.0.0.1:1->1.2.3.4:443: read: connection reset by peer"),
 		errors.New("ssrf: dns lookup failed: lookup dzen.ru on 127.0.0.53:53: server misbehaving"),
 		&net.DNSError{Err: "timeout", IsTimeout: true},
+		errors.New("dzen_channel: channel not found"),
+		errors.New("unexpected status code: 503"),
+		errors.New("unexpected status code: 429"),
+		errors.New("dzen_channel: unexpected status 502"),
+		errors.New(`max: unexpected status 500: {"detail":"Internal Server Error"}`),
 	}
 	for _, err := range soft {
 		if !IsSoftFailure(err) {
@@ -31,6 +36,8 @@ func TestIsSoftFailure(t *testing.T) {
 	}
 	hard := []error{
 		errors.New("unexpected status code: 404"),
+		errors.New("unexpected status code: 403"),
+		errors.New("rutube: unexpected status 410"),
 		errors.New(`max: unexpected status 404: {"detail":"Канал 'x' не найден"}`),
 		errors.New("parse feed: failed to detect feed type"),
 		errors.New(`tls: failed to verify certificate: x509: certificate is valid for a.example, not b.example`),
@@ -109,5 +116,28 @@ func TestRefreshFeedManual_SoftFailureIsReported(t *testing.T) {
 	}
 	if fs.failures != 1 {
 		t.Fatalf("failures=%d, want 1", fs.failures)
+	}
+}
+
+func TestSoftFailureReason(t *testing.T) {
+	cases := map[string]string{
+		"telegram: channel is private or does not exist":                                "unavailable",
+		"dzen_channel: channel not found":                                               "unavailable",
+		"unexpected status code: 429":                                                   "status_429",
+		"unexpected status code: 503":                                                   "status_5xx",
+		"http request: read tcp 1.2.3.4:1->5.6.7.8:443: read: connection reset by peer": "reset",
+		`max: unexpected status 400: {"detail":"Not connected to the server"}`:          "reset",
+		"dial tcp 5.6.7.8:443: connect: connection refused":                             "refused",
+		"ssrf: dns lookup failed: lookup x on 127.0.0.53:53: server misbehaving":        "dns",
+		`http request: Get "https://x": net/http: TLS handshake timeout`:                "timeout",
+		"something odd": "other",
+	}
+	for msg, want := range cases {
+		if got := SoftFailureReason(errors.New(msg)); got != want {
+			t.Errorf("%q: got %s want %s", msg, got, want)
+		}
+	}
+	if got := SoftFailureReason(fmt.Errorf("http request: %w", context.DeadlineExceeded)); got != "timeout" {
+		t.Errorf("deadline: got %s", got)
 	}
 }

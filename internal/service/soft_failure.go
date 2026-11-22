@@ -4,10 +4,12 @@ import (
 	"context"
 	"errors"
 	"net"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
 
+	"rssam/internal/metrics"
 	"rssam/internal/storage"
 )
 
@@ -35,7 +37,15 @@ var softFailureMarkers = []string{
 	"server misbehaving",
 	"i/o timeout",
 	"unexpected eof",
+	// Dzen answers 404 for a living channel every few hours (≈125 flaps in
+	// 5 days on 41 channels) and clears by the next poll.
+	"dzen_channel: channel not found",
 }
+
+// softStatusPattern matches a 429 or 5xx from any bridge («unexpected
+// status 503», «unexpected status code: 502»): the front door is busy, not
+// the feed. A real outage still becomes a failure after softFailureLimit.
+var softStatusPattern = regexp.MustCompile(`unexpected status(?: code)?:? (?:429|5\d\d)\b`)
 
 // IsSoftFailure reports whether err looks like a passing condition of the
 // network or of the source's front door rather than a fault of the feed.
@@ -56,8 +66,42 @@ func IsSoftFailure(err error) bool {
 			return true
 		}
 	}
-	return false
+	return softStatusPattern.MatchString(msg)
 }
+
+// SoftFailureReason buckets a soft failure for metrics (bounded label set).
+func SoftFailureReason(err error) string {
+	if err == nil {
+		return "other"
+	}
+	msg := strings.ToLower(err.Error())
+	switch {
+	case strings.Contains(msg, "channel is private or does not exist"), strings.Contains(msg, "channel not found"):
+		return "unavailable"
+	case strings.Contains(msg, "status code: 429"), strings.Contains(msg, "status 429"):
+		return "status_429"
+	case softStatusPattern.MatchString(msg):
+		return "status_5xx"
+	case strings.Contains(msg, "connection reset"), strings.Contains(msg, "unexpected eof"), strings.Contains(msg, "no close frame"), strings.Contains(msg, "keepalive"), strings.Contains(msg, "not connected to the server"), strings.Contains(msg, "connection error"):
+		return "reset"
+	case strings.Contains(msg, "connection refused"):
+		return "refused"
+	case strings.Contains(msg, "server misbehaving"), strings.Contains(msg, "no such host"):
+		return "dns"
+	}
+	if errors.Is(err, context.DeadlineExceeded) || strings.Contains(msg, "timeout") || strings.Contains(msg, "deadline exceeded") {
+		return "timeout"
+	}
+	var nerr net.Error
+	if errors.As(err, &nerr) && nerr.Timeout() {
+		return "timeout"
+	}
+	return "other"
+}
+
+// fetchedVia is implemented by bridge errors that know which proxy path
+// produced the answer (telegram.ChannelUnavailableError).
+type fetchedVia interface{ FetchedVia() string }
 
 // softStreaks counts soft failures in a row per feed, in memory: nothing
 // about a soft failure is written anywhere. A success drops the feed.
@@ -101,6 +145,17 @@ func (e ErrSoftFailure) NextCheckPersisted() bool { return true }
 // last_checked_at and next_check_at the way a quiet poll would, keeping
 // the error counter, last_error, cursors and the poll log as they were.
 func (r *FeedRefresher) deferSoft(ctx context.Context, feed storage.Feed, now, next time.Time, cause error) error {
+	reason := SoftFailureReason(cause)
+	metrics.PollSoftFailures.WithLabelValues(feed.FeedType, reason).Inc()
+	// One line per absorbed failure, with the proxy path when the bridge
+	// knows it: whether Telegram's «private» flaps cluster by proxy is the
+	// open question of the production fleet.
+	var fv fetchedVia
+	if errors.As(cause, &fv) && fv.FetchedVia() != "" {
+		r.logger().Info("poll_feed soft failure", "feed_id", feed.ID, "bridge", feed.FeedType, "reason", reason, "via", fv.FetchedVia())
+	} else {
+		r.logger().Debug("poll_feed soft failure", "feed_id", feed.ID, "bridge", feed.FeedType, "reason", reason, "err", cause.Error())
+	}
 	meta := storage.UpdateFeedRefreshMetaParams{
 		ID:            feed.ID,
 		ETag:          feed.ETag,

@@ -64,6 +64,11 @@ var defaultBlockedCIDRs = []string{
 	"fc00::/7",
 	"fe80::/10",
 	"ff00::/8", // multicast
+	// Local-use NAT64 (RFC 8215): the translator picks the prefix length,
+	// so the embedded IPv4 cannot be extracted reliably — block the /48.
+	"64:ff9b:1::/48",
+	// Deprecated IPv4-translated addresses (RFC 2765), ::ffff:0:a.b.c.d.
+	"::ffff:0:0:0/96",
 }
 
 // Prefixes that embed an IPv4 address: the embedded address must pass the

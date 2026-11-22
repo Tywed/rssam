@@ -58,7 +58,7 @@ func (r *Runner) maybeRunDailyFeedReset(ctx context.Context, loc *time.Location)
 		}
 	}
 
-	n, err := r.Store.ResetFeedPollErrorsDaily(ctx)
+	n, dead, err := r.Store.ResetFeedPollErrorsDaily(ctx)
 	if err != nil {
 		if r.Log != nil {
 			r.Log.Error("daily feed poll reset failed", "err", err)
@@ -75,8 +75,8 @@ func (r *Runner) maybeRunDailyFeedReset(ctx context.Context, loc *time.Location)
 
 	if n > 0 {
 		metrics.CleanupDeletedRows.WithLabelValues("feed_poll_reset").Add(float64(n))
-		if r.Log != nil {
-			r.Log.Info("daily feed poll reset completed", "feeds_reset", n, "date", today, "tz", loc.String())
-		}
+	}
+	if (n > 0 || dead > 0) && r.Log != nil {
+		r.Log.Info("daily feed poll reset completed", "feeds_reset", n, "feeds_dead", dead, "date", today, "tz", loc.String())
 	}
 }

@@ -22,6 +22,7 @@ type memAlertStore struct {
 	paused   []storage.SystemAlertFeed
 	silent   []storage.SystemAlertFeed
 	dormant  []storage.SystemAlertFeed
+	dead     []storage.SystemAlertFeed
 	failing  []storage.SystemAlertWebhook
 	types    []storage.FeedTypeStat
 	audit    []storage.AuditEvent
@@ -40,6 +41,11 @@ func (m *memAlertStore) ListSilentFeeds(context.Context, time.Duration) ([]stora
 }
 func (m *memAlertStore) ListDormantFeeds(context.Context, time.Duration) ([]storage.SystemAlertFeed, error) {
 	return m.dormant, nil
+}
+func (m *memAlertStore) ListDeadFeeds(context.Context) ([]storage.SystemAlertFeed, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.dead, nil
 }
 func (m *memAlertStore) ListFailingWebhooks(context.Context) ([]storage.SystemAlertWebhook, error) {
 	return m.failing, nil
@@ -360,5 +366,56 @@ func TestSystemAlerts_BridgeLayoutOncePerIncident(t *testing.T) {
 	var saved systemAlertState
 	if err := json.Unmarshal(store.settings[AppSettingSystemAlertState], &saved); err != nil || !saved.Layout["smotrim"] || saved.Layout["telegram"] {
 		t.Fatalf("persisted state=%s err=%v", store.settings[AppSettingSystemAlertState], err)
+	}
+}
+
+// Dead feeds: one list per day at most, the latecomers wait for the next
+// list; a feed that leaves the set is reported at once.
+func TestSystemAlerts_DeadFeedsOnceADay(t *testing.T) {
+	sink := &alertSink{}
+	srv := sink.server(t)
+	store := &memAlertStore{
+		hooks: []storage.Webhook{{ID: 1, Enabled: true, SystemAlerts: true, Kind: storage.WebhookKindHTTP, URL: srv.URL}},
+	}
+	a := newAlerter(store, SystemAlertsConfig{})
+	a.load(context.Background())
+	ctx := context.Background()
+	a.pass(ctx) // seed
+
+	store.dead = []storage.SystemAlertFeed{
+		{ID: 1, Title: "Vanished", Error: "unexpected status code: 404", Gone: true},
+		{ID: 2, Title: "Credits", Error: "maxstat api error insufficient_credits"},
+	}
+	a.pass(ctx)
+	if sink.count() != 1 || !a.state.Dead[1] || !a.state.Dead[2] || a.state.DeadAt.IsZero() {
+		t.Fatalf("first dead list: sent=%d state=%+v", sink.count(), a.state)
+	}
+	body := sink.bodies[0]
+	if !strings.Contains(body, "исчезли (404/410/канал не найден): 1") || !strings.Contains(body, "квота/кредиты: 1") {
+		t.Fatalf("title: %s", body)
+	}
+
+	// A third dead feed the same day waits; it is not marked announced.
+	store.dead = append(store.dead, storage.SystemAlertFeed{ID: 3, Title: "Later", Error: "no such host", Gone: true})
+	a.pass(ctx)
+	if sink.count() != 1 || a.state.Dead[3] {
+		t.Fatalf("same-day latecomer must wait: sent=%d dead=%v", sink.count(), a.state.Dead)
+	}
+	// Next day it goes out alone.
+	a.state.DeadAt = a.state.DeadAt.Add(-deadAlertEvery)
+	a.pass(ctx)
+	if sink.count() != 2 || !a.state.Dead[3] || !strings.Contains(sink.bodies[1], "#3 Later") || strings.Contains(sink.bodies[1], "#1 ") {
+		t.Fatalf("next-day list: sent=%d body=%s", sink.count(), sink.bodies[len(sink.bodies)-1])
+	}
+
+	// Feed 1 answers again: reported immediately, dropped from the set.
+	store.dead = store.dead[1:]
+	a.pass(ctx)
+	if sink.count() != 3 || a.state.Dead[1] || !strings.Contains(sink.bodies[2], "снова отвечают") || !strings.Contains(sink.bodies[2], "#1") {
+		t.Fatalf("recovery: sent=%d body=%s", sink.count(), sink.bodies[len(sink.bodies)-1])
+	}
+	a.pass(ctx)
+	if sink.count() != 3 {
+		t.Fatalf("stable set must be quiet: sent=%d", sink.count())
 	}
 }

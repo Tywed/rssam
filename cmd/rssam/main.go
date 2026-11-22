@@ -333,6 +333,7 @@ func main() {
 
 			FeedPollDailyResetEnabled: cfg.FeedPollDailyResetEnabled,
 			FeedPollDailyResetTZ:      cfg.FeedPollDailyResetTZ,
+			DailySummaryEnabled:       cfg.DailySummaryEnabled,
 			DrainTimeout:              worker.DrainTimeoutFor(cfg.ShutdownTimeout),
 		},
 		WebhookHTTPClient: webhookClient,

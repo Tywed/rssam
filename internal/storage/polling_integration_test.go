@@ -190,9 +190,9 @@ func TestIntegration_CircuitResetsAndDailyReset(t *testing.T) {
 	fail(errored.ID, 1)
 	fail(tripped.ID, 2)
 	before := time.Now()
-	n, err = store.ResetFeedPollErrorsDaily(ctx)
-	if err != nil || n != 2 {
-		t.Fatalf("daily reset: n=%d err=%v", n, err)
+	n, dead, err := store.ResetFeedPollErrorsDaily(ctx)
+	if err != nil || n != 2 || dead != 0 {
+		t.Fatalf("daily reset: n=%d dead=%d err=%v", n, dead, err)
 	}
 	for _, id := range []int64{errored.ID, tripped.ID} {
 		f, _ := store.GetFeedByID(ctx, id)

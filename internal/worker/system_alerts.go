@@ -49,9 +49,13 @@ type SystemAlertsConfig struct {
 }
 
 type systemAlertState struct {
-	Paused   map[int64]bool `json:"paused,omitempty"`
-	Silent   map[int64]bool `json:"silent,omitempty"`
-	Dormant  map[int64]bool `json:"dormant,omitempty"`
+	Paused  map[int64]bool `json:"paused,omitempty"`
+	Silent  map[int64]bool `json:"silent,omitempty"`
+	Dormant map[int64]bool `json:"dormant,omitempty"`
+	// Dead holds the gone/blocked feeds already announced; DeadAt is when
+	// the last dead-feeds message went out (one list a day at most).
+	Dead     map[int64]bool `json:"dead,omitempty"`
+	DeadAt   time.Time      `json:"dead_at,omitempty"`
 	Webhooks map[int64]bool `json:"webhooks,omitempty"`
 	Release  string         `json:"release,omitempty"`
 	Backup   bool           `json:"backup_stale,omitempty"`
@@ -170,6 +174,7 @@ func (a *systemAlerter) pass(ctx context.Context) {
 
 func stateChanged(old, cur systemAlertState) bool {
 	return !sameSet(old.Paused, cur.Paused) || !sameSet(old.Silent, cur.Silent) || !sameSet(old.Webhooks, cur.Webhooks) ||
+		!sameSet(old.Dormant, cur.Dormant) || !sameSet(old.Dead, cur.Dead) || !old.DeadAt.Equal(cur.DeadAt) ||
 		old.Release != cur.Release || old.Backup != cur.Backup || old.Proxy != cur.Proxy || !maps.Equal(old.Layout, cur.Layout)
 }
 
@@ -254,6 +259,13 @@ func (a *systemAlerter) diff(ctx context.Context) ([]alertMessage, systemAlertSt
 		msgs = append(msgs, feedsAlert("feeds_dormant", title, newDormant, true))
 	}
 
+	deadMsgs, dead, deadAt, err := a.deadDiff(ctx)
+	if err != nil {
+		return nil, next, err
+	}
+	next.Dead, next.DeadAt = dead, deadAt
+	msgs = append(msgs, deadMsgs...)
+
 	failing, err := a.store.ListFailingWebhooks(ctx)
 	if err != nil {
 		return nil, next, err
@@ -314,6 +326,74 @@ func (a *systemAlerter) diff(ctx context.Context) ([]alertMessage, systemAlertSt
 	next.Layout = layout
 	msgs = append(msgs, layoutMsgs...)
 	return msgs, next, nil
+}
+
+// deadAlertEvery: new dead feeds are announced as one list, at most this
+// often; until then they wait in the current set without being marked
+// announced. A dead feed that polls again is reported at once.
+const deadAlertEvery = 24 * time.Hour
+
+// deadDiff: gone/blocked feeds without a success for storage.DeadFeedAfter.
+// The daily reset leaves them on one control poll a day, so without this
+// message nobody learns the source is gone or the API quota is spent.
+func (a *systemAlerter) deadDiff(ctx context.Context) ([]alertMessage, map[int64]bool, time.Time, error) {
+	dead, err := a.store.ListDeadFeeds(ctx)
+	if err != nil {
+		return nil, nil, a.state.DeadAt, err
+	}
+	cur := map[int64]bool{}
+	var fresh []storage.SystemAlertFeed
+	for _, f := range dead {
+		cur[f.ID] = true
+		if !a.state.Dead[f.ID] {
+			fresh = append(fresh, f)
+		}
+	}
+	var msgs []alertMessage
+	var back []storage.SystemAlertFeed
+	for id := range a.state.Dead {
+		if !cur[id] {
+			back = append(back, storage.SystemAlertFeed{ID: id})
+		}
+	}
+	if len(back) > 0 {
+		msgs = append(msgs, feedsAlert("feeds_dead", "Ленты снова отвечают или остановлены вручную", back, false))
+	}
+	deadAt := a.state.DeadAt
+	announced := map[int64]bool{}
+	for id := range a.state.Dead {
+		if cur[id] {
+			announced[id] = true
+		}
+	}
+	if len(fresh) > 0 && (deadAt.IsZero() || time.Since(deadAt) >= deadAlertEvery) {
+		gone, blocked := 0, 0
+		for _, f := range fresh {
+			if f.Gone {
+				gone++
+			} else {
+				blocked++
+			}
+		}
+		title := fmt.Sprintf("Мёртвые ленты (без успешного опроса %d дн., опрос раз в сутки)", int(storage.DeadFeedAfter.Hours()/24))
+		var parts []string
+		if gone > 0 {
+			parts = append(parts, fmt.Sprintf("исчезли (404/410/канал не найден): %d", gone))
+		}
+		if blocked > 0 {
+			parts = append(parts, fmt.Sprintf("доступ закрыт или кончилась квота/кредиты: %d", blocked))
+		}
+		title += " — " + strings.Join(parts, "; ")
+		msgs = append(msgs, feedsAlert("feeds_dead", title, fresh, true))
+		deadAt = time.Now().UTC().Truncate(time.Second)
+		for _, f := range fresh {
+			announced[f.ID] = true
+		}
+	}
+	if len(announced) == 0 {
+		announced = nil
+	}
+	return msgs, announced, deadAt, nil
 }
 
 // layoutIncidentMin is how many feeds of one bridge must see unrecognised

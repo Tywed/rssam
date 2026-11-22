@@ -2,6 +2,7 @@ package telegram
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -177,7 +178,7 @@ func (h *Handler) fetch(ctx context.Context, feedURL string, override *BridgeOve
 	var all []ParsedMessage
 
 	for page := range maxPages {
-		body, err := h.fetchPage(ctx, cfg, pageURL)
+		body, via, err := h.fetchPage(ctx, cfg, pageURL)
 		if err != nil {
 			return FetchResult{}, err
 		}
@@ -188,6 +189,12 @@ func (h *Handler) fetch(ctx context.Context, feedURL string, override *BridgeOve
 		}
 		parsed, err := ParsePage(body, username)
 		if err != nil {
+			if errors.Is(err, ErrChannelUnavailable) {
+				// Which proxy saw the stub page: on the production fleet
+				// 94 % of these clear by the next poll, and whether they
+				// cluster by proxy decides the next fix.
+				return FetchResult{}, &ChannelUnavailableError{Via: via}
+			}
 			return FetchResult{}, err
 		}
 		all = append(all, parsed.Messages...)
@@ -229,7 +236,7 @@ func (h *Handler) DiscoverChannelTitle(ctx context.Context, feedURL string) (str
 	if !ok || username == "" {
 		return "", fmt.Errorf("telegram: cannot extract channel username from URL: %s", feedURL)
 	}
-	body, err := h.fetchPage(ctx, h.config(), PreviewURL(username))
+	body, _, err := h.fetchPage(ctx, h.config(), PreviewURL(username))
 	if err != nil {
 		return "", err
 	}
@@ -240,12 +247,17 @@ func (h *Handler) DiscoverChannelTitle(ctx context.Context, feedURL string) (str
 	return title, nil
 }
 
-func (h *Handler) fetchPage(ctx context.Context, cfg Config, pageURL string) ([]byte, error) {
+// fetchPage returns the page and the path it came through ("direct",
+// "static host:port" or the proxy-service endpoint "id host:port"), so a
+// stub page can be attributed to the proxy that saw it.
+func (h *Handler) fetchPage(ctx context.Context, cfg Config, pageURL string) ([]byte, string, error) {
 	switch cfg.ResolveProxyMode() {
 	case ProxyModeDirect:
-		return h.fetchDirect(ctx, cfg, pageURL)
+		body, err := h.fetchDirect(ctx, cfg, pageURL)
+		return body, "direct", err
 	case ProxyModeStatic:
-		return h.fetchViaStatic(ctx, cfg, pageURL)
+		body, err := h.fetchViaStatic(ctx, cfg, pageURL)
+		return body, "static", err
 	default:
 		return h.fetchPageWithRetry(ctx, cfg, pageURL)
 	}
@@ -302,28 +314,28 @@ func (h *Handler) fetchViaStatic(ctx context.Context, cfg Config, pageURL string
 	return body, nil
 }
 
-func (h *Handler) fetchPageWithRetry(ctx context.Context, cfg Config, pageURL string) ([]byte, error) {
+func (h *Handler) fetchPageWithRetry(ctx context.Context, cfg Config, pageURL string) ([]byte, string, error) {
 	if h.proxyClient == nil {
-		return nil, fmt.Errorf("telegram: proxy client is not configured")
+		return nil, "", fmt.Errorf("telegram: proxy client is not configured")
 	}
 	maxTries := max(1+cfg.ProxyRetry, 1)
 	var lastErr error
 	for range maxTries {
 		if err := ctx.Err(); err != nil {
 			if lastErr != nil {
-				return nil, lastErr
+				return nil, "", lastErr
 			}
-			return nil, err
+			return nil, "", err
 		}
 		p, err := h.proxyClient.WorkingProxy(ctx, cfg.ProxyServiceURL, cfg.ProxyTargetURL)
 		if err != nil {
 			h.proxyClient.Health.Failure(err)
-			return nil, &proxy.Unavailable{Op: "get proxy", Err: err}
+			return nil, "", &proxy.Unavailable{Op: "get proxy", Err: err}
 		}
 		body, status, err := h.proxyClient.FetchGET(ctx, p, pageURL, cfg.UserAgent, cfg.ProxyConnectTimeout, cfg.ProxyRequestTimeout, cfg.TLSInsecureSkipVerify)
 		if err == nil && status == http.StatusOK {
 			h.proxyClient.Health.Success()
-			return body, nil
+			return body, fmt.Sprintf("%s %s:%d", p.ID, p.Host, p.Port), nil
 		}
 		var reason string
 		if err != nil {
@@ -342,7 +354,7 @@ func (h *Handler) fetchPageWithRetry(ctx context.Context, cfg Config, pageURL st
 	// transport error or a non-200 status; whatever failed here is the
 	// proxy path, and the channel must not pay for it with backoff.
 	h.proxyClient.Health.Failure(lastErr)
-	return nil, &proxy.Unavailable{Op: "socks fetch", Err: lastErr}
+	return nil, "", &proxy.Unavailable{Op: "socks fetch", Err: lastErr}
 }
 
 func messageToEntry(m ParsedMessage) bridge.Entry {

@@ -31,6 +31,15 @@ var (
 		Help: "Polls postponed without fetching, by bridge and reason: rate_limit, slots, host, poll_hours, proxy, layout, soft_error.",
 	}, []string{"bridge", "reason"})
 
+	// PollSoftFailures counts the transient answers a healthy feed shrugged
+	// off (service.IsSoftFailure) by bridge and reason: unavailable (the
+	// source's stub page), timeout, reset, refused, status_429, status_5xx,
+	// dns, other.
+	PollSoftFailures = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "rssam_poll_soft_failures_total",
+		Help: "Transient poll failures absorbed without an error counter, by bridge and reason.",
+	}, []string{"bridge", "reason"})
+
 	ClaimedJobs = prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "rssam_jobs_claimed_total",
 		Help: "Number of due feeds handed to the poll workers.",
@@ -92,6 +101,7 @@ func Init() {
 			PollErrors,
 			PollDuration,
 			PollDeferred,
+			PollSoftFailures,
 			ClaimedJobs,
 			JobLag,
 			WebhookDeliveriesTotal,

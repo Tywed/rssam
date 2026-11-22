@@ -47,6 +47,9 @@ type Config struct {
 
 	FeedPollDailyResetEnabled bool
 	FeedPollDailyResetTZ      string
+	// DailySummaryEnabled mirrors DAILY_SUMMARY: one message a day to the
+	// system-alert webhooks with the day's numbers.
+	DailySummaryEnabled bool
 
 	// DrainTimeout bounds how long Run lets polls and deliveries already
 	// running finish after ctx is cancelled; 0 means defaultDrainTimeout.
@@ -98,14 +101,16 @@ type Runner struct {
 	SystemAlerts      SystemAlertsConfig
 	paused            atomic.Bool
 	wake              dueWakers
-	db                dbOutage
-	inflight          inflightPolls
-	inflightHooks     inflightPolls
-	pausedHooks       duePauses[int64]
-	floodStreaks      floodStreaks
-	deferredFeeds     duePauses[int64]
-	deferredBridges   duePauses[string]
-	deferrals         deferralCounts
+	// startedAt is when Run began; the daily summary reports restarts by it.
+	startedAt       time.Time
+	db              dbOutage
+	inflight        inflightPolls
+	inflightHooks   inflightPolls
+	pausedHooks     duePauses[int64]
+	floodStreaks    floodStreaks
+	deferredFeeds   duePauses[int64]
+	deferredBridges duePauses[string]
+	deferrals       deferralCounts
 }
 
 func (r *Runner) Pause() {
@@ -152,6 +157,7 @@ func (r *Runner) Run(ctx context.Context) error {
 	if r.Store == nil || r.Refresher == nil {
 		return errors.New("worker runner is not configured")
 	}
+	r.startedAt = time.Now()
 	if r.Cfg.PoolSize <= 0 {
 		return errors.New("PoolSize must be > 0")
 	}
@@ -214,6 +220,7 @@ func (r *Runner) Run(ctx context.Context) error {
 	// Daily reset of feed error backoff / circuit breaker (optional, timezone-aware).
 	spawn("daily_reset", func() { r.dailyFeedResetLoop(ctx) })
 	spawn("system_alerts", func() { r.systemAlertsLoop(ctx) })
+	spawn("daily_summary", func() { r.dailySummaryLoop(ctx) })
 
 	// Dispatcher: hand due feeds to the worker pool.
 	spawn("dispatch", func() { r.dispatchLoop(ctx, feedsCh) })

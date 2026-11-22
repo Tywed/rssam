@@ -46,12 +46,20 @@ func SecurityHeaders(cfg SecurityConfig) func(http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("X-Content-Type-Options", "nosniff")
 			w.Header().Set("X-Frame-Options", "DENY")
-			w.Header().Set("Referrer-Policy", "no-referrer")
 			if isUIRoute(r.URL.Path) {
+				// same-origin, not no-referrer: browsers send the Fetch
+				// Metadata headers only to https:// and localhost, so on
+				// http://192.168.x.x the origin check (SameOriginRequest)
+				// falls back to Origin/Referer — and under no-referrer a
+				// same-origin POST carries no Referer and «Origin: null»
+				// (Fetch §4.1), which rejected every UI form on a LAN
+				// install. Referer still never leaves our own origin.
+				w.Header().Set("Referrer-Policy", "same-origin")
 				nonce := newCSPNonce()
 				w.Header().Set("Content-Security-Policy", uiCSP(nonce))
 				r = r.WithContext(context.WithValue(r.Context(), cspNonceKey{}, nonce))
 			} else {
+				w.Header().Set("Referrer-Policy", "no-referrer")
 				w.Header().Set("Content-Security-Policy", apiCSP)
 			}
 			w.Header().Set("Permissions-Policy", "accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=()")

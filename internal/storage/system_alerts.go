@@ -32,6 +32,9 @@ type SystemAlertStore interface {
 	// inbound feeds without a delivery for their interval_minutes.
 	ListSilentFeeds(ctx context.Context, silentAfter time.Duration) ([]SystemAlertFeed, error)
 	ListDormantFeeds(ctx context.Context, dormantAfter time.Duration) ([]SystemAlertFeed, error)
+	// ListDeadFeeds: gone or blocked feeds without a successful poll for
+	// DeadFeedAfter (Gone separates the two classes).
+	ListDeadFeeds(ctx context.Context) ([]SystemAlertFeed, error)
 	// ListFailingWebhooks: enabled webhooks whose last final delivery died.
 	ListFailingWebhooks(ctx context.Context) ([]SystemAlertWebhook, error)
 	RecordAudit(ctx context.Context, ev AuditEvent) error
@@ -88,6 +91,14 @@ SELECT f.id, f.title,
        ELSE 'последняя запись ' || to_char(ps.last_entry_at AT TIME ZONE 'UTC', 'YYYY-MM-DD') END, FALSE
 FROM `+feedsFrom+`
 WHERE `+adminFeedsDormantWhere(dormantAfter)+`
+ORDER BY f.id`)
+}
+
+func (s *PostgresStore) ListDeadFeeds(ctx context.Context) ([]SystemAlertFeed, error) {
+	return s.queryAlertFeeds(ctx, `
+SELECT f.id, f.title, ps.last_error, `+adminFeedsGoneWhere+`
+FROM `+feedsFrom+`
+WHERE `+adminFeedsDeadWhere+`
 ORDER BY f.id`)
 }
 

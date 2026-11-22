@@ -32,6 +32,38 @@ func TestSecurityHeaders(t *testing.T) {
 	}
 }
 
+// UI pages: Referrer-Policy same-origin, so a plain-http LAN install
+// (no Sec-Fetch-* from the browser) still passes SameOriginRequest by
+// Referer; the API keeps no-referrer.
+func TestSecurityHeaders_UIReferrerPolicy(t *testing.T) {
+	h := SecurityHeaders(SecurityConfig{})(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	for path, want := range map[string]string{"/ui/feeds": "same-origin", "/ui": "same-origin", "/v1/feeds": "no-referrer", "/healthz": "no-referrer"} {
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+		if got := rec.Header().Get("Referrer-Policy"); got != want {
+			t.Fatalf("%s: Referrer-Policy=%q, want %q", path, got, want)
+		}
+	}
+	// What such a browser sends on a same-origin form POST: no
+	// Sec-Fetch-Site, Origin: null, Referer of our own page.
+	req := httptest.NewRequest(http.MethodPost, "http://192.168.0.5:8080/ui/feeds", nil)
+	req.Host = "192.168.0.5:8080"
+	req.Header.Set("Origin", "null")
+	if SameOriginRequest(req) {
+		t.Fatal("Origin: null without Referer must be rejected")
+	}
+	req.Header.Set("Referer", "http://192.168.0.5:8080/ui/feeds/new")
+	if SameOriginRequest(req) {
+		t.Fatal("Origin: null must not be rescued by Referer: Origin is checked first")
+	}
+	req.Header.Del("Origin")
+	if !SameOriginRequest(req) {
+		t.Fatal("same-origin Referer alone must pass")
+	}
+}
+
 func TestSecurityHeaders_HSTSDisabled(t *testing.T) {
 	h := SecurityHeaders(SecurityConfig{})(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)

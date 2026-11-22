@@ -36,6 +36,19 @@ type ParsedMessage struct {
 // preview — the channel is private, restricted or does not exist.
 var ErrChannelUnavailable = errors.New("telegram: channel is private or does not exist")
 
+// ChannelUnavailableError is ErrChannelUnavailable with the path the page
+// came through (handler.fetchPage); the text stays the same so last_error,
+// the soft-failure markers and the "gone" class keep matching.
+type ChannelUnavailableError struct {
+	Via string
+}
+
+func (e *ChannelUnavailableError) Error() string        { return ErrChannelUnavailable.Error() }
+func (e *ChannelUnavailableError) Is(target error) bool { return target == ErrChannelUnavailable }
+
+// FetchedVia reports the proxy path for logs and metrics.
+func (e *ChannelUnavailableError) FetchedVia() string { return e.Via }
+
 // Page is one t.me/s page: its messages and the pagination links, read
 // from a single parse of the document.
 type Page struct {

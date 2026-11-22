@@ -45,6 +45,10 @@ type Config struct {
 	FeedCircuitBreakerThreshold int
 	FeedPollDailyResetEnabled   bool
 	FeedPollDailyResetTZ        string
+	// DailySummaryEnabled (DAILY_SUMMARY): one message a day to the
+	// system-alert webhooks — polls, items, errors, deliveries, feed
+	// states, database size and WAL — at midnight of FeedPollDailyResetTZ.
+	DailySummaryEnabled bool
 
 	MaxAPIBaseURL        string
 	MaxDefaultLimit      int
@@ -207,6 +211,7 @@ func Load() (Config, error) {
 		FeedCircuitBreakerThreshold: env.int("FEED_CIRCUIT_BREAKER_THRESHOLD", 10),
 		FeedPollDailyResetEnabled:   parseBoolDefault(os.Getenv("FEED_POLL_DAILY_RESET")),
 		FeedPollDailyResetTZ:        getEnv("FEED_POLL_DAILY_RESET_TZ", "Europe/Moscow"),
+		DailySummaryEnabled:         parseBool(os.Getenv("DAILY_SUMMARY")),
 
 		MaxAPIBaseURL:        strings.TrimSpace(os.Getenv("MAX_API_BASE_URL")),
 		MaxDefaultLimit:      env.int("MAX_DEFAULT_LIMIT", 100),
