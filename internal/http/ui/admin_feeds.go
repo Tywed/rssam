@@ -144,7 +144,7 @@ func parseAdminFeedsSort(r *http.Request) (sortKey, order string) {
 
 func parseAdminFeedsStatus(v string) string {
 	switch strings.TrimSpace(v) {
-	case "errors", "gone", "blocked", "paused", "waiting", "ok", "silent", "dormant", "layout", "all":
+	case "errors", "gone", "blocked", "dead", "quiet", "paused", "waiting", "ok", "silent", "dormant", "layout", "all":
 		return strings.TrimSpace(v)
 	default:
 		return "all"
@@ -432,6 +432,24 @@ func (h *Handler) handleAdminFeedsPauseGone(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	h.cfg.Audit.Record(r, storage.AuditFeedUpdate, "", 0, map[string]any{"action": "pause_gone", "count": n})
+	http.Redirect(w, r, adminFeedsRedirect(r), http.StatusFound)
+}
+
+// handleAdminFeedsPauseDead: manual pause for the dead feeds (gone or
+// blocked, three failures in a row, no success for days) whose last success
+// is older than storage.DeadFeedArchiveAfter. They already cost one control
+// poll a day; this clears the dashboard and the daily feeds_dead count.
+func (h *Handler) handleAdminFeedsPauseDead(w http.ResponseWriter, r *http.Request) {
+	if !h.validateCSRF(r) {
+		h.csrfRejected(w, r)
+		return
+	}
+	n, err := h.cfg.AdminFeeds.PauseDeadFeeds(r.Context(), storage.DeadFeedArchiveAfter)
+	if err != nil {
+		h.failRedirect(w, r, adminFeedsRedirect(r), "pause dead feeds", err)
+		return
+	}
+	h.cfg.Audit.Record(r, storage.AuditFeedUpdate, "", 0, map[string]any{"action": "pause_dead", "count": n, "older_than_days": int(storage.DeadFeedArchiveAfter.Hours() / 24)})
 	http.Redirect(w, r, adminFeedsRedirect(r), http.StatusFound)
 }
 

@@ -36,6 +36,11 @@ type AdminFeedSummary struct {
 	// (adminFeedsGoneWhere / adminFeedsBlockedWhere).
 	GoneCount    int
 	BlockedCount int
+	// DeadCount: gone or blocked feeds on the daily control poll
+	// (adminFeedsDeadWhere); DeadOldCount those of them without a success
+	// for DeadFeedArchiveAfter — what the "pause dead feeds" button stops.
+	DeadCount    int
+	DeadOldCount int
 	TotalEntries int
 	TotalUnread  int
 	// TotalSubscriptions / TotalUserEntries size the per-user tables of
@@ -86,6 +91,13 @@ type AdminFeedStore interface {
 	// paused yet and returns how many; last_error is kept so the row still
 	// shows why.
 	PauseGoneFeeds(ctx context.Context) (int64, error)
+	// PauseDeadFeeds: the same for dead feeds (gone or blocked, three
+	// failures in a row, no success for DeadFeedAfter) whose last success
+	// is older than olderThan.
+	PauseDeadFeeds(ctx context.Context, olderThan time.Duration) (int64, error)
+	// QuietFeeds: healthy feeds silent far longer than their own rhythm
+	// (quiet_feeds.go), for the summary and the "quiet" filter.
+	QuietFeeds(ctx context.Context, limit int) ([]QuietFeed, error)
 }
 
 // LayoutErrorPrefix starts feeds.last_error while a bridge cannot read the
@@ -249,6 +261,10 @@ func adminFeedsStatusWhere(status string, silentAfter, dormantAfter time.Duratio
 		return adminFeedsGoneWhere
 	case "blocked":
 		return adminFeedsBlockedWhere
+	case "dead":
+		return adminFeedsDeadWhere
+	case "quiet":
+		return adminFeedsQuietWhere
 	case "layout":
 		return `ps.last_error LIKE 'layout: %'`
 	case "waiting":
@@ -410,6 +426,8 @@ SELECT
   )::int,
   COUNT(*) FILTER (WHERE ` + adminFeedsGoneWhere + `)::int,
   COUNT(*) FILTER (WHERE ` + adminFeedsBlockedWhere + `)::int,
+  COUNT(*) FILTER (WHERE ` + adminFeedsDeadWhere + `)::int,
+  COUNT(*) FILTER (WHERE ` + adminFeedsDeadWhere + ` AND COALESCE(ps.last_success_at, f.created_at) < now() - make_interval(secs => $3::bigint))::int,
   COALESCE((SELECT GREATEST(reltuples, 0)::bigint FROM pg_class WHERE oid = 'entries'::regclass), 0)::int,
   COALESCE((SELECT COUNT(*)::int FROM user_unread), 0),
   COALESCE((SELECT COUNT(*)::int FROM subscriptions), 0),
@@ -417,7 +435,7 @@ SELECT
   COALESCE((SELECT COUNT(*)::int FROM category_followers), 0)
 FROM ` + feedsFrom + ``
 	var sum AdminFeedSummary
-	err := s.db.QueryRow(ctx, q, silentSeconds, dormantSeconds).Scan(
+	err := s.db.QueryRow(ctx, q, silentSeconds, dormantSeconds, int64(DeadFeedArchiveAfter/time.Second)).Scan(
 		&sum.TotalFeeds,
 		&sum.OKCount,
 		&sum.ErrorCount,
@@ -427,6 +445,8 @@ FROM ` + feedsFrom + ``
 		&sum.DormantCount,
 		&sum.GoneCount,
 		&sum.BlockedCount,
+		&sum.DeadCount,
+		&sum.DeadOldCount,
 		&sum.TotalEntries,
 		&sum.TotalUnread,
 		&sum.TotalSubscriptions,

@@ -588,6 +588,7 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.Handle("POST /ui/admin/feeds/refresh-all", auth(h.requireAdmin(http.HandlerFunc(h.handleAdminRefreshAll))))
 	mux.Handle("POST /ui/admin/feeds/reset-circuits", auth(h.requireAdmin(http.HandlerFunc(h.handleAdminFeedsResetCircuits))))
 	mux.Handle("POST /ui/admin/feeds/pause-gone", auth(h.requireAdmin(http.HandlerFunc(h.handleAdminFeedsPauseGone))))
+	mux.Handle("POST /ui/admin/feeds/pause-dead", auth(h.requireAdmin(http.HandlerFunc(h.handleAdminFeedsPauseDead))))
 	mux.Handle("GET /ui/admin/feeds", auth(h.requireAdmin(http.HandlerFunc(h.handleAdminFeedsList))))
 	mux.Handle("GET /ui/admin/feeds/{id}", auth(h.requireAdmin(http.HandlerFunc(h.handleAdminFeedShow))))
 	mux.Handle("POST /ui/admin/feeds/{id}/refresh", auth(h.requireAdmin(http.HandlerFunc(h.handleAdminFeedRefresh))))

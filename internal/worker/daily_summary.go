@@ -147,6 +147,17 @@ func dailySummaryMessage(s storage.DailySummary, base *storage.DailySummaryCount
 	details["feeds_total"], details["feeds_error"], details["feeds_gone"], details["feeds_blocked"], details["feeds_dead"], details["feeds_paused"], details["feeds_silent"], details["feeds_dormant"] =
 		f.TotalFeeds, f.ErrorCount, f.GoneCount, f.BlockedCount, s.DeadFeeds, f.PausedCount, f.SilentCount, f.DormantCount
 
+	if len(s.Quiet) > 0 {
+		parts := make([]string, 0, len(s.Quiet))
+		ids := make([]int64, 0, len(s.Quiet))
+		for _, q := range s.Quiet {
+			parts = append(parts, fmt.Sprintf("#%d %s (%s): %s без записей при обычных %s", q.FeedID, q.Title, q.FeedType, humanDuration(q.QuietFor), humanDuration(q.MedianGap)))
+			ids = append(ids, q.FeedID)
+		}
+		lines = append(lines, "Тише обычного (без ошибок, молчат дольше 3× своего ритма и суток): "+strings.Join(parts, "; "))
+		details["feeds_quiet"] = ids
+	}
+
 	db := fmt.Sprintf("База: %s", humanBytes(s.Counters.DBBytes))
 	if base != nil {
 		if d := s.Counters.DBBytes - base.DBBytes; d > 0 {

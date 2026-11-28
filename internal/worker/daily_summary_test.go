@@ -19,6 +19,7 @@ func TestDailySummaryMessage(t *testing.T) {
 		WebhookSent: 1200, WebhookFailed: 3, WebhookDead: 1, WebhookPending: 2,
 		Feeds:     storage.AdminFeedSummary{TotalFeeds: 2251, OKCount: 2200, ErrorCount: 36, GoneCount: 30, BlockedCount: 6, PausedCount: 5, SilentCount: 580, DormantCount: 444},
 		DeadFeeds: 36,
+		Quiet:     []storage.QuietFeed{{FeedID: 3927, Title: "Сочи кстати", FeedType: "telegram", MedianGap: 40 * time.Minute, QuietFor: 5*24*time.Hour + 14*time.Hour, Events: 559}},
 		Counters:  storage.DailySummaryCounters{PollStateUpdates: 1_500_000, WALBytes: 300 << 20, DBBytes: 600 << 20},
 	}
 	base := &storage.DailySummaryCounters{PollStateUpdates: 1_000_000, WALBytes: 200 << 20, DBBytes: 590 << 20}
@@ -32,6 +33,7 @@ func TestDailySummaryMessage(t *testing.T) {
 		"всего 2251, в порядке 2200, с ошибкой 36 (исчезли 30, заблокированы 6, мёртвые 36), на паузе 5, тихих 580, спящих 444",
 		"База: 600 МБ (+10 МБ за сутки), WAL 100 МБ/сутки",
 		"Процесс перезапускался: работает 3 ч 0 мин",
+		"Тише обычного (без ошибок, молчат дольше 3× своего ритма и суток): #3927 Сочи кстати (telegram): 5 д 14 ч без записей при обычных 40 мин",
 	} {
 		if !strings.Contains(m.Plain, want) {
 			t.Errorf("missing %q in:\n%s", want, m.Plain)

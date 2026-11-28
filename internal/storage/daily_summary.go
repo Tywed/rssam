@@ -38,8 +38,13 @@ type DailySummary struct {
 	WebhookSent, WebhookFailed, WebhookDead, WebhookPending int
 	Feeds                                                   AdminFeedSummary
 	DeadFeeds                                               int
-	Counters                                                DailySummaryCounters
+	// Quiet: healthy feeds silent far longer than their own rhythm
+	// (quiet_feeds.go), longest first, at most dailySummaryQuietLimit.
+	Quiet    []QuietFeed
+	Counters DailySummaryCounters
 }
+
+const dailySummaryQuietLimit = 5
 
 // CollectDailySummary runs the summary queries (six reads, each a filtered
 // scan of a small table or a catalog view).
@@ -126,6 +131,9 @@ WHERE updated_at >= $1 AND updated_at < $2`, since, until).Scan(&out.WebhookSent
 	}
 	if err := s.db.QueryRow(ctx, `SELECT COUNT(*)::int FROM `+feedsFrom+` WHERE `+adminFeedsDeadWhere).Scan(&out.DeadFeeds); err != nil {
 		return out, fmt.Errorf("daily summary dead feeds: %w", err)
+	}
+	if out.Quiet, err = s.QuietFeeds(ctx, dailySummaryQuietLimit); err != nil {
+		return out, err
 	}
 	out.Counters, err = s.dailySummaryCounters(ctx)
 	return out, err

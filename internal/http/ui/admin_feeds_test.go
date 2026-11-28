@@ -22,6 +22,12 @@ type uiMemAdminFeeds struct {
 }
 
 func (m *uiMemAdminFeeds) PauseGoneFeeds(context.Context) (int64, error) { return 0, nil }
+func (m *uiMemAdminFeeds) PauseDeadFeeds(context.Context, time.Duration) (int64, error) {
+	return 0, nil
+}
+func (m *uiMemAdminFeeds) QuietFeeds(context.Context, int) ([]storage.QuietFeed, error) {
+	return nil, nil
+}
 
 func (m *uiMemAdminFeeds) FeedTypeStats(context.Context) ([]storage.FeedTypeStat, error) {
 	return m.typeStats, nil
