@@ -116,7 +116,7 @@ func formatCleanupInterval(d time.Duration) string {
 // worker pool form).
 func (h *Handler) handleAdminRetentionSave(w http.ResponseWriter, r *http.Request) {
 	if !h.validateCSRF(r) {
-		http.Error(w, "forbidden", http.StatusForbidden)
+		h.csrfRejected(w, r)
 		return
 	}
 	f, err := parseRetentionForm(r.FormValue)
@@ -145,7 +145,7 @@ func (h *Handler) handleAdminRetentionSave(w http.ResponseWriter, r *http.Reques
 // values the process is currently running with.
 func (h *Handler) handleAdminRetentionCleanupNow(w http.ResponseWriter, r *http.Request) {
 	if !h.validateCSRF(r) {
-		http.Error(w, "forbidden", http.StatusForbidden)
+		h.csrfRejected(w, r)
 		return
 	}
 	if h.cfg.RunRetentionCleanup == nil {

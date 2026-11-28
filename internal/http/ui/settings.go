@@ -42,7 +42,7 @@ func (h *Handler) handleSettings(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) handleSettingsPassword(w http.ResponseWriter, r *http.Request) {
 	if !h.validateCSRF(r) {
-		http.Error(w, "forbidden", http.StatusForbidden)
+		h.csrfRejected(w, r)
 		return
 	}
 	p, _ := principal(r)
@@ -92,7 +92,7 @@ func (h *Handler) handleSettingsPassword(w http.ResponseWriter, r *http.Request)
 // user; the current one stays so the page can confirm the action.
 func (h *Handler) handleSettingsLogoutOthers(w http.ResponseWriter, r *http.Request) {
 	if !h.validateCSRF(r) {
-		http.Error(w, "forbidden", http.StatusForbidden)
+		h.csrfRejected(w, r)
 		return
 	}
 	p, _ := principal(r)
@@ -124,7 +124,7 @@ const newTokenCookie = "rssam_new_token"
 
 func (h *Handler) handleAPIKeyCreate(w http.ResponseWriter, r *http.Request) {
 	if !h.validateCSRF(r) {
-		http.Error(w, "forbidden", http.StatusForbidden)
+		h.csrfRejected(w, r)
 		return
 	}
 	p, _ := principal(r)
@@ -182,7 +182,7 @@ func (h *Handler) handleAPIKeyCreate(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) handleAPIKeyDelete(w http.ResponseWriter, r *http.Request) {
 	if !h.validateCSRF(r) {
-		http.Error(w, "forbidden", http.StatusForbidden)
+		h.csrfRejected(w, r)
 		return
 	}
 	p, _ := principal(r)

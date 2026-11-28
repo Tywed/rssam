@@ -98,7 +98,7 @@ func (h *Handler) handleStarred(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) handleUnreadMarkRead(w http.ResponseWriter, r *http.Request) {
 	if !h.validateCSRF(r) {
-		http.Error(w, "forbidden", http.StatusForbidden)
+		h.csrfRejected(w, r)
 		return
 	}
 	p, _ := principal(r)
@@ -194,7 +194,7 @@ func (h *Handler) loadSelectedEntry(r *http.Request, userID int64, data *pageDat
 
 func (h *Handler) handleEntryRead(w http.ResponseWriter, r *http.Request) {
 	if !h.validateCSRF(r) {
-		http.Error(w, "forbidden", http.StatusForbidden)
+		h.csrfRejected(w, r)
 		return
 	}
 	p, _ := principal(r)
@@ -228,7 +228,7 @@ func (h *Handler) handleEntryRead(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) handleEntryStar(w http.ResponseWriter, r *http.Request) {
 	if !h.validateCSRF(r) {
-		http.Error(w, "forbidden", http.StatusForbidden)
+		h.csrfRejected(w, r)
 		return
 	}
 	p, _ := principal(r)
@@ -252,7 +252,7 @@ const maxBulkEntryIDs = 1000
 // store call as PUT /v1/entries, with the form-encoded ids of the checked rows.
 func (h *Handler) handleEntriesBulk(w http.ResponseWriter, r *http.Request) {
 	if !h.validateCSRF(r) {
-		http.Error(w, "forbidden", http.StatusForbidden)
+		h.csrfRejected(w, r)
 		return
 	}
 	p, _ := principal(r)

@@ -149,7 +149,7 @@ func TestUI_ColoursViaNoncedStyleAndLabelMarkRead(t *testing.T) {
 	req.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: sid})
 	rec = httptest.NewRecorder()
 	srv.ServeHTTP(rec, req)
-	if rec.Code != http.StatusForbidden || len(entries.marked) != 1 {
+	if !isStaleCSRFRedirect(rec) || len(entries.marked) != 1 {
 		t.Fatalf("mark-read without CSRF: %d marked=%v", rec.Code, entries.marked)
 	}
 }

@@ -71,7 +71,7 @@ func feedsRedirect(w http.ResponseWriter, r *http.Request, target, code string, 
 
 func (h *Handler) handleSubscribe(w http.ResponseWriter, r *http.Request) {
 	if !h.validateCSRF(r) {
-		http.Error(w, "forbidden", http.StatusForbidden)
+		h.csrfRejected(w, r)
 		return
 	}
 	if h.cfg.Subscriptions == nil {
@@ -103,7 +103,7 @@ func (h *Handler) handleSubscribe(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) handleUnsubscribe(w http.ResponseWriter, r *http.Request) {
 	if !h.validateCSRF(r) {
-		http.Error(w, "forbidden", http.StatusForbidden)
+		h.csrfRejected(w, r)
 		return
 	}
 	if h.cfg.Subscriptions == nil {
@@ -135,7 +135,7 @@ func (h *Handler) handleUnsubscribe(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) handleCategoryFollow(w http.ResponseWriter, r *http.Request) {
 	if !h.validateCSRF(r) {
-		http.Error(w, "forbidden", http.StatusForbidden)
+		h.csrfRejected(w, r)
 		return
 	}
 	p, _ := principal(r)
@@ -161,7 +161,7 @@ func (h *Handler) handleCategoryFollow(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) handleCategoryUnfollow(w http.ResponseWriter, r *http.Request) {
 	if !h.validateCSRF(r) {
-		http.Error(w, "forbidden", http.StatusForbidden)
+		h.csrfRejected(w, r)
 		return
 	}
 	p, _ := principal(r)

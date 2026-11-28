@@ -80,7 +80,7 @@ func TestUI_EntriesBulk(t *testing.T) {
 		"bad action": {"csrf_token": {csrf}, "action": {"remove"}, "entry_ids": {"1"}},
 	} {
 		calls := entries.calls
-		if rec := post(form, ""); rec.Code < 400 {
+		if rec := post(form, ""); rec.Code < 400 && !isStaleCSRFRedirect(rec) {
 			t.Errorf("%s: status=%d", name, rec.Code)
 		}
 		if entries.calls != calls {

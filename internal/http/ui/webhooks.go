@@ -158,7 +158,7 @@ func (h *Handler) handleWebhookEdit(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) handleWebhookCreate(w http.ResponseWriter, r *http.Request) {
 	if !h.validateCSRF(r) {
-		http.Error(w, "forbidden", http.StatusForbidden)
+		h.csrfRejected(w, r)
 		return
 	}
 	p, _ := principal(r)
@@ -190,7 +190,7 @@ func (h *Handler) handleWebhookCreate(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) handleWebhookUpdate(w http.ResponseWriter, r *http.Request) {
 	if !h.validateCSRF(r) {
-		http.Error(w, "forbidden", http.StatusForbidden)
+		h.csrfRejected(w, r)
 		return
 	}
 	p, _ := principal(r)
@@ -229,7 +229,7 @@ func (h *Handler) handleWebhookUpdate(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) handleWebhookDelete(w http.ResponseWriter, r *http.Request) {
 	if !h.validateCSRF(r) {
-		http.Error(w, "forbidden", http.StatusForbidden)
+		h.csrfRejected(w, r)
 		return
 	}
 	p, _ := principal(r)
@@ -267,7 +267,7 @@ func (h *Handler) handleWebhookUnpause(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) setWebhookEnabled(w http.ResponseWriter, r *http.Request, enabled bool) {
 	if !h.validateCSRF(r) {
-		http.Error(w, "forbidden", http.StatusForbidden)
+		h.csrfRejected(w, r)
 		return
 	}
 	p, _ := principal(r)
@@ -289,7 +289,7 @@ func (h *Handler) setWebhookEnabled(w http.ResponseWriter, r *http.Request, enab
 
 func (h *Handler) handleWebhookTest(w http.ResponseWriter, r *http.Request) {
 	if !h.validateCSRF(r) {
-		http.Error(w, "forbidden", http.StatusForbidden)
+		h.csrfRejected(w, r)
 		return
 	}
 	p, _ := principal(r)
@@ -322,7 +322,7 @@ func (h *Handler) handleWebhookTest(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) handleWebhookRetryAll(w http.ResponseWriter, r *http.Request) {
 	if !h.validateCSRF(r) {
-		http.Error(w, "forbidden", http.StatusForbidden)
+		h.csrfRejected(w, r)
 		return
 	}
 	p, _ := principal(r)
@@ -349,7 +349,7 @@ func (h *Handler) handleWebhookRetryAll(w http.ResponseWriter, r *http.Request) 
 // (sent/failed totals, last error). Delivery logs are not touched.
 func (h *Handler) handleWebhookResetStats(w http.ResponseWriter, r *http.Request) {
 	if !h.validateCSRF(r) {
-		http.Error(w, "forbidden", http.StatusForbidden)
+		h.csrfRejected(w, r)
 		return
 	}
 	p, _ := principal(r)
@@ -414,7 +414,7 @@ func (h *Handler) handleWebhookLogs(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) handleWebhookLogRetry(w http.ResponseWriter, r *http.Request) {
 	if !h.validateCSRF(r) {
-		http.Error(w, "forbidden", http.StatusForbidden)
+		h.csrfRejected(w, r)
 		return
 	}
 	id, err := parsePathID(r)

@@ -36,7 +36,7 @@ func TestUI_AdminUserRoleAndPassword(t *testing.T) {
 	sid := uiSessionCookie(t, h, mux)
 	token := auth.CSRFToken("csrf-test", sid)
 
-	if rec := postForm(t, mux, sid, "/ui/admin/users/7/role", url.Values{"role": {"admin"}}); rec.Code != http.StatusForbidden {
+	if rec := postForm(t, mux, sid, "/ui/admin/users/7/role", url.Values{"role": {"admin"}}); !isStaleCSRFRedirect(rec) {
 		t.Fatalf("role without csrf: %d", rec.Code)
 	}
 	if rec := postForm(t, mux, sid, "/ui/admin/users/1/role", url.Values{"csrf_token": {token}, "role": {"reader"}}); rec.Code != http.StatusBadRequest {

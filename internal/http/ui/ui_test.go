@@ -294,8 +294,8 @@ func TestUI_CSRFRejected(t *testing.T) {
 	req.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: sid})
 	rec = httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
-	if rec.Code != http.StatusForbidden {
-		t.Fatalf("expected CSRF 403, got %d", rec.Code)
+	if !isStaleCSRFRedirect(rec) {
+		t.Fatalf("expected stale-form redirect, got %d %s", rec.Code, rec.Header().Get("Location"))
 	}
 }
 

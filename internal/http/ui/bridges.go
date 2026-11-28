@@ -24,7 +24,7 @@ func (h *Handler) handleSettingsBridgeTelegram(w http.ResponseWriter, r *http.Re
 
 func (h *Handler) handleSettingsBridgeTelegramSave(w http.ResponseWriter, r *http.Request) {
 	if !h.validateCSRF(r) {
-		http.Error(w, "forbidden", http.StatusForbidden)
+		h.csrfRejected(w, r)
 		return
 	}
 	stored := h.currentBridgeStored()
@@ -57,7 +57,7 @@ func (h *Handler) handleSettingsBridgeMax(w http.ResponseWriter, r *http.Request
 
 func (h *Handler) handleSettingsBridgeMaxSave(w http.ResponseWriter, r *http.Request) {
 	if !h.validateCSRF(r) {
-		http.Error(w, "forbidden", http.StatusForbidden)
+		h.csrfRejected(w, r)
 		return
 	}
 	stored := h.currentBridgeStored()
@@ -86,7 +86,7 @@ func (h *Handler) handleSettingsBridgeVK(w http.ResponseWriter, r *http.Request)
 
 func (h *Handler) handleSettingsBridgeVKSave(w http.ResponseWriter, r *http.Request) {
 	if !h.validateCSRF(r) {
-		http.Error(w, "forbidden", http.StatusForbidden)
+		h.csrfRejected(w, r)
 		return
 	}
 	stored := h.currentBridgeStored()
@@ -115,7 +115,7 @@ func (h *Handler) handleSettingsBridgeRutube(w http.ResponseWriter, r *http.Requ
 
 func (h *Handler) handleSettingsBridgeRutubeSave(w http.ResponseWriter, r *http.Request) {
 	if !h.validateCSRF(r) {
-		http.Error(w, "forbidden", http.StatusForbidden)
+		h.csrfRejected(w, r)
 		return
 	}
 	stored := h.currentBridgeStored()

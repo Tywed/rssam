@@ -325,7 +325,7 @@ func (h *Handler) handleAdminFeedShow(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) handleAdminFeedRefresh(w http.ResponseWriter, r *http.Request) {
 	if !h.validateCSRF(r) {
-		http.Error(w, "forbidden", http.StatusForbidden)
+		h.csrfRejected(w, r)
 		return
 	}
 	id, err := parsePathID(r)
@@ -348,7 +348,7 @@ func (h *Handler) handleAdminFeedRefresh(w http.ResponseWriter, r *http.Request)
 
 func (h *Handler) handleAdminFeedUnpause(w http.ResponseWriter, r *http.Request) {
 	if !h.validateCSRF(r) {
-		http.Error(w, "forbidden", http.StatusForbidden)
+		h.csrfRejected(w, r)
 		return
 	}
 	id, err := parsePathID(r)
@@ -371,7 +371,7 @@ func (h *Handler) handleAdminFeedUnpause(w http.ResponseWriter, r *http.Request)
 // handleAdminFeedPause sets manual_paused without resetting parsing_error_count or poll_paused.
 func (h *Handler) handleAdminFeedPause(w http.ResponseWriter, r *http.Request) {
 	if !h.validateCSRF(r) {
-		http.Error(w, "forbidden", http.StatusForbidden)
+		h.csrfRejected(w, r)
 		return
 	}
 	id, err := parsePathID(r)
@@ -399,7 +399,7 @@ func (h *Handler) handleAdminFeedPause(w http.ResponseWriter, r *http.Request) {
 // handleAdminFeedResetCircuit clears circuit breaker state without polling.
 func (h *Handler) handleAdminFeedResetCircuit(w http.ResponseWriter, r *http.Request) {
 	if !h.validateCSRF(r) {
-		http.Error(w, "forbidden", http.StatusForbidden)
+		h.csrfRejected(w, r)
 		return
 	}
 	id, err := parsePathID(r)
@@ -423,7 +423,7 @@ func (h *Handler) handleAdminFeedResetCircuit(w http.ResponseWriter, r *http.Req
 // poll per interval and leave the error list, keeping last_error.
 func (h *Handler) handleAdminFeedsPauseGone(w http.ResponseWriter, r *http.Request) {
 	if !h.validateCSRF(r) {
-		http.Error(w, "forbidden", http.StatusForbidden)
+		h.csrfRejected(w, r)
 		return
 	}
 	n, err := h.cfg.AdminFeeds.PauseGoneFeeds(r.Context())
@@ -437,7 +437,7 @@ func (h *Handler) handleAdminFeedsPauseGone(w http.ResponseWriter, r *http.Reque
 
 func (h *Handler) handleAdminFeedsResetCircuits(w http.ResponseWriter, r *http.Request) {
 	if !h.validateCSRF(r) {
-		http.Error(w, "forbidden", http.StatusForbidden)
+		h.csrfRejected(w, r)
 		return
 	}
 	if _, err := h.cfg.Feeds.ResetErrorFeedPollCircuits(r.Context()); err != nil {
@@ -449,7 +449,7 @@ func (h *Handler) handleAdminFeedsResetCircuits(w http.ResponseWriter, r *http.R
 
 func (h *Handler) handleAdminFeedDelete(w http.ResponseWriter, r *http.Request) {
 	if !h.validateCSRF(r) {
-		http.Error(w, "forbidden", http.StatusForbidden)
+		h.csrfRejected(w, r)
 		return
 	}
 	id, err := parsePathID(r)
@@ -472,7 +472,7 @@ func (h *Handler) handleAdminFeedDelete(w http.ResponseWriter, r *http.Request) 
 
 func (h *Handler) handleAdminFeedHashEntries(w http.ResponseWriter, r *http.Request) {
 	if !h.validateCSRF(r) {
-		http.Error(w, "forbidden", http.StatusForbidden)
+		h.csrfRejected(w, r)
 		return
 	}
 	id, err := parsePathID(r)

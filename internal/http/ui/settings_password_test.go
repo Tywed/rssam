@@ -144,7 +144,7 @@ func TestUI_LogoutOtherSessions(t *testing.T) {
 		mux.ServeHTTP(rec, req)
 		return rec
 	}
-	if rec := post(sidA, "bogus"); rec.Code != http.StatusForbidden {
+	if rec := post(sidA, "bogus"); !isStaleCSRFRedirect(rec) {
 		t.Fatalf("bad csrf: code=%d", rec.Code)
 	}
 	if rec := post(sidA, auth.CSRFToken("csrf-test", sidA)); rec.Code != http.StatusFound || rec.Header().Get("Location") != "/ui/settings?pw=sessions" {

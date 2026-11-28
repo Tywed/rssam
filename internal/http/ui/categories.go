@@ -32,7 +32,7 @@ func (h *Handler) handleCategoriesList(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) handleCategoryCreate(w http.ResponseWriter, r *http.Request) {
 	if !h.validateCSRF(r) {
-		http.Error(w, "forbidden", http.StatusForbidden)
+		h.csrfRejected(w, r)
 		return
 	}
 	title := strings.TrimSpace(r.FormValue("title"))
@@ -67,7 +67,7 @@ func (h *Handler) handleCategoryCreate(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) handleCategoryUpdate(w http.ResponseWriter, r *http.Request) {
 	if !h.validateCSRF(r) {
-		http.Error(w, "forbidden", http.StatusForbidden)
+		h.csrfRejected(w, r)
 		return
 	}
 	id, err := parsePathID(r)
@@ -124,7 +124,7 @@ func (h *Handler) saveCategoryPollHours(r *http.Request, categoryID int64, pollH
 
 func (h *Handler) handleCategoryDelete(w http.ResponseWriter, r *http.Request) {
 	if !h.validateCSRF(r) {
-		http.Error(w, "forbidden", http.StatusForbidden)
+		h.csrfRejected(w, r)
 		return
 	}
 	id, err := parsePathID(r)
@@ -159,7 +159,7 @@ func (h *Handler) handleCategoryDelete(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) handleCategoryMarkRead(w http.ResponseWriter, r *http.Request) {
 	if !h.validateCSRF(r) {
-		http.Error(w, "forbidden", http.StatusForbidden)
+		h.csrfRejected(w, r)
 		return
 	}
 	p, _ := principal(r)
@@ -179,7 +179,7 @@ func (h *Handler) handleCategoryMarkRead(w http.ResponseWriter, r *http.Request)
 
 func (h *Handler) handleCategoryReorder(w http.ResponseWriter, r *http.Request) {
 	if !h.validateCSRF(r) {
-		http.Error(w, "forbidden", http.StatusForbidden)
+		h.csrfRejected(w, r)
 		return
 	}
 	var ids []int64

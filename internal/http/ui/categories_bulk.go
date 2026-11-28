@@ -53,7 +53,7 @@ func (h *Handler) renderFeedsListFlash(w http.ResponseWriter, r *http.Request, f
 
 func (h *Handler) handleCategoryBulkInterval(w http.ResponseWriter, r *http.Request) {
 	if !h.validateCSRF(r) {
-		http.Error(w, "forbidden", http.StatusForbidden)
+		h.csrfRejected(w, r)
 		return
 	}
 	p, _ := principal(r)
@@ -91,7 +91,7 @@ func (h *Handler) handleCategoryBulkInterval(w http.ResponseWriter, r *http.Requ
 
 func (h *Handler) handleCategoryBulkWebhook(w http.ResponseWriter, r *http.Request) {
 	if !h.validateCSRF(r) {
-		http.Error(w, "forbidden", http.StatusForbidden)
+		h.csrfRejected(w, r)
 		return
 	}
 	p, _ := principal(r)
@@ -123,7 +123,7 @@ func (h *Handler) handleCategoryBulkWebhook(w http.ResponseWriter, r *http.Reque
 
 func (h *Handler) handleCategoryBulkStoreMode(w http.ResponseWriter, r *http.Request) {
 	if !h.validateCSRF(r) {
-		http.Error(w, "forbidden", http.StatusForbidden)
+		h.csrfRejected(w, r)
 		return
 	}
 	p, _ := principal(r)
@@ -171,7 +171,7 @@ func storeModeLabel(mode string) string {
 
 func (h *Handler) handleCategoryBulkAdaptive(w http.ResponseWriter, r *http.Request) {
 	if !h.validateCSRF(r) {
-		http.Error(w, "forbidden", http.StatusForbidden)
+		h.csrfRejected(w, r)
 		return
 	}
 	p, _ := principal(r)
@@ -211,7 +211,7 @@ func (h *Handler) handleCategoryBulkAdaptive(w http.ResponseWriter, r *http.Requ
 
 func (h *Handler) handleCategoryBulkHashEntries(w http.ResponseWriter, r *http.Request) {
 	if !h.validateCSRF(r) {
-		http.Error(w, "forbidden", http.StatusForbidden)
+		h.csrfRejected(w, r)
 		return
 	}
 	p, _ := principal(r)
@@ -251,7 +251,7 @@ func (h *Handler) collapseEntries(r *http.Request, userID int64, feedID, categor
 
 func (h *Handler) handleCategoryBulkRefresh(w http.ResponseWriter, r *http.Request) {
 	if !h.validateCSRF(r) {
-		http.Error(w, "forbidden", http.StatusForbidden)
+		h.csrfRejected(w, r)
 		return
 	}
 	p, _ := principal(r)
@@ -281,7 +281,7 @@ func (h *Handler) handleCategoryBulkRefresh(w http.ResponseWriter, r *http.Reque
 
 func (h *Handler) handleCategoryBulkPause(w http.ResponseWriter, r *http.Request) {
 	if !h.validateCSRF(r) {
-		http.Error(w, "forbidden", http.StatusForbidden)
+		h.csrfRejected(w, r)
 		return
 	}
 	p, _ := principal(r)
@@ -322,7 +322,7 @@ func (h *Handler) handleCategoryBulkPause(w http.ResponseWriter, r *http.Request
 
 func (h *Handler) handleCategoryBulkMove(w http.ResponseWriter, r *http.Request) {
 	if !h.validateCSRF(r) {
-		http.Error(w, "forbidden", http.StatusForbidden)
+		h.csrfRejected(w, r)
 		return
 	}
 	p, _ := principal(r)

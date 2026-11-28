@@ -110,7 +110,7 @@ func scopeIDMaps(items []storage.FilterScopeItem) (feeds map[int64]bool, cats ma
 
 func (h *Handler) handleFilterCreate(w http.ResponseWriter, r *http.Request) {
 	if !h.validateCSRF(r) {
-		http.Error(w, "forbidden", http.StatusForbidden)
+		h.csrfRejected(w, r)
 		return
 	}
 	p, _ := principal(r)
@@ -140,7 +140,7 @@ func (h *Handler) handleFilterCreate(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) handleFilterUpdate(w http.ResponseWriter, r *http.Request) {
 	if !h.validateCSRF(r) {
-		http.Error(w, "forbidden", http.StatusForbidden)
+		h.csrfRejected(w, r)
 		return
 	}
 	p, _ := principal(r)
@@ -190,7 +190,7 @@ func (h *Handler) handleFilterUpdate(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) handleFilterDelete(w http.ResponseWriter, r *http.Request) {
 	if !h.validateCSRF(r) {
-		http.Error(w, "forbidden", http.StatusForbidden)
+		h.csrfRejected(w, r)
 		return
 	}
 	p, _ := principal(r)

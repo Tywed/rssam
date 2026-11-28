@@ -216,7 +216,7 @@ func TestWebhookDetailShowsCountersAndReset(t *testing.T) {
 
 	// Reset: CSRF required, tenant-scoped, redirects with a flash.
 	rec = postForm(t, mux, sid, "/ui/webhooks/3/reset-stats", url.Values{})
-	if rec.Code != http.StatusForbidden {
+	if !isStaleCSRFRedirect(rec) {
 		t.Fatalf("reset without csrf: %d", rec.Code)
 	}
 	rec = postForm(t, mux, sid, "/ui/webhooks/4/reset-stats", url.Values{"csrf_token": {token}})

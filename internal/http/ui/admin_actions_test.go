@@ -98,7 +98,7 @@ func TestAdminUsersPage(t *testing.T) {
 
 func TestAdminRefreshAll(t *testing.T) {
 	e := newAdminActionsEnv(t, true)
-	if rec := e.do(http.MethodPost, "/ui/admin/feeds/refresh-all", nil, false); rec.Code != http.StatusForbidden {
+	if rec := e.do(http.MethodPost, "/ui/admin/feeds/refresh-all", nil, false); !isStaleCSRFRedirect(rec) {
 		t.Fatalf("without csrf: %d", rec.Code)
 	}
 	// No refresher configured: the request is still answered with the
@@ -189,7 +189,7 @@ func TestAdminWorkersSave(t *testing.T) {
 
 func TestAdminFeedRefreshRoute(t *testing.T) {
 	e := newAdminActionsEnv(t, true)
-	if rec := e.do(http.MethodPost, "/ui/admin/feeds/1/refresh", nil, false); rec.Code != http.StatusForbidden {
+	if rec := e.do(http.MethodPost, "/ui/admin/feeds/1/refresh", nil, false); !isStaleCSRFRedirect(rec) {
 		t.Fatalf("without csrf: %d", rec.Code)
 	}
 	if rec := e.do(http.MethodPost, "/ui/admin/feeds/999/refresh", nil, true); rec.Code != http.StatusNotFound {

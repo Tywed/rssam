@@ -212,7 +212,7 @@ func TestAdminRetentionSaveWritesEnv(t *testing.T) {
 		"dedup_retention_days":         {"180"},
 		"cleanup_interval":             {"6h"},
 	})
-	if rec.Code != http.StatusForbidden {
+	if !isStaleCSRFRedirect(rec) {
 		t.Fatalf("no csrf: status=%d", rec.Code)
 	}
 }

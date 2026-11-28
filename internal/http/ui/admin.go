@@ -35,7 +35,7 @@ func (h *Handler) handleAdminUsers(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) handleAdminUserCreate(w http.ResponseWriter, r *http.Request) {
 	if !h.validateCSRF(r) {
-		http.Error(w, "forbidden", http.StatusForbidden)
+		h.csrfRejected(w, r)
 		return
 	}
 	username := stringsTrim(r.FormValue("username"))
@@ -83,7 +83,7 @@ func (h *Handler) handleAdminUserCreate(w http.ResponseWriter, r *http.Request) 
 
 func (h *Handler) handleAdminUserRole(w http.ResponseWriter, r *http.Request) {
 	if !h.validateCSRF(r) {
-		http.Error(w, "forbidden", http.StatusForbidden)
+		h.csrfRejected(w, r)
 		return
 	}
 	p, _ := principal(r)
@@ -118,7 +118,7 @@ func (h *Handler) handleAdminUserRole(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) handleAdminUserPassword(w http.ResponseWriter, r *http.Request) {
 	if !h.validateCSRF(r) {
-		http.Error(w, "forbidden", http.StatusForbidden)
+		h.csrfRejected(w, r)
 		return
 	}
 	id, err := parsePathID(r)
@@ -159,7 +159,7 @@ func (h *Handler) handleAdminUserPassword(w http.ResponseWriter, r *http.Request
 
 func (h *Handler) handleAdminUserDelete(w http.ResponseWriter, r *http.Request) {
 	if !h.validateCSRF(r) {
-		http.Error(w, "forbidden", http.StatusForbidden)
+		h.csrfRejected(w, r)
 		return
 	}
 	p, _ := principal(r)
@@ -189,7 +189,7 @@ func (h *Handler) handleAdminUserDelete(w http.ResponseWriter, r *http.Request) 
 
 func (h *Handler) handleAdminRefreshAll(w http.ResponseWriter, r *http.Request) {
 	if !h.validateCSRF(r) {
-		http.Error(w, "forbidden", http.StatusForbidden)
+		h.csrfRejected(w, r)
 		return
 	}
 	p, _ := principal(r)
@@ -342,7 +342,7 @@ func (h *Handler) handleAdminSystem(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) handleAdminHashEntries(w http.ResponseWriter, r *http.Request) {
 	if !h.validateCSRF(r) {
-		http.Error(w, "forbidden", http.StatusForbidden)
+		h.csrfRejected(w, r)
 		return
 	}
 	n, err := h.collapseEntries(r, 0, nil, nil, true)
@@ -363,7 +363,7 @@ func (h *Handler) envPath() string {
 
 func (h *Handler) handleAdminWorkersSave(w http.ResponseWriter, r *http.Request) {
 	if !h.validateCSRF(r) {
-		http.Error(w, "forbidden", http.StatusForbidden)
+		h.csrfRejected(w, r)
 		return
 	}
 	poll, err1 := strconv.Atoi(strings.TrimSpace(r.FormValue("worker_pool_size")))

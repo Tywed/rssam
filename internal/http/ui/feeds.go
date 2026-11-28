@@ -165,7 +165,7 @@ func (h *Handler) handleFeedNew(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) handleFeedCreate(w http.ResponseWriter, r *http.Request) {
 	if !h.validateCSRF(r) {
-		http.Error(w, "forbidden", http.StatusForbidden)
+		h.csrfRejected(w, r)
 		return
 	}
 	p, _ := principal(r)
@@ -312,7 +312,7 @@ func (h *Handler) loadFeedFormWebhooks(r *http.Request, data *pageData) {
 
 func (h *Handler) handleFeedUpdate(w http.ResponseWriter, r *http.Request) {
 	if !h.validateCSRF(r) {
-		http.Error(w, "forbidden", http.StatusForbidden)
+		h.csrfRejected(w, r)
 		return
 	}
 	p, _ := principal(r)
@@ -386,7 +386,7 @@ func (h *Handler) handleFeedUpdate(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) handleFeedDelete(w http.ResponseWriter, r *http.Request) {
 	if !h.validateCSRF(r) {
-		http.Error(w, "forbidden", http.StatusForbidden)
+		h.csrfRejected(w, r)
 		return
 	}
 	p, _ := principal(r)
@@ -416,7 +416,7 @@ func (h *Handler) handleFeedDelete(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) handleFeedRefresh(w http.ResponseWriter, r *http.Request) {
 	if !h.validateCSRF(r) {
-		http.Error(w, "forbidden", http.StatusForbidden)
+		h.csrfRejected(w, r)
 		return
 	}
 	p, _ := principal(r)
@@ -441,7 +441,7 @@ func (h *Handler) handleFeedRefresh(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) handleFeedMarkRead(w http.ResponseWriter, r *http.Request) {
 	if !h.validateCSRF(r) {
-		http.Error(w, "forbidden", http.StatusForbidden)
+		h.csrfRejected(w, r)
 		return
 	}
 	p, _ := principal(r)
@@ -461,7 +461,7 @@ func (h *Handler) handleFeedMarkRead(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) handleFeedsImport(w http.ResponseWriter, r *http.Request) {
 	if !h.validateCSRF(r) {
-		http.Error(w, "forbidden", http.StatusForbidden)
+		h.csrfRejected(w, r)
 		return
 	}
 	p, _ := principal(r)

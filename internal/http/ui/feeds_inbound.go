@@ -21,7 +21,7 @@ func (h *Handler) handleInboundFeedNew(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) handleInboundFeedCreate(w http.ResponseWriter, r *http.Request) {
 	if !h.validateCSRF(r) {
-		http.Error(w, "forbidden", http.StatusForbidden)
+		h.csrfRejected(w, r)
 		return
 	}
 	p, _ := principal(r)
@@ -75,7 +75,7 @@ func (h *Handler) handleInboundFeedCreate(w http.ResponseWriter, r *http.Request
 
 func (h *Handler) handleInboundSecretRotate(w http.ResponseWriter, r *http.Request) {
 	if !h.validateCSRF(r) {
-		http.Error(w, "forbidden", http.StatusForbidden)
+		h.csrfRejected(w, r)
 		return
 	}
 	id, err := parsePathID(r)
