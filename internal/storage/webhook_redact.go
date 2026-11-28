@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/url"
 	"regexp"
+	"strings"
 )
 
 // The Telegram Bot API keeps the bot token in the request path
@@ -41,4 +42,30 @@ func RedactWebhookError(err error) string {
 		return ue.Op + " " + RedactWebhookURL(ue.URL) + ": " + ue.Err.Error()
 	}
 	return RedactWebhookText(err.Error())
+}
+
+// RedactFeedError is err.Error() with the URL quoted by a transport error
+// stripped of its userinfo and query string. A private feed carries its
+// key there (?token=…, ?key=…, user:pw@) and Go's transport quotes the
+// whole URL in the error: `Get "https://host/feed?token=abc": dial tcp …`.
+// The text goes to last_error, the poll log and the process log, which
+// every subscriber of the feed and every reader of the journal can see;
+// the rest of the message (the part the gone/blocked classes match) is
+// kept as is. Go already masks the password itself.
+func RedactFeedError(err error) string {
+	if err == nil {
+		return ""
+	}
+	text := err.Error()
+	var ue *url.Error
+	if !errors.As(err, &ue) || ue.URL == "" {
+		return text
+	}
+	u, perr := url.Parse(ue.URL)
+	if perr != nil || (u.RawQuery == "" && u.User == nil) {
+		return text
+	}
+	u.RawQuery = ""
+	u.User = nil
+	return strings.ReplaceAll(text, ue.URL, u.String())
 }

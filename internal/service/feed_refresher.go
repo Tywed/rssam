@@ -157,7 +157,7 @@ func (r *FeedRefresher) recordFailure(ctx context.Context, feed storage.Feed, no
 	after := feed
 	after.ParsingErrorCount = feed.ParsingErrorCount + 1
 	after.PollPaused = feed.PollPaused || after.ParsingErrorCount >= r.circuitThreshold()
-	after.LastError = cause.Error()
+	after.LastError = storage.RedactFeedError(cause)
 	after.LastCheckedAt = &now
 	// Same backoff the worker applies to the job: base interval × 2^errors.
 	// A bot challenge skips the walk: it will not clear by itself.
@@ -169,7 +169,7 @@ func (r *FeedRefresher) recordFailure(ctx context.Context, feed storage.Feed, no
 	after.NextCheckAt = &next
 	if err := r.Feeds.RecordFeedPollFailure(ctx, storage.RecordFeedPollFailureParams{
 		ID:          feed.ID,
-		Error:       cause.Error(),
+		Error:       after.LastError,
 		Threshold:   r.circuitThreshold(),
 		CheckedAt:   now,
 		NextCheckAt: next,
@@ -202,7 +202,7 @@ func (r *FeedRefresher) recordPoll(ctx context.Context, feed storage.Feed, at ti
 		Duration: time.Since(started),
 	}
 	if cause != nil {
-		p.Error = cause.Error()
+		p.Error = storage.RedactFeedError(cause)
 	}
 	if err := r.PollLog.RecordFeedPoll(ctx, p); err != nil {
 		r.logger().Warn("record feed poll log failed", "feed_id", feedID, "err", err)

@@ -151,9 +151,15 @@ func (g *Guard) proxyFromEnvironment(req *http.Request) (*url.URL, error) {
 	return proxyURL, nil
 }
 
-// proxyHosts are the hostnames of HTTP(S)_PROXY, read once: connections to
-// them are made on the operator's behalf, not the feed's.
-var proxyHosts = func() map[string]struct{} {
+// proxyEndpoints are the host:port endpoints of HTTP(S)_PROXY, read once:
+// connections to them are made on the operator's behalf, not the feed's.
+// The exemption is for the endpoint, not the host: with
+// HTTP_PROXY=http://127.0.0.1:3128 a feed URL naming 127.0.0.1 on another
+// port is not a proxy connection — Go sends loopback and NO_PROXY hosts
+// directly, so that request would have reached the guard's dialer with the
+// host exempt and skipped the private-network check (the class of hole
+// Miniflux closed in b6fe593, 2026-11-23).
+var proxyEndpoints = func() map[string]struct{} {
 	out := map[string]struct{}{}
 	for _, key := range []string{"HTTP_PROXY", "http_proxy", "HTTPS_PROXY", "https_proxy"} {
 		v := os.Getenv(key)
@@ -163,12 +169,33 @@ var proxyHosts = func() map[string]struct{} {
 		if !strings.Contains(v, "://") {
 			v = "http://" + v
 		}
-		if u, err := url.Parse(v); err == nil && u.Hostname() != "" {
-			out[strings.ToLower(u.Hostname())] = struct{}{}
+		if ep := proxyEndpoint(v); ep != "" {
+			out[ep] = struct{}{}
 		}
 	}
 	return out
 }()
+
+// proxyEndpoint reduces a proxy URL to the lower-case host:port the
+// transport dials, defaulting the port by scheme as net/http does.
+func proxyEndpoint(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil || u.Hostname() == "" {
+		return ""
+	}
+	port := u.Port()
+	if port == "" {
+		switch strings.ToLower(u.Scheme) {
+		case "https":
+			port = "443"
+		case "socks5", "socks5h":
+			port = "1080"
+		default:
+			port = "80"
+		}
+	}
+	return net.JoinHostPort(strings.ToLower(u.Hostname()), port)
+}
 
 func (g *Guard) dialContext(ctx context.Context, network, addr string, exempt func(host, port string) bool) (net.Conn, error) {
 	host, port, err := net.SplitHostPort(addr)
@@ -177,7 +204,7 @@ func (g *Guard) dialContext(ctx context.Context, network, addr string, exempt fu
 	}
 
 	var ips []net.IP
-	if _, isProxy := proxyHosts[strings.ToLower(host)]; isProxy || (exempt != nil && exempt(host, port)) {
+	if _, isProxy := proxyEndpoints[net.JoinHostPort(strings.ToLower(host), port)]; isProxy || (exempt != nil && exempt(host, port)) {
 		ips, err = g.lookupIPs(ctx, host)
 	} else {
 		ips, err = g.resolveHost(ctx, host)

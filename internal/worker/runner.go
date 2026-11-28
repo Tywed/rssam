@@ -484,7 +484,7 @@ func processPollFeed(ctx context.Context, feed storage.Feed, store pollStore, re
 		if feedAfter.ParsingErrorCount <= 1 || (feedAfter.PollPaused && !feed.PollPaused) {
 			level = slog.LevelWarn
 		}
-		log.Log(ctx, level, "poll_feed failed", "feed_id", feedID, "error_count", feedAfter.ParsingErrorCount, "circuit_open", feedAfter.PollPaused, "next_check_at", next, "err", err)
+		log.Log(ctx, level, "poll_feed failed", "feed_id", feedID, "error_count", feedAfter.ParsingErrorCount, "circuit_open", feedAfter.PollPaused, "next_check_at", next, "err", storage.RedactFeedError(err))
 		return time.Time{}, deferNone
 	}
 
