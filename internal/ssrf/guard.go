@@ -51,6 +51,7 @@ var defaultBlockedCIDRs = []string{
 	"100.64.0.0/10",
 	"0.0.0.0/8",
 	"192.0.0.0/24",    // IETF protocol assignments (RFC 6890)
+	"192.88.99.0/24",  // deprecated 6to4 relay anycast (RFC 7526)
 	"192.0.2.0/24",    // TEST-NET-1
 	"198.18.0.0/15",   // benchmarking (RFC 2544)
 	"198.51.100.0/24", // TEST-NET-2
@@ -60,7 +61,11 @@ var defaultBlockedCIDRs = []string{
 	"::/128",          // unspecified
 	"::1/128",
 	"100::/64",      // discard-only (RFC 6666)
-	"2001:db8::/32", // documentation
+	"2001:2::/48",   // benchmarking (RFC 5180)
+	"2001:db8::/32", // documentation (RFC 3849)
+	"3fff::/20",     // documentation (RFC 9637)
+	"5f00::/16",     // SRv6 SIDs (RFC 9602)
+	"fec0::/10",     // deprecated site-local (RFC 3879)
 	"fc00::/7",
 	"fe80::/10",
 	"ff00::/8", // multicast

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Безопасность, SSRF: в список непубличных добавлены `2001:2::/48` (benchmarking), `3fff::/20` (documentation), `5f00::/16` (SRv6 SID), `fec0::/10` (устаревшие site-local) и `192.88.99.0/24` (устаревший 6to4 anycast) — вслед за Miniflux и FreshRSS 25.11 (GHSA-2983-h3r5-qv6j). На проде с `FETCH_ALLOW_PRIVATE_NETWORK=true` ничего не меняет.
+
 ## 0.3.10
 
 Миграций нет.
