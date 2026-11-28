@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"rssam/internal/bridge/v1"
+	"rssam/internal/metrics"
 	"rssam/internal/proxy"
 	"rssam/internal/reader/dzen"
 	"rssam/internal/reader/dzenchannel"
@@ -102,6 +103,9 @@ func NewRegistry(cfg RegistryConfig) (*RegistryBundle, error) {
 
 	proxyHTTP := proxyServiceHTTPClient(cfg)
 	proxyClient := proxy.NewClient(proxyHTTP)
+	proxyClient.Observe = func(proxyID, result string) {
+		metrics.TelegramProxyRequests.WithLabelValues(proxyID, result).Inc()
+	}
 	if tok := strings.TrimSpace(cfg.TelegramProxyServiceToken); tok != "" {
 		proxyClient.SetServiceToken(tok)
 	}

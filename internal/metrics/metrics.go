@@ -40,6 +40,18 @@ var (
 		Help: "Transient poll failures absorbed without an error counter, by bridge and reason.",
 	}, []string{"bridge", "reason"})
 
+	// TelegramProxyRequests counts t.me requests per proxy-service endpoint
+	// (proxy = the service's endpoint id, a few dozen values) by result:
+	// ok, error, stub (t.me's "channel unavailable" page — a subset of ok),
+	// stub_retry_ok (the channel was visible through this endpoint after
+	// another one served the stub), no_proxy (proxy=""). The denominator
+	// the soft-failure log lacked: 64 of 165 stubs on one endpoint said
+	// nothing without its share of requests.
+	TelegramProxyRequests = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "rssam_telegram_proxy_requests_total",
+		Help: "t.me requests per proxy-service endpoint and result (ok, error, stub, stub_retry_ok, no_proxy).",
+	}, []string{"proxy", "result"})
+
 	ClaimedJobs = prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "rssam_jobs_claimed_total",
 		Help: "Number of due feeds handed to the poll workers.",
@@ -102,6 +114,7 @@ func Init() {
 			PollDuration,
 			PollDeferred,
 			PollSoftFailures,
+			TelegramProxyRequests,
 			ClaimedJobs,
 			JobLag,
 			WebhookDeliveriesTotal,

@@ -188,11 +188,22 @@ func (h *Handler) fetch(ctx context.Context, feedURL string, override *BridgeOve
 			break
 		}
 		parsed, err := ParsePage(body, username)
+		if err != nil && errors.Is(err, ErrChannelUnavailable) && page == 0 {
+			if id, _, ok := strings.Cut(via, " "); ok && h.proxyClient != nil {
+				h.proxyClient.Report(id, "stub")
+			}
+			// t.me's stub page through one proxy is not proof: on the
+			// production fleet 94 % of these cleared by the next poll
+			// (5 minutes later), so the same page is asked once more
+			// through another endpoint right now.
+			if body2, via2, ok := h.secondOpinion(ctx, cfg, pageURL, via); ok {
+				if parsed2, err2 := ParsePage(body2, username); err2 == nil {
+					parsed, err, via = parsed2, nil, via2
+				}
+			}
+		}
 		if err != nil {
 			if errors.Is(err, ErrChannelUnavailable) {
-				// Which proxy saw the stub page: on the production fleet
-				// 94 % of these clear by the next poll, and whether they
-				// cluster by proxy decides the next fix.
 				return FetchResult{}, &ChannelUnavailableError{Via: via}
 			}
 			return FetchResult{}, err
@@ -314,6 +325,35 @@ func (h *Handler) fetchViaStatic(ctx context.Context, cfg Config, pageURL string
 	return body, nil
 }
 
+// secondOpinion fetches pageURL through a proxy-service endpoint other than
+// the one that produced the stub page (via = "id host:port"). ok is false in
+// direct/static mode, when the service has no other endpoint, or when the
+// second request failed — the caller then keeps the first answer. When the
+// other endpoint sees the channel, the first one is reported bad: it is
+// blocked by t.me or serving a stale page, and the next poll must not reuse it.
+func (h *Handler) secondOpinion(ctx context.Context, cfg Config, pageURL, via string) ([]byte, string, bool) {
+	if cfg.ResolveProxyMode() != ProxyModeService || h.proxyClient == nil {
+		return nil, "", false
+	}
+	firstID, _, _ := strings.Cut(via, " ")
+	p, other, err := h.proxyClient.OtherProxy(ctx, cfg.ProxyServiceURL, cfg.ProxyTargetURL, firstID)
+	if err != nil || !other {
+		return nil, "", false
+	}
+	body, status, err := h.proxyClient.FetchGET(ctx, p, pageURL, cfg.UserAgent, cfg.ProxyConnectTimeout, cfg.ProxyRequestTimeout, cfg.TLSInsecureSkipVerify)
+	if err != nil || status != http.StatusOK {
+		h.proxyClient.Report(p.ID, "error")
+		return nil, "", false
+	}
+	if _, err := ParsePage(body, ""); err != nil {
+		h.proxyClient.Report(p.ID, "stub")
+		return nil, "", false
+	}
+	h.proxyClient.Report(p.ID, "stub_retry_ok")
+	_ = h.proxyClient.ReportBadProxy(ctx, cfg.ProxyServiceURL, firstID, "t.me stub page; channel visible through another proxy")
+	return body, fmt.Sprintf("%s %s:%d", p.ID, p.Host, p.Port), true
+}
+
 func (h *Handler) fetchPageWithRetry(ctx context.Context, cfg Config, pageURL string) ([]byte, string, error) {
 	if h.proxyClient == nil {
 		return nil, "", fmt.Errorf("telegram: proxy client is not configured")
@@ -330,13 +370,16 @@ func (h *Handler) fetchPageWithRetry(ctx context.Context, cfg Config, pageURL st
 		p, err := h.proxyClient.WorkingProxy(ctx, cfg.ProxyServiceURL, cfg.ProxyTargetURL)
 		if err != nil {
 			h.proxyClient.Health.Failure(err)
+			h.proxyClient.Report("", "no_proxy")
 			return nil, "", &proxy.Unavailable{Op: "get proxy", Err: err}
 		}
 		body, status, err := h.proxyClient.FetchGET(ctx, p, pageURL, cfg.UserAgent, cfg.ProxyConnectTimeout, cfg.ProxyRequestTimeout, cfg.TLSInsecureSkipVerify)
 		if err == nil && status == http.StatusOK {
 			h.proxyClient.Health.Success()
+			h.proxyClient.Report(p.ID, "ok")
 			return body, fmt.Sprintf("%s %s:%d", p.ID, p.Host, p.Port), nil
 		}
+		h.proxyClient.Report(p.ID, "error")
 		var reason string
 		if err != nil {
 			reason = err.Error()

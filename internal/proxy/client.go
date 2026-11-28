@@ -28,7 +28,16 @@ type Proxy struct {
 // A successful endpoint is reused until ReportBadProxy for that id.
 const badProxyCooldown = 2 * time.Second
 
+// Observer receives the outcome of every request that went through a
+// proxy-service endpoint: result is ok (HTTP 200), error (transport or
+// non-200), stub (a 200 that was t.me's "channel unavailable" page — a
+// subset of ok), stub_retry_ok (the same channel was visible through this
+// other endpoint) or no_proxy (the service gave none; proxyID is empty). The registry wires it to the
+// rssam_telegram_proxy_requests_total metric.
+type Observer func(proxyID, result string)
+
 type Client struct {
+	Observe      Observer
 	Health       Health
 	HTTP         *http.Client
 	serviceToken atomic.Pointer[string]
@@ -127,6 +136,24 @@ func (c *Client) socksClient(p Proxy, connectTimeout, requestTimeout time.Durati
 		c.socksTimeout = requestTimeout
 	}
 	return cl, nil
+}
+
+// Report hands an outcome to Observe when one is set.
+func (c *Client) Report(proxyID, result string) {
+	if c != nil && c.Observe != nil {
+		c.Observe(proxyID, result)
+	}
+}
+
+// OtherProxy asks the service for an endpoint other than exceptID without
+// touching the working-proxy cache: a second opinion on a page, not a
+// replacement. ok is false when the service handed back the same endpoint.
+func (c *Client) OtherProxy(ctx context.Context, serviceURL, targetURL, exceptID string) (Proxy, bool, error) {
+	p, err := c.fetchProxy(ctx, serviceURL, targetURL)
+	if err != nil {
+		return Proxy{}, false, err
+	}
+	return p, p.ID != exceptID, nil
 }
 
 func (c *Client) dropWorkingLocked(proxyID string) {
